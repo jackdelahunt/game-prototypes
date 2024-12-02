@@ -40,19 +40,35 @@ pub fn rectangle_gradient_vertical(position: main.Vec2, size: main.Vec2, start_c
     );
 }
 
+pub fn rectangle_gradient_horizontal(position: main.Vec2, size: main.Vec2, start_color: raylib.Color, end_color: raylib.Color) void {
+    raylib.DrawRectangleGradientH(
+        @as(c_int, @intFromFloat(position[0])), 
+        @as(c_int, @intFromFloat(position[1])), 
+        @as(c_int, @intFromFloat(size[0])), 
+        @as(c_int, @intFromFloat(size[1])), 
+        start_color,
+        end_color
+    );
+}
+
 // the y component of 'size' is the max height of the progress bar
 // any 'value' given that is less then 'max_value' will cause the height
 // of the bar to be smaller then 'size'
 //
 // unlike other drawing functions this 'position' is relative to the top left of the 
 // final image
-pub fn progress_bar_vertical(position: main.Vec2, size: main.Vec2, start_color: raylib.Color, end_color: raylib.Color, value: u64, max_value: u64) void {
+pub fn progress_bar_vertical(position: main.Vec2, size: main.Vec2, color: raylib.Color, value: u64, max_value: u64) void {
     const progress =  @as(f32, @floatFromInt(value)) / @as(f32, @floatFromInt(max_value));
     const progress_bar_end_y = position[1] + size[1];
     const progress_bar_start_y = progress_bar_end_y - (progress * size[1]);
     const progress_bar_height = progress_bar_end_y - progress_bar_start_y;
 
-    rectangle_gradient_vertical(main.Vec2{position[0], progress_bar_start_y}, main.Vec2{size[0], progress_bar_height}, end_color, start_color);
+    rectangle(main.Vec2{position[0], progress_bar_start_y}, main.Vec2{size[0], progress_bar_height}, color);
+}
+
+pub fn progress_bar_horizontal(position: main.Vec2, size: main.Vec2, color: raylib.Color, value: u64, max_value: u64) void {
+    const progress =  @as(f32, @floatFromInt(value)) / @as(f32, @floatFromInt(max_value));
+    rectangle(position, main.Vec2{size[0] * progress, size[1]}, color);
 }
 
 pub fn circle(position: main.Vec2, radius: f32, color: raylib.Color) void {
@@ -76,10 +92,15 @@ pub fn line(start: main.Vec2, end: main.Vec2, thickness: f32, color: raylib.Colo
 pub fn text(string: []const u8, position: main.Vec2, font_size: i32, color: raylib.Color) void {
     if(string.len == 0) return;
 
+    const text_width = @as(f32, @floatFromInt(raylib.MeasureText(&string[0], font_size)));
+    const size = main.Vec2{text_width, @floatFromInt(font_size)};
+
+    const centerd = position - (size * main.Vec2{0.5, 0.5});
+
     raylib.DrawText(
         &string[0],
-        @as(c_int, @intFromFloat(position[0])), 
-        @as(c_int, @intFromFloat(position[1])), 
+        @as(c_int, @intFromFloat(centerd[0])), 
+        @as(c_int, @intFromFloat(centerd[1])), 
         @as(c_int, @intCast(font_size)), 
         color
     );
