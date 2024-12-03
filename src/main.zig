@@ -7,7 +7,7 @@ const render = @import("render.zig");
 const MAX_ENTITIES = 100;
 
 const PLAYER_SPEED  = 200;
-const ENEMY_SPEED   = 100;
+const ENEMY_SPEED   = 120;
 
 const WINDOW_WIDTH  = 1200;
 const WINDOW_HEIGHT = 900;
@@ -49,7 +49,8 @@ const State = struct {
         total_kills: u64,
         kills_this_round: u64,
         end_of_round: bool,
-        time_to_next_round: f32
+        time_to_next_round: f32,
+        money: u64,
     },
     rng: std.rand.DefaultPrng,
 };
@@ -82,6 +83,7 @@ fn new_state() State {
             .kills_this_round = 0,
             .end_of_round = false,
             .time_to_next_round = 0,
+            .money = 0,
         },
         .rng = std.rand.DefaultPrng.init(123456),
     };
@@ -180,13 +182,13 @@ fn input(state: *State) void {
 /////////////////////////////////////////////////////////////////////////
 fn update_entites(state: *State) void {
     for(0..state.entities.len) |i| {
-        var entity = &state.entities.slice()[i];
+        var entity: *Entity = &state.entities.slice()[i];
 
         // tick any delays or timers that are going on in this entity
         if(entity.attacking_cooldown > 0) {
             entity.attacking_cooldown -= TICK_RATE;
 
-            if(entity.attacking_cooldown < 0) {
+            if(entity.attacking_cooldown <= 0) {
                 entity.attacking_cooldown = 0;
             }
         }
@@ -194,7 +196,7 @@ fn update_entites(state: *State) void {
         if(entity.health_regen_cooldown > 0) {
             entity.health_regen_cooldown -= TICK_RATE;
 
-            if(entity.health_regen_cooldown < 0) {
+            if(entity.health_regen_cooldown <= 0) {
                 entity.health_regen_cooldown = 0;
             }
         }
@@ -202,7 +204,7 @@ fn update_entites(state: *State) void {
         if(entity.spawner_cooldown > 0) {
             entity.spawner_cooldown -= TICK_RATE;
 
-            if(entity.spawner_cooldown < 0) {
+            if(entity.spawner_cooldown <= 0) {
                 entity.spawner_cooldown = 0;
             }
         }
@@ -228,8 +230,21 @@ fn update_entites(state: *State) void {
                 entity.velocity[0] = PLAYER_SPEED;
             }
 
-            if(key(state, raylib.KEY_SPACE) == .pressing and entity.attacking_cooldown == 0) {
-                entity.attacking_cooldown = 0.2;
+            if(key(state, raylib.KEY_R) == .down) {
+                if(entity.magazine_ammo != entity.weapon.magazine_size()) {
+                    entiity_set_flag(entity, flag_is_reloading);
+                    entity.reload_cooldown = entity.weapon.reload_cooldown();
+                }
+            }
+
+            if(
+                key(state, raylib.KEY_SPACE) == .pressing and 
+                entity.attacking_cooldown == 0 and
+                entity.magazine_ammo > 0 and
+                !entiity_has_flag(entity, flag_is_reloading)
+            ) {
+                entity.attacking_cooldown = entity.weapon.firing_cooldown();
+                entity.magazine_ammo -= 1;
 
                 const projectile_speed = v2_scaler(800);
                 var direction_vector =  state.mouse_world_position - entity.position;
@@ -242,6 +257,23 @@ fn update_entites(state: *State) void {
                     .size = .{20, 20},
                     .texture= .black,
                 });
+            }
+
+            if(key(state, raylib.KEY_E) == .down) {
+                const interact_shape = entity.size + v2_scaler(40);
+                var iter = new_box_collision_iterator(entity.position, interact_shape);
+    
+                while(iter.next(state)) |other| {
+                    if(entity.id == other.id) {
+                        continue;
+                    }
+
+                    if(entiity_has_flag(other, flag_is_ammo_crate) and state.level.money >= 1000) {
+                        entity.magazine_ammo = entity.weapon.magazine_size();
+                        entity.reserve_ammo = entity.magazine_ammo * entity.weapon.magazine_count();
+                        state.level.money -= 1000;
+                    }
+                }
             }
         }
 
@@ -308,6 +340,10 @@ fn update_entites(state: *State) void {
             if(state.time_since_start - entity.time_created > 2) {
                 entiity_set_flag(entity, flag_to_be_deleted);
             } 
+
+            if(entity.penetration_count >= 3) {
+                entiity_set_flag(entity, flag_to_be_deleted);
+            }
         }
 
         health: {
@@ -339,10 +375,35 @@ fn update_entites(state: *State) void {
             if(entity.spawner_cooldown == 0 and state.level.enemies_left_to_spawn > 0) {
                 const f = state.rng.random().float(f64);
 
-                if(f < 0.01) {
+                if(f < 0.015) {
                     _ = create_basic_enemy(state, entity.position);
                     entity.spawner_cooldown = get_spawner_cooldown_for_round(state.level.round);
                     state.level.enemies_left_to_spawn -= 1;
+                }
+            }
+        }
+
+        weapon: {
+            if(!entiity_has_flag(entity, flag_has_weapon)) {
+                break :weapon;
+            }
+
+            if(entity.magazine_ammo == 0 and entity.reserve_ammo > 0 and !entiity_has_flag(entity, flag_is_reloading)) {
+                entiity_set_flag(entity, flag_is_reloading);
+                entity.reload_cooldown = entity.weapon.reload_cooldown();
+            }
+
+            if(entity.reload_cooldown > 0) {
+                entity.reload_cooldown -= TICK_RATE;
+    
+                if(entity.reload_cooldown <= 0) {
+                    entity.reload_cooldown = 0;
+
+                    const space_left_in_mag = entity.weapon.magazine_size() - entity.magazine_ammo;
+                    const ammo_added_to_mag = if (space_left_in_mag > entity.reserve_ammo) entity.reserve_ammo else space_left_in_mag;
+                    entity.reserve_ammo -= ammo_added_to_mag;
+                    entity.magazine_ammo += ammo_added_to_mag;
+                    entiity_unset_flag(entity, flag_is_reloading);
                 }
             }
         }
@@ -400,27 +461,26 @@ fn draw(state: *const State, delta_time: f32) void {
 
     { // rendering in world space
         // drawing of the entities, first layer drawing 
-        for(state.entities.slice()) |*entity| {
-            switch (entity.texture) {
-                .none => {},
-                .blue => {
-                    render.rectangle(entity.position, entity.size, raylib.ColorBrightness(raylib.BLUE, -0.3));
-                },
-                .red => {
-                    render.rectangle(entity.position, entity.size, raylib.ColorBrightness(raylib.RED, -0.5));
-                },
-                .black => {
-                    render.rectangle(entity.position, entity.size, raylib.BLACK);
-                },
-                .yellow => {
-                    render.rectangle(entity.position, entity.size, raylib.ColorBrightness(raylib.YELLOW, -0.5));
-                },
-                .green => {
-                    render.rectangle(entity.position, entity.size, raylib.ColorBrightness(raylib.GREEN, -0.5));
-                },
-                .pink => {
-                    render.rectangle(entity.position, entity.size, raylib.ColorBrightness(raylib.PINK, -0.5));
-                },
+        for(0..state.entities.len) |i| {
+            const entity: *const Entity = &state.entities.slice()[i];
+
+            if(entity.texture != .none) {
+                var color = switch (entity.texture) {
+                    .none => unreachable,
+                    .blue => raylib.ColorBrightness(raylib.BLUE, -0.3),
+                    .red => raylib.ColorBrightness(raylib.RED, -0.3),
+                    .black => raylib.BLACK,
+                    .yellow => raylib.ColorBrightness(raylib.RED, -0.3),
+                    .green => raylib.ColorBrightness(raylib.RED, -0.3),
+                    .pink => raylib.ColorBrightness(raylib.RED, -0.3),
+                    .brown => raylib.BROWN,
+                };
+
+                if(entiity_has_flag(entity, flag_is_reloading)) {
+                    color = raylib.ORANGE;
+                }
+                
+                render.rectangle(entity.position, entity.size, color);
             }
     
             if(DEBUG_DRAW_CENTRE_POINTS) {
@@ -473,32 +533,48 @@ fn draw(state: *const State, delta_time: f32) void {
     raylib.EndMode2D();
 
     { // rendering in screen space (ui :( )
+        var string_format_buffer = [_]u8{0} ** 256;
+
         // performance text
         {
             const ut_milliseconds = @as(f64, @floatFromInt(state.update_time_nanoseconds)) / 1_000_000;
             const pt_milliseconds = @as(f64, @floatFromInt(state.physics_time_nanoseconds)) / 1_000_000;
             const dt_milliseconds = @as(f64, @floatFromInt(state.draw_time_nanoseconds)) / 1_000_00;
 
-            var buffer = [_]u8{0} ** 256;
-            const fps_string = std.fmt.bufPrintZ(
-                &buffer, 
+            const string = std.fmt.bufPrintZ(
+                &string_format_buffer, 
                 "fps: {d:<8.4}, u: {d:<8.4}, p: {d:<8.4}, d-1: {d:<8.4}, e: {d}", 
                 .{1 / delta_time, ut_milliseconds, pt_milliseconds, dt_milliseconds, state.entities.slice().len}
             ) catch unreachable;
 
-            render.text(fps_string, Vec2{WINDOW_WIDTH * 0.5, WINDOW_HEIGHT - 20}, 16, raylib.WHITE);
+            render.text(string, Vec2{WINDOW_WIDTH - 240, WINDOW_HEIGHT - 20}, 16, raylib.WHITE);
         }  
 
         // game info text
         {
-            var buffer = [_]u8{0} ** 256;
             const string = std.fmt.bufPrintZ(
-                &buffer, 
+                &string_format_buffer, 
                 "round: {:<3}   kills: {:<4} remaining: {:<4}", 
                 .{state.level.round, state.level.total_kills, get_enemy_count_for_round(state.level.round) - state.level.kills_this_round}
             ) catch unreachable;
 
-            render.text(string, Vec2{WINDOW_WIDTH * 0.5, 20}, 30, raylib.RED);
+
+            const color = if(state.level.end_of_round) raylib.WHITE else raylib.RED;
+            render.text(string, Vec2{WINDOW_WIDTH * 0.5, 20}, 30, color);
+        }
+
+        weapon_info_text: {
+            const player = get_entity_with_flag(state, flag_player) orelse break :weapon_info_text;
+            std.debug.assert(entiity_has_flag(player, flag_has_weapon));
+
+            const string = std.fmt.bufPrintZ(
+                &string_format_buffer, 
+                "{s}: {}/{}    money: {}", 
+                .{player.weapon.display_name(), player.magazine_ammo, player.reserve_ammo, state.level.money}
+            ) catch unreachable;
+
+            const color = if(entiity_has_flag(player, flag_is_reloading)) raylib.ORANGE else raylib.BLUE;
+            render.text(string, Vec2{200, WINDOW_HEIGHT - 20}, 30, color);
         }
     } 
 
@@ -606,7 +682,7 @@ fn physics(state: *State, delta_time: f32) void {
                         !(distance_for_collision[0] >= starting_absolute_distance_vector[0] and
                             distance_for_collision[1] >= starting_absolute_distance_vector[1])
                     ) {
-                        on_trigger_collided_start(entity, other);
+                        on_trigger_collided_start(state, entity, other);
                     }
                 }
             }
@@ -653,15 +729,21 @@ fn new_box_collision_iterator(position: Vec2, size: Vec2) BoxCollisionIterator {
 /////////////////////////////////////////////////////////////////////////
 ///                         @event
 /////////////////////////////////////////////////////////////////////////
-fn on_trigger_collided_start(trigger_entity: *Entity, collided_entity: *Entity) void {
-    std.debug.assert(entiity_has_flag(trigger_entity, flag_projectile));
+fn on_trigger_collided_start(state: *State, trigger_entity: *Entity, collided_entity: *Entity) void {
+    if(entiity_has_flag(trigger_entity, flag_projectile)) {
+        if(entiity_has_flag(collided_entity, flag_player) or !entiity_has_flag(collided_entity, flag_has_health)) {
+            return;
+        }
 
-    if(entiity_has_flag(collided_entity, flag_player) or !entiity_has_flag(collided_entity, flag_has_health)) {
-        return;
+        entity_take_damage(collided_entity, 20);
+        trigger_entity.penetration_count += 1;
+
+        if(collided_entity.health == 0) {
+            state.level.money += 100; 
+        } else {
+            state.level.money += 10; 
+        }
     }
-
-    const damage = 20;
-    collided_entity.health = if(damage >= collided_entity.health) 0 else collided_entity.health - damage; // health is unsigned so need to be careful
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -674,7 +756,8 @@ const TextureHandle = enum(u8) {
     black,
     yellow,
     green,
-    pink
+    pink,
+    brown
 };
 
 /////////////////////////////////////////////////////////////////////////
@@ -697,6 +780,9 @@ const Entity = struct {
     // gameplay
     attacking_cooldown: f32     = 0,
 
+    // gameplay: projectile
+    penetration_count: u32      = 0,
+
     // gameplay: health
     health: u64                 = 0,
     max_health: u64             = 0,
@@ -708,6 +794,12 @@ const Entity = struct {
 
     // gameplay: spawner
     spawner_cooldown: f32       = 0,
+
+    // gameplay: weapon
+    weapon: Weapon              = .none,
+    magazine_ammo: u16          = 0,
+    reserve_ammo: u16           = 0,
+    reload_cooldown: f32        = 0,
 };
 
 const EntityID = u32;
@@ -723,6 +815,9 @@ const flag_has_health               :EntityFlag = 1 << 5;
 const flag_has_solid_hitbox         :EntityFlag = 1 << 6;
 const flag_has_trigger_hitbox       :EntityFlag = 1 << 7;
 const flag_is_static                :EntityFlag = 1 << 8;
+const flag_has_weapon               :EntityFlag = 1 << 9;
+const flag_is_reloading             :EntityFlag = 1 << 10;
+const flag_is_ammo_crate            :EntityFlag = 1 << 11;
 
 fn create_entity(state: *State, entity: Entity) *Entity {
     const Static = struct {
@@ -763,13 +858,25 @@ fn entity_take_damage(entity: *Entity, damage: u64) void {
 
 fn create_player(state: *State, position: Vec2) *Entity {
     return create_entity(state, .{
-        .flags = flag_player | flag_has_solid_hitbox | flag_has_health,
+        .flags = flag_player | flag_has_solid_hitbox | flag_has_health | flag_has_weapon,
         .position = position,
         .size = .{50, 50},
         .texture = .blue,
         .health = 100,
         .max_health = 100,
         .health_regen_rate = 40,
+        .weapon = .m4,
+        .magazine_ammo = Weapon.m4.magazine_size(),
+        .reserve_ammo =  Weapon.m4.magazine_size() * Weapon.m4.magazine_count()
+    });
+}
+
+fn create_ammo_crate(state: *State, position: Vec2) *Entity {
+    return create_entity(state, .{
+        .flags = flag_has_solid_hitbox | flag_is_static | flag_is_ammo_crate,
+        .position = position,
+        .size = .{25, 25},
+        .texture = .brown,
     });
 }
 
@@ -816,6 +923,10 @@ inline fn entiity_set_flag(entity: *Entity, flag: EntityFlag) void {
     entity.flags |= flag;
 }
 
+inline fn entiity_unset_flag(entity: *Entity, flag: EntityFlag) void {
+    entity.flags ^= flag;
+}
+
 inline fn entiity_has_flag(entity: *const Entity, flag: EntityFlag) bool {
     return !(entity.flags & flag == 0);
 }
@@ -823,6 +934,65 @@ inline fn entiity_has_flag(entity: *const Entity, flag: EntityFlag) bool {
 fn get_enemy_attack_box_size(entity: *const Entity) Vec2 {
     return entity.size + v2_scaler(20);
 }
+
+/////////////////////////////////////////////////////////////////////////
+///                         @weapon
+/////////////////////////////////////////////////////////////////////////
+const Weapon = enum {
+    const Self = @This();
+
+    none,
+    pistol,
+    m4,
+
+    fn damage(self: Self) u64 {
+        return switch (self) {
+            .none => 0,
+            .pistol => 15,
+            .m4 => 30,
+        };
+    }
+
+    fn magazine_size(self: Self) u16 {
+        return switch (self) {
+            .none => 0,
+            .pistol => 12,
+            .m4 => 30,
+        };
+    }
+
+    fn magazine_count(self: Self) u16 {
+        return switch (self) {
+            .none => 0,
+            .pistol => 4,
+            .m4 => 5,
+        };
+    }
+
+    fn reload_cooldown(self: Self) f32 {
+        return switch (self) {
+            .none => 0,
+            .pistol => 1.5,
+            .m4 => 3,
+        };
+    }
+
+    fn firing_cooldown(self: Self) f32 {
+        return switch (self) {
+            .none => 0,
+            .pistol => 0.5,
+            .m4 => 0.1,
+        };
+    }
+
+    fn display_name(self: Self) []const u8 {
+        return switch (self) {
+            .none => "<empty>",
+            .pistol => "pistol",
+            .m4 => "m4",
+        };
+    }
+};
 
 /////////////////////////////////////////////////////////////////////////
 ///                         @vector
@@ -898,6 +1068,7 @@ pub fn main() !void {
     var state = new_state();
 
     _ = create_player(&state, v2_scaler(0));
+    _ = create_ammo_crate(&state, Vec2{385, 0});
 
     {
         const spawner_inset_amount = 80;
