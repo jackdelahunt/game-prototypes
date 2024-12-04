@@ -34,8 +34,8 @@ const State = struct {
 
     keyboard: [348]InputState,
     mouse: [7]InputState,
-    mouse_screen_position: Vec2,
-    mouse_world_position: Vec2,
+    mouse_screen_position: V2f,
+    mouse_world_position: V2f,
     time_since_start: f64,
     tick_timer: f64,
     update_time_nanoseconds: u64,
@@ -59,8 +59,8 @@ fn new_state() State {
     var state = State{
         .keyboard = [_]State.InputState{.up} ** 348,
         .mouse = [_]State.InputState{.up} ** 7,
-        .mouse_screen_position = v2_scaler(0),
-        .mouse_world_position = v2_scaler(0),
+        .mouse_screen_position = vscaler(0),
+        .mouse_world_position = vscaler(0),
         .time_since_start = 0,
         .tick_timer = 0,
         .update_time_nanoseconds = 0,
@@ -173,14 +173,32 @@ fn input(state: *State) void {
     const mouse_screen_position = raylib.GetMousePosition();
     const mouse_world_position = raylib.GetScreenToWorld2D(mouse_screen_position, state.camera);
 
-    state.mouse_screen_position = Vec2{mouse_screen_position.x, mouse_screen_position.y};
-    state.mouse_world_position = Vec2{mouse_world_position.x, mouse_world_position.y};
+    state.mouse_screen_position = V2f{mouse_screen_position.x, mouse_screen_position.y};
+    state.mouse_world_position = V2f{mouse_world_position.x, mouse_world_position.y};
 }
 
 /////////////////////////////////////////////////////////////////////////
 ///                         @update
 /////////////////////////////////////////////////////////////////////////
 fn update_entites(state: *State) void {
+    grid: {
+        if(mouse(state, raylib.MOUSE_LEFT_BUTTON) != .down) {
+            break :grid;
+        }
+        
+        if(
+            state.mouse_screen_position[0] < 0 or state.mouse_screen_position[0] > 8 * grid.tile_draw_size or
+            state.mouse_screen_position[1] < 0 or state.mouse_screen_position[1] > 8 * grid.tile_draw_size
+        ) {
+            break :grid;
+        }
+
+        std.debug.print("pressing\n", .{});
+
+        const mouse_tile_indices = @divFloor(state.mouse_screen_position, vscaler(grid.tile_draw_size));
+        grid.toggle_tile(V2i{@intFromFloat(mouse_tile_indices[0]), @intFromFloat(mouse_tile_indices[1])});
+    }
+
     for(0..state.entities.len) |i| {
         var entity: *Entity = &state.entities.slice()[i];
 
@@ -212,7 +230,7 @@ fn update_entites(state: *State) void {
         player: {
             if(!entiity_has_flag(entity, flag_player)) {
                 break :player;
-            }
+            } 
 
             if(key(state, raylib.KEY_W) == .pressing) {
                 entity.velocity[1] = -PLAYER_SPEED;
@@ -246,21 +264,21 @@ fn update_entites(state: *State) void {
                 entity.attacking_cooldown = entity.weapon.firing_cooldown();
                 entity.magazine_ammo -= 1;
 
-                const projectile_speed = v2_scaler(800);
+                const projectile_speed = vscaler(800);
                 var direction_vector =  state.mouse_world_position - entity.position;
-                direction_vector = v2_normalise(direction_vector) * projectile_speed;
+                direction_vector = vnormalise(direction_vector) * projectile_speed;
 
                 _ = create_entity(state, Entity{
                     .flags = flag_projectile | flag_has_trigger_hitbox,
                     .position = entity.position,
                     .velocity = direction_vector,
-                    .size = .{20, 20},
+                    .size = .{10, 10},
                     .texture= .black,
                 });
             }
 
             if(key(state, raylib.KEY_E) == .down) {
-                const interact_shape = entity.size + v2_scaler(40);
+                const interact_shape = entity.size + vscaler(40);
                 var iter = new_box_collision_iterator(entity.position, interact_shape);
     
                 while(iter.next(state)) |other| {
@@ -296,11 +314,11 @@ fn update_entites(state: *State) void {
             const target_entity = get_entity_with_flag(state, flag_player) orelse break :ai;
             const delta_vector = target_entity.position - entity.position;
 
-            if(v2_length(delta_vector) > 55) {
+            if(vlength(delta_vector) > 55) {
                 entity.velocity = 
-                    v2_normalise(delta_vector) * 
-                    v2_scaler(ENEMY_SPEED) * 
-                    v2_scaler(get_enemy_speed_multiplier_for_round(state.level.round));
+                    vnormalise(delta_vector) * 
+                    vscaler(ENEMY_SPEED) * 
+                    vscaler(get_enemy_speed_multiplier_for_round(state.level.round));
 
                 break :ai;
             }
@@ -311,7 +329,7 @@ fn update_entites(state: *State) void {
             }
 
             // ai needs to slow down to attack
-            if(v2_length(entity.velocity) > 35) {
+            if(vlength(entity.velocity) > 35) {
                 break :ai; 
             }
 
@@ -488,9 +506,9 @@ fn draw(state: *const State, delta_time: f32) void {
             }
 
             if(DEBUG_DRAW_MOUSE_DIRECTION_ARROWS) {
-                const arrow_length = v2_scaler(35);
+                const arrow_length = vscaler(35);
                 var direction_vector =  state.mouse_world_position - entity.position;
-                direction_vector = v2_normalise(direction_vector);
+                direction_vector = vnormalise(direction_vector);
                 direction_vector *= arrow_length;
 
                 render.line(entity.position, entity.position + direction_vector, 2, raylib.PURPLE);
@@ -510,17 +528,17 @@ fn draw(state: *const State, delta_time: f32) void {
         // of the entities in the scene
         for(state.entities.slice()) |*entity| {
             if(entiity_has_flag(entity, flag_has_health) and entity.health < entity.max_health) {
-                const bar_size = Vec2{entity.size[0] + (entity.size[0] * 0.3), 8};
+                const bar_size = V2f{entity.size[0] + (entity.size[0] * 0.3), 8};
                 const padding = 15;
 
                 render.rectangle(
-                    entity.position - Vec2{0, (entity.size[1] * 0.5) + padding}, 
+                    entity.position - V2f{0, (entity.size[1] * 0.5) + padding}, 
                     bar_size, 
                     raylib.ColorBrightness(raylib.RED, -0.5)
                 );
                 
                 render.progress_bar_horizontal(
-                    entity.position - Vec2{0, (entity.size[1] * 0.5) + padding}, 
+                    entity.position - V2f{0, (entity.size[1] * 0.5) + padding}, 
                     bar_size, 
                     raylib.RED, 
                     entity.health, 
@@ -531,6 +549,10 @@ fn draw(state: *const State, delta_time: f32) void {
     }
 
     raylib.EndMode2D();
+
+    {
+        grid.draw();
+    }
 
     { // rendering in screen space (ui :( )
         var string_format_buffer = [_]u8{0} ** 256;
@@ -547,7 +569,7 @@ fn draw(state: *const State, delta_time: f32) void {
                 .{1 / delta_time, ut_milliseconds, pt_milliseconds, dt_milliseconds, state.entities.slice().len}
             ) catch unreachable;
 
-            render.text(string, Vec2{WINDOW_WIDTH - 240, WINDOW_HEIGHT - 20}, 16, raylib.WHITE);
+            render.text(string, V2f{WINDOW_WIDTH - 240, WINDOW_HEIGHT - 20}, 16, raylib.WHITE);
         }  
 
         // game info text
@@ -560,7 +582,7 @@ fn draw(state: *const State, delta_time: f32) void {
 
 
             const color = if(state.level.end_of_round) raylib.WHITE else raylib.RED;
-            render.text(string, Vec2{WINDOW_WIDTH * 0.5, 20}, 30, color);
+            render.text(string, V2f{WINDOW_WIDTH * 0.5, 20}, 30, color);
         }
 
         weapon_info_text: {
@@ -574,7 +596,7 @@ fn draw(state: *const State, delta_time: f32) void {
             ) catch unreachable;
 
             const color = if(entiity_has_flag(player, flag_is_reloading)) raylib.ORANGE else raylib.BLUE;
-            render.text(string, Vec2{200, WINDOW_HEIGHT - 20}, 30, color);
+            render.text(string, V2f{200, WINDOW_HEIGHT - 20}, 30, color);
         }
     } 
 
@@ -594,11 +616,20 @@ fn physics(state: *State, delta_time: f32) void {
         // occurs not just if it is occuring
         const entity_start_position = entity.position;
 
+        { // move camera
+            if(entiity_has_flag(entity, flag_player)) {
+                state.camera.target = .{
+                    .x = entity.position[0],
+                    .y = entity.position[1],
+                };
+            }
+        }
+
         { // movement physics
-            entity.position += entity.velocity * v2_scaler(delta_time);
+            entity.position += entity.velocity * vscaler(delta_time);
 
             if(!entiity_has_flag(entity, flag_projectile)) {
-                entity.velocity -= v2_normalise(entity.velocity) * v2_scaler(drag) * v2_scaler(delta_time);
+                entity.velocity -= vnormalise(entity.velocity) * vscaler(drag) * vscaler(delta_time);
             }
         }
 
@@ -624,7 +655,7 @@ fn physics(state: *State, delta_time: f32) void {
     
                 const distance_vector = other.position - entity.position;
                 const absolute_distance_vector = @abs(distance_vector); // we use absolute for collision detection because which side does matter
-                const distance_for_collision = (entity.size + other.size) * v2_scaler(0.5);
+                const distance_for_collision = (entity.size + other.size) * vscaler(0.5);
     
                 if (
                     !(distance_for_collision[0] >= absolute_distance_vector[0] and
@@ -694,8 +725,8 @@ const BoxCollisionIterator = struct {
     const Self = @This();
 
     index: usize,
-    position: Vec2,
-    size: Vec2,
+    position: V2f,
+    size: V2f,
 
     fn next(self: *Self, state: *State) ?*Entity {
         const index = self.index;
@@ -704,7 +735,7 @@ const BoxCollisionIterator = struct {
 
             const distance_vector = entity.position - self.position;
             const absolute_distance_vector = @abs(distance_vector); // we use absolute for collision detection because which side does matter
-            const distance_for_collision = (self.size + entity.size) * v2_scaler(0.5);
+            const distance_for_collision = (self.size + entity.size) * vscaler(0.5);
  
             if (
                 distance_for_collision[0] >= absolute_distance_vector[0] and
@@ -718,7 +749,7 @@ const BoxCollisionIterator = struct {
     }
 };
 
-fn new_box_collision_iterator(position: Vec2, size: Vec2) BoxCollisionIterator {
+fn new_box_collision_iterator(position: V2f, size: V2f) BoxCollisionIterator {
     return BoxCollisionIterator{
         .index = 0,
         .position = position,
@@ -770,9 +801,9 @@ const Entity = struct {
     flags: u64                  = 0,
 
     // physics
-    position: Vec2              = .{0, 0},
-    velocity: Vec2              = .{0, 0},
-    size: Vec2                  = .{0, 0},
+    position: V2f              = .{0, 0},
+    velocity: V2f              = .{0, 0},
+    size: V2f                  = .{0, 0},
 
     // rendering
     texture: TextureHandle      = .none,
@@ -800,6 +831,9 @@ const Entity = struct {
     magazine_ammo: u16          = 0,
     reserve_ammo: u16           = 0,
     reload_cooldown: f32        = 0,
+
+    // gameplay: door
+    door_cost: u32              = 0 
 };
 
 const EntityID = u32;
@@ -818,6 +852,7 @@ const flag_is_static                :EntityFlag = 1 << 8;
 const flag_has_weapon               :EntityFlag = 1 << 9;
 const flag_is_reloading             :EntityFlag = 1 << 10;
 const flag_is_ammo_crate            :EntityFlag = 1 << 11;
+const flag_is_door                  :EntityFlag = 1 << 12;
 
 fn create_entity(state: *State, entity: Entity) *Entity {
     const Static = struct {
@@ -838,6 +873,10 @@ fn create_entity(state: *State, entity: Entity) *Entity {
         if(entiity_has_flag(entity_ptr, flag_is_static)) {
             std.debug.assert(entiity_has_flag(entity_ptr, flag_has_solid_hitbox));
         }
+
+        if(entiity_has_flag(entity_ptr, flag_is_door)) {
+            std.debug.assert(entity_ptr.door_cost > 0);
+        }
     }
 
     return entity_ptr;
@@ -856,7 +895,7 @@ fn entity_take_damage(entity: *Entity, damage: u64) void {
     }
 }
 
-fn create_player(state: *State, position: Vec2) *Entity {
+fn create_player(state: *State, position: V2f) *Entity {
     return create_entity(state, .{
         .flags = flag_player | flag_has_solid_hitbox | flag_has_health | flag_has_weapon,
         .position = position,
@@ -871,7 +910,7 @@ fn create_player(state: *State, position: Vec2) *Entity {
     });
 }
 
-fn create_ammo_crate(state: *State, position: Vec2) *Entity {
+fn create_ammo_crate(state: *State, position: V2f) *Entity {
     return create_entity(state, .{
         .flags = flag_has_solid_hitbox | flag_is_static | flag_is_ammo_crate,
         .position = position,
@@ -880,7 +919,17 @@ fn create_ammo_crate(state: *State, position: Vec2) *Entity {
     });
 }
 
-fn create_basic_enemy(state: *State, position: Vec2) *Entity {
+fn create_door(state: *State, position: V2f, size: V2f, cost: u32) *Entity {
+    return create_entity(state, .{
+        .flags = flag_has_solid_hitbox | flag_is_static | flag_is_door,
+        .position = position,
+        .size = size,
+        .texture = .pink,
+        .door_cost = cost
+    });
+}
+
+fn create_basic_enemy(state: *State, position: V2f) *Entity {
     return create_entity(state, .{
         .flags = flag_has_health | flag_ai | flag_has_solid_hitbox,
         .position = position,
@@ -891,16 +940,16 @@ fn create_basic_enemy(state: *State, position: Vec2) *Entity {
     });
 }
 
-fn create_spawner(state: *State, position: Vec2) *Entity {
+fn create_spawner(state: *State, position: V2f) *Entity {
     return create_entity(state, .{
         .flags = flag_spawner,
         .position = position,
-        .size = v2_scaler(10),
+        .size = vscaler(10),
         .texture = .pink,
     });
 }
 
-fn create_wall(state: *State, position: Vec2, size: Vec2) *Entity {
+fn create_wall(state: *State, position: V2f, size: V2f) *Entity {
     return create_entity(state, .{
         .flags = flag_has_solid_hitbox | flag_is_static,
         .position = position,
@@ -931,8 +980,8 @@ inline fn entiity_has_flag(entity: *const Entity, flag: EntityFlag) bool {
     return !(entity.flags & flag == 0);
 }
 
-fn get_enemy_attack_box_size(entity: *const Entity) Vec2 {
-    return entity.size + v2_scaler(20);
+fn get_enemy_attack_box_size(entity: *const Entity) V2f {
+    return entity.size + vscaler(20);
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -997,23 +1046,24 @@ const Weapon = enum {
 /////////////////////////////////////////////////////////////////////////
 ///                         @vector
 /////////////////////////////////////////////////////////////////////////
-pub const Vec2 = @Vector(2, f32);
+pub const V2f = @Vector(2, f32);
+pub const V2i = @Vector(2, i32);
 
-inline fn v2_scaler(scaler: f32) Vec2 {
+inline fn vscaler(scaler: f32) V2f {
     return @splat(scaler);
 }
 
-fn v2_length(vector: Vec2) f32 {
+inline fn vlength(vector: V2f) f32 {
     return @sqrt(@reduce(.Add, vector * vector));
 }
 
-fn v2_normalise(vector: Vec2) Vec2 {
-    const length = v2_length(vector);
+fn vnormalise(vector: V2f) V2f {
+    const length = vlength(vector);
     if(length == 0) {
-        return Vec2{0, 0};
+        return V2f{0, 0};
     }
 
-    return vector / Vec2{length, length};
+    return vector / V2f{length, length};
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -1060,6 +1110,176 @@ fn get_spawner_cooldown_for_round(round: u64) f32 {
     };
 }
 
+fn load_texture(relative_texture_path: []const u8) !raylib.Texture {
+    var base_path_buffer = std.mem.zeroes([std.fs.MAX_PATH_BYTES]u8);
+    
+    const cwd_dir = std.fs.cwd();
+    const base_path = try cwd_dir.realpath(".", base_path_buffer[0..]);
+
+    var texture_path_buffer = std.mem.zeroes([std.fs.MAX_PATH_BYTES]u8);
+    const texture_path = try std.fmt.bufPrint(texture_path_buffer[0..], "{s}/resources/textures/{s}", .{base_path, relative_texture_path});
+
+    const texture = raylib.LoadTexture(&texture_path[0]);
+    if(texture.id <= 0) {
+        std.debug.panic("unable to load texture with path {s}\n", .{texture_path});
+    }
+
+    return texture;
+}
+
+// {new (Grass, Grass, Grass, Grass), tiles[6]},
+// {new (Dirt, Dirt, Dirt, Grass), tiles[13]}, // OUTER_BOTTOM_RIGHT
+// {new (Dirt, Dirt, Grass, Dirt), tiles[0]}, // OUTER_BOTTOM_LEFT
+// {new (Dirt, Grass, Dirt, Dirt), tiles[8]}, // OUTER_TOP_RIGHT
+// {new (Grass, Dirt, Dirt, Dirt), tiles[15]}, // OUTER_TOP_LEFT
+// {new (Dirt, Grass, Dirt, Grass), tiles[1]}, // EDGE_RIGHT
+// {new (Grass, Dirt, Grass, Dirt), tiles[11]}, // EDGE_LEFT
+// {new (Dirt, Dirt, Grass, Grass), tiles[3]}, // EDGE_BOTTOM
+// {new (Grass, Grass, Dirt, Dirt), tiles[9]}, // EDGE_TOP
+// {new (Dirt, Grass, Grass, Grass), tiles[5]}, // INNER_BOTTOM_RIGHT
+// {new (Grass, Dirt, Grass, Grass), tiles[2]}, // INNER_BOTTOM_LEFT
+// {new (Grass, Grass, Dirt, Grass), tiles[10]}, // INNER_TOP_RIGHT
+// {new (Grass, Grass, Grass, Dirt), tiles[7]}, // INNER_TOP_LEFT
+// {new (Dirt, Grass, Grass, Dirt), tiles[14]}, // DUAL_UP_RIGHT
+// {new (Grass, Dirt, Dirt, Grass), tiles[4]}, // DUAL_DOWN_RIGHT
+// {new (Dirt, Dirt, Dirt, Dirt), tiles[12]},
+
+const DualTileGrid = struct {
+    const Self = @This();
+
+    const neighbour_to_tile_index: [16]struct {
+        neighbours: [4]bool,
+        index: usize
+    } = .{
+        .{.neighbours = .{true, true, true, true}, .index = 6},
+        .{.neighbours = .{false, false, false, true}, .index = 13},
+        .{.neighbours = .{false, false, true, false}, .index = 0},
+        .{.neighbours = .{false, true, false, false}, .index = 8},
+        .{.neighbours = .{true, false, false, false}, .index = 15},
+        .{.neighbours = .{false, true, false, true}, .index = 1},
+        .{.neighbours = .{true, false, true, false}, .index = 11},
+        .{.neighbours = .{false, false, true, true}, .index = 3},
+        .{.neighbours = .{true, true, false, false}, .index = 9},
+        .{.neighbours = .{false, true, true, true}, .index = 5},
+        .{.neighbours = .{true, false, true, true}, .index = 2},
+        .{.neighbours = .{true, true, false, true}, .index = 10},
+        .{.neighbours = .{true, true, true, false}, .index = 7},
+        .{.neighbours = .{false, true, true, false}, .index = 14},
+        .{.neighbours = .{true, false, false, true}, .index = 4},
+        .{.neighbours = .{false, false, false, false}, .index = 12},
+    };
+
+    const neighbour_coords: [4]V2i = .{
+        V2i{0, 0},
+        V2i{1, 0},
+        V2i{0, 1},
+        V2i{1, 1},
+    };
+
+    texture: raylib.Texture,
+    grid : [8][8]bool,
+    tile_draw_size: f32,
+
+    fn get_display_tile_index(self: *const Self, position: V2i) usize {
+
+        if(position[0] == 2 and position[1] == 1) {
+            const x = 0; 
+            _ = x; // autofix
+        }
+
+        const top_left_location = position - Self.neighbour_coords[3]; 
+        const top_right_location = position - Self.neighbour_coords[2]; 
+        const bottom_left_location = position - Self.neighbour_coords[1]; 
+        const bottom_right_location = position - Self.neighbour_coords[0]; 
+
+        const neighbour_values = [4]bool{
+            self.get_grid_value(top_left_location),
+            self.get_grid_value(top_right_location),
+            self.get_grid_value(bottom_left_location),
+            self.get_grid_value(bottom_right_location)
+        };
+
+        var tile_index: usize = 0;
+
+        outer: for(&Self.neighbour_to_tile_index) |*neighbour_info| {
+            for(neighbour_info.neighbours, 0..) |value, i| {
+                if(value != neighbour_values[i]) {
+                    continue :outer;
+                }
+            }
+
+            tile_index = neighbour_info.index;
+            break;
+        }
+
+        return tile_index;
+    }
+
+    fn get_grid_value(self: *const Self, position: V2i) bool {
+        if(
+            position[0] < 0 or 
+            position[0] >= self.grid.len or
+            position[1] < 0 or 
+            position[1] >= self.grid[0].len
+
+        ) {
+            return true;
+        }
+
+        const x = @as(usize, @intCast(position[0]));
+        const y = @as(usize, @intCast(position[1]));
+
+        return self.grid[y][x];
+    }
+
+    fn index_to_texture_coords(self: *const Self, index: usize) V2f {
+        _ = self; // autofix
+        return .{
+            @as(f32, @floatFromInt(@mod(index, 4))),
+            @as(f32, @floatFromInt(@divFloor(index, 4)))
+        };
+    }
+
+    fn toggle_tile(self: *Self, position: V2i) void {
+        const x: usize = @intCast(position[0]);
+        const y: usize = @intCast(position[1]);
+
+        self.grid[y][x] = !self.grid[y][x];
+    }
+
+    fn draw(self: *const Self) void {
+        const tile_texture_size = 16;
+        const y_len = self.grid.len;
+        const x_len = self.grid[0].len;
+
+        for(0..y_len + 1) |y| {
+            for(0..x_len + 1) |x| {
+                const grid_position = V2i{@intCast(x), @intCast(y)};
+                const index = self.get_display_tile_index(grid_position);
+                const texture_coords = self.index_to_texture_coords(index);
+                const draw_position = V2f{@as(f32, @floatFromInt(x)) * self.tile_draw_size, @as(f32, @floatFromInt(y)) * self.tile_draw_size};
+
+                render.texture(self.texture, .{
+                    .position = draw_position,
+                    .size = vscaler(self.tile_draw_size),
+                    .source_position = V2f{texture_coords[0] * tile_texture_size, texture_coords[1] * tile_texture_size},
+                    .source_size = V2f{tile_texture_size, tile_texture_size},
+                });
+            }   
+        }
+
+        // draw tile preview dots
+        for(0..y_len) |y| {
+            for(0..x_len) |x| {
+                const draw_position = V2f{@as(f32, @floatFromInt(x)) * self.tile_draw_size, @as(f32, @floatFromInt(y)) * self.tile_draw_size};
+                render.circle(draw_position + vscaler(self.tile_draw_size), 10, raylib.RED);
+            }   
+        }
+    }
+};
+
+var grid: DualTileGrid = undefined;
+
 /////////////////////////////////////////////////////////////////////////
 ///                         @main
 /////////////////////////////////////////////////////////////////////////
@@ -1067,34 +1287,51 @@ pub fn main() !void {
     init_raylib();
     var state = new_state();
 
-    _ = create_player(&state, v2_scaler(0));
-    _ = create_ammo_crate(&state, Vec2{385, 0});
+    grid = DualTileGrid{
+        .texture = try load_texture("tilemap_grass.png"),
+        .grid = .{
+            .{false, false, false, false, false, true, false, false},
+            .{false, false, false, false, false, true, false, false},
+            .{false, false, false, true, true, true, false, false},
+            .{false, false, false, true, false, false, false, false},
+            .{false, false, false, true, false, false, false, false},
+            .{false, false, true, true, false, false, false, false},
+            .{false, false, false, false, false, false, false, false},
+            .{false, false, false, false, false, false, false, false},
+        },
+        .tile_draw_size = 96
+    };
+
+    {
+        _ = create_player(&state, vscaler(0));
+        _ = create_ammo_crate(&state, V2f{385, 0});
+    }
 
     {
         const spawner_inset_amount = 80;
-        _ = create_spawner(&state, Vec2{-(WINDOW_WIDTH * 0.5) + spawner_inset_amount, -(WINDOW_HEIGHT * 0.5) + spawner_inset_amount});
-        _ = create_spawner(&state, Vec2{WINDOW_WIDTH * 0.5 - spawner_inset_amount, -(WINDOW_HEIGHT * 0.5) + spawner_inset_amount});
-        _ = create_spawner(&state, Vec2{-(WINDOW_WIDTH * 0.5) + spawner_inset_amount, (WINDOW_HEIGHT * 0.5) - spawner_inset_amount});
-        _ = create_spawner(&state, Vec2{WINDOW_WIDTH * 0.5 - spawner_inset_amount, (WINDOW_HEIGHT * 0.5) - spawner_inset_amount});
+        _ = create_spawner(&state, V2f{-(WINDOW_WIDTH * 0.5) + spawner_inset_amount, -(WINDOW_HEIGHT * 0.5) + spawner_inset_amount});
+        _ = create_spawner(&state, V2f{WINDOW_WIDTH * 0.5 - spawner_inset_amount, -(WINDOW_HEIGHT * 0.5) + spawner_inset_amount});
+        _ = create_spawner(&state, V2f{-(WINDOW_WIDTH * 0.5) + spawner_inset_amount, (WINDOW_HEIGHT * 0.5) - spawner_inset_amount});
+        _ = create_spawner(&state, V2f{WINDOW_WIDTH * 0.5 - spawner_inset_amount, (WINDOW_HEIGHT * 0.5) - spawner_inset_amount});
     }
 
     {
         const wall_thickness = 40;
-        _ = create_wall(&state, Vec2{0, (-WINDOW_HEIGHT * 0.5) + wall_thickness * 0.5}, Vec2{WINDOW_WIDTH, wall_thickness});
-        _ = create_wall(&state, Vec2{0, (WINDOW_HEIGHT * 0.5) - wall_thickness * 0.5}, Vec2{WINDOW_WIDTH, wall_thickness});
-        _ = create_wall(&state, Vec2{(-WINDOW_WIDTH * 0.5) + wall_thickness * 0.5, 0}, Vec2{wall_thickness, WINDOW_HEIGHT});
-        _ = create_wall(&state, Vec2{(WINDOW_WIDTH * 0.5) - wall_thickness * 0.5, 0}, Vec2{wall_thickness, WINDOW_HEIGHT});
+        _ = create_wall(&state, V2f{0, (-WINDOW_HEIGHT * 0.5) + wall_thickness * 0.5}, V2f{WINDOW_WIDTH, wall_thickness});
+        _ = create_wall(&state, V2f{0, (WINDOW_HEIGHT * 0.5) - wall_thickness * 0.5}, V2f{WINDOW_WIDTH, wall_thickness});
+        _ = create_wall(&state, V2f{(-WINDOW_WIDTH * 0.5) + wall_thickness * 0.5, 0}, V2f{wall_thickness, WINDOW_HEIGHT});
+        _ = create_wall(&state, V2f{(WINDOW_WIDTH * 0.5) - wall_thickness * 0.5, 0}, V2f{wall_thickness, WINDOW_HEIGHT});
 
         // centre walls middle
-        _ = create_wall(&state, Vec2{0, -190}, Vec2{400, 180});
-        _ = create_wall(&state, Vec2{0, 190}, Vec2{400, 180});
+        _ = create_wall(&state, V2f{0, -190}, V2f{400, 180});
+        _ = create_wall(&state, V2f{0, 190}, V2f{400, 180});
 
         // centre walls side
         const side_wall_width = 200;
         const side_wall_height = 30;
 
-        _ = create_wall(&state, Vec2{(-WINDOW_WIDTH * 0.5) + (side_wall_width * 0.5), 0}, Vec2{side_wall_width, side_wall_height});
-        _ = create_wall(&state, Vec2{(WINDOW_WIDTH * 0.5) - (side_wall_width * 0.5), 0}, Vec2{side_wall_width, side_wall_height});
+        _ = create_wall(&state, V2f{(-WINDOW_WIDTH * 0.5) + (side_wall_width * 0.5), 0}, V2f{side_wall_width, side_wall_height});
+        _ = create_wall(&state, V2f{(WINDOW_WIDTH * 0.5) - (side_wall_width * 0.5), 0}, V2f{side_wall_width, side_wall_height});
     }
 
     run(&state);
