@@ -181,24 +181,6 @@ fn input(state: *State) void {
 ///                         @update
 /////////////////////////////////////////////////////////////////////////
 fn update_entites(state: *State) void {
-    grid: {
-        if(mouse(state, raylib.MOUSE_LEFT_BUTTON) != .down) {
-            break :grid;
-        }
-        
-        if(
-            state.mouse_screen_position[0] < 0 or state.mouse_screen_position[0] > 8 * grid.tile_draw_size or
-            state.mouse_screen_position[1] < 0 or state.mouse_screen_position[1] > 8 * grid.tile_draw_size
-        ) {
-            break :grid;
-        }
-
-        std.debug.print("pressing\n", .{});
-
-        const mouse_tile_indices = @divFloor(state.mouse_screen_position, vscaler(grid.tile_draw_size));
-        grid.toggle_tile(V2i{@intFromFloat(mouse_tile_indices[0]), @intFromFloat(mouse_tile_indices[1])});
-    }
-
     for(0..state.entities.len) |i| {
         var entity: *Entity = &state.entities.slice()[i];
 
@@ -549,10 +531,6 @@ fn draw(state: *const State, delta_time: f32) void {
     }
 
     raylib.EndMode2D();
-
-    {
-        grid.draw();
-    }
 
     { // rendering in screen space (ui :( )
         var string_format_buffer = [_]u8{0} ** 256;
@@ -1127,23 +1105,6 @@ fn load_texture(relative_texture_path: []const u8) !raylib.Texture {
     return texture;
 }
 
-// {new (Grass, Grass, Grass, Grass), tiles[6]},
-// {new (Dirt, Dirt, Dirt, Grass), tiles[13]}, // OUTER_BOTTOM_RIGHT
-// {new (Dirt, Dirt, Grass, Dirt), tiles[0]}, // OUTER_BOTTOM_LEFT
-// {new (Dirt, Grass, Dirt, Dirt), tiles[8]}, // OUTER_TOP_RIGHT
-// {new (Grass, Dirt, Dirt, Dirt), tiles[15]}, // OUTER_TOP_LEFT
-// {new (Dirt, Grass, Dirt, Grass), tiles[1]}, // EDGE_RIGHT
-// {new (Grass, Dirt, Grass, Dirt), tiles[11]}, // EDGE_LEFT
-// {new (Dirt, Dirt, Grass, Grass), tiles[3]}, // EDGE_BOTTOM
-// {new (Grass, Grass, Dirt, Dirt), tiles[9]}, // EDGE_TOP
-// {new (Dirt, Grass, Grass, Grass), tiles[5]}, // INNER_BOTTOM_RIGHT
-// {new (Grass, Dirt, Grass, Grass), tiles[2]}, // INNER_BOTTOM_LEFT
-// {new (Grass, Grass, Dirt, Grass), tiles[10]}, // INNER_TOP_RIGHT
-// {new (Grass, Grass, Grass, Dirt), tiles[7]}, // INNER_TOP_LEFT
-// {new (Dirt, Grass, Grass, Dirt), tiles[14]}, // DUAL_UP_RIGHT
-// {new (Grass, Dirt, Dirt, Grass), tiles[4]}, // DUAL_DOWN_RIGHT
-// {new (Dirt, Dirt, Dirt, Dirt), tiles[12]},
-
 const DualTileGrid = struct {
     const Self = @This();
 
@@ -1278,29 +1239,12 @@ const DualTileGrid = struct {
     }
 };
 
-var grid: DualTileGrid = undefined;
-
 /////////////////////////////////////////////////////////////////////////
 ///                         @main
 /////////////////////////////////////////////////////////////////////////
 pub fn main() !void {
     init_raylib();
     var state = new_state();
-
-    grid = DualTileGrid{
-        .texture = try load_texture("tilemap_grass.png"),
-        .grid = .{
-            .{false, false, false, false, false, true, false, false},
-            .{false, false, false, false, false, true, false, false},
-            .{false, false, false, true, true, true, false, false},
-            .{false, false, false, true, false, false, false, false},
-            .{false, false, false, true, false, false, false, false},
-            .{false, false, true, true, false, false, false, false},
-            .{false, false, false, false, false, false, false, false},
-            .{false, false, false, false, false, false, false, false},
-        },
-        .tile_draw_size = 96
-    };
 
     {
         _ = create_player(&state, vscaler(0));
