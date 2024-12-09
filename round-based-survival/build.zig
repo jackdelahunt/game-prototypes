@@ -23,6 +23,8 @@ pub fn build(b: *std.Build) void {
     });
 
     install_raylib(b, exe, &target);
+    install_microui(b, exe);
+    exe.linkLibC();
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
@@ -95,6 +97,14 @@ fn install_raylib(b: *std.Build, exe: *std.Build.Step.Compile, target: *const st
     }
 
     exe.linkLibC();
+}
 
+fn install_microui(b: *std.Build, exe: *std.Build.Step.Compile) void {
+    exe.addCSourceFile(.{
+        .file = b.path("libs/microui/src/microui.c"),
+        .flags = &.{"-std=c11", "-fno-sanitize=alignment"} // need this because this library does some wacky things, this 
+                                                           // took way to long to figure out !!!!
+    });
 
+    exe.addIncludePath(b.path("libs/microui/src/"));
 }

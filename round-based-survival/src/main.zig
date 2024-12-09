@@ -1,8 +1,11 @@
 const std = @import("std");
+const log = std.log.scoped(.game);
 
 const raylib = @cImport(@cInclude("raylib.h"));
+const microui = @cImport(@cInclude("microui.h"));
+const c = @cImport(@cInclude("stdlib.h"));
 
-const render = @import("render.zig");
+const render = @import("base_layer/render.zig");
 
 const MAX_ENTITIES = 100;
 
@@ -18,6 +21,10 @@ const TICK_RATE: f32            = 1.0 / TICKS_PER_SECONDS;
 const DEBUG_DRAW_CENTRE_POINTS          = false;
 const DEBUG_DRAW_MOUSE_DIRECTION_ARROWS = false;
 const DEBUG_DRAW_ENEMY_ATTACK_BOXES     = true;
+
+const MICROUI_FONT_SIZE = 10;
+
+const FONT_LINE_SPACING = 5;
 
 /////////////////////////////////////////////////////////////////////////
 ///                         @state
@@ -36,6 +43,8 @@ const State = struct {
     mouse: [7]InputState,
     mouse_screen_position: V2f,
     mouse_world_position: V2f,
+    mouse_delta_movement: V2f,
+    mouse_wheel: f32,
     time_since_start: f64,
     tick_timer: f64,
     update_time_nanoseconds: u64,
@@ -53,14 +62,19 @@ const State = struct {
         money: u64,
     },
     rng: std.rand.DefaultPrng,
+    microui_context: *microui.mu_Context,
+    allocator: std.mem.Allocator,
+    frame_allocator: std.heap.FixedBufferAllocator
 };
 
-fn new_state() State {
+fn new_state(allocator: std.mem.Allocator) State {
     var state = State{
         .keyboard = [_]State.InputState{.up} ** 348,
         .mouse = [_]State.InputState{.up} ** 7,
         .mouse_screen_position = vscaler(0),
         .mouse_world_position = vscaler(0),
+        .mouse_delta_movement = vscaler(0),
+        .mouse_wheel = 0,
         .time_since_start = 0,
         .tick_timer = 0,
         .update_time_nanoseconds = 0,
@@ -86,7 +100,16 @@ fn new_state() State {
             .money = 0,
         },
         .rng = std.rand.DefaultPrng.init(123456),
+        .microui_context = microui.init_context(),
+        .allocator = allocator,
+        .frame_allocator = undefined,
     };
+
+    const frmae_allocator_buffer = state.allocator.alloc(u8, 1024 * 10) catch unreachable; // 10 KB allowed per frame
+    state.frame_allocator = std.heap.FixedBufferAllocator.init(frmae_allocator_buffer);
+
+    state.microui_context.text_width = microui_text_width_callback;
+    state.microui_context.text_height = microui_text_height_callback;
 
     // zero init all entities
     for(state.entities.slice()) |*entity| {
@@ -133,6 +156,8 @@ fn run(state: *State) void {
         var draw_timer = std.time.Timer.start() catch unreachable;
         draw(state, delta_time);
         state.draw_time_nanoseconds = draw_timer.read();
+
+        state.frame_allocator.reset();
     }
 
     raylib.CloseWindow();
@@ -172,9 +197,62 @@ fn input(state: *State) void {
 
     const mouse_screen_position = raylib.GetMousePosition();
     const mouse_world_position = raylib.GetScreenToWorld2D(mouse_screen_position, state.camera);
+    const delta = raylib.GetMouseDelta();
 
     state.mouse_screen_position = V2f{mouse_screen_position.x, mouse_screen_position.y};
     state.mouse_world_position = V2f{mouse_world_position.x, mouse_world_position.y};
+    state.mouse_delta_movement = V2f{delta.x, delta.y};
+    state.mouse_wheel = raylib.GetMouseWheelMoveV().y;
+
+    { // micro ui input events
+        switch (mouse(state, raylib.MOUSE_BUTTON_LEFT)) {
+            .down => microui.mu_input_mousedown(
+                state.microui_context, 
+                @intFromFloat(state.mouse_screen_position[0]), 
+                @intFromFloat(state.mouse_screen_position[1]), 
+                microui.MU_MOUSE_LEFT
+            ),
+            .released => microui.mu_input_mouseup(
+                state.microui_context, 
+                @intFromFloat(state.mouse_screen_position[0]), 
+                @intFromFloat(state.mouse_screen_position[1]), 
+                microui.MU_MOUSE_LEFT
+            ),
+            else => {}
+        }
+
+        switch (mouse(state, raylib.MOUSE_BUTTON_RIGHT)) {
+            .down => microui.mu_input_mousedown(
+                state.microui_context, 
+                @intFromFloat(state.mouse_screen_position[0]), 
+                @intFromFloat(state.mouse_screen_position[1]), 
+                microui.MU_MOUSE_RIGHT
+            ),
+            .released => microui.mu_input_mouseup(
+                state.microui_context, 
+                @intFromFloat(state.mouse_screen_position[0]), 
+                @intFromFloat(state.mouse_screen_position[1]), 
+                microui.MU_MOUSE_RIGHT
+            ),
+            else => {}
+        }
+
+        if(state.mouse_delta_movement[0] != 0 or state.mouse_delta_movement[1] != 0) {
+            microui.mu_input_mousemove(
+                state.microui_context, 
+                @intFromFloat(state.mouse_delta_movement[0]), 
+                @intFromFloat(state.mouse_delta_movement[1]), 
+            );
+        }
+
+        if(state.mouse_wheel != 0) {
+            microui.mu_input_scroll(
+                state.microui_context, 
+                0,
+                @intFromFloat(state.mouse_wheel), 
+            );
+        }
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -422,7 +500,7 @@ fn update_entites(state: *State) void {
                 index += 1;
             }
         }
-    }
+    } 
 }
 
 fn update_level(state: *State) void {
@@ -454,7 +532,7 @@ fn update_level(state: *State) void {
 /////////////////////////////////////////////////////////////////////////
 ///                         @draw
 /////////////////////////////////////////////////////////////////////////
-fn draw(state: *const State, delta_time: f32) void {
+fn draw(state: *State, delta_time: f32) void {
     raylib.BeginDrawing();
     raylib.ClearBackground(raylib.ColorBrightness(raylib.WHITE, -0.2));
     raylib.BeginMode2D(state.camera);
@@ -533,16 +611,14 @@ fn draw(state: *const State, delta_time: f32) void {
     raylib.EndMode2D();
 
     { // rendering in screen space (ui :( )
-        var string_format_buffer = [_]u8{0} ** 256;
-
         // performance text
         {
             const ut_milliseconds = @as(f64, @floatFromInt(state.update_time_nanoseconds)) / 1_000_000;
             const pt_milliseconds = @as(f64, @floatFromInt(state.physics_time_nanoseconds)) / 1_000_000;
             const dt_milliseconds = @as(f64, @floatFromInt(state.draw_time_nanoseconds)) / 1_000_00;
 
-            const string = std.fmt.bufPrintZ(
-                &string_format_buffer, 
+            const string = std.fmt.allocPrintZ(
+                state.frame_allocator.allocator(), 
                 "fps: {d:<8.4}, u: {d:<8.4}, p: {d:<8.4}, d-1: {d:<8.4}, e: {d}", 
                 .{1 / delta_time, ut_milliseconds, pt_milliseconds, dt_milliseconds, state.entities.slice().len}
             ) catch unreachable;
@@ -552,8 +628,8 @@ fn draw(state: *const State, delta_time: f32) void {
 
         // game info text
         {
-            const string = std.fmt.bufPrintZ(
-                &string_format_buffer, 
+            const string = std.fmt.allocPrintZ(
+                state.frame_allocator.allocator(), 
                 "round: {:<3}   kills: {:<4} remaining: {:<4}", 
                 .{state.level.round, state.level.total_kills, get_enemy_count_for_round(state.level.round) - state.level.kills_this_round}
             ) catch unreachable;
@@ -567,8 +643,8 @@ fn draw(state: *const State, delta_time: f32) void {
             const player = get_entity_with_flag(state, flag_player) orelse break :weapon_info_text;
             std.debug.assert(entiity_has_flag(player, flag_has_weapon));
 
-            const string = std.fmt.bufPrintZ(
-                &string_format_buffer, 
+            const string = std.fmt.allocPrintZ(
+                state.frame_allocator.allocator(), 
                 "{s}: {}/{}    money: {}", 
                 .{player.weapon.display_name(), player.magazine_ammo, player.reserve_ammo, state.level.money}
             ) catch unreachable;
@@ -578,6 +654,50 @@ fn draw(state: *const State, delta_time: f32) void {
         }
     } 
 
+    if(false) { // micro ui rendering
+        microui.mu_begin(state.microui_context);
+
+        { // entity window
+            const Static = struct {
+                    var selected_entity: ?usize = null;
+            };
+
+            if (microui.mu_begin_window_ex(state.microui_context, "Entities", microui.mu_rect(30, 30, 250, 400), microui.MU_OPT_AUTOSIZE) != 0) {
+                for(0..state.entities.len) |i| {
+                    const entity: *Entity = &state.entities.slice()[i];
+                    const string = std.fmt.allocPrintZ(
+                        state.frame_allocator.allocator(), 
+                        "entity: {d}", 
+                        .{entity.id}
+                    ) catch unreachable;
+     
+                    microui.mu_push_id(state.microui_context, &i, @sizeOf(usize));
+                    if (microui.mu_button(state.microui_context, string) != 0) {
+                        Static.selected_entity = i;
+                    }
+                    microui.mu_pop_id(state.microui_context);
+                } 
+
+                microui.mu_end_window(state.microui_context);
+            }
+
+            if(Static.selected_entity) |selected_entity| {
+                if (microui.mu_begin_window_ex(state.microui_context, "entity", microui.mu_rect(300, 300, 100, 100), microui.MU_OPT_AUTOSIZE) != 0) {
+                    if (microui.mu_button(state.microui_context, "close") != 0) {
+                        Static.selected_entity = null;
+                    } else {
+                        draw_value_microui(state, state.entities.slice()[selected_entity]);
+                    }
+
+                    microui.mu_end_window(state.microui_context);
+                }
+            }
+        }
+
+        microui.mu_end(state.microui_context);
+    } 
+
+    draw_microui_command_list(state);
     raylib.EndDrawing();
 }
 
@@ -1027,15 +1147,15 @@ const Weapon = enum {
 pub const V2f = @Vector(2, f32);
 pub const V2i = @Vector(2, i32);
 
-inline fn vscaler(scaler: f32) V2f {
+pub inline fn vscaler(scaler: f32) V2f {
     return @splat(scaler);
 }
 
-inline fn vlength(vector: V2f) f32 {
+pub inline fn vlength(vector: V2f) f32 {
     return @sqrt(@reduce(.Add, vector * vector));
 }
 
-fn vnormalise(vector: V2f) V2f {
+pub fn vnormalise(vector: V2f) V2f {
     const length = vlength(vector);
     if(length == 0) {
         return V2f{0, 0};
@@ -1050,6 +1170,7 @@ fn vnormalise(vector: V2f) V2f {
 fn init_raylib() void {
     raylib.InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "shooting game");
     raylib.SetTargetFPS(120);
+    raylib.SetTextLineSpacing(FONT_LINE_SPACING);
 }
 
 pub fn key(state: *const State, k: c_int) State.InputState {
@@ -1239,12 +1360,93 @@ const DualTileGrid = struct {
     }
 };
 
+fn draw_value_microui(state: *State, args: anytype) void {
+    const ArgsType = @TypeOf(args);
+    const args_type_info = @typeInfo(ArgsType);
+    if (args_type_info != .Struct) {
+        @compileError("expected tuple or struct argument, found " ++ @typeName(ArgsType));
+    }
+
+    const fields_info = args_type_info.Struct.fields;
+    inline for(fields_info) |field_info| {
+        const string = std.fmt.allocPrintZ(state.frame_allocator.allocator(), "{s}:{any}", .{field_info.name, @field(args, field_info.name)}) catch unreachable;
+        const raylib_font = raylib.GetFontDefault();
+        const dimensions = raylib.MeasureTextEx(raylib_font, string, MICROUI_FONT_SIZE, FONT_LINE_SPACING);
+
+        const width: c_int = @intFromFloat(dimensions.x);
+        const height: c_int = @intFromFloat(dimensions.y);
+
+        microui.mu_layout_row(state.microui_context, 1, &width, height);
+        microui.mu_text(state.microui_context, string);
+    }
+}
+
+fn draw_microui_command_list(state: *State) void {
+    var command: [*c]microui.mu_Command = 0;
+    while(microui.mu_next_command(state.microui_context, &command) != 0) { // **mu_command here
+        switch (command.*.type) {
+            microui.MU_COMMAND_RECT => {
+                const rect = &command.*.rect.rect;
+                raylib.DrawRectangle(
+                    rect.x, rect.y, 
+                    rect.w, rect.h, 
+                    microui_color_to_raylib(command.*.rect.color)
+                );
+            },
+            microui.MU_COMMAND_TEXT => {
+                const text_as_ptr: [*]u8 = @ptrCast(&command.*.text.str);
+                raylib.DrawText(text_as_ptr, command.*.text.pos.x, command.*.text.pos.y, MICROUI_FONT_SIZE, microui_color_to_raylib(command.*.text.color));
+            },
+            microui.MU_COMMAND_CLIP => {
+                const rect = &command.*.clip.rect;
+                raylib.BeginScissorMode(rect.x, rect.y, rect.w, rect.h);
+            },
+            microui.MU_COMMAND_ICON => {
+                // not supported :[
+            },
+            else => {},
+        }
+    }
+    
+    raylib.EndScissorMode();
+}
+
+fn microui_text_width_callback(font: microui.mu_Font, text: [*c]const u8, length: c_int) callconv(.C) c_int {
+    _ = font; // autofix
+    _ = length; // autofix
+
+    const raylib_font = raylib.GetFontDefault();
+    const dimensions = raylib.MeasureTextEx(raylib_font, text, MICROUI_FONT_SIZE, FONT_LINE_SPACING);
+    return @intFromFloat(dimensions.x);
+}
+
+fn microui_text_height_callback(font: microui.mu_Font) callconv(.C) c_int {
+    _ = font; // autofix
+    const raylib_font = raylib.GetFontDefault();
+    const dimensions = raylib.MeasureTextEx(raylib_font, "random text", MICROUI_FONT_SIZE, FONT_LINE_SPACING);
+    return @intFromFloat(dimensions.y);
+}
+
+fn microui_color_to_raylib(color: microui.mu_Color) raylib.Color {
+    return raylib.Color{
+        .r = color.r,
+        .g = color.g,
+        .b = color.b,
+        .a = color.a,
+    };
+}
+
 /////////////////////////////////////////////////////////////////////////
 ///                         @main
 /////////////////////////////////////////////////////////////////////////
 pub fn main() !void {
     init_raylib();
-    var state = new_state();
+
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    const allocator = arena.allocator();
+    var state = new_state(allocator);
 
     {
         _ = create_player(&state, vscaler(0));
