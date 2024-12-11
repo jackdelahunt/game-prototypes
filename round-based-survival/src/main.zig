@@ -16,12 +16,21 @@ const ENEMY_SPEED   = 120;
 const WINDOW_WIDTH  = 1200;
 const WINDOW_HEIGHT = 900;
 
+const ROOM_WIDTH = WINDOW_WIDTH * 0.8;
+const ROOM_HEIGHT = WINDOW_HEIGHT * 0.85;
+const WALLTHICKNESS = 20;
+const DOOR_WIDTH = 120;
+
+const SPAWN_DISTANCE_X = ROOM_WIDTH * 0.5;
+const SPAWN_DISTANCE_Y = ROOM_HEIGHT * 0.5;
+
 const TICKS_PER_SECONDS: f32    = 20;
 const TICK_RATE: f32            = 1.0 / TICKS_PER_SECONDS;
 
 const DEBUG_DRAW_CENTRE_POINTS          = false;
 const DEBUG_DRAW_MOUSE_DIRECTION_ARROWS = false;
 const DEBUG_DRAW_ENEMY_ATTACK_BOXES     = true;
+const DEBUG_DRAW_SPAWN_DISTANCE_LINE    = true;
 
 const MICROUI_FONT_SIZE = 10;
 
@@ -333,28 +342,29 @@ fn update_entites(state: *State) void {
     for(0..state.entities.len) |i| {
         var entity: *Entity = &state.entities.slice()[i];
 
-        // tick any delays or timers that are going on in this entity
-        if(entity.attacking_cooldown > 0) {
-            entity.attacking_cooldown -= TICK_RATE;
-
-            if(entity.attacking_cooldown <= 0) {
-                entity.attacking_cooldown = 0;
+        { // tick updates
+            if(entity.attacking_cooldown > 0) {
+                entity.attacking_cooldown -= TICK_RATE;
+    
+                if(entity.attacking_cooldown <= 0) {
+                    entity.attacking_cooldown = 0;
+                }
             }
-        }
-
-        if(entity.health_regen_cooldown > 0) {
-            entity.health_regen_cooldown -= TICK_RATE;
-
-            if(entity.health_regen_cooldown <= 0) {
-                entity.health_regen_cooldown = 0;
+    
+            if(entity.health_regen_cooldown > 0) {
+                entity.health_regen_cooldown -= TICK_RATE;
+    
+                if(entity.health_regen_cooldown <= 0) {
+                    entity.health_regen_cooldown = 0;
+                }
             }
-        }
-
-        if(entity.spawner_cooldown > 0) {
-            entity.spawner_cooldown -= TICK_RATE;
-
-            if(entity.spawner_cooldown <= 0) {
-                entity.spawner_cooldown = 0;
+    
+            if(entity.spawner_cooldown > 0) {
+                entity.spawner_cooldown -= TICK_RATE;
+    
+                if(entity.spawner_cooldown <= 0) {
+                    entity.spawner_cooldown = 0;
+                }
             }
         }
 
@@ -522,6 +532,22 @@ fn update_entites(state: *State) void {
             }
 
             if(entity.spawner_cooldown == 0 and state.level.enemies_left_to_spawn > 0) {
+
+                // cancel spawn if the player is too far away
+                var player_within_spawn_area = false;
+
+                if(get_entity_with_flag(state, flag_player)) |player| {
+                    const distance = vdistance_abs(entity.position, player.position);
+                    
+                    if(distance[0] <= SPAWN_DISTANCE_X and distance[1] <= SPAWN_DISTANCE_Y) {
+                        player_within_spawn_area = true;
+                    }
+                }
+
+                if(!player_within_spawn_area) {
+                    break :spawner;
+                }
+
                 const f = state.rng.random().float(f64);
 
                 if(f < 0.015) {
@@ -619,9 +645,9 @@ fn draw(state: *State, delta_time: f32) void {
                     .blue => raylib.ColorBrightness(raylib.BLUE, -0.3),
                     .red => raylib.ColorBrightness(raylib.RED, -0.3),
                     .black => raylib.BLACK,
-                    .yellow => raylib.ColorBrightness(raylib.RED, -0.3),
-                    .green => raylib.ColorBrightness(raylib.RED, -0.3),
-                    .pink => raylib.ColorBrightness(raylib.RED, -0.3),
+                    .yellow => raylib.ColorBrightness(raylib.YELLOW, -0.3),
+                    .green => raylib.ColorBrightness(raylib.GREEN, -0.3),
+                    .pink => raylib.ColorBrightness(raylib.PINK, -0.3),
                     .brown => raylib.BROWN,
                 };
 
@@ -651,6 +677,18 @@ fn draw(state: *State, delta_time: f32) void {
                     const fade = if (entity.attacking_cooldown > 2) 0.2 else entity.attacking_cooldown * 0.1;
 
                     render.rectangle(entity.position, box_size, raylib.Fade(raylib.GREEN, fade));
+                }
+            }
+
+            if(DEBUG_DRAW_SPAWN_DISTANCE_LINE and entiity_has_flag(entity, flag_spawner)) {
+                if(get_entity_with_flag(state, flag_player)) |player| {
+                    const distance = vdistance_abs(entity.position, player.position);
+                    
+                    const within_x = distance[0] <= SPAWN_DISTANCE_X;
+                    const within_y = distance[1] <= SPAWN_DISTANCE_Y;
+
+                    const color = if(within_x and within_y) raylib.GREEN else raylib.RED;
+                    render.line(entity.position, player.position, 2, color);
                 }
             }
         }
@@ -725,7 +763,7 @@ fn draw(state: *State, delta_time: f32) void {
         }
     } 
 
-    if(true) { // micro ui rendering
+    if(false) { // micro ui rendering
         microui.mu_begin(state.microui_context);
 
         { // entity window
@@ -1218,12 +1256,20 @@ const Weapon = enum {
 pub const V2f = @Vector(2, f32);
 pub const V2i = @Vector(2, i32);
 
-pub inline fn vscaler(scaler: f32) V2f {
+pub fn vscaler(scaler: f32) V2f {
     return @splat(scaler);
 }
 
-pub inline fn vlength(vector: V2f) f32 {
+pub fn vlength(vector: V2f) f32 {
     return @sqrt(@reduce(.Add, vector * vector));
+}
+
+pub fn vdistance(source: V2f, destination: V2f) V2f {
+    return source - destination;
+}
+
+pub fn vdistance_abs(source: V2f, destination: V2f) V2f {
+    return @abs(source - destination);
 }
 
 pub fn vnormalise(vector: V2f) V2f {
@@ -1508,23 +1554,105 @@ fn microui_color_to_raylib(color: microui.mu_Color) raylib.Color {
 }
 
 /////////////////////////////////////////////////////////////////////////
-///                         @main
+//                         @level creation
 /////////////////////////////////////////////////////////////////////////
-pub fn main() !void {
-    init_raylib();
+const DoorOptions = struct {
+    left: bool = false,
+    top: bool = false,
+    right: bool = false,
+    bottom: bool = false,
+};
 
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
 
-    const allocator = arena.allocator();
-    var state = new_state(allocator);
+fn create_room(state: *State, x_index: i64, y_index: i64, door_options: DoorOptions) V2f {
+    const centre = V2f{ROOM_WIDTH * @as(f32, @floatFromInt(x_index)), ROOM_HEIGHT * @as(f32, @floatFromInt(y_index))};
 
-    {
-        _ = create_player(&state, vscaler(0));
-        _ = create_ammo_crate(&state, V2f{385, 0});
+    // top
+    var top_position = centre + V2f{0, (-ROOM_HEIGHT * 0.5) + WALLTHICKNESS * 0.5};
+    var top_size = V2f{ROOM_WIDTH, WALLTHICKNESS};
+
+    // bottom
+    var bottom_position = centre + V2f{0, (ROOM_HEIGHT * 0.5) - WALLTHICKNESS * 0.5};
+    var bottom_size = V2f{ROOM_WIDTH, WALLTHICKNESS};
+
+    // left
+    var left_position = centre + V2f{(-ROOM_WIDTH * 0.5) + WALLTHICKNESS * 0.5, 0};
+    var left_size = V2f{WALLTHICKNESS, ROOM_HEIGHT};
+
+    // right
+    var right_position = centre + V2f{(ROOM_WIDTH * 0.5) - WALLTHICKNESS * 0.5, 0};
+    var right_size = V2f{WALLTHICKNESS, ROOM_HEIGHT};
+
+    { // create doors, done before wall size changes to use those as referance
+        if(door_options.top) {
+            const door_position = V2f{top_position[0] + (ROOM_WIDTH * 0.5) - (DOOR_WIDTH * 0.5), top_position[1]};
+            const door_size = V2f{DOOR_WIDTH, WALLTHICKNESS};
+            _ = create_door(state, door_position, door_size, 100);
+        }
+
+        if(door_options.right) {
+            const door_position = V2f{right_position[0], right_position[1] + (ROOM_HEIGHT * 0.5) - (DOOR_WIDTH * 0.5)};
+            const door_size = V2f{WALLTHICKNESS, DOOR_WIDTH};
+            _ = create_door(state, door_position, door_size, 100);
+        }
     }
 
+    { // adjust wall size based on doors
+        if(door_options.top) {
+            top_size -= V2f{DOOR_WIDTH, 0}; 
+            top_position -= V2f{DOOR_WIDTH, 0} * vscaler(0.5);
+        }
+
+        if(door_options.bottom) {
+            bottom_size -= V2f{DOOR_WIDTH, 0}; 
+            bottom_position -= V2f{DOOR_WIDTH, 0} * vscaler(0.5);
+        }
+
+        if(door_options.left) {
+            left_size -= V2f{0, DOOR_WIDTH}; 
+            left_position -= V2f{0, DOOR_WIDTH} * vscaler(0.5);
+        }
+
+        if(door_options.right) {
+            right_size -= V2f{0, DOOR_WIDTH}; 
+            right_position -= V2f{0, DOOR_WIDTH} * vscaler(0.5);
+        }
+    }
+
+    { // create 4 surrounding walls
+        _ = create_wall(state, top_position, top_size);
+        _ = create_wall(state, bottom_position, bottom_size);
+        _ = create_wall(state, left_position, left_size);
+        _ = create_wall(state, right_position, right_size);
+    } 
+
+    return centre;
+}
+
+fn create_scene(state: *State) void {
+    const room_object_offset = V2f{WINDOW_WIDTH * 0.3, WINDOW_HEIGHT * 0.3};
     {
+        _ = create_player(state, vscaler(0));
+    }
+
+    { // spawn room
+        const centre = create_room(state, 0, 0, .{.top = true});
+
+        _ = create_spawner(state, centre + V2f{-room_object_offset[0], 0});
+        _ = create_spawner(state, centre + V2f{room_object_offset[0], 0});
+
+        _ = create_spawner(state, centre + V2f{-room_object_offset[0], 0});
+    }
+
+    { // ammo room
+        const center = create_room(state, 0, -1, .{.bottom = true});
+
+        _ = create_spawner(state, center + V2f{-room_object_offset[0], 0});
+        _ = create_spawner(state, center + V2f{room_object_offset[0], 0});
+
+    }
+
+    if(false) {
         const spawner_inset_amount = 80;
         _ = create_spawner(&state, V2f{-(WINDOW_WIDTH * 0.5) + spawner_inset_amount, -(WINDOW_HEIGHT * 0.5) + spawner_inset_amount});
         _ = create_spawner(&state, V2f{WINDOW_WIDTH * 0.5 - spawner_inset_amount, -(WINDOW_HEIGHT * 0.5) + spawner_inset_amount});
@@ -1532,7 +1660,7 @@ pub fn main() !void {
         _ = create_spawner(&state, V2f{WINDOW_WIDTH * 0.5 - spawner_inset_amount, (WINDOW_HEIGHT * 0.5) - spawner_inset_amount});
     }
 
-    {
+    if(false) {
         const wall_thickness = 40;
         _ = create_wall(&state, V2f{0, (-WINDOW_HEIGHT * 0.5) + wall_thickness * 0.5}, V2f{WINDOW_WIDTH, wall_thickness});
         _ = create_wall(&state, V2f{0, (WINDOW_HEIGHT * 0.5) - wall_thickness * 0.5}, V2f{WINDOW_WIDTH, wall_thickness});
@@ -1550,8 +1678,32 @@ pub fn main() !void {
         _ = create_wall(&state, V2f{(-WINDOW_WIDTH * 0.5) + (side_wall_width * 0.5), 0}, V2f{side_wall_width, side_wall_height});
         _ = create_wall(&state, V2f{(WINDOW_WIDTH * 0.5) - (side_wall_width * 0.5), 0}, V2f{side_wall_width, side_wall_height});
     }
+}
 
-    try save_state(&state);
-    try load_state(&state);
+/////////////////////////////////////////////////////////////////////////
+//                         @main
+/////////////////////////////////////////////////////////////////////////
+pub fn main() !void {
+    init_raylib();
+
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    const allocator = arena.allocator();
+    var state = new_state(allocator);
+
+    create_scene(&state); 
+
     run(&state);
 }
+
+/////////////////////////////////////////////////////////////////////////
+//                          @todo 
+/////////////////////////////////////////////////////////////////////////
+
+// PITCH
+// This is a top down horde shooter about survivaing continuosly
+// more difficult waves of enemies
+//
+// You kill enemies and open rooms in each level to aquire and upgrade
+// new weapons and abilities
