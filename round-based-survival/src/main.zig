@@ -6,6 +6,7 @@ const microui = @cImport(@cInclude("microui.h"));
 const c = @cImport(@cInclude("stdlib.h"));
 
 const render = @import("base_layer/render.zig");
+const encode = @import("base_layer/encode.zig");
 
 const MAX_ENTITIES = 100;
 
@@ -105,7 +106,7 @@ fn new_state(allocator: std.mem.Allocator) State {
         .frame_allocator = undefined,
     };
 
-    const frmae_allocator_buffer = state.allocator.alloc(u8, 1024 * 10) catch unreachable; // 10 KB allowed per frame
+    const frmae_allocator_buffer = state.allocator.alloc(u8, 1024 * 100) catch unreachable; 
     state.frame_allocator = std.heap.FixedBufferAllocator.init(frmae_allocator_buffer);
 
     state.microui_context.text_width = microui_text_width_callback;
@@ -117,6 +118,76 @@ fn new_state(allocator: std.mem.Allocator) State {
     }
 
     return state;
+}
+
+const Enum = enum {
+    high,
+    low
+};
+
+const Foo = struct {
+    id: u32 = 10,
+};
+
+fn save_state(state: *State) !void {
+    const cwd = std.fs.cwd();
+
+    const file = try cwd.createFile("level.scene", .{});
+    defer file.close();
+
+    if(true) {
+        for(state.entities.slice(), 0..) |*entity, i| {
+            _ = i; // autofix
+            // if(i < 1) {
+                const bytes = try encode.serialize(state.frame_allocator.allocator(), entity.*);
+                try file.writeAll(bytes);
+            // }
+        }
+    }
+
+    if(false){
+        const foos = [_]Foo{
+            .{.id = 27},
+            .{.id = 123}
+        };
+
+        for(foos) |foo| {
+            const bytes = try encode.serialize(state.frame_allocator.allocator(), foo);
+            try file.writeAll(bytes);
+        }
+    }
+}
+
+fn load_state(state: *State) !void {
+    const cwd = std.fs.cwd();
+
+    const bytes = try cwd.readFileAlloc(state.frame_allocator.allocator(), "level.scene", state.frame_allocator.buffer.len - state.frame_allocator.end_index);
+    if(true){
+        // remove all entities
+        state.entities.len = 0;
+
+        var read_index: usize = 0;
+
+        while (read_index < bytes.len) {
+            const entity = try state.entities.addOne();
+            entity.* = Entity{};
+            const bytes_read = try encode.deserialize(state.frame_allocator.allocator(), Entity, bytes[read_index..], entity);
+
+            read_index += bytes_read + 1;
+        }
+    }
+
+    if(false){
+        var read_index: usize = 0;
+
+        while (read_index < bytes.len) {
+            var foo = std.mem.zeroes(Foo);
+            const bytes_read = try encode.deserialize(state.frame_allocator.allocator(), Foo, bytes[read_index..], &foo);
+
+            // skip over all the bytes read and start from the first byte of the next struct
+            read_index += bytes_read + 1;
+        }
+    }
 }
 
 fn run(state: *State) void {
@@ -654,7 +725,7 @@ fn draw(state: *State, delta_time: f32) void {
         }
     } 
 
-    if(false) { // micro ui rendering
+    if(true) { // micro ui rendering
         microui.mu_begin(state.microui_context);
 
         { // entity window
@@ -931,7 +1002,7 @@ const Entity = struct {
     reload_cooldown: f32        = 0,
 
     // gameplay: door
-    door_cost: u32              = 0 
+    door_cost: u32              = 0,
 };
 
 const EntityID = u32;
@@ -1480,5 +1551,7 @@ pub fn main() !void {
         _ = create_wall(&state, V2f{(WINDOW_WIDTH * 0.5) - (side_wall_width * 0.5), 0}, V2f{side_wall_width, side_wall_height});
     }
 
+    try save_state(&state);
+    try load_state(&state);
     run(&state);
 }
