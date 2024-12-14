@@ -94,7 +94,7 @@ pub fn line(start: main.V2f, end: main.V2f, thickness: f32, color: raylib.Color)
 pub fn text(string: []const u8, position: main.V2f, font_size: i32, color: raylib.Color) void {
     if(string.len == 0) return;
 
-    const text_width = @as(f32, @floatFromInt(raylib.MeasureText(&string[0], font_size)));
+    const text_width = text_draw_width(string, font_size);
     const size = main.V2f{text_width, @floatFromInt(font_size)};
 
     const centerd = position - (size * main.V2f{0.5, 0.5});
@@ -106,6 +106,12 @@ pub fn text(string: []const u8, position: main.V2f, font_size: i32, color: rayli
         @as(c_int, @intCast(font_size)), 
         color
     );
+}
+
+pub fn text_draw_width(string: []const u8, font_size: i32) f32 {
+    if(string.len == 0) return 0;
+
+    return @floatFromInt(raylib.MeasureText(&string[0], font_size));
 }
 
 // WARNING: this is slow

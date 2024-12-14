@@ -9,12 +9,13 @@ const encode = @import("base_layer/encode.zig");
 
 const MAX_ENTITIES = 255;
 
-const PLAYER_SPEED  = 250;
+const PLAYER_SPEED  = 200;
 const PLAYER_DASH_MULTIPLIER = 4;
 const ENEMY_SPEED   = 80;
 const PROJECTILE_SPEED = 550;
 
 const PLAYER_REACH_SIZE = 110;
+const PLAYER_HEALTH  = 100;
 
 const WINDOW_WIDTH  = 1200;
 const WINDOW_HEIGHT = 900;
@@ -29,6 +30,8 @@ const RANDOM_BOX_COST = 1250;
 
 const MAX_SPAWN_DISTANCE = ROOM_WIDTH * 0.8;
 const MIN_SPAWN_DISTANCE = 100;
+
+const MAX_BUFF_LEVEL = 3;
 
 const TICKS_PER_SECONDS: f32    = 20;
 const TICK_RATE: f32            = 1.0 / TICKS_PER_SECONDS;
@@ -45,7 +48,7 @@ const DEBUG_DRAW_MOUSE_DIRECTION_ARROWS = if(DEBUG_DISABLE_ALL) false else false
 const DEBUG_DRAW_ENEMY_ATTACK_BOXES     = if(DEBUG_DISABLE_ALL) false else true;
 const DEBUG_DRAW_SPAWN_DISTANCE         = if(DEBUG_DISABLE_ALL) false else false;
 const DEBUG_DRAW_PLAYER_REACH_SIZE      = if(DEBUG_DISABLE_ALL) false else false;
-const DEBUG_DISABLE_SPAWNS              = if(DEBUG_DISABLE_ALL) false else false;
+const DEBUG_DISABLE_SPAWNS              = if(DEBUG_DISABLE_ALL) false else true;
 const DEBUG_ONE_ENEMY_PER_ROUND         = if(DEBUG_DISABLE_ALL) false else false;
 const DEBUG_GOD_MODE                    = if(DEBUG_DISABLE_ALL) false else false;
 const DEBUG_GIVE_MONEY                  = if(DEBUG_DISABLE_ALL) false else true;
@@ -416,18 +419,20 @@ fn update_entites(state: *State) void {
                 if(key(state, raylib.KEY_LEFT_SHIFT) == .down and entity.dash_cooldown == 0) {
                     // dont do the dash if the player is not moving
                     if(vlength(input_vector) != 0) {
-                        entity.dash_cooldown = COOLDOWN_PLAYER_DASH;
+                        entity.dash_cooldown = COOLDOWN_PLAYER_DASH * Buff.reload_multiplier(entity.reload_buff_level);
                         dash_vector = vscaler(PLAYER_DASH_MULTIPLIER);
                     }
                 }
 
-                entity.velocity = input_vector * vscaler(PLAYER_SPEED) * dash_vector;
+                const speed_vector = vscaler(PLAYER_SPEED * Buff.speed_multipler(entity.speed_buff_level));
+
+                entity.velocity = input_vector * speed_vector * dash_vector;
             }
 
             if(key(state, raylib.KEY_R) == .down) {
                 if(entity.magazine_ammo != entity.weapon.magazine_size()) {
                     entiity_set_flag(entity, flag_is_reloading);
-                    entity.reload_cooldown = entity.weapon.reload_cooldown();
+                    entity.reload_cooldown = entity.weapon.reload_cooldown() * Buff.reload_multiplier(entity.reload_buff_level);
                 }
             }
 
@@ -449,6 +454,10 @@ fn update_entites(state: *State) void {
 
                 while(iter.next(state)) |other| {
                     if(entity.id == other.id) {
+                        continue;
+                    }
+
+                    if(!entiity_has_flag(other, flag_is_interactable)) {
                         continue;
                     }
 
@@ -481,6 +490,33 @@ fn update_entites(state: *State) void {
 
                             other.random_box_weapon = .none;
                             other.random_box_cooldown = 0;
+                        }
+                    }
+
+                    if(entiity_has_flag(other, flag_is_weapon_buy) and state.level.money >= other.weapon_buy_cost) {
+                        entity.weapon = other.weapon_buy_type;
+                        entity.magazine_ammo = entity.weapon.magazine_size();
+                        entity.reserve_ammo = entity.magazine_ammo * entity.weapon.magazine_count();
+                        state.level.money -= AMMO_CRATE_COST;
+                        entiity_set_flag(other, flag_to_be_deleted);
+                    }
+
+                    if(entiity_has_flag(other, flag_is_buff_buy) and state.level.money >= other.buff_buy_type.base_cost()) {
+                        const level_to_upgrade: *u8 = switch (other.buff_buy_type) {
+                            .none => unreachable,
+                            .health => &entity.health_buff_level,
+                            .speed => &entity.speed_buff_level,
+                            .reload => &entity.reload_buff_level
+                        };
+
+                        if(level_to_upgrade.* < 4) {
+                            state.level.money -= other.buff_buy_type.base_cost();
+                            level_to_upgrade.* += 1;
+
+                            if(other.buff_buy_type == .health) {
+                                const new_max_health = @as(f32, @floatFromInt(PLAYER_HEALTH)) * Buff.health_multiplier(entity.health_buff_level);
+                                entity.max_health = @intFromFloat(new_max_health);
+                            }
                         }
                     }
                 }
@@ -519,7 +555,6 @@ fn update_entites(state: *State) void {
                 entity.velocity = vscaler(0);
             }
 
-            // attack target
             if(entity.attacking_cooldown > 0) {
                 break :ai; 
             }
@@ -542,7 +577,7 @@ fn update_entites(state: *State) void {
                 // maybe this will change but right now assume it is true
                 std.debug.assert(entiity_has_flag(other, flag_has_health));
                 
-                entity_take_damage(other, 26);
+                entity_take_damage(other, 34);
             }
         }
 
@@ -735,6 +770,10 @@ fn draw(state: *State, delta_time: f32) void {
                 }
                 
                 render.rectangle(entity.position, entity.size, color);
+
+                if(entity.display_name.len != 0) {
+                    render.text(entity.display_name, entity.position, 10, raylib.BLACK);
+                }
             }
     
             if(DEBUG_DRAW_CENTRE_POINTS) {
@@ -832,27 +871,57 @@ fn draw(state: *State, delta_time: f32) void {
                         var icon_text_color = raylib.WHITE;
     
                         if(entiity_has_flag(other, flag_is_ammo_crate)) {
-                            icon_text = std.fmt.comptimePrint("Ammo {}", .{AMMO_CRATE_COST});
+                            icon_text = std.fmt.comptimePrint("Buy Ammo {}", .{AMMO_CRATE_COST});
                         }
     
                         if(entiity_has_flag(other, flag_is_door)) {
-                            icon_text = std.fmt.allocPrintZ(state.frame_allocator.allocator(), "Door {}", .{other.door_cost}) catch unreachable;
+                            icon_text = std.fmt.allocPrintZ(state.frame_allocator.allocator(), "Open door {}", .{other.door_cost}) catch unreachable;
                         }
     
                         if(entiity_has_flag(other, flag_is_random_box)) {
                             if(other.random_box_cooldown > 0) {
                                 std.debug.assert(other.random_box_weapon != .none);
-                                icon_text = std.fmt.allocPrintZ(state.frame_allocator.allocator(), "Take {s} ({d})", .{other.random_box_weapon.display_name(), @round(other.random_box_cooldown)}) catch unreachable;
+
+                                icon_text = std.fmt.allocPrintZ(
+                                    state.frame_allocator.allocator(), 
+                                    "Take {s} ({d})", 
+                                    .{other.random_box_weapon.display_name(), @round(other.random_box_cooldown)}
+                                ) catch unreachable;
+
                                 icon_text_color = raylib.YELLOW;
                             }
                             else {
-                                icon_text = std.fmt.comptimePrint("Weapon {}", .{RANDOM_BOX_COST});
+                                icon_text = std.fmt.comptimePrint("Random weapon {}", .{RANDOM_BOX_COST});
                             }
                         }
-    
+
+                        if(entiity_has_flag(other, flag_is_weapon_buy)) {
+                            icon_text = std.fmt.allocPrintZ(
+                                state.frame_allocator.allocator(), 
+                                "Buy {s} {d}", 
+                                .{other.weapon_buy_type.display_name(), other.weapon_buy_cost}
+                            ) catch unreachable;
+
+                            icon_text_color = raylib.WHITE;
+                        }
+
+                        if(entiity_has_flag(other, flag_is_buff_buy)) {
+                            icon_text = std.fmt.allocPrintZ(
+                                state.frame_allocator.allocator(), 
+                                "Buy {s} buff {d}", 
+                                .{other.buff_buy_type.display_name(), other.buff_buy_type.base_cost()}
+                            ) catch unreachable;
+
+                            icon_text_color = raylib.WHITE;
+                        }
+  
+                        const icon_text_size = 15;
+                        const icon_padding = 5;
                         const icon_offset = V2f{0, -30};
-                        render.rectangle(other.position + icon_offset, V2f{90, 20}, raylib.Fade(raylib.BLACK, 0.5));
-                        render.text(icon_text, other.position + icon_offset, 15, icon_text_color);
+                        const text_width = render.text_draw_width(icon_text, icon_text_size);
+
+                        render.rectangle(other.position + icon_offset, V2f{text_width + (icon_padding * 2), 20}, raylib.Fade(raylib.BLACK, 0.5));
+                        render.text(icon_text, other.position + icon_offset, icon_text_size, icon_text_color);
                     }
                 }
 
@@ -920,40 +989,60 @@ fn draw(state: *State, delta_time: f32) void {
     raylib.EndMode2D();
 
     { // rendering in screen space 
-        // pause text
-        {
-            if(state.paused) {
-                render.text("PAUSED", V2f{WINDOW_WIDTH * 0.5, WINDOW_HEIGHT * 0.5}, 80, raylib.BLACK);
-                render.text("esc to quit", V2f{WINDOW_WIDTH * 0.5, (WINDOW_HEIGHT * 0.5) + 60}, 30, raylib.BLACK);
+        player_buff_info: {
+            const player = get_entity_with_flag(state, flag_player) orelse break :player_buff_info;
+
+            const buff_icons_size = 25;
+            const buff_names_font_size = 12;
+            const icons_y = WINDOW_HEIGHT - buff_icons_size - 8; // padding
+            const names_y = icons_y - buff_icons_size - 15;
+
+            render.text("Player Buffs", V2f{WINDOW_WIDTH - 120, icons_y - 70}, 20, raylib.BLACK);
+            
+            { // health buff
+                const icon_color = if(player.health_buff_level > 0) raylib.ColorBrightness(raylib.RED, -0.3) else raylib.Fade(raylib.ColorBrightness(raylib.RED, -0.7), 0.5);
+                const icon_x = WINDOW_WIDTH - 190;
+                const text_width = render.text_draw_width(Buff.health.display_name(), buff_names_font_size);
+
+                render.circle(V2f{icon_x, icons_y}, buff_icons_size, icon_color);
+                render.rectangle(V2f{icon_x, names_y}, V2f{text_width + 15, 20}, raylib.Fade(raylib.BLACK, 0.6));
+                render.text(Buff.health.display_name(), V2f{icon_x, names_y}, buff_names_font_size, raylib.WHITE);
+               
+                if(player.health_buff_level > 0) {
+                    const level_string = std.fmt.allocPrintZ(state.frame_allocator.allocator(), "lvl {}", .{player.health_buff_level}) catch unreachable;
+                    render.text(level_string, V2f{icon_x, icons_y}, buff_names_font_size, raylib.WHITE);
+                }
             }
-        }
 
-        // game info text
-        {
-            const string = std.fmt.allocPrintZ(
-                state.frame_allocator.allocator(), 
-                "round: {:<3}   kills: {:<4} remaining: {:<4}", 
-                .{state.level.round, state.level.total_kills, get_enemy_count_for_round(state.level.round) - state.level.kills_this_round}
-            ) catch unreachable;
+            { // speed buff
+                const icon_color = if(player.speed_buff_level > 0) raylib.ColorBrightness(raylib.SKYBLUE, -0.3) else raylib.Fade(raylib.ColorBrightness(raylib.SKYBLUE, -0.7), 0.5);
+                const icon_x = WINDOW_WIDTH - 120;
+                const text_width = render.text_draw_width(Buff.speed.display_name(), buff_names_font_size);
 
+                render.circle(V2f{icon_x, icons_y}, buff_icons_size, icon_color);
+                render.rectangle(V2f{icon_x, names_y}, V2f{text_width + 15, 20}, raylib.Fade(raylib.BLACK, 0.6));
+                render.text(Buff.speed.display_name(), V2f{icon_x, names_y}, buff_names_font_size, raylib.WHITE);
+               
+                if(player.speed_buff_level > 0) {
+                    const level_string = std.fmt.allocPrintZ(state.frame_allocator.allocator(), "lvl {}", .{player.speed_buff_level}) catch unreachable;
+                    render.text(level_string, V2f{icon_x, icons_y}, buff_names_font_size, raylib.WHITE);
+                }
+            }
 
-            const text_color = if(state.level.end_of_round) raylib.WHITE else raylib.RED;
-            render.text(string, V2f{WINDOW_WIDTH * 0.5, 20}, 30, text_color);
-        }
+            { // reload buff
+                const icon_color = if(player.reload_buff_level > 0) raylib.ColorBrightness(raylib.GREEN, -0.3) else raylib.Fade(raylib.ColorBrightness(raylib.GREEN, -0.7), 0.5);
+                const icon_x = WINDOW_WIDTH - 50;
+                const text_width = render.text_draw_width(Buff.reload.display_name(), buff_names_font_size);
 
-        // performance text
-        {
-            const ut_milliseconds = @as(f64, @floatFromInt(state.update_time_nanoseconds)) / 1_000_000;
-            const pt_milliseconds = @as(f64, @floatFromInt(state.physics_time_nanoseconds)) / 1_000_000;
-            const dt_milliseconds = @as(f64, @floatFromInt(state.draw_time_nanoseconds)) / 1_000_00;
-
-            const string = std.fmt.allocPrintZ(
-                state.frame_allocator.allocator(), 
-                "fps: {d:<8.4}, u: {d:<8.4}, p: {d:<8.4}, d-1: {d:<8.4}, e: {d}", 
-                .{1 / delta_time, ut_milliseconds, pt_milliseconds, dt_milliseconds, state.entities.slice().len}
-            ) catch unreachable;
-
-            render.text(string, V2f{WINDOW_WIDTH * 0.5, 50}, 16, raylib.WHITE);
+                render.circle(V2f{icon_x, icons_y}, buff_icons_size, icon_color);
+                render.rectangle(V2f{icon_x, names_y}, V2f{text_width + 15, 20}, raylib.Fade(raylib.BLACK, 0.6));
+                render.text(Buff.reload.display_name(), V2f{icon_x, names_y}, buff_names_font_size, raylib.WHITE);
+               
+                if(player.reload_buff_level > 0) {
+                    const level_string = std.fmt.allocPrintZ(state.frame_allocator.allocator(), "lvl {}", .{player.reload_buff_level}) catch unreachable;
+                    render.text(level_string, V2f{icon_x, icons_y}, buff_names_font_size, raylib.WHITE);
+                }
+            }
         }
 
         weapon_info_text: {
@@ -967,8 +1056,42 @@ fn draw(state: *State, delta_time: f32) void {
             ) catch unreachable;
 
             const color = if(entiity_has_flag(player, flag_is_reloading)) raylib.ORANGE else raylib.BLUE;
-            render.text(string, V2f{WINDOW_WIDTH * 0.5, WINDOW_HEIGHT - 20}, 30, color);
+            const text_width = render.text_draw_width(string, 30);
+            render.text(string, V2f{(text_width * 0.5) + 10, WINDOW_HEIGHT - 20}, 30, color);
         }
+
+        { // pause text
+            if(state.paused) {
+                render.text("PAUSED", V2f{WINDOW_WIDTH * 0.5, WINDOW_HEIGHT * 0.5}, 80, raylib.BLACK);
+                render.text("esc to quit", V2f{WINDOW_WIDTH * 0.5, (WINDOW_HEIGHT * 0.5) + 60}, 30, raylib.BLACK);
+            }
+        }
+
+        { // game info text
+            const string = std.fmt.allocPrintZ(
+                state.frame_allocator.allocator(), 
+                "round: {:<3}   kills: {:<4} remaining: {:<4}", 
+                .{state.level.round, state.level.total_kills, get_enemy_count_for_round(state.level.round) - state.level.kills_this_round}
+            ) catch unreachable;
+
+
+            const text_color = if(state.level.end_of_round) raylib.WHITE else raylib.RED;
+            render.text(string, V2f{WINDOW_WIDTH * 0.5, 20}, 30, text_color);
+        }
+
+        { // performance text
+            const ut_milliseconds = @as(f64, @floatFromInt(state.update_time_nanoseconds)) / 1_000_000;
+            const pt_milliseconds = @as(f64, @floatFromInt(state.physics_time_nanoseconds)) / 1_000_000;
+            const dt_milliseconds = @as(f64, @floatFromInt(state.draw_time_nanoseconds)) / 1_000_00;
+
+            const string = std.fmt.allocPrintZ(
+                state.frame_allocator.allocator(), 
+                "fps: {d:<8.4}, u: {d:<8.4}, p: {d:<8.4}, d-1: {d:<8.4}, e: {d}", 
+                .{1 / delta_time, ut_milliseconds, pt_milliseconds, dt_milliseconds, state.entities.slice().len}
+            ) catch unreachable;
+
+            render.text(string, V2f{WINDOW_WIDTH * 0.5, 50}, 16, raylib.WHITE);
+        } 
     } 
 
     if(false) { // micro ui rendering
@@ -1350,6 +1473,7 @@ const Entity = struct {
     id: EntityID                = 0,
     time_created: f64           = 0,
     flags: u64                  = 0,
+    display_name: []const u8    = &[_]u8{},
 
     // physics
     position: V2f              = .{0, 0},
@@ -1364,6 +1488,9 @@ const Entity = struct {
 
     // gameplay: player
     dash_cooldown: f32          = 0,
+    health_buff_level: u8       = 0,
+    speed_buff_level: u8        = 0,
+    reload_buff_level: u8       = 0,
 
     // gameplay: projectile
     penetration_count: u32      = 0,
@@ -1392,7 +1519,14 @@ const Entity = struct {
 
     // gameplay: random box
     random_box_cooldown: f32    = 0,
-    random_box_weapon: Weapon  = .none,
+    random_box_weapon: Weapon   = .none,
+
+    // gameplay: weapon buy
+    weapon_buy_cost: u16        = 0,
+    weapon_buy_type: Weapon     = .none,
+
+    // gameplay: buff buy
+    buff_buy_type: Buff         = .none,
 };
 
 const EntityID = u32;
@@ -1414,6 +1548,8 @@ const flag_is_ammo_crate            :EntityFlag = 1 << 11;
 const flag_is_door                  :EntityFlag = 1 << 12;
 const flag_is_interactable          :EntityFlag = 1 << 13;
 const flag_is_random_box            :EntityFlag = 1 << 14;
+const flag_is_weapon_buy            :EntityFlag = 1 << 15;
+const flag_is_buff_buy              :EntityFlag = 1 << 16;
 
 fn create_entity(state: *State, entity: Entity) *Entity {
     const Static = struct {
@@ -1437,6 +1573,11 @@ fn create_entity(state: *State, entity: Entity) *Entity {
 
         if(entiity_has_flag(entity_ptr, flag_is_door)) {
             std.debug.assert(entity_ptr.door_cost > 0);
+        }
+
+        if(entiity_has_flag(entity_ptr, flag_is_weapon_buy)) {
+            std.debug.assert(entity_ptr.weapon_buy_cost > 0);
+            std.debug.assert(entity_ptr.weapon_buy_type != .none);
         }
     }
 
@@ -1467,8 +1608,8 @@ fn create_player(state: *State, position: V2f) *Entity {
         .position = position,
         .size = .{50, 50},
         .texture = .blue,
-        .health = 100,
-        .max_health = 100,
+        .health = PLAYER_HEALTH,
+        .max_health = PLAYER_HEALTH,
         .health_regen_rate = 40,
         .weapon = .pistol,
         .magazine_ammo = Weapon.pistol.magazine_size(),
@@ -1492,7 +1633,31 @@ fn create_ammo_crate(state: *State, position: V2f) *Entity {
         .flags = flag_has_solid_hitbox | flag_is_static | flag_is_ammo_crate | flag_is_interactable,
         .position = position,
         .size = .{50, 30},
+        .display_name = "A",
         .texture = .brown,
+    });
+}
+
+fn create_weapon_buy(state: *State, position: V2f, weapon: Weapon, cost: u16) *Entity {
+    return create_entity(state, .{
+        .flags = flag_is_weapon_buy | flag_is_interactable,
+        .position = position,
+        .size = .{40, 15},
+        .display_name = "G",
+        .texture = .green,
+        .weapon_buy_cost = cost,
+        .weapon_buy_type = weapon
+    });
+}
+
+fn create_buff_buy(state: *State, position: V2f, buff: Buff) *Entity {
+    return create_entity(state, .{
+        .flags = flag_is_static | flag_has_solid_hitbox | flag_is_buff_buy | flag_is_interactable,
+        .position = position,
+        .size = .{30, 30},
+        .display_name = "U",
+        .texture = buff.entity_texture(),
+        .buff_buy_type = buff,
     });
 }
 
@@ -1501,6 +1666,7 @@ fn create_random_box(state: *State, position: V2f) *Entity {
         .flags = flag_has_solid_hitbox | flag_is_static | flag_is_random_box | flag_is_interactable,
         .position = position,
         .size = .{60, 80},
+        .display_name = "B",
         .texture = .light_blue,
     });
 }
@@ -1511,6 +1677,7 @@ fn create_door(state: *State, position: V2f, size: V2f, cost: u16) *Entity {
         .position = position,
         .size = size,
         .texture = .pink,
+        .display_name = "D",
         .door_cost = cost
     });
 }
@@ -1568,6 +1735,75 @@ inline fn entiity_unset_flag(entity: *Entity, flag: EntityFlag) void {
 inline fn entiity_has_flag(entity: *const Entity, flag: EntityFlag) bool {
     return !(entity.flags & flag == 0);
 }
+
+/////////////////////////////////////////////////////////////////////////
+///                         @buff
+/////////////////////////////////////////////////////////////////////////
+const Buff = enum {
+    const Self = @This();
+
+    none,
+    health,
+    speed,
+    reload,
+
+    fn base_cost(self: Self) u16 {
+        return @as(u16, switch (self) {
+            .none => 0,
+            .health => 3000,
+            .speed => 2500,
+            .reload => 2000
+        });
+    }
+
+    fn entity_texture(self: Self) TextureHandle {
+        return switch (self) {
+            .none => .none,
+            .health => .red,
+            .speed => .light_blue,
+            .reload => .green
+        };
+    }
+
+    fn display_name(self: Self) []const u8 {
+        return switch (self) {
+            .none => "<empty>",
+            .health => "Health",
+            .speed => "Speed",
+            .reload => "Reload"
+        };
+    }
+
+    fn speed_multipler(level: u8) f32 {
+        return switch (level) {
+            0 => 1,
+            1 => 1.4,
+            2 => 1.8,
+            3 => 2.2,
+            else => unreachable
+        };
+    }
+
+    fn reload_multiplier(level: u8) f32 {
+        return switch (level) {
+            0 => 1,
+            1 => 0.7,
+            2 => 0.45,
+            3 => 0.2,
+            else => unreachable
+        };
+    }
+
+    fn health_multiplier(level: u8) f32 {
+        return switch (level) {
+            0 => 1,
+            1 => 1.5,
+            2 => 1.75,
+            3 => 2,
+            else => unreachable
+        };
+    }
+};
 
 /////////////////////////////////////////////////////////////////////////
 ///                         @weapon
@@ -2134,7 +2370,6 @@ fn create_scene(state: *State) void {
     {
         const centre = vscaler(0);
 
-        _ = create_wall(state, centre, V2f{350, 25});
         _ = create_player(state, centre + room_object_offset);
     }
 
@@ -2145,17 +2380,24 @@ fn create_scene(state: *State) void {
         _ = create_spawner(state, centre + V2f{room_object_offset[0], 0});      // right middle
         _ = create_spawner(state, centre + V2f{0, -room_object_offset[1]});     // top middle
         _ = create_spawner(state, centre + V2f{0, room_object_offset[1]});      // bottom middle
+
+        _ = create_wall(state, centre, V2f{350, 25});
+
+        _ = create_weapon_buy(state, centre + V2f{0, -20}, .shotgun, 1000);
+
+
+        _ = create_buff_buy(state, centre + V2f{-room_object_offset[0], 0}, .health);
+        _ = create_buff_buy(state, centre + V2f{-room_object_offset[0], 200}, .speed);
+        _ = create_buff_buy(state, centre + V2f{-room_object_offset[0], -200}, .reload);
     }
 
     { // ammo room
         const centre = create_room(state, 0, -1, .{.bottom = true, .right = true, .right_cost = 1300});
         
-        // _ = create_spawner(state, centre + V2f{-room_object_offset[0], 0});     // left middle
         _ = create_spawner(state, centre + V2f{room_object_offset[0], 0});      // right middle
         _ = create_spawner(state, centre + V2f{0, -room_object_offset[1]});     // top middle
         _ = create_spawner(state, centre + room_object_offset * vscaler(-1));   // top left
         _ = create_spawner(state, centre + V2f{room_object_offset[0], -room_object_offset[1]});   // top right
-        // _ = create_spawner(state, centre + V2f{-room_object_offset[0], room_object_offset[1]});      // bottom left
 
         _ = create_ammo_crate(state, centre + V2f{0, room_object_offset[1]});
     }
@@ -2181,6 +2423,8 @@ fn create_scene(state: *State) void {
 /////////////////////////////////////////////////////////////////////////
 pub fn main() !void {
     init_raylib();
+
+    log.info("{} {}", .{@sizeOf(Entity), @sizeOf(Entity) * MAX_ENTITIES});
 
     for(1..30) |round| {
         log.info(
