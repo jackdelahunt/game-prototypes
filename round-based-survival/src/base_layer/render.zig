@@ -4,6 +4,8 @@ const main = @import("../main.zig");
 
 const raylib = @cImport(@cInclude("raylib.h"));
 
+pub const FONT_LINE_SPACING = 5;
+
 pub fn rectangle(position: main.V2f, size: main.V2f, color: raylib.Color) void {
     const centerd = position - (size * main.V2f{0.5, 0.5});
 
