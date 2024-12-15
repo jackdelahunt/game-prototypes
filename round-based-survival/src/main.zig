@@ -7,23 +7,26 @@ const microui = @cImport(@cInclude("microui.h"));
 const render = @import("base_layer/render.zig");
 const encode = @import("base_layer/encode.zig");
 
-const MAX_ENTITIES = 255;
+const MAX_ENTITIES = 1024;
 
 const PLAYER_SPEED  = 200;
 const PLAYER_DASH_MULTIPLIER = 4;
-const ENEMY_SPEED   = 80;
+const ENEMY_SPEED   = 100;
 const PROJECTILE_SPEED = 550;
 
 const PLAYER_REACH_SIZE = 110;
 const PLAYER_HEALTH  = 100;
 
-const WINDOW_WIDTH  = 1200;
-const WINDOW_HEIGHT = 900;
+// const WINDOW_WIDTH  = 1000;
+// const WINDOW_HEIGHT = 750;
 
-const ROOM_WIDTH = WINDOW_WIDTH * 0.9;
-const ROOM_HEIGHT = WINDOW_HEIGHT * 0.9;
+const WINDOW_WIDTH  = 1500;
+const WINDOW_HEIGHT = 1000;
+
+const ROOM_WIDTH = 900;
+const ROOM_HEIGHT = 800;
 const WALLTHICKNESS = 20;
-const DOOR_WIDTH = 300;
+const DOOR_WIDTH = 350;
 
 const AMMO_CRATE_COST = 750;
 const RANDOM_BOX_COST = 1250;
@@ -32,6 +35,7 @@ const MAX_SPAWN_DISTANCE = ROOM_WIDTH * 0.8;
 const MIN_SPAWN_DISTANCE = 100;
 
 const MAX_BUFF_LEVEL = 3;
+const MAX_ITEM_LEVEL = 3;
 
 const TICKS_PER_SECONDS: f32    = 20;
 const TICK_RATE: f32            = 1.0 / TICKS_PER_SECONDS;
@@ -42,17 +46,18 @@ const COOLDOWN_PLAYER_DASH = 2;
 const COOLDOWN_ROUND_RESET = 8;
 
 // debug flags
-const DEBUG_DISABLE_ALL                 = false;
+const DEBUG_DISABLE_ALL                 = true;
 const DEBUG_DRAW_CENTRE_POINTS          = if(DEBUG_DISABLE_ALL) false else false;
 const DEBUG_DRAW_MOUSE_DIRECTION_ARROWS = if(DEBUG_DISABLE_ALL) false else false;
 const DEBUG_DRAW_ENEMY_ATTACK_BOXES     = if(DEBUG_DISABLE_ALL) false else true;
 const DEBUG_DRAW_SPAWN_DISTANCE         = if(DEBUG_DISABLE_ALL) false else false;
 const DEBUG_DRAW_PLAYER_REACH_SIZE      = if(DEBUG_DISABLE_ALL) false else false;
-const DEBUG_DISABLE_SPAWNS              = if(DEBUG_DISABLE_ALL) false else true;
+const DEBUG_DISABLE_SPAWNS              = if(DEBUG_DISABLE_ALL) false else false;
 const DEBUG_ONE_ENEMY_PER_ROUND         = if(DEBUG_DISABLE_ALL) false else false;
-const DEBUG_GOD_MODE                    = if(DEBUG_DISABLE_ALL) false else false;
+const DEBUG_GOD_MODE                    = if(DEBUG_DISABLE_ALL) false else true;
 const DEBUG_GIVE_MONEY                  = if(DEBUG_DISABLE_ALL) false else true;
-const DEBUG_START_ROUND                 = if(DEBUG_DISABLE_ALL) 0     else 5;
+const DEBUG_START_ROUND                 = if(DEBUG_DISABLE_ALL) 0     else 0;
+const DEBUG_GIVE_BUFFS                  = if(DEBUG_DISABLE_ALL) false else true;
 
 const MICROUI_FONT_SIZE = 10;
 
@@ -208,17 +213,26 @@ fn run(state: *State) void {
 
                 if(state.paused) break :tick;
     
-                const zoom_rate = 1;
+                const after_one_zoom = 1;
+                const before_one_zoom = 0.2;
     
                 if(key(state, raylib.KEY_UP) == .down) {
-                    state.camera.zoom += zoom_rate;
+                    if(state.camera.zoom > 1) {
+                        state.camera.zoom += after_one_zoom;
+                    } else {
+                        state.camera.zoom += before_one_zoom;
+                    }
                 }
     
                 if(key(state, raylib.KEY_DOWN) == .down) {
-                    state.camera.zoom -= zoom_rate;
+                    if(state.camera.zoom > 1) {
+                        state.camera.zoom -= after_one_zoom;
+                    } else {
+                        state.camera.zoom -= before_one_zoom;
+                    }
                 }
     
-                state.camera.zoom = std.math.clamp(state.camera.zoom, 1, 10);
+                state.camera.zoom = std.math.clamp(state.camera.zoom, 0.1, 10);
     
                 var update_timer = std.time.Timer.start() catch unreachable;
                 update_level(state);
@@ -341,8 +355,8 @@ fn input(state: *State) void {
 ///                         @update
 /////////////////////////////////////////////////////////////////////////
 fn update_entites(state: *State) void {
-    for(0..state.entities.len) |i| {
-        var entity: *Entity = &state.entities.slice()[i];
+    for(0..state.entities.len) |_index| {
+        var entity: *Entity = &state.entities.slice()[_index];
 
         { // tick update cooldowns
             if(entity.attacking_cooldown > 0) {
@@ -384,12 +398,27 @@ fn update_entites(state: *State) void {
                     entity.dash_cooldown = 0;
                 }
             }
+
+            if(entity.item_cooldown > 0) {
+                entity.item_cooldown -= TICK_RATE;
+
+                if(entity.item_cooldown <= 0) {
+                    entity.item_cooldown = 0;
+                }
+            }
         }
 
         player: {
             if(!entiity_has_flag(entity, flag_player)) {
                 break :player;
             } 
+
+            // TODO: this is kind of a hack, we are checking every update to change the max health
+            // I was just changing the max health when the player picks up the buff
+            // but then it would change the max health if you just set it from debug options 
+            // but ohhh well...
+            const new_max_health = @as(f32, @floatFromInt(PLAYER_HEALTH)) * Buff.health_multiplier(entity.health_buff_level);
+            entity.max_health = @intFromFloat(new_max_health);
 
             { // movement
                 var input_vector = vscaler(0);
@@ -429,6 +458,12 @@ fn update_entites(state: *State) void {
                 entity.velocity = input_vector * speed_vector * dash_vector;
             }
 
+            if(key(state, raylib.KEY_U) == .down) {
+                if(entity.item != .none and entity.item_level < MAX_ITEM_LEVEL) {
+                    entity.item_level += 1; 
+                }
+            }
+
             if(key(state, raylib.KEY_R) == .down) {
                 if(entity.magazine_ammo != entity.weapon.magazine_size()) {
                     entiity_set_flag(entity, flag_is_reloading);
@@ -445,13 +480,40 @@ fn update_entites(state: *State) void {
                 entity.attacking_cooldown = entity.weapon.firing_cooldown();
                 entity.magazine_ammo -= 1;
 
-                const normalised_direction =  vnormalise(state.mouse_world_position - entity.position);
-                spawn_projectiles_for_weapon(state, entity.weapon, entity.position, normalised_direction); 
+                const aim_direction =  vnormalise(state.mouse_world_position - entity.position);
+                create_projectiles_for_weapon(state, entity.weapon, entity.position, aim_direction, .player);  
+
+                player_jr_shooting: {
+                    if(entity.item == .player_jr) {
+                        // if level 1 the the player jr only shoots 50% of the time,
+                        // for level 2 and 3 they always shoot
+                        if(entity.item_level == 1) {
+                            if(state.rng.random().float(f32) < 0.5) {
+                                break :player_jr_shooting;
+                            }
+                        }
+
+                        const player_jr_positions = [_]V2f{
+                            entity.position + vscaler(20),
+                            entity.position - vscaler(20),
+                        };
+    
+                        const positions_to_use: usize = if(entity.item_level < MAX_ITEM_LEVEL) 1 else 2;
+    
+                        for(0..positions_to_use) |i| {
+                            const position = player_jr_positions[i];
+    
+                            const player_jr_aim_direction =  vnormalise(state.mouse_world_position - position);
+                            create_projectiles_for_weapon(state, entity.weapon, position, player_jr_aim_direction, .item); 
+                        }
+                    }
+                }
             }
             
             if(key(state, raylib.KEY_E) == .down) {
                 var iter = new_box_collision_iterator(entity.position, vscaler(PLAYER_REACH_SIZE));
 
+                iteract_check: 
                 while(iter.next(state)) |other| {
                     if(entity.id == other.id) {
                         continue;
@@ -511,13 +573,26 @@ fn update_entites(state: *State) void {
 
                         if(level_to_upgrade.* < 4) {
                             state.level.money -= other.buff_buy_type.base_cost();
-                            level_to_upgrade.* += 1;
-
-                            if(other.buff_buy_type == .health) {
-                                const new_max_health = @as(f32, @floatFromInt(PLAYER_HEALTH)) * Buff.health_multiplier(entity.health_buff_level);
-                                entity.max_health = @intFromFloat(new_max_health);
-                            }
+                            level_to_upgrade.* += 1; 
                         }
+                    }
+
+                    if(entiity_has_flag(other, flag_is_item)) {
+                        // drop current item
+                        if(entity.item != .none) {
+                            _ = create_item(state, entity.position, entity.item, entity.item_level, entity.item_kills);
+                        }
+
+                        // pickup item
+                        entity.item = other.item;
+                        entity.item_level = other.item_level;
+                        entity.item_kills = other.item_kills;
+                        entiity_set_flag(other, flag_to_be_deleted);
+
+                        // need to break because we are creating the new item on the 
+                        // player so the collider iterator will keep going and create 
+                        // more and more entities
+                        break :iteract_check;
                     }
                 }
             }
@@ -527,6 +602,8 @@ fn update_entites(state: *State) void {
             if(!entiity_has_flag(entity, flag_ai)) {
                 break :ai;
             }
+
+            std.debug.assert(entity.ai_type != .none);
 
             if(entity.target == null) {
                 if(get_entity_with_flag(state, flag_player)) |player| {
@@ -541,10 +618,11 @@ fn update_entites(state: *State) void {
 
             const target_entity = get_entity_with_flag(state, flag_player) orelse break :ai;
             const delta_vector = target_entity.position - entity.position;
+            const centre_to_centre_distance = vlength(delta_vector);
 
             // if too far away then just keep moving toward the target and stop 
             // anything else from proceeding
-            if(vlength(delta_vector) > 50) {
+            if(centre_to_centre_distance > entity.ai_type.distance_before_attacking()) {
                 entity.velocity = 
                     vnormalise(delta_vector) * 
                     vscaler(ENEMY_SPEED) * 
@@ -559,14 +637,9 @@ fn update_entites(state: *State) void {
                 break :ai; 
             }
 
-            // ai needs to slow down to attack
-            if(vlength(entity.velocity) > 35) {
-                break :ai; 
-            }
-
             entity.attacking_cooldown = 2;
 
-            const attack_shape = entity.size + vscaler(30);
+            const attack_shape = entity.size + vscaler(entity.ai_type.attack_size());
             var iter = new_box_collision_iterator(entity.position, attack_shape);
 
             while(iter.next(state)) |other| {
@@ -577,7 +650,78 @@ fn update_entites(state: *State) void {
                 // maybe this will change but right now assume it is true
                 std.debug.assert(entiity_has_flag(other, flag_has_health));
                 
-                entity_take_damage(other, 34);
+                entity_take_damage(other, entity.ai_type.damage());
+            }
+        }
+
+        items: {
+            // this is for entities that have items not items 
+            // themselves
+            if(entiity_has_flag(entity, flag_is_item) or entity.item == .none) {
+                break :items;
+            }
+
+            if(entity.item_level < MAX_ITEM_LEVEL and entity.item_kills >= entity.item.kills_to_complete_level(entity.item_level)) {
+                entity.item_level += 1;
+            }
+
+            damage_ring: {
+                if(entity.item != .damage_ring) {
+                    break :damage_ring;
+                }
+                
+                if(entity.item_cooldown > 0) {
+                    break :damage_ring;
+                }
+
+                var did_damage = false;
+
+                var iter = new_circle_collision_iterator(entity.position, Item.damage_ring_radius(entity.item_level));
+                while(iter.next(state)) |other| {
+                    if(other.id == entity.id) continue;
+
+                    if(!entiity_has_flag(other, flag_has_health)) {
+                        continue;
+                    }
+
+                    entity_take_damage(other, Item.damage_ring_damage(entity.item_level));
+                    did_damage = true;
+
+                    if(other.health == 0) {
+                        entity.item_kills += 1;
+                    }
+                }
+
+                if(did_damage) {
+                    entity.item_cooldown = entity.item.cooldown(entity.item_level);
+                }
+            }
+
+            gaurdian: {
+                if(entity.item != .gaurdian) {
+                    break :gaurdian;
+                }
+                
+                if(entity.item_cooldown > 0) {
+                    break :gaurdian;
+                }
+
+
+                entity.item_cooldown = entity.item.cooldown(entity.item_level);
+
+                for(0..Item.gaurdian_projectile_count(entity.item_level)) |_| {
+                    const angle = state.rng.random().float(f32) * 360;
+                    const fire_angle = rotate_normalised_vector(V2f{1, 0}, angle);
+    
+                    _ = create_projectile(
+                        state, 
+                        entity.position, 
+                        fire_angle, 
+                        Item.gaurdian_projectile_size(entity.item_level), 
+                        Item.gaurdian_damage(entity.item_level), 
+                        .item
+                    );
+                }
             }
         }
 
@@ -647,8 +791,14 @@ fn update_entites(state: *State) void {
                         break :spawner;
                     }
                 }
-                
-                _ = create_basic_enemy(state, entity.position);
+
+                // past round 12 have a 5% chance of spawing a big enemy 
+                if(state.level.round > 12 and state.rng.random().float(f32) < 0.05) {
+                    _ = create_big_enemy(state, entity.position);
+                } else {
+                    _ = create_basic_enemy(state, entity.position);
+                }
+
                 state.level.enemies_left_to_spawn -= 1;    
             }
         }
@@ -914,6 +1064,16 @@ fn draw(state: *State, delta_time: f32) void {
 
                             icon_text_color = raylib.WHITE;
                         }
+
+                        if(entiity_has_flag(other, flag_is_item)) {
+                            icon_text = std.fmt.allocPrintZ(
+                                state.frame_allocator.allocator(), 
+                                "Pickup {s} lvl {}", 
+                                .{other.item.display_name(), other.item_level}
+                            ) catch unreachable;
+
+                            icon_text_color = raylib.WHITE;
+                        }
   
                         const icon_text_size = 15;
                         const icon_padding = 5;
@@ -983,6 +1143,34 @@ fn draw(state: *State, delta_time: f32) void {
                     }
                 }
             }
+
+            items: {
+                if(entiity_has_flag(entity, flag_is_item) or entity.item == .none) {
+                    break :items;
+                }
+
+                damage_ring: {
+                    if(entity.item != .damage_ring) {
+                        break :damage_ring;
+                    }
+                   
+                    // hack to get it to diplay green for one frame before being used
+                    const color = if(entity.item_cooldown > TICK_RATE) raylib.RED else raylib.GREEN;
+                    render.circle(entity.position, Item.damage_ring_radius(entity.item_level), raylib.Fade(color, 0.1));
+                }
+
+                player_jr: {
+                    if(entity.item != .player_jr) {
+                        break :player_jr;
+                    }
+                   
+                    render.rectangle(entity.position + vscaler(20), vscaler(30), raylib.SKYBLUE);
+
+                    if(entity.item_level == MAX_ITEM_LEVEL) {
+                        render.rectangle(entity.position - vscaler(20), vscaler(30), raylib.BLUE);
+                    }
+                }
+            }
         }
     }
 
@@ -997,7 +1185,7 @@ fn draw(state: *State, delta_time: f32) void {
             const icons_y = WINDOW_HEIGHT - buff_icons_size - 8; // padding
             const names_y = icons_y - buff_icons_size - 15;
 
-            render.text("Player Buffs", V2f{WINDOW_WIDTH - 120, icons_y - 70}, 20, raylib.BLACK);
+            render.text("Buffs", V2f{WINDOW_WIDTH - 120, icons_y - 70}, 20, raylib.BLACK);
             
             { // health buff
                 const icon_color = if(player.health_buff_level > 0) raylib.ColorBrightness(raylib.RED, -0.3) else raylib.Fade(raylib.ColorBrightness(raylib.RED, -0.7), 0.5);
@@ -1041,6 +1229,47 @@ fn draw(state: *State, delta_time: f32) void {
                 if(player.reload_buff_level > 0) {
                     const level_string = std.fmt.allocPrintZ(state.frame_allocator.allocator(), "lvl {}", .{player.reload_buff_level}) catch unreachable;
                     render.text(level_string, V2f{icon_x, icons_y}, buff_names_font_size, raylib.WHITE);
+                }
+            }
+        }
+
+        player_item_info: {
+            const player = get_entity_with_flag(state, flag_player) orelse break :player_item_info;
+
+            const name_y = WINDOW_HEIGHT - 75;
+            const name_x = WINDOW_WIDTH - 400;
+            const name_font_size = 20;
+            const item_name = if(player.item == .none) "No item equipped" else player.item.display_name();
+            const rectangle_height = 22;
+            var rectangle_width = render.text_draw_width(item_name, name_font_size);
+            if(rectangle_width < 300) {
+                rectangle_width = 300;
+            }
+           
+            // top text
+            render.text("Item", V2f{name_x, name_y - 25}, 20, raylib.BLACK);
+
+            // item name text
+            render.rectangle(V2f{name_x, name_y}, V2f{rectangle_width, rectangle_height}, raylib.Fade(raylib.BLACK, 0.6));
+            render.text(item_name, V2f{name_x, name_y}, name_font_size, raylib.WHITE);
+
+            // level display
+            render.rectangle(V2f{name_x, name_y + 25}, V2f{rectangle_width, rectangle_height}, raylib.ColorBrightness(raylib.BLUE, -0.6));
+
+            if(player.item != .none) {
+                if(player.item_level != MAX_ITEM_LEVEL) {
+                    render.progress_bar_horizontal(V2f{name_x, name_y + 25}, V2f{rectangle_width, rectangle_height}, raylib.BLUE, player.item_kills, player.item.kills_to_complete_level(player.item_level));
+
+                    const level_text = std.fmt.allocPrintZ(
+                        state.frame_allocator.allocator(), 
+                        "lvl {}      {}/{}", 
+                        .{player.item_level, player.item_kills, player.item.kills_to_complete_level(player.item_level)}
+                    ) catch unreachable;
+     
+                    render.text(level_text, V2f{name_x, name_y + 25}, name_font_size, raylib.Fade(raylib.WHITE, 0.5));
+                } else {
+                    render.rectangle(V2f{name_x, name_y + 25}, V2f{rectangle_width, rectangle_height}, raylib.ColorBrightness(raylib.YELLOW, -0.3));
+                    render.text("MAX LEVEL", V2f{name_x, name_y + 25}, name_font_size, raylib.BLACK);
                 }
             }
         }
@@ -1380,10 +1609,20 @@ fn new_raycast_iterator(start_ray: V2f, end_ray: V2f) RayCastIterator {
 /////////////////////////////////////////////////////////////////////////
 ///                         @gameplay
 /////////////////////////////////////////////////////////////////////////
-fn spawn_projectiles_for_weapon(state: *State, weapon: Weapon, position: V2f, normalised_direction: V2f) void {
+fn create_projectiles_for_weapon(state: *State, weapon: Weapon, position: V2f, normalised_direction: V2f, source: ProjectileSource) void {
     switch (weapon) {
         .pistol, .m4, .smg => {
-            _ = create_projectile(state, position, normalised_direction, weapon);
+            _ = create_projectile(state, position, normalised_direction, vscaler(10), weapon.damage(), source);
+        },
+        .splitter => {
+            const directions = [_]V2f {
+                rotate_normalised_vector(normalised_direction, 10),
+                rotate_normalised_vector(normalised_direction, -10),
+            };
+
+            for(&directions) |direction| {
+                _ = create_projectile(state, position, direction, vscaler(10), weapon.damage(), source);
+            }
         },
         .shotgun => {
             const directions = [_]V2f {
@@ -1391,15 +1630,13 @@ fn spawn_projectiles_for_weapon(state: *State, weapon: Weapon, position: V2f, no
 
                 rotate_normalised_vector(normalised_direction, 10),
                 rotate_normalised_vector(normalised_direction, 20),
-                rotate_normalised_vector(normalised_direction, 30),
 
                 rotate_normalised_vector(normalised_direction, -10),
                 rotate_normalised_vector(normalised_direction, -20),
-                rotate_normalised_vector(normalised_direction, -30),
             };
 
             for(&directions) |direction| {
-                _ = create_projectile(state, position, direction, weapon);
+                _ = create_projectile(state, position, direction, vscaler(15), weapon.damage(), source);
             }
         },
         .none => unreachable,
@@ -1422,18 +1659,24 @@ fn on_trigger_collided_start(state: *State, trigger_entity: *Entity, collided_en
             return;
         }
 
-        std.debug.assert(trigger_entity.projectile_source != .none);
+        std.debug.assert(trigger_entity.projectile_damage != 0);
 
         // 10% each penetration amount
         const damage_nerf_percentage: f32 = @as(f32, @floatFromInt(trigger_entity.penetration_count)) * 0.1;
-        const damage_reduction: u64 = @intFromFloat(@as(f32, @floatFromInt(trigger_entity.projectile_source.damage())) * damage_nerf_percentage);
+        const damage_reduction: u64 = @intFromFloat(@as(f32, @floatFromInt(trigger_entity.projectile_damage)) * damage_nerf_percentage);
 
-        entity_take_damage(collided_entity, trigger_entity.projectile_source.damage() - damage_reduction);
+        entity_take_damage(collided_entity, trigger_entity.projectile_damage - damage_reduction);
 
         trigger_entity.penetration_count += 1;
 
         if(collided_entity.health == 0) {
             state.level.money += 100; 
+
+            if(trigger_entity.entity_source == .item) {
+                if(get_entity_with_flag(state, flag_player)) |player| {
+                    player.item_kills += 1;
+                }
+            }
         } else {
             state.level.money += 10; 
         }
@@ -1491,10 +1734,15 @@ const Entity = struct {
     health_buff_level: u8       = 0,
     speed_buff_level: u8        = 0,
     reload_buff_level: u8       = 0,
+    item: Item                  = .none,
+    item_level: u8              = 0,
+    item_cooldown: f32          = 0,
+    item_kills: u64             = 0,
 
     // gameplay: projectile
-    penetration_count: u32      = 0,
-    projectile_source: Weapon   = .none,
+    penetration_count: u32           = 0,
+    projectile_damage: u64           = 0,
+    entity_source: ProjectileSource  = .none,
 
     // gameplay: health
     health: u64                 = 0,
@@ -1503,6 +1751,7 @@ const Entity = struct {
     health_regen_cooldown: f32  = 0,
 
     // gameplay: ai
+    ai_type: AIType             = .none,
     target: ?EntityID           = 0,
 
     // gameplay: spawner
@@ -1550,6 +1799,7 @@ const flag_is_interactable          :EntityFlag = 1 << 13;
 const flag_is_random_box            :EntityFlag = 1 << 14;
 const flag_is_weapon_buy            :EntityFlag = 1 << 15;
 const flag_is_buff_buy              :EntityFlag = 1 << 16;
+const flag_is_item                  :EntityFlag = 1 << 17;
 
 fn create_entity(state: *State, entity: Entity) *Entity {
     const Static = struct {
@@ -1579,6 +1829,14 @@ fn create_entity(state: *State, entity: Entity) *Entity {
             std.debug.assert(entity_ptr.weapon_buy_cost > 0);
             std.debug.assert(entity_ptr.weapon_buy_type != .none);
         }
+
+        if(entiity_has_flag(entity_ptr, flag_is_item)) {
+            std.debug.assert(entity_ptr.item != .none);
+        }
+
+        if(entiity_has_flag(entity_ptr, flag_ai)) {
+            std.debug.assert(entity_ptr.ai_type != .none);
+        }
     }
 
     return entity_ptr;
@@ -1603,7 +1861,7 @@ fn entity_take_damage(entity: *Entity, damage: u64) void {
 }
 
 fn create_player(state: *State, position: V2f) *Entity {
-    return create_entity(state, .{
+    const player = create_entity(state, .{
         .flags = flag_player | flag_has_solid_hitbox | flag_has_health | flag_has_weapon,
         .position = position,
         .size = .{50, 50},
@@ -1613,18 +1871,27 @@ fn create_player(state: *State, position: V2f) *Entity {
         .health_regen_rate = 40,
         .weapon = .pistol,
         .magazine_ammo = Weapon.pistol.magazine_size(),
-        .reserve_ammo =  Weapon.pistol.magazine_size() * Weapon.pistol.magazine_count()
+        .reserve_ammo =  Weapon.pistol.magazine_size() * Weapon.pistol.magazine_count(),
     });
+
+    if(DEBUG_GIVE_BUFFS) {
+        player.health_buff_level = MAX_BUFF_LEVEL;
+        player.reload_buff_level = MAX_BUFF_LEVEL;
+        player.speed_buff_level = MAX_BUFF_LEVEL;
+    }
+
+    return player;
 }
 
-fn create_projectile(state: *State, position: V2f, normalised_direction: V2f, source_weapon: Weapon) *Entity {
+fn create_projectile(state: *State, position: V2f, normalised_direction: V2f, size: V2f, damage: u64, projectile_source: ProjectileSource) *Entity {
     return create_entity(state, Entity{
         .flags = flag_projectile | flag_has_trigger_hitbox,
         .position = position,
         .velocity = normalised_direction * vscaler(PROJECTILE_SPEED),
-        .size = .{10, 10},
+        .size = size,
         .texture = .black,
-        .projectile_source = source_weapon
+        .projectile_damage = damage,
+        .entity_source = projectile_source
     });
 }
 
@@ -1642,7 +1909,7 @@ fn create_weapon_buy(state: *State, position: V2f, weapon: Weapon, cost: u16) *E
     return create_entity(state, .{
         .flags = flag_is_weapon_buy | flag_is_interactable,
         .position = position,
-        .size = .{40, 15},
+        .size = .{50, 30},
         .display_name = "G",
         .texture = .green,
         .weapon_buy_cost = cost,
@@ -1658,6 +1925,19 @@ fn create_buff_buy(state: *State, position: V2f, buff: Buff) *Entity {
         .display_name = "U",
         .texture = buff.entity_texture(),
         .buff_buy_type = buff,
+    });
+}
+
+fn create_item(state: *State, position: V2f, item: Item, level: u8, kills: u64) *Entity {
+    return create_entity(state, .{
+        .flags = flag_is_item | flag_is_interactable,
+        .position = position,
+        .size = .{30, 30},
+        .display_name = "I",
+        .texture = .yellow,
+        .item = item,
+        .item_level = level,
+        .item_kills = kills
     });
 }
 
@@ -1693,6 +1973,22 @@ fn create_basic_enemy(state: *State, position: V2f) *Entity {
         .texture = .red,
         .health = @intFromFloat(health_from_round),
         .max_health = @intFromFloat(health_from_round),
+        .ai_type = .basic,
+    });
+}
+
+fn create_big_enemy(state: *State, position: V2f) *Entity {
+    const base_health: f32 = 200;
+    const health_from_round = base_health * get_enemy_health_multiplier_for_round(state.level.round);
+
+    return create_entity(state, .{
+        .flags = flag_has_health | flag_ai | flag_has_solid_hitbox,
+        .position = position,
+        .size = .{60, 60},
+        .texture = .green,
+        .health = @intFromFloat(health_from_round),
+        .max_health = @intFromFloat(health_from_round),
+        .ai_type = .big,
     });
 }
 
@@ -1714,7 +2010,7 @@ fn create_wall(state: *State, position: V2f, size: V2f) *Entity {
     });
 }
 
-fn get_entity_with_flag(state: *const State, flag: EntityFlag) ?*const Entity {
+fn get_entity_with_flag(state: *State, flag: EntityFlag) ?*Entity {
     for(state.entities.slice()) |*entity| {
         if(entiity_has_flag(entity, flag)) {
             return entity;
@@ -1735,6 +2031,149 @@ inline fn entiity_unset_flag(entity: *Entity, flag: EntityFlag) void {
 inline fn entiity_has_flag(entity: *const Entity, flag: EntityFlag) bool {
     return !(entity.flags & flag == 0);
 }
+
+/////////////////////////////////////////////////////////////////////////
+//                         @ai
+/////////////////////////////////////////////////////////////////////////
+const AIType = enum {
+    const Self = @This();
+
+    none,
+    basic,
+    big,
+
+    // centre to centre distance between target entity
+    // and the ai entity before it stops and attacks
+    fn distance_before_attacking(self: Self) f32 {
+        return @as(f32, switch (self) {
+            .none => 0,
+            .basic => 50,
+            .big => 70,
+        });
+    }
+
+    // how much does the attack box extended from the entity
+    fn attack_size(self: Self) f32 {
+        return @as(f32, switch (self) {
+            .none => 0,
+            else => 30,
+        });
+    }
+
+    fn damage(self: Self) u64 {
+        return @as(u64, switch (self) {
+            .none => 0,
+            .basic => 34,
+            .big => 50
+        });
+    }
+};
+
+/////////////////////////////////////////////////////////////////////////
+//                         @items
+/////////////////////////////////////////////////////////////////////////
+const Item = enum {
+    const Self = @This();
+
+    none,
+    damage_ring,
+    player_jr,
+    gaurdian,
+
+    fn display_name(self: Self) []const u8 {
+        return switch (self) {
+            .none => "<empty>",
+            .damage_ring => "Damage Ring",
+            .player_jr => "Player Jr.",
+            .gaurdian => "Gaurdian",
+        };
+    }
+
+    fn kills_to_complete_level(self: Self, level: u8) u64 {
+        return switch (self) {
+            .none => 0,
+            .damage_ring => switch (level) {
+                1 => 50,
+                2 => 250,
+                else => unreachable
+            },
+            .player_jr => switch (level) {
+                1 => 50,
+                2 => 300,
+                else => unreachable
+            },
+            .gaurdian => switch (level) {
+                1 => 40,
+                2 => 200,
+                else => unreachable
+            },
+        };
+    }
+
+    fn cooldown(self: Self, level: u8) f32 {
+        return switch (self) {
+            .none => 0,
+            .damage_ring => switch (level) {
+                1 => 1.2,
+                2 => 0.95,
+                3 => 0.4,
+                else => unreachable
+            },
+            .player_jr => 0, // cooldown is based on player's weapon cooldown
+            .gaurdian => switch (level) {
+                1 => 1.1,
+                2 => 0.9,
+                3 => 0.8,
+                else => unreachable
+            }
+        };
+    }
+
+    fn damage_ring_damage(level: u8) u64 {
+        return switch (level) {
+            1 => 40,
+            2 => 90,
+            3 => 120,
+            else => unreachable
+        };
+    }
+
+    fn damage_ring_radius(level: u8) f32 {
+        return switch (level) {
+            1 => 85,
+            2 => 100,
+            3 => 130,
+            else => unreachable
+        };
+    }
+
+    fn gaurdian_damage(level: u8) u64 {
+        return switch (level) {
+            1 => 100,
+            2 => 150,
+            3 => 250,
+            else => unreachable
+        };
+    }
+
+    fn gaurdian_projectile_size(level: u8) V2f {
+        return switch (level) {
+            1 => vscaler(10),
+            2 => vscaler(20),
+            3 => vscaler(35),
+            else => unreachable
+        };
+    }
+
+    fn gaurdian_projectile_count(level: u8) usize {
+        return switch (level) {
+            1 => 1,
+            2 => 2,
+            3 => 5,
+            else => unreachable
+        };
+    }
+};
 
 /////////////////////////////////////////////////////////////////////////
 ///                         @buff
@@ -1813,6 +2252,7 @@ const Weapon = enum {
 
     none,
     pistol,
+    splitter,
     shotgun,
     m4,
     smg,
@@ -1821,9 +2261,10 @@ const Weapon = enum {
         return switch (self) {
             .none => 0,
             .pistol => 40,
+            .splitter => 70,
             .shotgun => 120,
-            .m4 => 80,
-            .smg => 55,
+            .m4 => 100,
+            .smg => 65,
         };
     }
 
@@ -1831,8 +2272,9 @@ const Weapon = enum {
         return switch (self) {
             .none => 0,
             .pistol => 12,
+            .splitter => 8,
             .shotgun => 9,
-            .m4 => 35,
+            .m4 => 40,
             .smg => 50,
         };
     }
@@ -1841,9 +2283,10 @@ const Weapon = enum {
         return switch (self) {
             .none => 0,
             .pistol => 4,
-            .shotgun => 8,
-            .m4 => 5,
-            .smg => 6
+            .splitter => 5,
+            .shotgun => 6,
+            .m4 => 7,
+            .smg => 7
         };
     }
 
@@ -1851,8 +2294,9 @@ const Weapon = enum {
         return switch (self) {
             .none => 0,
             .pistol => 1,
+            .splitter => 1.5,
             .shotgun => 2,
-            .m4 => 1.5,
+            .m4 => 1.4,
             .smg => 1,
         };
     }
@@ -1861,8 +2305,9 @@ const Weapon = enum {
         return switch (self) {
             .none => 0,
             .pistol => 0.4,
+            .splitter => 0.5,
             .shotgun => 0.4,
-            .m4 => 0.1,
+            .m4 => 0.08,
             .smg => 0.04
         };
     }
@@ -1871,11 +2316,18 @@ const Weapon = enum {
         return switch (self) {
             .none => "<empty>",
             .pistol => "pistol",
+            .splitter => "splitter",
             .shotgun => "shotgun",
             .m4 => "m4",
             .smg => "smg",
         };
     }
+};
+
+const ProjectileSource = enum {
+    none,
+    player,
+    item
 };
 
 /////////////////////////////////////////////////////////////////////////
@@ -1985,27 +2437,38 @@ fn get_enemy_count_for_round(round: u64) u64 {
         return 1;
     }
 
-    return 6 + @as(u64, switch (round) {
-        1...5 => round * 2,
-        6 => 24,
-        7 => 30,
-        8 => 38,
-        9 => 48,
-        10 => 60,
-        11 => 75,
-        12 => 95,
-        13 => 120,
-        15 => 150,
-        else => 175,
-    });
+    // growing but capped
+    if(false) {
+        return 6 + @as(u64, switch (round) {
+            1...5 => round * 2,
+            6 => 24,
+            7 => 30,
+            8 => 38,
+            9 => 48,
+            10 => 60,
+            11 => 75,
+            12 => 95,
+            13 => 120,
+            15 => 150,
+            else => 175,
+        });
+    }
+
+    // exponetial 
+    if(true) {
+        return 6 + @as(u64, switch (round) {
+            1...6 => round * 2,
+            else => @intFromFloat(std.math.pow(f32, @floatFromInt(round), 1.8)),
+        });
+    }
 }
 
 fn get_enemy_speed_multiplier_for_round(round: u64) f32 {
     return switch (round) {
         1, 2 => 0.45,
         3...5 => 0.6,
-        6, 7 => 0.75,
-        8, 9 => 0.9,
+        6...9 => 0.75,
+        10...15 => 0.9,
         else => 1.0
     };
 }
@@ -2022,14 +2485,13 @@ fn get_enemy_health_multiplier_for_round(round: u64) f32 {
     // growing but capped health
     if(true) {
         return 1.0 + @as(f32, switch (round) {
-            1, 2 => 0,
-            3 => 0.3,
-            4 => 0.6,
-            5, 6 => 1,
-            7 => 1.25,
-            8 => 1.5,
-            9 => 1.75,
-            else => 2
+            1...3 => 0,
+            4...5 => 0.5,
+            6...8 => 1,
+            9...13 => 1.5,
+            14...20 => 2,
+            21...29 => 2.5,
+            else => 3
         });
     }
 
@@ -2041,10 +2503,12 @@ fn get_enemy_health_multiplier_for_round(round: u64) f32 {
 
 fn get_spawner_cooldown_for_round(round: u64) f32 {
     return switch (round) {
-        1, 2 => 4,
-        3, 4 => 3,
-        5...10 => 2,
-        else => @as(f32, 1)
+        1...3 => 4,
+        4...6 => 3,
+        7...10 => 2,
+        11...14 => 1,
+        15...19 => 0.75,
+        else => @as(f32, 0.5)
     };
 }
 
@@ -2382,30 +2846,24 @@ fn create_scene(state: *State) void {
         _ = create_spawner(state, centre + V2f{0, room_object_offset[1]});      // bottom middle
 
         _ = create_wall(state, centre, V2f{350, 25});
-
-        _ = create_weapon_buy(state, centre + V2f{0, -20}, .shotgun, 1000);
-
-
-        _ = create_buff_buy(state, centre + V2f{-room_object_offset[0], 0}, .health);
-        _ = create_buff_buy(state, centre + V2f{-room_object_offset[0], 200}, .speed);
-        _ = create_buff_buy(state, centre + V2f{-room_object_offset[0], -200}, .reload);
     }
 
-    { // ammo room
-        const centre = create_room(state, 0, -1, .{.bottom = true, .right = true, .right_cost = 1300});
+    { // main room
+        const centre = create_room(state, 0, -1, .{.bottom = true, .right = true, .left = true, .top = true, .top_cost = 1250, .right_cost = 800});
+
+        _ = create_wall(state, centre, vscaler(300));
         
         _ = create_spawner(state, centre + V2f{room_object_offset[0], 0});      // right middle
         _ = create_spawner(state, centre + V2f{0, -room_object_offset[1]});     // top middle
         _ = create_spawner(state, centre + room_object_offset * vscaler(-1));   // top left
         _ = create_spawner(state, centre + V2f{room_object_offset[0], -room_object_offset[1]});   // top right
-
-        _ = create_ammo_crate(state, centre + V2f{0, room_object_offset[1]});
+                                                                                                  
+        _ = create_buff_buy(state, centre + V2f{0, room_object_offset[1]}, .reload);      // bottom middle
+        _ = create_weapon_buy(state, centre + V2f{0, -190}, .splitter, 900);
     }
 
-    { // weapon room
-        const centre = create_room(state, 1, -1, .{.left = true});
-
-        _ = create_wall(state, centre, vscaler(300));
+    { // ammo room
+        const centre = create_room(state, 1, -1, .{.left = true, .right = true, .right_cost = 1250});
 
         _ = create_spawner(state, centre + V2f{0, -room_object_offset[1]});     // top middle
         _ = create_spawner(state, centre + room_object_offset * vscaler(-1));   // top left
@@ -2414,7 +2872,84 @@ fn create_scene(state: *State) void {
         _ = create_spawner(state, centre + V2f{0, room_object_offset[1]});      // bottom middle
         _ = create_spawner(state, centre + V2f{-room_object_offset[0], 0});     // left middle
         
-        _ = create_random_box(state, centre + V2f{room_object_offset[0], 0});
+        _ = create_ammo_crate(state, centre + V2f{room_object_offset[0], 0});
+    }
+
+    { // box room
+        const centre = create_room(state, 2, -1, .{.left = true, .bottom = true});
+
+        _ = create_spawner(state, centre + V2f{0, -room_object_offset[1]});     // top middle
+        _ = create_spawner(state, centre + room_object_offset * vscaler(-1));   // top left
+        _ = create_spawner(state, centre + V2f{room_object_offset[0], -room_object_offset[1]});   // top right
+        _ = create_spawner(state, centre + V2f{room_object_offset[0], room_object_offset[1]}); // bottom right
+        _ = create_spawner(state, centre + V2f{0, room_object_offset[1]});      // bottom middle
+        
+        _ = create_random_box(state, centre);
+    }
+
+    { // gaurdian room
+        const centre = create_room(state, 2, 0, .{.top = true, .top_cost = 1500});
+
+        _ = create_spawner(state, centre + V2f{0, -room_object_offset[1]});     // top middle
+        _ = create_spawner(state, centre + room_object_offset * vscaler(-1));   // top left
+        _ = create_spawner(state, centre + V2f{-room_object_offset[0], room_object_offset[1]});      // bottom left
+        _ = create_spawner(state, centre + V2f{room_object_offset[0], room_object_offset[1]}); // bottom right
+        _ = create_spawner(state, centre + V2f{0, room_object_offset[1]});      // bottom middle
+        
+        _ = create_item(state, centre, .gaurdian, 1, 0);
+    }
+
+    { // health buff room
+        const centre = create_room(state, -1, -1, .{.left = true, .right = true, .right_cost = 1500});
+
+        _ = create_spawner(state, centre + V2f{0, -room_object_offset[1]});     // top middle
+        _ = create_spawner(state, centre + room_object_offset * vscaler(-1));   // top left
+        _ = create_spawner(state, centre + V2f{room_object_offset[0], -room_object_offset[1]});   // top right
+        _ = create_spawner(state, centre + V2f{room_object_offset[0], room_object_offset[1]}); // bottom right
+        _ = create_spawner(state, centre + V2f{0, room_object_offset[1]});      // bottom middle
+        _ = create_spawner(state, centre + V2f{-room_object_offset[0], room_object_offset[1]});      // bottom left
+
+        
+        _ = create_buff_buy(state, centre + V2f{-room_object_offset[0], 0}, .health);     // left middle
+    }
+
+    { // player jr room
+        const centre = create_room(state, -2, -1, .{.right = true, .right_cost = 2000});
+
+        _ = create_spawner(state, centre + V2f{0, -room_object_offset[1]});     // top middle
+        _ = create_spawner(state, centre + room_object_offset * vscaler(-1));   // top left
+        _ = create_spawner(state, centre + V2f{room_object_offset[0], -room_object_offset[1]});   // top right
+        _ = create_spawner(state, centre + V2f{0, room_object_offset[1]});      // bottom middle
+        _ = create_spawner(state, centre + V2f{-room_object_offset[0], room_object_offset[1]});      // bottom left
+        _ = create_spawner(state, centre + V2f{-room_object_offset[0], 0});     // left middle
+
+
+        
+        _ = create_item(state, centre, .player_jr, 1, 0);
+    }
+
+    { // speed buff room
+        const centre = create_room(state, 0, -2, .{.bottom = true, .top = true, .top_cost =  2000});
+
+        _ = create_spawner(state, centre + room_object_offset * vscaler(-1));   // top left
+        _ = create_spawner(state, centre + V2f{0, room_object_offset[1]});      // bottom middle
+        _ = create_spawner(state, centre + V2f{-room_object_offset[0], room_object_offset[1]});      // bottom left
+        _ = create_spawner(state, centre + V2f{-room_object_offset[0], 0});     // left middle
+
+        
+        _ = create_buff_buy(state, centre + V2f{0, -room_object_offset[1]}, .speed);     // top middle
+    }
+
+    { // damage room
+        const centre = create_room(state, 0, -3, .{.bottom = true});
+
+        _ = create_spawner(state, centre + room_object_offset * vscaler(-1));   // top left
+        _ = create_spawner(state, centre + V2f{room_object_offset[0], -room_object_offset[1]});   // top right
+        _ = create_spawner(state, centre + V2f{0, room_object_offset[1]});      // bottom middle
+        _ = create_spawner(state, centre + V2f{-room_object_offset[0], room_object_offset[1]});      // bottom left
+
+        
+        _ = create_item(state, centre, .damage_ring, 1, 0);
     }
 }
 
