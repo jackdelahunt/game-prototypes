@@ -20,14 +20,14 @@ Vector2 :: [2]f32
 Vector3 :: [3]f32
 
 State :: struct {
+    quad_position: Vector2,
+    camera_position: Vector2,
     pipeline: sg.Pipeline,
     bindings: sg.Bindings,
     pass_action: sg.Pass_Action
 }
 
 state : State = {}
-
-model_matrix :: Mat4(1)
 
 main :: proc() {
     sapp.run({
@@ -42,19 +42,18 @@ main :: proc() {
     })
 }
 
-range :: proc(buffer: []$T) -> sg.Range {
-    return sg.Range{
-	ptr = &buffer[0],
-	size = len(buffer) * size_of(T)
-    }
-}
-
 init :: proc "c" () {
     context = runtime.default_context()
+
     sg.setup({
 	environment = sglue.environment(),
 	logger = { func = slog.func },
     })
+
+    { // things on screen we see
+	state.quad_position = {0, 0}
+	state.camera_position = {0, 0}
+    }
 
     vertices := [4 * 3 + 4 * 4]f32 {
 	// positions            // colors
@@ -103,11 +102,34 @@ init :: proc "c" () {
 }
 
 frame :: proc "c" () {
+    context = runtime.default_context()
+
+    // matrix math to get the model view projection matrix
+    // local space -> world space
+    model_matrix := vector_to_matrix(state.quad_position)
+
+    // world space -> view (camera) space
+    view_matrix := view_matrix_from_camera_position(state.camera_position)
+
+    state.quad_position.x += 0.1
+    state.camera_position.x += 0.1
+ 
+    // view space -> view space with projection
+    projection_matrix :: Mat4(1)
+
+    model_view_projection := projection_matrix * view_matrix * model_matrix
+
+    // set the mvp matrix so it can be used in the shader 
+    // and passed as a uniform
+    vs_params: shaders.Vs_Params
+    vs_params.mvp = linalg.matrix_flatten(model_view_projection)
+
     sg.begin_pass({action = state.pass_action, swapchain = sglue.swapchain()})
 
     {
 	sg.apply_pipeline(state.pipeline)
 	sg.apply_bindings(state.bindings)
+	sg.apply_uniforms(shaders.UB_vs_params, {ptr = &vs_params, size = size_of(vs_params)})
 	sg.draw(0, 6, 1)
     }
 
@@ -117,6 +139,23 @@ frame :: proc "c" () {
 
 cleanup :: proc "c" () {
     sg.shutdown()
+}
+
+range :: proc(buffer: []$T) -> sg.Range {
+    return sg.Range{
+	ptr = &buffer[0],
+	size = len(buffer) * size_of(T)
+    }
+}
+
+vector_to_matrix :: proc(position: Vector2) -> Mat4 {
+    mat := Mat4(1)
+    mat *= linalg.matrix4_translate_f32({position.x, position.y, 0})
+    return mat
+}
+
+view_matrix_from_camera_position :: proc(position: Vector2) -> Mat4 {
+    return linalg.matrix4_look_at_f32({position.x, position.y, 0}, {position.x, position.y, -1}, {0, 1, 0}, false)
 }
 
 
