@@ -10,14 +10,18 @@ import sapp "sokol/app"
 import slog "sokol/log"
 import sglue "sokol/glue"
 
+import shaders "shaders"
+
 SCREEN_WIDTH :: 640
 SCREEN_HEIGHT :: 400
 
-pass_action: sg.Pass_Action
+State :: struct {
+    pipeline: sg.Pipeline,
+    bindings: sg.Bindings,
+    pass_action: sg.Pass_Action
+}
 
-red: f32 = 0
-green: f32 = 0
-blue: f32 = 0
+state : State = {}
 
 main :: proc() {
     sapp.run({
@@ -32,6 +36,12 @@ main :: proc() {
     })
 }
 
+range :: proc(buffer: []$T) -> sg.Range {
+    return sg.Range{
+	ptr = &buffer[0],
+	size = len(buffer) * size_of(T)
+    }
+}
 
 init :: proc "c" () {
     context = runtime.default_context()
@@ -40,36 +50,47 @@ init :: proc "c" () {
 	logger = { func = slog.func },
     })
 
-    pass_action = {
+    vertices := [3 * 3 + 3 * 4]f32 {
+	// positions            // colors
+        0.0,  0.5, 0.5,		1.0, 0.0, 0.0, 1.0,
+        0.5, -0.5, 0.5,		0.0, 1.0, 0.0, 1.0,
+        -0.5, -0.5, 0.5,	0.0, 0.0, 1.0, 1.0
+    }
+
+    state.bindings.vertex_buffers[0] = sg.make_buffer({
+	data = range(vertices[0:]),
+	label = "triangle-vertices"
+    })
+
+    shader := sg.make_shader(shaders.triangle_shader_desc(sg.query_backend()))
+
+    state.pipeline = sg.make_pipeline({
+	shader = shader,
+	layout = {
+	    attrs = {
+		shaders.ATTR_triangle_position = { format = .FLOAT3 },
+		shaders.ATTR_triangle_color0 = { format = .FLOAT4 }
+	    },
+	},
+	label = "triangle-pipeline"
+    })
+
+    state.pass_action = {
         colors = {
-	    { load_action = sg.Load_Action.CLEAR, clear_value = { red, green, blue, 1 } },
-	    {},
-	    {},	    
-	    {}
+	    0 = { load_action = .CLEAR, clear_value = { 0.5, 0.5, 0.5, 1 } },
         }
     }
 }
 
 frame :: proc "c" () {
-    red += 0.01
-    green += 0.02
-    blue += 0.03
+    sg.begin_pass({action = state.pass_action, swapchain = sglue.swapchain()})
 
-    if red > 1 {
-	red = 0
+    {
+	sg.apply_pipeline(state.pipeline)
+	sg.apply_bindings(state.bindings)
+	sg.draw(0, 3, 1)
     }
 
-    if green > 1 {
-	green = 0
-    }
-
-    if blue > 1 {
-	blue = 0
-    }
-
-    pass_action.colors[0].clear_value = {red, green, blue, 1}
-
-    sg.begin_pass({action = pass_action, swapchain = sglue.swapchain()})
     sg.end_pass()
     sg.commit()
 }
