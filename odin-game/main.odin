@@ -1,69 +1,82 @@
 package entry
 
 import "core:fmt"
-import "core:dynlib"
-import "core:c/libc"
 import "core:log"
+import "base:runtime"
+import "core:c"
 
-running := false
+import sg "sokol/gfx"
+import sapp "sokol/app"
+import slog "sokol/log"
+import sglue "sokol/glue"
 
-Game :: struct {
-    // callbacks that the game dll can use to commnicate to here
-    // callback orders:
-    // alloc_state
-    // terminate
-    init_callbacks: proc "c" (proc "c" (uint) -> rawptr, proc "c" ()),
-    run_game: proc "c" (),
-    __handle: dynlib.Library,
-}
+SCREEN_WIDTH :: 640
+SCREEN_HEIGHT :: 400
 
-alloc_state :: proc "c" (size: uint) -> rawptr {
-    ptr := libc.malloc(size)
-    if(ptr == nil) {
-        libc.printf("could not allocate game state... exiting")
-        libc.exit(-1)
-    }
+pass_action: sg.Pass_Action
 
-    return libc.memset(ptr, 0, size)
-}
-
-terminate :: proc "c" () {
-    running = false
-}
-
-load_game :: proc() -> (Game, bool) {
-    game: Game
-    path :: "game.dll"
-
-    count, ok := dynlib.initialize_symbols(&game, path)
-    if !ok {
-        error := dynlib.last_error()
-        fmt.printf("%v", error)
-        return game, false
-    }
-
-    fmt.printf("(Initial DLL Load) %v symbols loaded from " + path + " (%p).\n", count, game.__handle)
-
-    return game, ok 
-}
+red: f32 = 0
+green: f32 = 0
+blue: f32 = 0
 
 main :: proc() {
-    game, ok := load_game()
-    if !ok {
-        fmt.println("failed to load library.. quiting")
-        return
-    }
-
-    defer dynlib.unload_library(game.__handle)
-
-    game.init_callbacks(alloc_state, terminate)
-    
-    game.run_game()
+    sapp.run({
+	init_cb = init,
+	frame_cb = frame,
+	cleanup_cb = cleanup,
+	width = SCREEN_WIDTH,
+	height = SCREEN_HEIGHT,
+	window_title = "sokol window",
+	icon = { sokol_default = true },
+	logger = { func = slog.func },
+    })
 }
 
 
+init :: proc "c" () {
+    context = runtime.default_context()
+    sg.setup({
+	environment = sglue.environment(),
+	logger = { func = slog.func },
+    })
 
+    pass_action = {
+        colors = {
+	    { load_action = sg.Load_Action.CLEAR, clear_value = { red, green, blue, 1 } },
+	    {},
+	    {},	    
+	    {}
+        }
+    }
+}
 
+frame :: proc "c" () {
+    red += 0.01
+    green += 0.02
+    blue += 0.03
+
+    if red > 1 {
+	red = 0
+    }
+
+    if green > 1 {
+	green = 0
+    }
+
+    if blue > 1 {
+	blue = 0
+    }
+
+    pass_action.colors[0].clear_value = {red, green, blue, 1}
+
+    sg.begin_pass({action = pass_action, swapchain = sglue.swapchain()})
+    sg.end_pass()
+    sg.commit()
+}
+
+cleanup :: proc "c" () {
+    sg.shutdown()
+}
 
 
 
