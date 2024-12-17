@@ -44,6 +44,8 @@ State :: struct {
     entity_count: uint,
 
     // renderer state
+    quads: [MAX_ENTITIES]Quad,
+    quad_count: uint,
     render_pipeline: sg.Pipeline,
     bindings: sg.Bindings,
     pass_action: sg.Pass_Action
@@ -58,11 +60,17 @@ InputState :: enum {
 Key :: sapp.Keycode
 MouseButton :: sapp.Mousebutton
 
+///////////////////////////////// @colour
+Colour :: distinct Vector4
+
+Red	:: Colour{0.9, 0.05, 0.05, 1}
+Green	:: Colour{0.05, 0.9, 0.05, 1}
+Blue	:: Colour{0.05, 0.05, 0.9, 1}
+
 ///////////////////////////////// @entity
 Entity :: struct {
     position: Vector2,
-    size: Vector2,
-    rotation: f32
+    colour: Colour,
 }
 
 ///////////////////////////////// @main
@@ -71,8 +79,9 @@ main :: proc() {
 	state.start_time = time.now()
 
 	state.camera.view = view_matrix_from_position({0, 0})
-	create_entity({0, 0}, {2, 1})
-	create_entity({0, 1}, {3, 0.5})
+	create_entity({0, 0}, Red)
+	create_entity({0, 1}, Green)
+	create_entity({-1, -1}, Blue)
     }
 
     sapp.run({
@@ -100,13 +109,19 @@ update :: proc() {
 }
 
 draw :: proc() {
-    for i in 0..<state.entity_count {
+    to_draw := state.entity_count
+
+    if state.key_inputs[.SPACE] == .DOWN {
+	to_draw = 1
+    }
+
+    for i in 0..<to_draw {
 	draw_entity(&state.entities[i])
     }
 }
 
-create_entity :: proc(position: Vector2, size: Vector2, rotation: f32 = 0) {
-    state.entities[state.entity_count] = Entity{position = position, size = size, rotation = rotation}
+create_entity :: proc(position: Vector2, colour: Colour) {
+    state.entities[state.entity_count] = Entity{position = position, colour = colour}
     state.entity_count += 1
 }
 
@@ -114,19 +129,34 @@ draw_entity :: proc(entity: ^Entity) {
     width := sapp.widthf()
     height := sapp.heightf()
 
-    model_matrix := translate_matrix(entity.position) * rotate_matrix(entity.rotation) * scale_matrix(entity.size)
+    // creating the model view projection matrix
+    model_matrix := translate_matrix(entity.position) 
     view_matrix := view_matrix_from_position({0, 0})
     projection_matrix := linalg.matrix4_perspective_f32(90, width/height, 0, 2)
  
     model_view_projection := projection_matrix * view_matrix * model_matrix
- 
-    // set the mvp matrix so it can be used in the shader 
-    // and passed as a uniform
-    vs_params: shaders.Vs_Params
-    vs_params.mvp = linalg.matrix_flatten(model_view_projection)
 
-    sg.apply_uniforms(shaders.UB_vs_params, {ptr = &vs_params, size = size_of(vs_params)})
-    sg.draw(0, 6, 1)
+    // get the quad that we are setting the data to
+    // REMEMBER: the positions in the quad are in its local space
+    // the order that the vertices are draw and that the index buffer
+    // is assuming is:
+    //	    top left, top right, bottom right, bottom left
+
+    quad := &state.quads[state.quad_count]
+    state.quad_count += 1
+
+    // each vert position is * by mvp matrix to convert to screen space, then we just
+    // get the xy and why because that is all we care about
+    // i dont know why it needs to be vec4 and why the 4th value needs to be 1 *shrug*
+    quad[0].position = (model_view_projection * Vector4{-0.5, 0.5, 0, 1}).xyz
+    quad[1].position = (model_view_projection * Vector4{0.5, 0.5, 0, 1}).xyz
+    quad[2].position = (model_view_projection * Vector4{0.5, -0.5, 0, 1}).xyz
+    quad[3].position = (model_view_projection * Vector4{-0.5, -0.5, 0, 1}).xyz
+
+    quad[0].colour = cast(Vector4) entity.colour
+    quad[1].colour = cast(Vector4) entity.colour
+    quad[2].colour = cast(Vector4) entity.colour
+    quad[3].colour = cast(Vector4) entity.colour
 }
 
 window_event_callback :: proc "c" (event: ^sapp.Event) {
