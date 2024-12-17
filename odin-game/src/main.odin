@@ -1,9 +1,6 @@
 package src
 
 // TODO:
-// - input system
-// - drawing entities of any colour
-// - input -> movement working
 // - drawing text
 
 import "core:fmt"
@@ -19,8 +16,8 @@ import sglue "sokol/glue"
 
 import shaders "shaders"
 
-SCREEN_WIDTH :: 800
-SCREEN_HEIGHT :: 600
+SCREEN_WIDTH :: 900
+SCREEN_HEIGHT :: 700
 MAX_ENTITIES :: 32
 
 ///////////////////////////////// @state
@@ -36,14 +33,12 @@ State :: struct {
     mouse_screen_position: Vector2,
 
     // game state
-    camera: struct {
-	view: Mat4,
-	projection: Mat4
-    },
     entities: [MAX_ENTITIES]Entity,
     entity_count: uint,
 
     // renderer state
+    camera_position: Vector2,
+    zoom: f32,
     quads: [MAX_ENTITIES]Quad,
     quad_count: uint,
     render_pipeline: sg.Pipeline,
@@ -70,6 +65,7 @@ Blue	:: Colour{0.05, 0.05, 0.9, 1}
 ///////////////////////////////// @entity
 Entity :: struct {
     position: Vector2,
+    size: Vector2,
     colour: Colour,
 }
 
@@ -78,10 +74,12 @@ main :: proc() {
     { // init state
 	state.start_time = time.now()
 
-	state.camera.view = view_matrix_from_position({0, 0})
-	create_entity({0, 0}, Red)
-	create_entity({0, 1}, Green)
-	create_entity({-1, -1}, Blue)
+	state.camera_position = {0, 0}
+	state.zoom = 0.5
+
+	create_entity({0, 0}, {2, 1}, Red)
+	create_entity({0, 1}, {3, 1}, Green)
+	create_entity({-1, -1}, {0.5, 0.5}, Blue)
     }
 
     sapp.run({
@@ -106,22 +104,34 @@ update :: proc() {
     if state.key_inputs[.ESCAPE] == .DOWN {
 	sapp.quit()
     }
+
+    CAMERA_SPEED :: 0.1
+
+    if state.key_inputs[.A] == .DOWN {
+	state.camera_position.x -= CAMERA_SPEED
+    }
+
+    if state.key_inputs[.D] == .DOWN {
+	state.camera_position.x += CAMERA_SPEED
+    }
+
+    if state.key_inputs[.S] == .DOWN {
+	state.camera_position.y -= CAMERA_SPEED
+    }
+
+    if state.key_inputs[.W] == .DOWN {
+	state.camera_position.y += CAMERA_SPEED
+    }
 }
 
 draw :: proc() {
-    to_draw := state.entity_count
-
-    if state.key_inputs[.SPACE] == .DOWN {
-	to_draw = 1
-    }
-
-    for i in 0..<to_draw {
+    for i in 0..<state.entity_count {
 	draw_entity(&state.entities[i])
     }
 }
 
-create_entity :: proc(position: Vector2, colour: Colour) {
-    state.entities[state.entity_count] = Entity{position = position, colour = colour}
+create_entity :: proc(position: Vector2, size: Vector2, colour: Colour) {
+    state.entities[state.entity_count] = Entity{position = position, size = size, colour = colour}
     state.entity_count += 1
 }
 
@@ -130,9 +140,9 @@ draw_entity :: proc(entity: ^Entity) {
     height := sapp.heightf()
 
     // creating the model view projection matrix
-    model_matrix := translate_matrix(entity.position) 
-    view_matrix := view_matrix_from_position({0, 0})
-    projection_matrix := linalg.matrix4_perspective_f32(90, width/height, 0, 2)
+    model_matrix := translate_matrix(entity.position) * scale_matrix(entity.size)
+    view_matrix := view_matrix_from_position(state.camera_position) * scale_matrix(state.zoom)
+    projection_matrix := linalg.matrix4_perspective_f32(90, width/height, 0, 10)
  
     model_view_projection := projection_matrix * view_matrix * model_matrix
 
