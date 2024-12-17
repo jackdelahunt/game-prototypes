@@ -19,7 +19,8 @@ Vector4 :: [4]f32
 
 Vertex :: struct {
     position: Vector3,
-    colour: Vector4
+    colour: Vector4,
+    texture_uv: Vector2,
 }
 
 Quad :: [4]Vertex
@@ -60,6 +61,24 @@ renderer_init :: proc "c" () {
 	label = "quad-indices"
     })
 
+    // just loading the face texture :^] 
+    state.bindings.images[shaders.IMG_default_texture] = sg.make_image({
+        width = 8,
+        height = 8,
+        label = "default_texture",
+	data = {
+	    subimage = {
+                0 = {
+                    0 = { ptr = face_texture.data, size = auto_cast(face_texture.width * face_texture.height * 4)}, // 4 bytes per pixel
+                },
+            },
+        },
+    })
+
+    state.bindings.samplers[shaders.SMP_default_sampler] = sg.make_sampler({
+	label = "default_sampler"
+    });
+
     shader := sg.make_shader(shaders.basic_shader_desc(sg.query_backend()))
 
     state.render_pipeline = sg.make_pipeline({
@@ -68,7 +87,8 @@ renderer_init :: proc "c" () {
 	layout = {
 	    attrs = {
 		shaders.ATTR_basic_position = { format = .FLOAT3 },
-		shaders.ATTR_basic_color0 = { format = .FLOAT4 }
+		shaders.ATTR_basic_color0 = { format = .FLOAT4 },
+		shaders.ATTR_basic_texture_uv0 = { format = .FLOAT2 },
 	    },
 	},
 	label = "quad-pipeline"

@@ -1,6 +1,7 @@
 package src
 
 // TODO:
+// - drawing textures
 // - drawing text
 
 import "core:fmt"
@@ -8,6 +9,9 @@ import "core:log"
 import "base:runtime"
 import "core:math/linalg"
 import "core:time"
+import "core:os"
+
+import stbi "vendor:stb/image"
 
 import sg "sokol/gfx"
 import sapp "sokol/app"
@@ -16,9 +20,10 @@ import sglue "sokol/glue"
 
 import shaders "shaders"
 
-SCREEN_WIDTH :: 900
-SCREEN_HEIGHT :: 700
-MAX_ENTITIES :: 32
+SCREEN_WIDTH	:: 900
+SCREEN_HEIGHT	:: 700
+MAX_ENTITIES	:: 256
+MAX_QUADS	:: 512
 
 ///////////////////////////////// @state
 state : State = {}
@@ -39,7 +44,7 @@ State :: struct {
     // renderer state
     camera_position: Vector2,
     zoom: f32,
-    quads: [MAX_ENTITIES]Quad,
+    quads: [MAX_QUADS]Quad,
     quad_count: uint,
     render_pipeline: sg.Pipeline,
     bindings: sg.Bindings,
@@ -69,8 +74,23 @@ Entity :: struct {
     colour: Colour,
 }
 
+///////////////////////////////// @texture
+Texture :: struct {
+    width: i32,
+    height: i32,
+    data: [^]byte
+}
+
+face_texture: Texture
+
 ///////////////////////////////// @main
 main :: proc() {
+    ok := load_textures()
+    if !ok {
+	fmt.println("error loading textures.. exiting")
+	return
+    }
+
     { // init state
 	state.start_time = time.now()
 
@@ -78,7 +98,7 @@ main :: proc() {
 	state.zoom = 0.5
 
 	create_entity({0, 0}, {2, 1}, Red)
-	create_entity({0, 1}, {3, 1}, Green)
+	create_entity({0, 1}, {1, 1}, Green)
 	create_entity({-1, -1}, {0.5, 0.5}, Blue)
     }
 
@@ -167,6 +187,42 @@ draw_entity :: proc(entity: ^Entity) {
     quad[1].colour = cast(Vector4) entity.colour
     quad[2].colour = cast(Vector4) entity.colour
     quad[3].colour = cast(Vector4) entity.colour
+
+    quad[0].texture_uv = Vector2{0, 1}
+    quad[1].texture_uv = Vector2{1, 1}
+    quad[2].texture_uv = Vector2{1, 0}
+    quad[3].texture_uv = Vector2{0, 0}
+}
+
+load_textures :: proc() -> bool {
+    RESOURCE_DIR :: "resources/"
+
+    path := fmt.tprint(RESOURCE_DIR, "face", ".png", sep="")
+    
+    png_data, ok := os.read_entire_file(path)
+    if !ok {
+	fmt.printfln("error loading texture %v", path)
+	return false
+    }
+
+    stbi.set_flip_vertically_on_load(1)
+    width, height, channels: i32
+
+    data := stbi.load_from_memory(raw_data(png_data), auto_cast len(png_data), &width, &height, &channels, 4)
+    if data == nil {
+	fmt.printfln("error reading texture data with stbi: %v", path)
+	return false
+    }
+
+    fmt.printfln("loaded texture \"%v\" [%v x %v : %v bytes]", path, width, height, len(png_data))
+
+    face_texture = Texture{
+	width = width,
+	height = height,
+	data = data
+    }
+
+    return true
 }
 
 window_event_callback :: proc "c" (event: ^sapp.Event) {
