@@ -21,6 +21,7 @@ Vertex :: struct {
     position: Vector3,
     colour: Vector4,
     texture_uv: Vector2,
+    texture_index: f32
 }
 
 Quad :: [4]Vertex
@@ -33,7 +34,7 @@ renderer_init :: proc "c" () {
 	logger = { func = slog.func },
     })
 
-    // create vertext buffer
+    // create vertex buffer
     state.bindings.vertex_buffers[0] = sg.make_buffer({
 	usage = .DYNAMIC,
 	size = size_of(Quad) * len(state.quads),
@@ -62,6 +63,7 @@ renderer_init :: proc "c" () {
     })
 
     // just loading the face texture :^] 
+    // bind face texture
     state.bindings.images[shaders.IMG_default_texture] = sg.make_image({
         width = 8,
         height = 8,
@@ -75,9 +77,23 @@ renderer_init :: proc "c" () {
         },
     })
 
+    state.bindings.images[shaders.IMG_font_texture] = sg.make_image({
+        width = auto_cast font_bitmap_w,
+        height = auto_cast font_bitmap_h,
+	pixel_format = .R8,
+        label = "font_texture",
+	data = {
+	    subimage = {
+                0 = {
+                    0 = { ptr = auto_cast &alagard.bitmap, size = size_of(alagard.bitmap)},
+                },
+            },
+        },
+    })
+
     state.bindings.samplers[shaders.SMP_default_sampler] = sg.make_sampler({
 	label = "default_sampler"
-    });
+    })
 
     shader := sg.make_shader(shaders.basic_shader_desc(sg.query_backend()))
 
@@ -89,14 +105,29 @@ renderer_init :: proc "c" () {
 		shaders.ATTR_basic_position = { format = .FLOAT3 },
 		shaders.ATTR_basic_color0 = { format = .FLOAT4 },
 		shaders.ATTR_basic_texture_uv0 = { format = .FLOAT2 },
+		shaders.ATTR_basic_texture_index0 = { format = .FLOAT },
 	    },
 	},
-	label = "quad-pipeline"
+	colors = {
+	    0 = {
+		blend = {
+		    enabled = true,
+		    src_factor_rgb = .SRC_ALPHA,
+		    dst_factor_rgb = .ONE_MINUS_SRC_ALPHA,
+		    op_rgb = .ADD,
+		    src_factor_alpha = .ONE,
+		    dst_factor_alpha = .ONE_MINUS_SRC_ALPHA,
+		    op_alpha = .ADD,
+		}
+	    }
+	},
+	label = "basic-pipeline"
     })
+
 
     state.pass_action = {
         colors = {
-	    0 = { load_action = .CLEAR, clear_value = { 0.5, 0.5, 0.5, 1 } },
+	    0 = { load_action = .CLEAR, clear_value = { 0, 0, 0, 1 } },
         }
     }
 }
@@ -110,6 +141,10 @@ renderer_frame :: proc "c" () {
 
     // let the game create and set any quads it wants for this frame
     frame()
+
+    if state.quad_count == 0 {
+	return
+    }
 
     // update vertex buffer with new quad data for this frame
     sg.update_buffer(
