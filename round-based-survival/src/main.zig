@@ -2419,7 +2419,7 @@ fn lines_intersect(
 ///                         @random
 /////////////////////////////////////////////////////////////////////////
 fn init_raylib() void {
-    raylib.InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "shooting game");
+    raylib.InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "shoot shoot game");
     raylib.SetTargetFPS(240);
     raylib.SetTextLineSpacing(render.FONT_LINE_SPACING);
 }
