@@ -10,6 +10,8 @@ import sapp "sokol/app"
 import slog "sokol/log"
 import sglue "sokol/glue"
 
+import stbtt "vendor:stb/truetype"
+
 import shaders "shaders"
 
 Mat4 :: linalg.Matrix4f32
@@ -25,6 +27,90 @@ Vertex :: struct {
 }
 
 Quad :: [4]Vertex
+
+draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colour, uvs: [4]Vector2, is_font := false) {
+    width := sapp.widthf()
+    height := sapp.heightf()
+
+    model_matrix := translate_matrix(position) * scale_matrix(size) * rotate_matrix(rotation)
+    view_matrix := view_matrix_from_position(state.camera_position) * scale_matrix(state.zoom)
+    projection_matrix := linalg.matrix4_perspective_f32(90, width / height, 0, 10)
+ 
+    model_view_projection := projection_matrix * view_matrix * model_matrix
+
+    // the order that the vertices are drawen and that the 
+    // index buffer is assuming is:
+    //	    top left, top right, bottom right, bottom left
+
+    quad := &state.quads[state.quad_count]
+    state.quad_count += 1
+
+    quad[0].position = (model_view_projection * Vector4{-0.5, 0.5, 0, 1}).xyz
+    quad[1].position = (model_view_projection * Vector4{0.5, 0.5, 0, 1}).xyz
+    quad[2].position = (model_view_projection * Vector4{0.5, -0.5, 0, 1}).xyz
+    quad[3].position = (model_view_projection * Vector4{-0.5, -0.5, 0, 1}).xyz
+ 
+    quad[0].colour = cast(Vector4) colour
+    quad[1].colour = cast(Vector4) colour
+    quad[2].colour = cast(Vector4) colour
+    quad[3].colour = cast(Vector4) colour
+ 
+    quad[0].texture_uv = uvs[0] 
+    quad[1].texture_uv = uvs[1] 
+    quad[2].texture_uv = uvs[2] 
+    quad[3].texture_uv = uvs[3]
+
+    texture_index : f32 = 0 if !is_font else 2
+
+    quad[0].texture_index = texture_index
+    quad[1].texture_index = texture_index
+    quad[2].texture_index = texture_index
+    quad[3].texture_index = texture_index
+}
+
+draw_text :: proc(text: string, position: Vector2, colour: Colour, pixels_per_unit: f32) {
+    x: f32
+    y: f32
+
+    for c in text {
+	position_offset := Vector2{x, y}
+
+	advanced_x: f32
+	advanced_y: f32
+
+	q: stbtt.aligned_quad
+	stbtt.GetBakedQuad(&alagard.characters[0], font_bitmap_w, font_bitmap_h, (cast(i32)c) - 32, &advanced_x, &advanced_y, &q, false)
+	// this is the the data for the aligned_quad we're given, with y+ going down
+	//	   x0, y0       x1, y0
+	//     s0, t0       s1, t0
+	//	    o tl        o tr
+    
+    
+	//     x0, y1      x1, y1
+	//     s0, t1      s1, t1
+	//	    o bl        o br
+	// 
+	// x, and y and expected vertex positions
+	// s and t are texture uv position
+   
+	x += advanced_x / pixels_per_unit
+	y += advanced_y / pixels_per_unit
+	size := Vector2{ abs(q.x0 - q.x1), abs(q.y0 - q.y1) } / pixels_per_unit
+    	
+	bottom_left_uv := Vector2{ q.s0, q.t1 }
+	top_right_uv := Vector2{ q.s1, q.t0 }
+	bottom_right_uv := Vector2{q.s1, q.t1}
+	top_left_uv := Vector2{q.s0, q.t0}
+	
+	draw_quad(
+	    position + position_offset, 
+	    size, 
+	    0,
+	    colour,
+	    {top_left_uv, top_right_uv, bottom_right_uv, bottom_left_uv}, 
+	    true)
+    }
+}
 
 renderer_init :: proc "c" () {
     context = runtime.default_context()
@@ -127,7 +213,7 @@ renderer_init :: proc "c" () {
 
     state.pass_action = {
         colors = {
-	    0 = { load_action = .CLEAR, clear_value = { 0, 0, 0, 1 } },
+	    0 = { load_action = .CLEAR, clear_value = {SkyBlue.r,  SkyBlue.g, SkyBlue.b, SkyBlue.b} },
         }
     }
 }
