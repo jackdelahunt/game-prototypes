@@ -3,3 +3,7 @@ zig-out/
 **/*.dat
 **/build
 **/*.DSYM
+**/sokol/**/*.dll
+**/sokol/**/*.lib
+**/sokol/**/*.pdb
+**/sokol/**/*.exp
