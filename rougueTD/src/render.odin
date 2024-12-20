@@ -19,6 +19,9 @@ Vector2 :: [2]f32
 Vector3 :: [3]f32
 Vector4 :: [4]f32
 
+normalize :: linalg.normalize0
+length :: linalg.length
+
 Vertex :: struct {
     position: Vector3,
     colour: Vector4,
@@ -28,7 +31,14 @@ Vertex :: struct {
 
 Quad :: [4]Vertex
 
-draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colour, uvs: [4]Vector2, is_font := false) {
+DEFAULT_UVS :: [4]Vector2{
+    {0, 1},
+    {1, 1},
+    {1, 0},
+    {0, 0},
+}
+
+draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colour, uvs: [4]Vector2 = DEFAULT_UVS, is_font := false) {
     width := sapp.widthf()
     height := sapp.heightf()
 

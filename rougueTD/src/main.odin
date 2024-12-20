@@ -19,15 +19,25 @@ import shaders "shaders"
 
 SCREEN_WIDTH	:: 1000
 SCREEN_HEIGHT	:: 750
+
 MAX_ENTITIES	:: 256
 MAX_QUADS	:: 512
+
+PLAYER_SPEED :: 90
+AI_SPEED :: 30
+
+BASIC_ENEMY_DAMAGE :: 50
+NEXUS_HEALTH :: 1000
+
+TICKS_PER_SECONDS :: 20
+SECONDS_PER_TICK :: 1 / TICKS_PER_SECONDS
 
 ///////////////////////////////// @state
 state : State = {}
 
 State :: struct {
     // timing
-    start_time: time.Time,
+    tick_timer: f64,
 
     // inputs
     key_inputs: #sparse [Key]InputState,
@@ -60,17 +70,72 @@ MouseButton :: sapp.Mousebutton
 ///////////////////////////////// @colour
 Colour :: distinct Vector4
 
+White	:: Colour{1, 1, 1, 1}
 Red	:: Colour{0.9, 0.05, 0.05, 1}
+DarkRed	:: Colour{0.4, 0.05, 0.05, 1}
 Green	:: Colour{0.05, 0.9, 0.05, 1}
 Blue	:: Colour{0.05, 0.05, 0.9, 1}
+Gray	:: Colour{0.4, 0.4, 0.4, 1}
 SkyBlue :: Colour{0.07, 0.64, 0.72, 1}
 
 ///////////////////////////////// @entity
 Entity :: struct {
+    // meta
+    flags: bit_set[EntityFlag],
+
+    // core
     position: Vector2,
+    velocity: Vector2,
     size: Vector2,
     rotation: f32,
     colour: Colour,
+    
+    // flag: health
+    health: f32,
+    max_health: f32,
+}
+
+EntityFlag :: enum {
+    PLAYER,
+    AI,
+    NEXUS,
+    HAS_HEALTH,
+    DELETE,
+}
+
+create_entity :: proc(entity: Entity) -> ^Entity {
+    ptr := &state.entities[state.entity_count]
+    state.entity_count += 1
+
+    ptr^ = entity
+
+    { // basic checking fo values with their flags
+	if .HAS_HEALTH in entity.flags {
+	    assert(entity.health > 0 && entity.max_health > 0)
+	    assert(entity.health <= entity.max_health)
+	} 
+    }
+
+    return ptr
+}
+
+get_entity_with_flag :: proc(flag: EntityFlag) -> ^Entity {
+    for &entity in state.entities[0:state.entity_count] {
+	if flag in entity.flags {
+	    return &entity
+	}
+    }
+
+    return nil
+}
+
+entity_take_damage :: proc(entity: ^Entity, damage: f32) {
+    assert(.HAS_HEALTH in entity.flags)
+
+    entity.health -= damage
+    if entity.health < 0 {
+	entity.health = 0
+    }
 }
 
 ///////////////////////////////// @textures
@@ -98,7 +163,7 @@ alagard: Font
 
 ///////////////////////////////// @main
 main :: proc() {
-    {
+    { // load resources
 	loading_ok := true
 
 	loading_ok = load_textures()
@@ -115,14 +180,35 @@ main :: proc() {
     }
 
     { // init state
-	state.start_time = time.now()
+	state.tick_timer = 0
 
 	state.camera_position = {0, 0}
-	state.zoom = 0.8
+	state.zoom = 0.01
 
-	create_entity({-1.75, 0}, {1, 1}, {1, 0, 0, 0.33})
-	create_entity({-1.25, 0}, {1, 1}, {0, 1, 0, 0.33})
-	create_entity({-1.5, 0.5}, {1, 1}, {0, 0, 1, 0.33})
+	// floor
+	create_entity(Entity {
+	    position = {0, 0}, 
+	    size = {300, 300}, 
+	    colour = White
+	})
+
+	// player
+	create_entity(Entity {
+	    flags = {.PLAYER},
+	    position = {0, 30}, 
+	    size = {10, 10}, 
+	    colour = Blue
+	})	
+
+	// nexus
+	create_entity(Entity {
+	    flags = {.NEXUS, .HAS_HEALTH},
+	    position = {0, 0}, 
+	    size = {100, 40}, 
+	    colour = Gray,
+	    health = NEXUS_HEALTH,
+	    max_health = NEXUS_HEALTH
+	})
     }
 
     sapp.run({
@@ -138,59 +224,143 @@ main :: proc() {
     })
 }
 
+///////////////////////////////// @frame
 frame :: proc() {
-    update()
+    delta_time := sapp.frame_duration()
+    state.tick_timer += delta_time
+
+    if state.tick_timer >= SECONDS_PER_TICK {
+	update()
+	state.tick_timer = 0
+    }
+
+    physics(auto_cast delta_time)
     draw() 
 }
 
+///////////////////////////////// @update
 update :: proc() {
     if state.key_inputs[.ESCAPE] == .DOWN {
 	sapp.quit()
     }
 
-    CAMERA_SPEED :: 0.1
-
-    if state.key_inputs[.A] == .DOWN {
-	state.camera_position.x -= CAMERA_SPEED
+    if state.key_inputs[.SPACE] == .DOWN {
+	create_entity(Entity {
+	    flags = {.AI},
+	    position = {-90, 90}, 
+	    size = {10, 10}, 
+	    colour = Red
+	})
     }
 
-    if state.key_inputs[.D] == .DOWN {
-	state.camera_position.x += CAMERA_SPEED
-    }
+    // update pass
+    for &entity in state.entities[0:state.entity_count] {
+	player: {
+	    if !(.PLAYER in entity.flags) {
+		break player
+	    }
 
-    if state.key_inputs[.S] == .DOWN {
-	state.camera_position.y -= CAMERA_SPEED
-    }
+	    input_vector: Vector2
 
-    if state.key_inputs[.W] == .DOWN {
-	state.camera_position.y += CAMERA_SPEED
-    }
-}
+	    if state.key_inputs[.A] == .DOWN {
+		input_vector.x -= 1
+	    }
+     
+	    if state.key_inputs[.D] == .DOWN {
+		input_vector.x += 1
+	    }
+     
+	    if state.key_inputs[.S] == .DOWN {
+		input_vector.y -= 1
+	    }
+     
+	    if state.key_inputs[.W] == .DOWN {
+		input_vector.y += 1
+	    }
 
-create_entity :: proc(position: Vector2, size: Vector2, colour: Colour) {
-    state.entities[state.entity_count] = Entity{position = position, size = size, rotation = 0, colour = colour}
-    state.entity_count += 1
-}
-
-draw :: proc() {
-    for i in 0..<state.entity_count {
-	draw_entity(&state.entities[i])
-    }
-}
-
-draw_entity :: proc(entity: ^Entity) {
-    draw_quad(
-	entity.position,
-	entity.size,
-	entity.rotation,
-	entity.colour,
-	{
-	    {0, 1},
-	    {1, 1},
-	    {1, 0},
-	    {0, 0},
+	    entity.velocity = normalize(input_vector) * PLAYER_SPEED
 	}
-    )
+
+	ai: {
+	    if !(.AI in entity.flags) {
+		break ai
+	    }
+
+	    nexus := get_entity_with_flag(.NEXUS)
+	    if nexus == nil {
+		entity.velocity = 0
+		break ai
+	    }
+
+	    delta := nexus.position - entity.position
+	    distance := length(delta)
+	    direction := normalize(delta)
+	    entity.velocity = direction * AI_SPEED
+
+	    if distance < 10 {
+		entity.flags += {.DELETE}
+		entity_take_damage(nexus, BASIC_ENEMY_DAMAGE)
+	    }
+	}
+
+	health: {
+	    if !(.HAS_HEALTH in entity.flags) {
+		break health
+	    }
+
+	    if entity.health <= 0 {
+		entity.flags += {.DELETE}
+	    }
+	}
+    }
+
+    // delete pass
+    i : uint = 0
+    for i < state.entity_count {
+	entity := &state.entities[i]
+
+	if .DELETE in entity.flags {
+	    // last value just decrement count
+	    if i == state.entity_count - 1 {
+		state.entity_count -= 1
+		break
+	    }
+
+	    // swap remove with last entity
+	    state.entities[i] = state.entities[state.entity_count - 1]
+	    state.entity_count -= 1
+	} else {
+	    // if we did remove then we want to re-check the current
+	    // entity we swapped with so dont go to next index
+	    i += 1
+	}
+    }
+}
+
+///////////////////////////////// @physics
+physics :: proc(delta_time: f32) {
+    for &entity in state.entities[0:state.entity_count] {
+	entity.position += entity.velocity * delta_time
+    }
+}
+
+///////////////////////////////// @draw
+draw :: proc() {
+    for &entity in state.entities[0:state.entity_count] {
+	draw_quad(entity.position, entity.size, entity.rotation, entity.colour)
+
+	health: {
+	    if !(.HAS_HEALTH in entity.flags) {
+		break health
+	    }
+
+	    health_ratio := entity.health / entity.max_health
+	    health_bar_width := entity.size.x * 0.75
+
+	    draw_quad(entity.position + {0, (entity.size.y * 0.5) + 10}, {health_bar_width, 5}, 0, DarkRed)
+	    draw_quad(entity.position + {0, (entity.size.y * 0.5) + 10}, {health_bar_width * health_ratio, 5}, 0, Red)
+	}
+    }
 }
 
 load_textures :: proc() -> bool {
