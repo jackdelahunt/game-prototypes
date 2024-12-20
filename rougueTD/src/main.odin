@@ -430,13 +430,14 @@ draw :: proc() {
 
     in_screen_space = true
 
-    draw_rectangle({-2.1, 1.55}, {1.5, 0.5}, 0, BLACK)
-
     string_buffer: [120]u8
     builder := strings.builder_from_bytes(string_buffer[0:])
     text := fmt.sbprintf(&builder, "%v", state.gold)
 
-    draw_text(text, {-2.05, 1.45}, YELLOW, 55)
+    draw_rectangle({-1, 1}, {0.9, 0.3}, 0, BLACK)
+    draw_text(text, {-0.95, 0.9}, YELLOW, 100)
+
+    state.gold += 100
 }
 
 load_textures :: proc() -> bool {

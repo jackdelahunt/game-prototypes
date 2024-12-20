@@ -59,16 +59,20 @@ draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colou
     width := sapp.widthf()
     height := sapp.heightf()
 
-    model_matrix := translate_matrix(position) * scale_matrix(size) * rotate_matrix(linalg.to_radians(rotation))
+    model_view_projection : Mat4
 
-    view_matrix:= Mat4(1)
     if !in_screen_space {
-	view_matrix = view_matrix_from_position(state.camera_position) * scale_matrix(state.zoom)
+	model_matrix := translate_matrix(position) * scale_matrix(size) * rotate_matrix(linalg.to_radians(rotation))
+	view_matrix := view_matrix_from_position(state.camera_position) * scale_matrix(state.zoom)
+	projection_matrix := linalg.matrix4_perspective_f32(90, width / height, 0, 10)
+	model_view_projection = projection_matrix * view_matrix * model_matrix
     }
-    
-    projection_matrix := linalg.matrix4_perspective_f32(90, width / height, 0, 10)
+    else {
+	model_matrix := translate_matrix(position) * scale_matrix(size) * rotate_matrix(linalg.to_radians(rotation))
+	model_matrix *= scale_matrix({1, width / height})
+	model_view_projection = model_matrix
+    }
  
-    model_view_projection := projection_matrix * view_matrix * model_matrix
 
     // the order that the vertices are drawen and that the 
     // index buffer is assuming is:
