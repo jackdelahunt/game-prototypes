@@ -32,15 +32,28 @@ in float texture_index;
 out vec4 frag_color;
 
 void main() {
+    // solid
     if (texture_index == 0) {
         frag_color = color;
     }
 
+    // circle
     if (texture_index == 1) {
+        // normalise uvs to -0.5 -> 0.5, so the centre of the quad is 0,0
+        vec2 normalised_uv = vec2(texture_uv.x - 0.5, texture_uv.y - 0.5);
+        float d = distance(vec2(0, 0), normalised_uv);
+        if (d <= 0.5) {
+            frag_color = color;
+        }
+    }
+
+    // texture
+    if (texture_index == 2) {
         frag_color = texture(sampler2D(default_texture, default_sampler), texture_uv) * color;
     }
 
-    if (texture_index == 2) {
+    // font
+    if (texture_index == 3) {
         // font texture only has values in the red channel
         frag_color = texture(sampler2D(font_texture, default_sampler), texture_uv).r * color;
     }

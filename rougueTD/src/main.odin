@@ -1,11 +1,17 @@
 package src
 
+// TODO:
+// better input for key down
+// player can attack enemies
+// enemy spawning from spawn points
+
 import "core:fmt"
 import "core:log"
 import "base:runtime"
 import "core:math/linalg"
 import "core:time"
 import "core:os"
+import "core:strings"
 
 import stbi "vendor:stb/image"
 import stbtt "vendor:stb/truetype"
@@ -27,6 +33,7 @@ PLAYER_SPEED :: 90
 AI_SPEED :: 30
 
 BASIC_ENEMY_DAMAGE :: 50
+BASIC_ENEMY_HEALTH :: 100
 NEXUS_HEALTH :: 1000
 
 TICKS_PER_SECONDS :: 20
@@ -41,8 +48,12 @@ State :: struct {
 
     // inputs
     key_inputs: #sparse [Key]InputState,
+    key_inputs_this_frame: #sparse [Key]InputState,
     mouse_button_inputs: [3]InputState,
     mouse_screen_position: Vector2,
+
+    // player global state
+    gold: uint,
 
     // game state
     entities: [MAX_ENTITIES]Entity,
@@ -62,6 +73,8 @@ State :: struct {
 InputState :: enum {
     UP,
     DOWN,
+    PRESSING,
+    RELEASED
 }
 
 Key :: sapp.Keycode
@@ -70,13 +83,19 @@ MouseButton :: sapp.Mousebutton
 ///////////////////////////////// @colour
 Colour :: distinct Vector4
 
-White	:: Colour{1, 1, 1, 1}
-Red	:: Colour{0.9, 0.05, 0.05, 1}
-DarkRed	:: Colour{0.4, 0.05, 0.05, 1}
-Green	:: Colour{0.05, 0.9, 0.05, 1}
-Blue	:: Colour{0.05, 0.05, 0.9, 1}
-Gray	:: Colour{0.4, 0.4, 0.4, 1}
-SkyBlue :: Colour{0.07, 0.64, 0.72, 1}
+WHITE	    :: Colour{1, 1, 1, 1}
+BLACK	    :: Colour{0, 0, 0, 1}
+RED	    :: Colour{0.9, 0.05, 0.05, 1}
+DARK_RED    :: Colour{0.4, 0.05, 0.05, 1}
+GREEN	    :: Colour{0.05, 0.9, 0.05, 1}
+BLUE	    :: Colour{0.05, 0.05, 0.9, 1}
+GRAY	    :: Colour{0.4, 0.4, 0.4, 1}
+SKY_BLUE    :: Colour{0.07, 0.64, 0.72, 1}
+YELLOW	    :: Colour{1, 0.9, 0.05, 1}
+
+with_alpha :: proc(colour: Colour, alpha: f32) -> Colour {
+    return {colour.r, colour.g, colour.b, alpha} 
+}
 
 ///////////////////////////////// @entity
 Entity :: struct {
@@ -93,6 +112,10 @@ Entity :: struct {
     // flag: health
     health: f32,
     max_health: f32,
+
+    // flag: defence
+    defence_cooldown: f32,
+    defence_range: f32
 }
 
 EntityFlag :: enum {
@@ -181,7 +204,7 @@ main :: proc() {
 
     { // init state
 	state.tick_timer = 0
-
+	state.gold = 0
 	state.camera_position = {0, 0}
 	state.zoom = 0.01
 
@@ -189,7 +212,7 @@ main :: proc() {
 	create_entity(Entity {
 	    position = {0, 0}, 
 	    size = {300, 300}, 
-	    colour = White
+	    colour = WHITE
 	})
 
 	// player
@@ -197,7 +220,7 @@ main :: proc() {
 	    flags = {.PLAYER},
 	    position = {0, 30}, 
 	    size = {10, 10}, 
-	    colour = Blue
+	    colour = BLUE
 	})	
 
 	// nexus
@@ -205,7 +228,7 @@ main :: proc() {
 	    flags = {.NEXUS, .HAS_HEALTH},
 	    position = {0, 0}, 
 	    size = {100, 40}, 
-	    colour = Gray,
+	    colour = GRAY,
 	    health = NEXUS_HEALTH,
 	    max_health = NEXUS_HEALTH
 	})
@@ -230,12 +253,50 @@ frame :: proc() {
     state.tick_timer += delta_time
 
     if state.tick_timer >= SECONDS_PER_TICK {
+	apply_inputs()
 	update()
 	state.tick_timer = 0
     }
 
     physics(auto_cast delta_time)
     draw() 
+}
+
+///////////////////////////////// @apply_inputs
+apply_inputs :: proc() {
+    for index in 0..<len(state.key_inputs) {	
+	// input state from key_inputs_this_frame can only 
+	// be DOWN or UP, need to apply this to the key
+	// inputs while allowing for pressing and released states
+
+	state_last_tick := &state.key_inputs[auto_cast index]
+	state_last_frame := state.key_inputs_this_frame[auto_cast index]
+
+	switch state_last_tick^ {
+	case .UP:
+	    if state_last_frame == .DOWN {
+		state_last_tick^ = .DOWN
+	    }
+	case .DOWN:
+	    if state_last_frame == .DOWN {
+		state_last_tick^ = .PRESSING
+	    }
+	    else if state_last_frame == .UP {
+		state_last_tick^ = .RELEASED
+	    }
+	case .PRESSING:
+	    if state_last_frame == .UP {
+		state_last_tick^ = .RELEASED
+	    }
+	case .RELEASED:
+	    if state_last_frame == .UP {
+		state_last_tick^ = .UP
+	    }
+	    else if state_last_frame == .DOWN {
+		state_last_tick^ = .DOWN
+	    }
+	}
+    }
 }
 
 ///////////////////////////////// @update
@@ -246,10 +307,12 @@ update :: proc() {
 
     if state.key_inputs[.SPACE] == .DOWN {
 	create_entity(Entity {
-	    flags = {.AI},
+	    flags = {.AI, .HAS_HEALTH},
 	    position = {-90, 90}, 
 	    size = {10, 10}, 
-	    colour = Red
+	    colour = DARK_RED,
+	    health = BASIC_ENEMY_HEALTH,
+	    max_health = BASIC_ENEMY_HEALTH
 	})
     }
 
@@ -262,19 +325,19 @@ update :: proc() {
 
 	    input_vector: Vector2
 
-	    if state.key_inputs[.A] == .DOWN {
+	    if state.key_inputs[.A] == .PRESSING {
 		input_vector.x -= 1
 	    }
      
-	    if state.key_inputs[.D] == .DOWN {
+	    if state.key_inputs[.D] == .PRESSING {
 		input_vector.x += 1
 	    }
      
-	    if state.key_inputs[.S] == .DOWN {
+	    if state.key_inputs[.S] == .PRESSING {
 		input_vector.y -= 1
 	    }
      
-	    if state.key_inputs[.W] == .DOWN {
+	    if state.key_inputs[.W] == .PRESSING {
 		input_vector.y += 1
 	    }
 
@@ -347,20 +410,33 @@ physics :: proc(delta_time: f32) {
 ///////////////////////////////// @draw
 draw :: proc() {
     for &entity in state.entities[0:state.entity_count] {
-	draw_quad(entity.position, entity.size, entity.rotation, entity.colour)
+	draw_rectangle(entity.position, entity.size, entity.rotation, entity.colour)	
 
 	health: {
 	    if !(.HAS_HEALTH in entity.flags) {
 		break health
 	    }
 
-	    health_ratio := entity.health / entity.max_health
-	    health_bar_width := entity.size.x * 0.75
+	    if entity.health == entity.max_health {
+		break health
+	    }
 
-	    draw_quad(entity.position + {0, (entity.size.y * 0.5) + 10}, {health_bar_width, 5}, 0, DarkRed)
-	    draw_quad(entity.position + {0, (entity.size.y * 0.5) + 10}, {health_bar_width * health_ratio, 5}, 0, Red)
+	    health_ratio := entity.health / entity.max_health
+	    health_bar_width := max(entity.size.x * 0.75, 15)
+	    draw_rectangle(entity.position + {0, (entity.size.y * 0.5) + 5}, {health_bar_width, 4}, 0, DARK_RED)
+	    draw_rectangle(entity.position + {0, (entity.size.y * 0.5) + 5}, {health_bar_width * health_ratio, 4}, 0, RED)
 	}
     }
+
+    in_screen_space = true
+
+    draw_rectangle({-2.1, 1.55}, {1.5, 0.5}, 0, BLACK)
+
+    string_buffer: [120]u8
+    builder := strings.builder_from_bytes(string_buffer[0:])
+    text := fmt.sbprintf(&builder, "%v", state.gold)
+
+    draw_text(text, {-2.05, 1.45}, YELLOW, 55)
 }
 
 load_textures :: proc() -> bool {
@@ -463,7 +539,7 @@ window_event_callback :: proc "c" (event: ^sapp.Event) {
 	    return
 	}
 
-	state.key_inputs[event.key_code] = .DOWN if event.type == .KEY_DOWN else .UP
+	state.key_inputs_this_frame[event.key_code] = .DOWN if event.type == .KEY_DOWN else .UP
     case .QUIT_REQUESTED:
 	sapp.quit()
     case .INVALID, 

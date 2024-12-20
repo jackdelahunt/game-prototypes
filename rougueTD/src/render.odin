@@ -31,6 +31,13 @@ Vertex :: struct {
 
 Quad :: [4]Vertex
 
+DrawType :: enum {
+    SOLID,
+    CIRCLE,
+    TEXTURE,
+    FONT,
+}
+
 DEFAULT_UVS :: [4]Vector2{
     {0, 1},
     {1, 1},
@@ -38,12 +45,27 @@ DEFAULT_UVS :: [4]Vector2{
     {0, 0},
 }
 
-draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colour, uvs: [4]Vector2 = DEFAULT_UVS, is_font := false) {
+in_screen_space := false
+
+draw_rectangle :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colour) {
+    draw_quad(position, size, rotation, colour, DEFAULT_UVS, .SOLID)
+}
+
+draw_circle :: proc(position: Vector2, radius: f32, colour: Colour) {
+    draw_quad(position, {radius * 2, radius * 2}, 0, colour, DEFAULT_UVS, .CIRCLE)
+}
+
+draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colour, uvs: [4]Vector2, draw_type: DrawType) {
     width := sapp.widthf()
     height := sapp.heightf()
 
-    model_matrix := translate_matrix(position) * scale_matrix(size) * rotate_matrix(rotation)
-    view_matrix := view_matrix_from_position(state.camera_position) * scale_matrix(state.zoom)
+    model_matrix := translate_matrix(position) * scale_matrix(size) * rotate_matrix(linalg.to_radians(rotation))
+
+    view_matrix:= Mat4(1)
+    if !in_screen_space {
+	view_matrix = view_matrix_from_position(state.camera_position) * scale_matrix(state.zoom)
+    }
+    
     projection_matrix := linalg.matrix4_perspective_f32(90, width / height, 0, 10)
  
     model_view_projection := projection_matrix * view_matrix * model_matrix
@@ -70,7 +92,17 @@ draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colou
     quad[2].texture_uv = uvs[2] 
     quad[3].texture_uv = uvs[3]
 
-    texture_index : f32 = 0 if !is_font else 2
+    texture_index: f32
+    switch draw_type {
+    case .SOLID:
+	texture_index = 0
+    case .CIRCLE:
+	texture_index = 1
+    case .TEXTURE:
+	texture_index = 2
+    case .FONT:
+	texture_index = 3
+    }
 
     quad[0].texture_index = texture_index
     quad[1].texture_index = texture_index
@@ -118,7 +150,8 @@ draw_text :: proc(text: string, position: Vector2, colour: Colour, pixels_per_un
 	    0,
 	    colour,
 	    {top_left_uv, top_right_uv, bottom_right_uv, bottom_left_uv}, 
-	    true)
+	    .FONT
+	)
     }
 }
 
@@ -223,7 +256,7 @@ renderer_init :: proc "c" () {
 
     state.pass_action = {
         colors = {
-	    0 = { load_action = .CLEAR, clear_value = {SkyBlue.r,  SkyBlue.g, SkyBlue.b, SkyBlue.b} },
+	    0 = { load_action = .CLEAR, clear_value = {SKY_BLUE.r,  SKY_BLUE.g, SKY_BLUE.b, 1} },
         }
     }
 }
@@ -257,6 +290,8 @@ renderer_frame :: proc "c" () {
     
     sg.end_pass()
     sg.commit()
+
+    in_screen_space = false
 }
 
 renderer_cleanup :: proc "c" () {
