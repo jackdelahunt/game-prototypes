@@ -1,9 +1,9 @@
 package src
 
 // TODO:
-// better input for key down
+// player can buy defences
 // player can attack enemies
-// enemy spawning from spawn points
+// mouse world position
 
 import "core:fmt"
 import "core:log"
@@ -12,6 +12,7 @@ import "core:math/linalg"
 import "core:time"
 import "core:os"
 import "core:strings"
+import "core:math"
 
 import stbi "vendor:stb/image"
 import stbtt "vendor:stb/truetype"
@@ -23,8 +24,8 @@ import sglue "sokol/glue"
 
 import shaders "shaders"
 
-SCREEN_WIDTH	:: 1000
-SCREEN_HEIGHT	:: 750
+DEFAULT_SCREEN_WIDTH	:: 1000
+DEFAULT_SCREEN_HEIGHT	:: 750
 
 MAX_ENTITIES	:: 256
 MAX_QUADS	:: 512
@@ -36,13 +37,30 @@ BASIC_ENEMY_DAMAGE :: 50
 BASIC_ENEMY_HEALTH :: 100
 NEXUS_HEALTH :: 1000
 
+TOWER_COST :: 500
+TOWER_COOLDOWN :: 1
+TOWER_RANGE :: 25
+TOWER_DAMAGE :: 50
+
+SPAWNER_COOLDOWN :: 2
+
+GOLD_FROM_DAMAGE :: 10
+GOLD_FROM_BASIC_ENEMY :: 50
+
 TICKS_PER_SECONDS :: 20
-SECONDS_PER_TICK :: 1 / TICKS_PER_SECONDS
+TICK_RATE :: 1.0 / TICKS_PER_SECONDS
+
+NO_DEBUG :: false
+DEBUG_GIVE_MONEY :: false when NO_DEBUG else true
 
 ///////////////////////////////// @state
 state : State = {}
 
 State :: struct {
+    // window
+    screen_width: f32,
+    screen_height: f32,
+
     // timing
     tick_timer: f64,
 
@@ -92,6 +110,7 @@ BLUE	    :: Colour{0.05, 0.05, 0.9, 1}
 GRAY	    :: Colour{0.4, 0.4, 0.4, 1}
 SKY_BLUE    :: Colour{0.07, 0.64, 0.72, 1}
 YELLOW	    :: Colour{1, 0.9, 0.05, 1}
+PINK	    :: Colour{0.8, 0.05, 0.6, 1}
 
 with_alpha :: proc(colour: Colour, alpha: f32) -> Colour {
     return {colour.r, colour.g, colour.b, alpha} 
@@ -114,14 +133,19 @@ Entity :: struct {
     max_health: f32,
 
     // flag: defence
+    defence_type: DefenceType,
     defence_cooldown: f32,
-    defence_range: f32
+
+    // flag: spawner
+    spawner_cooldown: f32,
 }
 
 EntityFlag :: enum {
     PLAYER,
     AI,
     NEXUS,
+    DEFENCE,
+    SPAWNER,
     HAS_HEALTH,
     DELETE,
 }
@@ -136,7 +160,11 @@ create_entity :: proc(entity: Entity) -> ^Entity {
 	if .HAS_HEALTH in entity.flags {
 	    assert(entity.health > 0 && entity.max_health > 0)
 	    assert(entity.health <= entity.max_health)
-	} 
+	}
+
+	if .DEFENCE in entity.flags {
+	    assert(entity.defence_type != .NONE)
+	}
     }
 
     return ptr
@@ -159,6 +187,52 @@ entity_take_damage :: proc(entity: ^Entity, damage: f32) {
     if entity.health < 0 {
 	entity.health = 0
     }
+}
+
+///////////////////////////////// @defences
+DefenceType :: enum {
+    NONE,
+    SHORT_TOWER,
+    HIGH_TOWER,
+}
+
+defence_range :: proc(defence: DefenceType) -> f32 {
+    switch defence {
+	case .HIGH_TOWER:
+	    return 35
+	case .SHORT_TOWER:
+	    return 25
+	case .NONE:
+	    panic("defence type is none")
+    }
+
+    return 0 // unreachable
+}
+
+defence_cost :: proc(defence: DefenceType) -> uint {
+    switch defence {
+	case .HIGH_TOWER:
+	    return 600
+	case .SHORT_TOWER:
+	    return 500
+	case .NONE:
+	    panic("defence type is none")
+    }
+
+    return 0 // unreachable
+}
+
+defence_cooldown :: proc(defence: DefenceType) -> f32 {
+    switch defence {
+	case .HIGH_TOWER:
+	    return 3
+	case .SHORT_TOWER:
+	    return 1.5
+	case .NONE:
+	    panic("defence type is none")
+    }
+
+    return 0 // unreachable
 }
 
 ///////////////////////////////// @textures
@@ -203,8 +277,11 @@ main :: proc() {
     }
 
     { // init state
+	state.screen_width = DEFAULT_SCREEN_WIDTH
+	state.screen_height = DEFAULT_SCREEN_HEIGHT
+
 	state.tick_timer = 0
-	state.gold = 0
+	state.gold = 10_000 if DEBUG_GIVE_MONEY else 0
 	state.camera_position = {0, 0}
 	state.zoom = 0.01
 
@@ -232,6 +309,14 @@ main :: proc() {
 	    health = NEXUS_HEALTH,
 	    max_health = NEXUS_HEALTH
 	})
+
+	// spawner
+	create_entity(Entity {
+	    flags = {.SPAWNER},
+	    position = {-90, 90}, 
+	    size = {10, 10}, 
+	    colour = PINK,
+	})
     }
 
     sapp.run({
@@ -239,8 +324,8 @@ main :: proc() {
 	frame_cb = renderer_frame,
 	cleanup_cb = renderer_cleanup,
 	event_cb = window_event_callback,
-	width = SCREEN_WIDTH,
-	height = SCREEN_HEIGHT,
+	width = DEFAULT_SCREEN_WIDTH,
+	height = DEFAULT_SCREEN_HEIGHT,
 	window_title = "sokol window",
 	icon = { sokol_default = true },
 	logger = { func = slog.func },
@@ -249,10 +334,10 @@ main :: proc() {
 
 ///////////////////////////////// @frame
 frame :: proc() {
-    delta_time := sapp.frame_duration()
+    delta_time := auto_cast sapp.frame_duration()
     state.tick_timer += delta_time
 
-    if state.tick_timer >= SECONDS_PER_TICK {
+    if state.tick_timer >= TICK_RATE {
 	apply_inputs()
 	update()
 	state.tick_timer = 0
@@ -305,43 +390,64 @@ update :: proc() {
 	sapp.quit()
     }
 
-    if state.key_inputs[.SPACE] == .DOWN {
-	create_entity(Entity {
-	    flags = {.AI, .HAS_HEALTH},
-	    position = {-90, 90}, 
-	    size = {10, 10}, 
-	    colour = DARK_RED,
-	    health = BASIC_ENEMY_HEALTH,
-	    max_health = BASIC_ENEMY_HEALTH
-	})
-    }
-
     // update pass
     for &entity in state.entities[0:state.entity_count] {
+	// count down each cooldown in the entity
+	entity.defence_cooldown = clamp(entity.defence_cooldown - TICK_RATE, 0, math.F32_MAX)
+	entity.spawner_cooldown = clamp(entity.spawner_cooldown - TICK_RATE, 0, math.F32_MAX)
+
 	player: {
 	    if !(.PLAYER in entity.flags) {
 		break player
 	    }
 
-	    input_vector: Vector2
+	    { // player movement
+		input_vector: Vector2
+    
+		if state.key_inputs[.A] == .PRESSING {
+		    input_vector.x -= 1
+		}
+	 
+		if state.key_inputs[.D] == .PRESSING {
+		    input_vector.x += 1
+		}
+	 
+		if state.key_inputs[.S] == .PRESSING {
+		    input_vector.y -= 1
+		}
+	 
+		if state.key_inputs[.W] == .PRESSING {
+		    input_vector.y += 1
+		}
+    
+		entity.velocity = normalize(input_vector) * PLAYER_SPEED 
+	    }
 
-	    if state.key_inputs[.A] == .PRESSING {
-		input_vector.x -= 1
-	    }
-     
-	    if state.key_inputs[.D] == .PRESSING {
-		input_vector.x += 1
-	    }
-     
-	    if state.key_inputs[.S] == .PRESSING {
-		input_vector.y -= 1
-	    }
-     
-	    if state.key_inputs[.W] == .PRESSING {
-		input_vector.y += 1
-	    }
+	    { // defence placing
+		if state.key_inputs[.F] == .DOWN && state.gold >= defence_cost(.HIGH_TOWER) {
+		    create_entity(Entity{
+			flags = {.DEFENCE},
+			position = entity.position,
+			size = {10, 10},
+			colour = GREEN,
+			defence_type = .HIGH_TOWER
+		    })
 
-	    entity.velocity = normalize(input_vector) * PLAYER_SPEED
+		    state.gold -= defence_cost(.HIGH_TOWER)
+		}
+
+		if state.key_inputs[.G] == .DOWN && state.gold >= defence_cost(.SHORT_TOWER) {
+		    create_entity(Entity{
+			flags = {.DEFENCE},
+			position = entity.position,
+			size = {15, 15},
+			colour = YELLOW,
+			defence_type = .SHORT_TOWER
+		    })
+
+		    state.gold -= defence_cost(.SHORT_TOWER)
+		}
+	    }
 	}
 
 	ai: {
@@ -375,6 +481,59 @@ update :: proc() {
 		entity.flags += {.DELETE}
 	    }
 	}
+
+	defence: {
+	    if !(.DEFENCE in entity.flags) {
+		break defence
+	    }
+
+	    if entity.defence_cooldown > 0 {
+		break defence
+	    } 
+
+	    // TODO: once the cooldown is 0 but there are no enemies to
+	    // shoot that means we are doing this collision check every tick
+	    collider := new_circle_collider(entity.position, defence_range(entity.defence_type))
+	    other, ok := next(&collider)
+	    for ok {
+		if .AI in other.flags && .HAS_HEALTH in other.flags {
+		    // give damge and set the cooldown, this means if there
+		    // is no enemies in range then the cooldown is not reset
+		    entity_take_damage(other, TOWER_DAMAGE)
+		    entity.defence_cooldown = defence_cooldown(entity.defence_type)
+
+		    if other.health > 0 {
+			state.gold += GOLD_FROM_DAMAGE
+		    }
+		    else {
+			state.gold += GOLD_FROM_BASIC_ENEMY
+		    }
+		} 
+		
+		other, ok = next(&collider)
+	    }
+	}
+
+	spawner: {
+	    if !(.SPAWNER in entity.flags) {
+		break spawner
+	    }
+
+	    if entity.spawner_cooldown > 0 {
+		break spawner
+	    }
+
+	    entity.spawner_cooldown = SPAWNER_COOLDOWN
+
+	    create_entity(Entity {
+		flags = {.AI, .HAS_HEALTH},
+		position = entity.position, 
+		size = {10, 10}, 
+		colour = DARK_RED,
+		health = BASIC_ENEMY_HEALTH,
+		max_health = BASIC_ENEMY_HEALTH
+	    })
+	}
     }
 
     // delete pass
@@ -407,6 +566,38 @@ physics :: proc(delta_time: f32) {
     }
 }
 
+CircleCollider :: struct {
+    index: uint,
+    position: Vector2,
+    radius: f32
+}
+
+new_circle_collider :: proc(position: Vector2, radius: f32) -> CircleCollider {
+    return CircleCollider {
+	index = 0,
+	position = position,
+	radius = radius
+    }
+}
+
+next :: proc(collider: ^CircleCollider) -> (^Entity, bool) {
+    start := collider.index
+
+    if start >= state.entity_count {
+	return nil, false
+    }
+
+    for &entity in state.entities[start:state.entity_count] {
+	collider.index += 1
+
+	if length(entity.position - collider.position) < collider.radius {
+	    return &entity, true
+	}
+    }
+
+    return nil, false
+}
+
 ///////////////////////////////// @draw
 draw :: proc() {
     for &entity in state.entities[0:state.entity_count] {
@@ -426,6 +617,27 @@ draw :: proc() {
 	    draw_rectangle(entity.position + {0, (entity.size.y * 0.5) + 5}, {health_bar_width, 4}, 0, DARK_RED)
 	    draw_rectangle(entity.position + {0, (entity.size.y * 0.5) + 5}, {health_bar_width * health_ratio, 4}, 0, RED)
 	}
+
+	defence: {
+	    if !(.DEFENCE in entity.flags) {
+		break defence
+	    }
+
+	    draw_circle(entity.position, defence_range(entity.defence_type), with_alpha(entity.colour, 0.15))
+
+	    // cooldown bar
+	    if entity.defence_cooldown == 0 {
+		break defence
+	    }
+
+	    max_cooldown := defence_cooldown(entity.defence_type)
+
+	    cooldown_ratio := 1 - (entity.defence_cooldown / max_cooldown)
+	    bar_width := max(entity.size.x * 0.9, 15)
+	    draw_rectangle(entity.position + {0, (entity.size.y * 0.5) + 5}, {bar_width, 3}, 0, BLUE)
+	    draw_rectangle(entity.position + {0, (entity.size.y * 0.5) + 5}, {bar_width * cooldown_ratio, 3}, 0, SKY_BLUE)
+
+	}
     }
 
     in_screen_space = true
@@ -434,10 +646,10 @@ draw :: proc() {
     builder := strings.builder_from_bytes(string_buffer[0:])
     text := fmt.sbprintf(&builder, "%v", state.gold)
 
-    draw_rectangle({-1, 1}, {0.9, 0.3}, 0, BLACK)
-    draw_text(text, {-0.95, 0.9}, YELLOW, 100)
+    background_width := (1 + cast(f32) len(text)) * 0.15
 
-    state.gold += 100
+    draw_rectangle({-1, 1}, {background_width, 0.3}, 0, BLACK)
+    draw_text(text, {-0.95, 0.9}, YELLOW, 100)
 }
 
 load_textures :: proc() -> bool {

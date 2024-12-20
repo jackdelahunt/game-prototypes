@@ -56,20 +56,19 @@ draw_circle :: proc(position: Vector2, radius: f32, colour: Colour) {
 }
 
 draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colour, uvs: [4]Vector2, draw_type: DrawType) {
-    width := sapp.widthf()
-    height := sapp.heightf()
+    aspect_ratio := state.screen_width / state.screen_height
 
     model_view_projection : Mat4
 
     if !in_screen_space {
 	model_matrix := translate_matrix(position) * scale_matrix(size) * rotate_matrix(linalg.to_radians(rotation))
 	view_matrix := view_matrix_from_position(state.camera_position) * scale_matrix(state.zoom)
-	projection_matrix := linalg.matrix4_perspective_f32(90, width / height, 0, 10)
+	projection_matrix := linalg.matrix4_perspective_f32(90, aspect_ratio, 0, 10)
 	model_view_projection = projection_matrix * view_matrix * model_matrix
     }
     else {
 	model_matrix := translate_matrix(position) * scale_matrix(size) * rotate_matrix(linalg.to_radians(rotation))
-	model_matrix *= scale_matrix({1, width / height})
+	model_matrix *= scale_matrix({1, aspect_ratio})
 	model_view_projection = model_matrix
     }
  
@@ -268,6 +267,9 @@ renderer_init :: proc "c" () {
 renderer_frame :: proc "c" () {
     context = runtime.default_context()
 
+    state.screen_width = sapp.widthf()
+    state.screen_height = sapp.heightf()
+  
     // reset quad data for this frame
     runtime.mem_zero(&state.quads, size_of(Quad) * len(state.quads))
     state.quad_count = 0
