@@ -55,64 +55,6 @@ draw_circle :: proc(position: Vector2, radius: f32, colour: Colour) {
     draw_quad(position, {radius * 2, radius * 2}, 0, colour, DEFAULT_UVS, .CIRCLE)
 }
 
-draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colour, uvs: [4]Vector2, draw_type: DrawType) {
-    aspect_ratio := state.screen_width / state.screen_height
-
-    model_view_projection : Mat4
-
-    if !in_screen_space {
-	model_matrix := translate_matrix(position) * scale_matrix(size) * rotate_matrix(linalg.to_radians(rotation))
-	view_matrix := view_matrix_from_position(state.camera_position) * scale_matrix(state.zoom)
-	projection_matrix := linalg.matrix4_perspective_f32(90, aspect_ratio, 0, 10)
-	model_view_projection = projection_matrix * view_matrix * model_matrix
-    }
-    else {
-	model_matrix := translate_matrix(position) * scale_matrix(size) * rotate_matrix(linalg.to_radians(rotation))
-	model_matrix *= scale_matrix({1, aspect_ratio})
-	model_view_projection = model_matrix
-    }
- 
-
-    // the order that the vertices are drawen and that the 
-    // index buffer is assuming is:
-    //	    top left, top right, bottom right, bottom left
-
-    quad := &state.quads[state.quad_count]
-    state.quad_count += 1
-
-    quad[0].position = (model_view_projection * Vector4{-0.5, 0.5, 0, 1}).xyz
-    quad[1].position = (model_view_projection * Vector4{0.5, 0.5, 0, 1}).xyz
-    quad[2].position = (model_view_projection * Vector4{0.5, -0.5, 0, 1}).xyz
-    quad[3].position = (model_view_projection * Vector4{-0.5, -0.5, 0, 1}).xyz
- 
-    quad[0].colour = cast(Vector4) colour
-    quad[1].colour = cast(Vector4) colour
-    quad[2].colour = cast(Vector4) colour
-    quad[3].colour = cast(Vector4) colour
- 
-    quad[0].texture_uv = uvs[0] 
-    quad[1].texture_uv = uvs[1] 
-    quad[2].texture_uv = uvs[2] 
-    quad[3].texture_uv = uvs[3]
-
-    texture_index: f32
-    switch draw_type {
-    case .SOLID:
-	texture_index = 0
-    case .CIRCLE:
-	texture_index = 1
-    case .TEXTURE:
-	texture_index = 2
-    case .FONT:
-	texture_index = 3
-    }
-
-    quad[0].texture_index = texture_index
-    quad[1].texture_index = texture_index
-    quad[2].texture_index = texture_index
-    quad[3].texture_index = texture_index
-}
-
 draw_text :: proc(text: string, position: Vector2, colour: Colour, pixels_per_unit: f32) {
     x: f32
     y: f32
@@ -158,8 +100,78 @@ draw_text :: proc(text: string, position: Vector2, colour: Colour, pixels_per_un
     }
 }
 
+draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colour, uvs: [4]Vector2, draw_type: DrawType) {
+    model_view_projection : Mat4
+
+    if !in_screen_space {
+	model_matrix := translate_matrix(position) * scale_matrix(size) * rotate_matrix(linalg.to_radians(rotation))
+	view_matrix := get_view_matrix()
+	projection_matrix := get_projection_matrix()
+	model_view_projection = projection_matrix * view_matrix * model_matrix
+    }
+    else {
+	model_matrix := translate_matrix(position) * scale_matrix(size) * rotate_matrix(linalg.to_radians(rotation))
+	model_matrix *= scale_matrix({1, state.screen_width / state.screen_height})
+	model_view_projection = model_matrix
+    }
+ 
+
+    // the order that the vertices are drawen and that the 
+    // index buffer is assuming is:
+    //	    top left, top right, bottom right, bottom left
+
+    quad := &state.quads[state.quad_count]
+    state.quad_count += 1
+
+    quad[0].position = (model_view_projection * Vector4{-0.5, 0.5, 0, 1}).xyz
+    quad[1].position = (model_view_projection * Vector4{0.5, 0.5, 0, 1}).xyz
+    quad[2].position = (model_view_projection * Vector4{0.5, -0.5, 0, 1}).xyz
+    quad[3].position = (model_view_projection * Vector4{-0.5, -0.5, 0, 1}).xyz
+ 
+    quad[0].colour = cast(Vector4) colour
+    quad[1].colour = cast(Vector4) colour
+    quad[2].colour = cast(Vector4) colour
+    quad[3].colour = cast(Vector4) colour
+ 
+    quad[0].texture_uv = uvs[0] 
+    quad[1].texture_uv = uvs[1] 
+    quad[2].texture_uv = uvs[2] 
+    quad[3].texture_uv = uvs[3]
+
+    texture_index: f32
+    switch draw_type {
+    case .SOLID:
+	texture_index = 0
+    case .CIRCLE:
+	texture_index = 1
+    case .TEXTURE:
+	texture_index = 2
+    case .FONT:
+	texture_index = 3
+    }
+
+    quad[0].texture_index = texture_index
+    quad[1].texture_index = texture_index
+    quad[2].texture_index = texture_index
+    quad[3].texture_index = texture_index
+}
+
+screen_position_to_world_position :: proc(position: Vector2) -> Vector2 {
+    // convert position to NDC
+    x_ndc := ((position.x / state.screen_width) * 2) - 1
+    y_ndc := -(((position.y / state.screen_height) * 2) - 1) // - this because y is positive down in sokol in for mouse position
+
+    ndc_position := Vector4{x_ndc, y_ndc, -1, 1} // -1 here for near plane
+
+    inverse_vp := linalg.inverse(get_projection_matrix() * get_view_matrix())
+    world_position := inverse_vp * ndc_position
+    world_position /= world_position.w
+
+    return {world_position.x, world_position.y}
+}
+
 renderer_init :: proc "c" () {
-    context = runtime.default_context()
+    context = game_context
 
     sg.setup({
 	environment = sglue.environment(),
@@ -265,7 +277,7 @@ renderer_init :: proc "c" () {
 }
 
 renderer_frame :: proc "c" () {
-    context = runtime.default_context()
+    context = game_context
 
     state.screen_width = sapp.widthf()
     state.screen_height = sapp.heightf()
@@ -323,6 +335,16 @@ rotate_matrix :: proc(radians: f32) -> Mat4 {
 	return linalg.matrix4_rotate_f32(radians, Vector3{0, 0, 1});
 }
 
-view_matrix_from_position :: proc(position: Vector2) -> Mat4 {
-    return linalg.matrix4_look_at_f32({position.x, position.y, 1}, {position.x, position.y, 0}, {0, 1, 0})
+get_view_matrix :: proc() -> Mat4 {
+    view := linalg.matrix4_look_at_f32(
+	{state.camera_position.x, state.camera_position.y, 1}, // where it is looking at
+	{state.camera_position.x, state.camera_position.y, 0}, // the position
+	{0, 1, 0}		     // what is considered "up"
+    )
+
+    return view * scale_matrix(state.zoom)
+}
+
+get_projection_matrix :: proc() -> Mat4 {
+    return linalg.matrix4_perspective_f32(90, state.screen_width / state.screen_height, 0.1, 10)
 }

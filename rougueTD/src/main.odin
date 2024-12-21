@@ -13,6 +13,8 @@ import "core:time"
 import "core:os"
 import "core:strings"
 import "core:math"
+import "core:path/filepath"
+import "core:encoding/ansi"
 
 import stbi "vendor:stb/image"
 import stbtt "vendor:stb/truetype"
@@ -24,8 +26,8 @@ import sglue "sokol/glue"
 
 import shaders "shaders"
 
-DEFAULT_SCREEN_WIDTH	:: 1000
-DEFAULT_SCREEN_HEIGHT	:: 750
+DEFAULT_SCREEN_WIDTH	:: 1500
+DEFAULT_SCREEN_HEIGHT	:: 1000
 
 MAX_ENTITIES	:: 256
 MAX_QUADS	:: 512
@@ -86,6 +88,9 @@ State :: struct {
     bindings: sg.Bindings,
     pass_action: sg.Pass_Action
 }
+
+///////////////////////////////// @context
+game_context := runtime.default_context()
 
 ///////////////////////////////// @input
 InputState :: enum {
@@ -260,18 +265,23 @@ alagard: Font
 
 ///////////////////////////////// @main
 main :: proc() {
+    game_context.logger.lowest_level = .Debug if ODIN_DEBUG else .Warning
+    game_context.logger.procedure = log_callback
+
+    context = game_context
+
     { // load resources
 	loading_ok := true
 
 	loading_ok = load_textures()
 	if !loading_ok {
-	    fmt.println("error loading textures.. exiting")
+	    log.fatal("error loading textures.. exiting")
 	    return
 	}
     
 	loading_ok = load_fonts()
 	if !loading_ok {
-	    fmt.println("error loading fonts.. exiting")
+	    log.fatal("error loading fonts.. exiting")
 	    return
 	}
     }
@@ -640,6 +650,11 @@ draw :: proc() {
 	}
     }
 
+    world_pos := screen_position_to_world_position(state.mouse_screen_position)
+    log.debug(state.mouse_screen_position, world_pos)
+
+    draw_circle(world_pos, 10, RED)
+
     in_screen_space = true
 
     string_buffer: [120]u8
@@ -659,7 +674,7 @@ load_textures :: proc() -> bool {
     
     png_data, ok := os.read_entire_file(path)
     if !ok {
-	fmt.printfln("error loading texture file %v", path)
+	log.errorf("error loading texture file %v", path)
 	return false
     }
 
@@ -668,11 +683,11 @@ load_textures :: proc() -> bool {
 
     data := stbi.load_from_memory(raw_data(png_data), auto_cast len(png_data), &width, &height, &channels, 4)
     if data == nil {
-	fmt.printfln("error reading texture data with stbi: %v", path)
+	log.errorf("error reading texture data with stbi: %v", path)
 	return false
     }
 
-    fmt.printfln("loaded texture \"%v\" [%v x %v : %v bytes]", path, width, height, len(png_data))
+    log.infof("loaded texture \"%v\" [%v x %v : %v bytes]", path, width, height, len(png_data))
 
     face_texture = Texture{
 	width = width,
@@ -692,7 +707,7 @@ load_fonts :: proc() -> bool {
 
     ttf_data, ok := os.read_entire_file(path)
     if !ok || ttf_data == nil {
-	fmt.printfln("error loading font file %v", path)
+	log.errorf("error loading font file %v", path)
 	return false
     }
 
@@ -709,7 +724,7 @@ load_fonts :: proc() -> bool {
     )
 
     if !(bake_result > 0) {
-	fmt.printfln("not enough space in bitmap buffer for font %v", path)
+	log.errorf("not enough space in bitmap buffer for font %v", path)
 	return false
     }
 
@@ -717,10 +732,10 @@ load_fonts :: proc() -> bool {
     write_result := stbi.write_png(output_path, auto_cast font_bitmap_w, auto_cast font_bitmap_h, 1, auto_cast &alagard.bitmap, auto_cast font_bitmap_w)	
     if write_result == 0 {
 	// dont return false here because this is not needed for runtime
-	fmt.printfln("could not write font \"%v\" to output image \"%v\"", path, output_path)
+	log.error("could not write font \"%v\" to output image \"%v\"", path, output_path)
     }
 
-    fmt.printfln("loaded font \"%v\" [%v bytes]", path, len(ttf_data))
+    log.infof("loaded font \"%v\" [%v bytes]", path, len(ttf_data))
    
     return true
 }
@@ -761,6 +776,28 @@ window_event_callback :: proc "c" (event: ^sapp.Event) {
 	 .TOUCHES_BEGAN, .TOUCHES_ENDED, .TOUCHES_MOVED, .TOUCHES_CANCELLED, 
 	 .RESIZED, .ICONIFIED, .RESTORED, .FOCUSED, .UNFOCUSED, .SUSPENDED, .RESUMED, 
 	 .CLIPBOARD_PASTED, .FILES_DROPPED:
+    }
+}
+
+log_callback :: proc(data: rawptr, level: runtime.Logger_Level, text: string, options: bit_set[runtime.Logger_Option], location := #caller_location) {
+    switch level {
+    case .Debug:
+    case .Info:
+	 fmt.print(ansi.CSI + ansi.FG_CYAN + ansi.SGR)
+    case .Warning: 
+	fmt.print(ansi.CSI + ansi.FG_YELLOW + ansi.SGR)
+    case .Error:
+	fmt.print(ansi.CSI + ansi.FG_BRIGHT_RED + ansi.SGR)
+    case .Fatal:
+	fmt.print(ansi.CSI + ansi.FG_RED + ansi.SGR)
+    }
+
+
+    file := filepath.base(location.file_path)
+    fmt.printfln("[%v] %v(%v:%v) %v", level, file, location.line, location.column, text) 
+
+    if level != .Debug {
+	fmt.print(ansi.CSI + ansi.RESET + ansi.SGR)
     }
 }
 
