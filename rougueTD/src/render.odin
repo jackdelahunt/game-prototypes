@@ -346,5 +346,5 @@ get_view_matrix :: proc() -> Mat4 {
 }
 
 get_projection_matrix :: proc() -> Mat4 {
-    return linalg.matrix4_perspective_f32(90, state.screen_width / state.screen_height, 0.1, 10)
+    return linalg.matrix_ortho3d_f32(state.screen_width * -0.5, state.screen_width * 0.5, state.screen_height * -0.5, state.screen_height * 0.5, -1, 1)
 }

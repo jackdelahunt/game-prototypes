@@ -26,8 +26,8 @@ import sglue "sokol/glue"
 
 import shaders "shaders"
 
-DEFAULT_SCREEN_WIDTH	:: 1500
-DEFAULT_SCREEN_HEIGHT	:: 1000
+DEFAULT_SCREEN_WIDTH	:: 1000
+DEFAULT_SCREEN_HEIGHT	:: 800
 
 MAX_ENTITIES	:: 256
 MAX_QUADS	:: 512
@@ -293,7 +293,7 @@ main :: proc() {
 	state.tick_timer = 0
 	state.gold = 10_000 if DEBUG_GIVE_MONEY else 0
 	state.camera_position = {0, 0}
-	state.zoom = 0.01
+	state.zoom = 2
 
 	// floor
 	create_entity(Entity {
@@ -649,11 +649,6 @@ draw :: proc() {
 
 	}
     }
-
-    world_pos := screen_position_to_world_position(state.mouse_screen_position)
-    log.debug(state.mouse_screen_position, world_pos)
-
-    draw_circle(world_pos, 10, RED)
 
     in_screen_space = true
 
