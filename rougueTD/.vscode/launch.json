@@ -4,11 +4,18 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-
+        {
+            "type": "cppvsdbg",
+            "request": "launch",
+            "name": "Debug Windows",
+            "program": "${workspaceFolder}/build/entry.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug",
+            "name": "Debug Unix",
             "program": "${workspaceFolder}/build/entry.exe",
             "args": [],
             "cwd": "${workspaceFolder}"

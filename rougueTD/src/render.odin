@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:log"
 import "base:runtime"
 import "core:math/linalg"
+import "core:math"
 
 import sg "sokol/gfx"
 import sapp "sokol/app"
@@ -47,7 +48,7 @@ DEFAULT_UVS :: [4]Vector2{
 
 in_screen_space := false
 
-draw_rectangle :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colour) {
+draw_rectangle :: proc(position: Vector2, size: Vector2, colour: Colour, rotation: f32 = 0) {
     draw_quad(position, size, rotation, colour, DEFAULT_UVS, .SOLID)
 }
 
@@ -55,7 +56,7 @@ draw_circle :: proc(position: Vector2, radius: f32, colour: Colour) {
     draw_quad(position, {radius * 2, radius * 2}, 0, colour, DEFAULT_UVS, .CIRCLE)
 }
 
-draw_text :: proc(text: string, position: Vector2, colour: Colour, pixels_per_unit: f32) {
+draw_text :: proc(text: string, position: Vector2, colour: Colour, font_size: f32) {
     x: f32
     y: f32
 
@@ -80,9 +81,9 @@ draw_text :: proc(text: string, position: Vector2, colour: Colour, pixels_per_un
 	// x, and y and expected vertex positions
 	// s and t are texture uv position
    
-	x += advanced_x / pixels_per_unit
-	y += advanced_y / pixels_per_unit
-	size := Vector2{ abs(q.x0 - q.x1), abs(q.y0 - q.y1) } / pixels_per_unit
+	x += advanced_x * font_size
+	y += advanced_y * font_size 
+	size := Vector2{ abs(q.x0 - q.x1), abs(q.y0 - q.y1) } * font_size
     	
 	bottom_left_uv := Vector2{ q.s0, q.t1 }
 	top_right_uv := Vector2{ q.s1, q.t0 }
@@ -110,11 +111,13 @@ draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colou
 	model_view_projection = projection_matrix * view_matrix * model_matrix
     }
     else {
-	model_matrix := translate_matrix(position) * scale_matrix(size) * rotate_matrix(linalg.to_radians(rotation))
-	model_matrix *= scale_matrix({1, state.screen_width / state.screen_height})
+	ndc_position := screen_position_to_ndc(position)		    // turn pixel position into ndc
+	ndc_size := size / (Vector2{state.screen_width, state.screen_height} * 0.5) // scale size based on proportion of the screen it occupies
+										    // 0.5 because ndc is -1 to 1
+
+	model_matrix := translate_matrix(ndc_position) * scale_matrix(ndc_size) * rotate_matrix(linalg.to_radians(rotation))
 	model_view_projection = model_matrix
     }
- 
 
     // the order that the vertices are drawen and that the 
     // index buffer is assuming is:
@@ -156,12 +159,16 @@ draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colou
     quad[3].texture_index = texture_index
 }
 
-screen_position_to_world_position :: proc(position: Vector2) -> Vector2 {
-    // convert position to NDC
-    x_ndc := ((position.x / state.screen_width) * 2) - 1
-    y_ndc := -(((position.y / state.screen_height) * 2) - 1) // - this because y is positive down in sokol in for mouse position
+screen_position_to_ndc :: proc(position: Vector2) -> Vector2 {
+    return {
+        ((position.x / state.screen_width) * 2) - 1,
+        -(((position.y / state.screen_height) * 2) - 1) // - this because y is positive down in sokol in for mouse position
+    }
+}
 
-    ndc_position := Vector4{x_ndc, y_ndc, -1, 1} // -1 here for near plane
+screen_position_to_world_position :: proc(position: Vector2) -> Vector2 {
+    ndc_vec_2 := screen_position_to_ndc(position)
+    ndc_position := Vector4{ndc_vec_2.x, ndc_vec_2.y, -1, 1} // -1 here for near plane
 
     inverse_vp := linalg.inverse(get_projection_matrix() * get_view_matrix())
     world_position := inverse_vp * ndc_position
@@ -187,7 +194,7 @@ renderer_init :: proc "c" () {
 
     // create index buffer
     index_buffer: [len(state.quads) * 6]u16
-    i := 0;
+    i := 0
     for i < len(index_buffer) {
 	// vertex offset pattern to draw a quad
 	// { 0, 1, 2,  0, 2, 3 }
@@ -197,7 +204,7 @@ renderer_init :: proc "c" () {
 	index_buffer[i + 3] = auto_cast ((i/6)*4 + 0)
 	index_buffer[i + 4] = auto_cast ((i/6)*4 + 2)
 	index_buffer[i + 5] = auto_cast ((i/6)*4 + 3)
-	i += 6;
+	i += 6
     }
 
     state.bindings.index_buffer = sg.make_buffer({
@@ -316,25 +323,6 @@ renderer_cleanup :: proc "c" () {
     sg.shutdown()
 }
 
-range :: proc(buffer: []$T) -> sg.Range {
-    return sg.Range{
-	ptr = &buffer[0],
-	size = len(buffer) * size_of(T)
-    }
-}
-
-translate_matrix :: proc(position: Vector2) -> Mat4 {
-    return linalg.matrix4_translate_f32({position.x, position.y, 0})
-}
-
-scale_matrix :: proc(scale: Vector2) -> Mat4 {
-	return linalg.matrix4_scale_f32(Vector3{scale.x, scale.y, 1});
-}
-
-rotate_matrix :: proc(radians: f32) -> Mat4 {
-	return linalg.matrix4_rotate_f32(radians, Vector3{0, 0, 1});
-}
-
 get_view_matrix :: proc() -> Mat4 {
     view := linalg.matrix4_look_at_f32(
 	{state.camera_position.x, state.camera_position.y, 1}, // where it is looking at
@@ -347,4 +335,35 @@ get_view_matrix :: proc() -> Mat4 {
 
 get_projection_matrix :: proc() -> Mat4 {
     return linalg.matrix_ortho3d_f32(state.screen_width * -0.5, state.screen_width * 0.5, state.screen_height * -0.5, state.screen_height * 0.5, -1, 1)
+}
+
+range :: proc(buffer: []$T) -> sg.Range {
+    return sg.Range{
+	ptr = &buffer[0],
+	size = len(buffer) * size_of(T)
+    }
+}
+
+translate_matrix :: proc(position: Vector2) -> Mat4 {
+    return linalg.matrix4_translate_f32({position.x, position.y, 0})
+}
+
+scale_matrix :: proc(scale: Vector2) -> Mat4 {
+	return linalg.matrix4_scale_f32(Vector3{scale.x, scale.y, 1})
+}
+
+rotate_matrix :: proc(radians: f32) -> Mat4 {
+	return linalg.matrix4_rotate_f32(radians, Vector3{0, 0, 1})
+}
+
+rotate_normalised_vector :: proc(vector: Vector2, degrees: f32) -> Vector2 {
+    radians := degrees * math.RAD_PER_DEG
+
+    s := math.sin(radians)
+    c := math.cos(radians)
+
+    x := (vector[0] * c) - (vector[1] * s)
+    y := (vector[0] * s) + (vector[1] * c)
+
+    return Vector2{x, y}
 }
