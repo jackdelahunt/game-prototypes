@@ -30,18 +30,39 @@ run_command :: proc(input: []u8) {
     else if strings.compare(name, "restart") == 0 {
         command_restart()
     }
+    else if strings.compare(name, "spawning") == 0 {
+        value, ok := parse_bool_argument(&lexer) 
+        if !ok {
+            log.errorf("Couldn't parse first argument for spawning as bool")
+        }
+
+        command_spawning(value)
+    }
     else {
         log.error("No command found with name", name)
     }
 }
 
 parse_string_argument :: proc(lexer: ^ArgumentLexer) -> (string, bool) {
-    t := next_token(lexer)
-    if t.type != .STRING {
+    token, ok := next_token_type(lexer, .STRING)
+    if !ok {
         return "", false
     }
 
-    return transmute(string) t.value, true
+    return transmute(string) token.value, true
+}
+
+parse_bool_argument :: proc(lexer: ^ArgumentLexer) -> (bool, bool) {
+    token, ok := next_token_type(lexer, .BOOL)
+    if !ok {
+        return false, false
+    }
+    
+    if strings.compare(auto_cast token.value, "true") == 0 {
+        return true, true
+    } 
+        
+    return false, true
 }
 
 ArgumentLexer :: struct {
@@ -58,6 +79,7 @@ TokenType :: enum {
     INVALID,
     EOF,
     STRING,
+    BOOL,
 }
 
 next_token :: proc(lexer: ^ArgumentLexer) -> Token {
@@ -70,14 +92,22 @@ next_token :: proc(lexer: ^ArgumentLexer) -> Token {
         return Token {type = .EOF, value = nil}
     }
 
-    { // string token
+    {
         start := lexer.current_index
         for lexer.current_index < len(lexer.input) && !is_deliminator(lexer.input[lexer.current_index]) {
             lexer.current_index += 1
         }
 
-        string_slice := lexer.input[start:lexer.current_index]
-        return Token {type = .STRING, value = string_slice}
+        word := lexer.input[start:lexer.current_index]
+
+        if strings.compare(auto_cast word, "true") == 0 {
+            return Token {type = .BOOL, value = word}
+        }
+        else if strings.compare(auto_cast word, "false") == 0 {
+            return Token {type = .BOOL, value = word}
+        }
+
+        return Token {type = .STRING, value = word}
     }
 
     return Token {type = .INVALID, value = nil}

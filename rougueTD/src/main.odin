@@ -32,6 +32,8 @@ DEFAULT_SCREEN_HEIGHT	:: 900
 MAX_ENTITIES	:: 256
 MAX_QUADS	:: 512
 
+MAX_WAVES :: 20
+
 PLAYER_SPEED :: 90
 AI_SPEED :: 30
 
@@ -51,9 +53,9 @@ GOLD_FROM_BASIC_ENEMY :: 50
 TICKS_PER_SECONDS :: 20
 TICK_RATE :: 1.0 / TICKS_PER_SECONDS
 
-NO_DEBUG :: false
-DEBUG_GIVE_MONEY    :: false when NO_DEBUG else true
-DEBUG_NO_SPAWNING   :: false when NO_DEBUG else true
+// settings
+setting_start_gold      : uint = 0
+settings_spawning       : bool = true 
 
 ///////////////////////////////// @state
 State :: struct {
@@ -79,6 +81,9 @@ State :: struct {
     // game state
     entities: [MAX_ENTITIES]Entity,
     entity_count: uint,
+    wave: uint,
+    enemies_to_spawn: uint,
+    enemies_to_kill: uint,
 
     // command state
     in_command_mode: bool,
@@ -229,7 +234,7 @@ entity_take_damage :: proc(entity: ^Entity, damage: f32) {
 
     entity.health -= damage
     if entity.health < 0 {
-    entity.health = 0
+        entity.health = 0
     }
 }
 
@@ -427,8 +432,11 @@ init :: proc() {
     new_state := State{
         screen_width = state.screen_width,
         screen_height = state.screen_height,
-        gold = 10_000 when DEBUG_GIVE_MONEY else 0,
+        gold = setting_start_gold,
         zoom = 2.5,
+        wave =  1,
+        enemies_to_spawn = enemies_for_wave(1),
+        enemies_to_kill = enemies_for_wave(1),
         render_pipeline = state.render_pipeline,
         bindings = state.bindings,
         pass_action = state.pass_action
@@ -451,24 +459,14 @@ init :: proc() {
         colour = BLUE,
         weapon = .SHOTGUN,
         magazine_ammo = magazine_size(.SHOTGUN)
-    })
-
-    // single ai
-    create_entity(Entity {
-        flags = {.AI, .HAS_HEALTH, .SOLID_HITBOX},
-        position = {0, 60}, 
-        size = {10, 10}, 
-        colour = DARK_RED,
-        health = BASIC_ENEMY_HEALTH,
-        max_health = BASIC_ENEMY_HEALTH
-    })
+    }) 
     
     // nexus
     create_entity(Entity {
         flags = {.NEXUS, .HAS_HEALTH, .STATIC_HITBOX},
         position = {0, 0}, 
-        size = {100, 40}, 
-        colour = GRAY,
+        size = {100, 10}, 
+        colour = SKY_BLUE,
         health = NEXUS_HEALTH,
         max_health = NEXUS_HEALTH
     })
@@ -547,424 +545,440 @@ apply_inputs :: proc() {
 ///////////////////////////////// @update
 update :: proc() {
     if state.key_inputs[.ESCAPE] == .DOWN {
-    sapp.quit()
+        sapp.quit()
     }	
 
     // go through each number key and select defence
     for type, index in DefenceType {
-    // first defence is none and we want to skip 0 number input
-    if index == 0 {
-        continue
-    }
-
-    current_key := Key(int(Key._0) + index)
-
-    if state.key_inputs[current_key] == .DOWN {
-        state.selected_defence = type
-    }
+        // first defence is none and we want to skip 0 number input
+        if index == 0 {
+            continue
+        }
+    
+        current_key := Key(int(Key._0) + index)
+    
+        if state.key_inputs[current_key] == .DOWN {
+            state.selected_defence = type
+        }
     }
 
     // update pass
     for &entity in state.entities[0:state.entity_count] {
-    // count down each cooldown in the entity
-    // some cooldown timers are not set here, reload cooldown is set in weapon 
-    // because we want to do stuff when it reaches 0
-    entity.defence_cooldown = clamp(entity.defence_cooldown - TICK_RATE, 0, math.F32_MAX)
-    entity.spawner_cooldown = clamp(entity.spawner_cooldown - TICK_RATE, 0, math.F32_MAX)
-        entity.firing_cooldown = clamp(entity.firing_cooldown - TICK_RATE, 0, math.F32_MAX)
-
-    player: {
-        if !(.PLAYER in entity.flags) {
-        break player
-        }
-
-        if state.in_command_mode {
-        break player
-        }
-
-        { // player movement
-        input_vector: Vector2
+        // count down each cooldown in the entity
+        // some cooldown timers are not set here, reload cooldown is set in weapon 
+        // because we want to do stuff when it reaches 0
+        entity.defence_cooldown = clamp(entity.defence_cooldown - TICK_RATE, 0, math.F32_MAX)
+        entity.spawner_cooldown = clamp(entity.spawner_cooldown - TICK_RATE, 0, math.F32_MAX)
+            entity.firing_cooldown = clamp(entity.firing_cooldown - TICK_RATE, 0, math.F32_MAX)
     
-        if state.key_inputs[.A] == .PRESSING {
-            input_vector.x -= 1
-        }
-     
-        if state.key_inputs[.D] == .PRESSING {
-            input_vector.x += 1
-        }
-     
-        if state.key_inputs[.S] == .PRESSING {
-            input_vector.y -= 1
-        }
-     
-        if state.key_inputs[.W] == .PRESSING {
-            input_vector.y += 1
+        player: {
+            if !(.PLAYER in entity.flags) {
+                break player
+            }
+    
+            if state.in_command_mode {
+                break player
+            }
+    
+            { // player movement
+                input_vector: Vector2
+            
+                if state.key_inputs[.A] == .PRESSING {
+                    input_vector.x -= 1
+                }
+             
+                if state.key_inputs[.D] == .PRESSING {
+                    input_vector.x += 1
+                }
+             
+                if state.key_inputs[.S] == .PRESSING {
+                    input_vector.y -= 1
+                }
+             
+                if state.key_inputs[.W] == .PRESSING {
+                    input_vector.y += 1
+                }
+            
+                entity.velocity = normalize(input_vector) * PLAYER_SPEED 
+            }
+    
+            place_defence: {
+                if state.mouse_button_inputs[MouseButton.RIGHT] != .DOWN {
+                    break place_defence
+                }
+        
+                if state.selected_defence == .NONE {
+                    break place_defence
+                }
+        
+                if defence_cost(state.selected_defence) > state.gold {
+                    break place_defence
+                }
+        
+                place_position := state.mouse_world_position
+                if length(place_position - entity.position) > PLACE_RADIUS {
+                    break place_defence
+                }
+        
+                create_entity(Entity{
+                    flags = {.DEFENCE},
+                    position = place_position,
+                    size = {10, 10},
+                    colour = defence_colour(state.selected_defence),
+                    defence_type = state.selected_defence
+                })
+                
+                state.gold -= defence_cost(state.selected_defence)
+                state.selected_defence = .NONE
+            }
+    
+            { // weapon interaction
+                assert(entity.weapon != .NONE)
+        
+                    if state.key_inputs[.R] == .DOWN {
+                        if entity.reload_cooldown == 0 && entity.magazine_ammo != magazine_size(entity.weapon) {
+                            entity.dynamic_flags += {.RELOADING}
+                        }
+                    }
+        
+                if state.mouse_button_inputs[MouseButton.LEFT] == .DOWN {
+                    if entity.firing_cooldown == 0 && entity.reload_cooldown == 0 && entity.magazine_ammo > 0 {
+                        entity.dynamic_flags += {.FIRING}
+                    }
+                }
+            }
         }
     
-        entity.velocity = normalize(input_vector) * PLAYER_SPEED 
+        ai: {
+            if !(.AI in entity.flags) {
+                break ai
+            }
+    
+            nexus := get_entity_with_flag(.NEXUS)
+            if nexus == nil {
+                entity.velocity = 0
+                break ai
+            }
+    
+            delta := nexus.position - entity.position
+            distance := length(delta)
+            direction := normalize(delta)
+            entity.velocity = direction * AI_SPEED
+    
+            if distance < 10 {
+                entity.dynamic_flags += {.DELETE}
+                entity_take_damage(nexus, BASIC_ENEMY_DAMAGE)
+            }
         }
-
-        place_defence: {
-        if state.mouse_button_inputs[MouseButton.RIGHT] != .DOWN {
-            break place_defence
+    
+        health: {
+            if !(.HAS_HEALTH in entity.flags) {
+                break health
+            }
+    
+            if entity.health <= 0 {
+                entity.dynamic_flags += {.DELETE}
+            }
         }
-
-        if state.selected_defence == .NONE {
-            break place_defence
-        }
-
-        if defence_cost(state.selected_defence) > state.gold {
-            break place_defence
-        }
-
-        place_position := state.mouse_world_position
-        if length(place_position - entity.position) > PLACE_RADIUS {
-            break place_defence
-        }
-
-        create_entity(Entity{
-            flags = {.DEFENCE},
-            position = place_position,
-            size = {10, 10},
-            colour = defence_colour(state.selected_defence),
-            defence_type = state.selected_defence
-        })
+    
+        defence: {
+            if !(.DEFENCE in entity.flags) {
+                break defence
+            }
+    
+            if entity.defence_cooldown > 0 {
+                break defence
+            } 
+    
+            // TODO: once the cooldown is 0 but there are no enemies to
+            // shoot that means we are doing this collision check every tick
+            collider := new_circle_collider(entity.position, defence_range(entity.defence_type))
+            other, ok := next(&collider)
+            for ok {
+                if .AI in other.flags && .HAS_HEALTH in other.flags {
+                    // give damge and set the cooldown, this means if there
+                    // is no enemies in range then the cooldown is not reset
+                    entity_take_damage(other, TOWER_DAMAGE)
+                    entity.defence_cooldown = defence_cooldown(entity.defence_type)
         
-        state.gold -= defence_cost(state.selected_defence)
-        state.selected_defence = .NONE
-        }
-
-        { // weapon interaction
-        assert(entity.weapon != .NONE)
-
-            if state.key_inputs[.R] == .DOWN {
-            if entity.reload_cooldown == 0 && entity.magazine_ammo != magazine_size(entity.weapon) {
-            entity.dynamic_flags += {.RELOADING}
-            }
-            }
-
-        if state.mouse_button_inputs[MouseButton.LEFT] == .DOWN {
-            if entity.firing_cooldown == 0 && entity.reload_cooldown == 0 && entity.magazine_ammo > 0 {
-            entity.dynamic_flags += {.FIRING}
+                    if other.health > 0 {
+                        state.gold += GOLD_FROM_DAMAGE
+                    }
+                    else {
+                        state.gold += GOLD_FROM_BASIC_ENEMY
+                    }
+                } 
+                
+                other, ok = next(&collider)
             }
         }
-        }
-    }
-
-    ai: {
-        if !(.AI in entity.flags) {
-        break ai
-        }
-
-        nexus := get_entity_with_flag(.NEXUS)
-        if nexus == nil {
-        entity.velocity = 0
-        break ai
-        }
-
-        delta := nexus.position - entity.position
-        distance := length(delta)
-        direction := normalize(delta)
-        entity.velocity = direction * AI_SPEED
-
-        if distance < 10 {
-        entity.dynamic_flags += {.DELETE}
-        entity_take_damage(nexus, BASIC_ENEMY_DAMAGE)
-        }
-    }
-
-    health: {
-        if !(.HAS_HEALTH in entity.flags) {
-        break health
-        }
-
-        if entity.health <= 0 {
-        entity.dynamic_flags += {.DELETE}
-        }
-    }
-
-    defence: {
-        if !(.DEFENCE in entity.flags) {
-        break defence
-        }
-
-        if entity.defence_cooldown > 0 {
-        break defence
-        } 
-
-        // TODO: once the cooldown is 0 but there are no enemies to
-        // shoot that means we are doing this collision check every tick
-        collider := new_circle_collider(entity.position, defence_range(entity.defence_type))
-        other, ok := next(&collider)
-        for ok {
-        if .AI in other.flags && .HAS_HEALTH in other.flags {
-            // give damge and set the cooldown, this means if there
-            // is no enemies in range then the cooldown is not reset
-            entity_take_damage(other, TOWER_DAMAGE)
-            entity.defence_cooldown = defence_cooldown(entity.defence_type)
-
-            if other.health > 0 {
-            state.gold += GOLD_FROM_DAMAGE
+    
+        spawner: {
+            if !(.SPAWNER in entity.flags) {
+                break spawner
             }
-            else {
-            state.gold += GOLD_FROM_BASIC_ENEMY
+    
+            if !settings_spawning {
+                break spawner
             }
-        } 
+    
+            if entity.spawner_cooldown > 0 {
+                break spawner
+            }
+    
+            if state.enemies_to_spawn == 0 {
+                break spawner
+            }
+    
+            state.enemies_to_spawn -= 1
+            entity.spawner_cooldown = SPAWNER_COOLDOWN
+    
+            create_entity(Entity {
+                flags = {.AI, .HAS_HEALTH, .SOLID_HITBOX},
+                position = entity.position, 
+                size = {10, 10}, 
+                colour = DARK_RED,
+                health = BASIC_ENEMY_HEALTH,
+                max_health = BASIC_ENEMY_HEALTH
+            })
+        }
+    
+        weapon: {
+            if !(.HAS_WEAPON in entity.flags) {
+                break weapon
+            }
+    
+            if entity.reload_cooldown > 0 {
+                entity.reload_cooldown = clamp(entity.reload_cooldown - TICK_RATE, 0, math.F32_MAX)
         
-        other, ok = next(&collider)
+                if entity.reload_cooldown == 0 {
+                    entity.magazine_ammo = magazine_size(entity.weapon)
+                }
+            }
+    
+            // auto reload when no ammo left
+            if entity.magazine_ammo == 0 && entity.reload_cooldown == 0 {
+                entity.dynamic_flags += {.RELOADING}
+            }
+    
+            if .FIRING in entity.dynamic_flags {
+                entity.dynamic_flags -= {.FIRING}
+                entity.firing_cooldown = firing_cooldown(entity.weapon)
+        
+                assert(entity.magazine_ammo > 0, "Firing weapon without checking magazine amount")
+                entity.magazine_ammo -= 1
+        
+                direction := normalize(state.mouse_world_position - entity.position)
+                create_projectiles_for_weapon(entity.position, direction, entity.weapon)
+            }
+    
+            if .RELOADING in entity.dynamic_flags {
+                entity.dynamic_flags -= {.RELOADING}
+                entity.reload_cooldown = reload_cooldown(entity.weapon)
+            }
         }
-    }
-
-    spawner: {
-        if !(.SPAWNER in entity.flags) {
-        break spawner
-        }
-
-        if DEBUG_NO_SPAWNING {
-        break spawner
-        }
-
-        if entity.spawner_cooldown > 0 {
-        break spawner
-        }
-
-        entity.spawner_cooldown = SPAWNER_COOLDOWN
-
-        create_entity(Entity {
-        flags = {.AI, .HAS_HEALTH, .SOLID_HITBOX},
-        position = entity.position, 
-        size = {10, 10}, 
-        colour = DARK_RED,
-        health = BASIC_ENEMY_HEALTH,
-        max_health = BASIC_ENEMY_HEALTH
-        })
-    }
-
-    weapon: {
-        if !(.HAS_WEAPON in entity.flags) {
-        break weapon
-        }
-
-        if entity.reload_cooldown > 0 {
-        entity.reload_cooldown = clamp(entity.reload_cooldown - TICK_RATE, 0, math.F32_MAX)
-
-        if entity.reload_cooldown == 0 {
-            entity.magazine_ammo = magazine_size(entity.weapon)
-        }
-        }
-
-        // auto reload when no ammo left
-        if entity.magazine_ammo == 0 && entity.reload_cooldown == 0 {
-        entity.dynamic_flags += {.RELOADING}
-        }
-
-        if .FIRING in entity.dynamic_flags {
-        entity.dynamic_flags -= {.FIRING}
-        entity.firing_cooldown = firing_cooldown(entity.weapon)
-
-        assert(entity.magazine_ammo > 0, "Firing weapon without checking magazine amount")
-        entity.magazine_ammo -= 1
-
-        direction := normalize(state.mouse_world_position - entity.position)
-        create_projectiles_for_weapon(entity.position, direction, entity.weapon)
-        }
-
-        if .RELOADING in entity.dynamic_flags {
-        entity.dynamic_flags -= {.RELOADING}
-        entity.reload_cooldown = reload_cooldown(entity.weapon)
-        }
-    }
     }
 
     // delete pass
     i : uint = 0
     for i < state.entity_count {
-    entity := &state.entities[i]
+        entity := &state.entities[i]
+    
+        if .DELETE in entity.dynamic_flags {
+            if .AI in entity.flags {
+                assert(state.enemies_to_kill > 0)
+                state.enemies_to_kill -= 1
+            }
 
-    if .DELETE in entity.dynamic_flags {
-        // last value just decrement count
-        if i == state.entity_count - 1 {
-        state.entity_count -= 1
-        break
+            // last value just decrement count
+            if i == state.entity_count - 1 {
+                state.entity_count -= 1
+                break
+            }
+    
+            // swap remove with last entity
+            state.entities[i] = state.entities[state.entity_count - 1]
+            state.entity_count -= 1
+        } else {
+            // if we did remove then we want to re-check the current
+            // entity we swapped with so dont go to next index
+            i += 1
         }
-
-        // swap remove with last entity
-        state.entities[i] = state.entities[state.entity_count - 1]
-        state.entity_count -= 1
-    } else {
-        // if we did remove then we want to re-check the current
-        // entity we swapped with so dont go to next index
-        i += 1
-    }
     }
 
     command_mode: {
         if state.key_inputs[.SLASH] == .DOWN {
-        state.in_command_mode = !state.in_command_mode
+            state.in_command_mode = !state.in_command_mode
         }
 
-    if !state.in_command_mode {
-        break command_mode
-    }
-
-    // character input to the command buffer
-    if state.character_input != 0 {
-        if state.command_input_length < len(state.command_input_buffer) - 1 {
-        state.command_input_buffer[state.command_input_length] = cast(u8)state.character_input
-            state.command_input_length += 1
-            state.character_input = 0
+        if !state.in_command_mode {
+            break command_mode
         }
-    }
-
-    if state.key_inputs[.BACKSPACE] == .DOWN {
-        if state.command_input_length > 0 {
-        state.command_input_length -= 1
+    
+        // character input to the command buffer
+        if state.character_input != 0 {
+            if state.command_input_length < len(state.command_input_buffer) - 1 {
+                state.command_input_buffer[state.command_input_length] = cast(u8)state.character_input
+                state.command_input_length += 1
+                state.character_input = 0
+            }
         }
-    }
-
-    if state.key_inputs[.ENTER] == .DOWN {
-        command := state.command_input_buffer[0:state.command_input_length]
-        state.command_input_length = 0
-        run_command(command)
-    }
+    
+        if state.key_inputs[.BACKSPACE] == .DOWN {
+            if state.command_input_length > 0 {
+                state.command_input_length -= 1
+            }
+        }
+    
+        if state.key_inputs[.ENTER] == .DOWN {
+            command := state.command_input_buffer[0:state.command_input_length]
+            state.command_input_length = 0
+            run_command(command)
+        }
     }
 }
 
 on_trigger_collision :: proc(trigger: ^Entity, other: ^Entity) {
     if !(.AI in other.flags) {
-    return
+        return
     }
 
     assert(.HAS_HEALTH in other.flags)
-
-    log.info("giving damage")
     entity_take_damage(other, 20)
+}
+
+on_solid_collision :: proc(entity: ^Entity, other: ^Entity) {
+    if .AI in entity.flags && .NEXUS in other.flags {
+        entity.dynamic_flags += {.DELETE}
+        entity_take_damage(other, 20)
+    }
 }
 
 ///////////////////////////////// @physics
 physics :: proc(delta_time: f32) {
     for _i in 0..<state.entity_count {
-    entity := &state.entities[_i]
-
-    // used to check if a collision occurs after
-    // a velocity is applied
-    start_position := entity.position
-
-    entity.position += entity.velocity * delta_time
-
-    solid_hitbox: {
-        // this means if we are ever doing a collision the 
-        // soldin one is always the entity, and if one is 
-        // static then it is the other entity
-        if !(.SOLID_HITBOX in entity.flags) {
-        break solid_hitbox
-        }
-
-        for _o in 0..<state.entity_count {
-        other := &state.entities[_o]
-
-        if entity == other {
-            continue
-        }
-
-        if !(.SOLID_HITBOX in other.flags) && !(.STATIC_HITBOX in other.flags) {
-            continue
-        }
-
-        distance := other.position - entity.position
-        distance_abs := Vector2{abs(distance.x), abs(distance.y)}
-        distance_for_collision := (entity.size + other.size) * Vector2{0.5, 0.5}
-
-        // basic AABB collision detection, everything is a square
-        if !(distance_for_collision[0] >= distance_abs[0] && distance_for_collision[1] >= distance_abs[1])
-                {
+        entity := &state.entities[_i]
+    
+        // used to check if a collision occurs after
+        // a velocity is applied
+        start_position := entity.position
+    
+        entity.position += entity.velocity * delta_time
+    
+        solid_hitbox: {
+            // this means if we are ever doing a collision the 
+            // soldin one is always the entity, and if one is 
+            // static then it is the other entity
+            if !(.SOLID_HITBOX in entity.flags) {
+                break solid_hitbox
+            }
+    
+            for _o in 0..<state.entity_count {
+                other := &state.entities[_o]
+        
+                if entity == other {
+                    continue
+                }
+        
+                if !(.SOLID_HITBOX in other.flags) && !(.STATIC_HITBOX in other.flags) {
+                    continue
+                }
+        
+                distance := other.position - entity.position
+                distance_abs := Vector2{abs(distance.x), abs(distance.y)}
+                distance_for_collision := (entity.size + other.size) * Vector2{0.5, 0.5}
+        
+                // basic AABB collision detection, everything is a square
+                if !(distance_for_collision[0] >= distance_abs[0] && distance_for_collision[1] >= distance_abs[1]) {
                     continue;
                 }
-
-        overlap_amount := distance_for_collision - distance_abs
-        other_static := .STATIC_HITBOX in other.flags
-
-        // if there is an overlap then measure on which axis has less 
+        
+                overlap_amount := distance_for_collision - distance_abs
+                other_static := .STATIC_HITBOX in other.flags
+        
+                // if there is an overlap then measure on which axis has less 
                 // overlap and equally move both entities by that amount away
                 // from each other
                 //
                 // if other is static only move entity
                 // by the full overlap instead of sharing it
-        if overlap_amount[0] < overlap_amount[1] {
-            if other_static { 
-            x_push_amount := overlap_amount[0]
-            entity.position[0] -= math.sign(distance[0]) * x_push_amount
-            } 
-            else  {
-            x_push_amount := overlap_amount[0] * 0.5;
-            entity.position[0] -= math.sign(distance[0]) * x_push_amount
+                if overlap_amount[0] < overlap_amount[1] {
+                    if other_static { 
+                        x_push_amount := overlap_amount[0]
+                        entity.position[0] -= math.sign(distance[0]) * x_push_amount
+                    } 
+                    else  {
+                        x_push_amount := overlap_amount[0] * 0.5;
+                        entity.position[0] -= math.sign(distance[0]) * x_push_amount
                         other.position[0] += math.sign(distance[0]) * x_push_amount;
-            }
+                    }
                 } 
-        else {
-            if other_static { 
-            y_push_amount := overlap_amount[1]
-            entity.position[1] -= math.sign(distance[1]) * y_push_amount
-            } 
-            else  {
-            y_push_amount := overlap_amount[1] * 0.5;
-            entity.position[1] -= math.sign(distance[1]) * y_push_amount
+                else {
+                    if other_static { 
+                        y_push_amount := overlap_amount[1]
+                        entity.position[1] -= math.sign(distance[1]) * y_push_amount
+                    } 
+                    else  {
+                        y_push_amount := overlap_amount[1] * 0.5;
+                        entity.position[1] -= math.sign(distance[1]) * y_push_amount
                         other.position[1] += math.sign(distance[1]) * y_push_amount;
-            }
+                    }
                 }
-        } 
-    }
-
-    trigger_hitbox: {
-        if !(.TRIGGER_HITBOX in entity.flags) {
-        break trigger_hitbox
-        }
-
-        for _o in 0..<state.entity_count {
-        other := &state.entities[_o]
-
-        if entity == other {
-            continue
-        }
-
-        if  !(.SOLID_HITBOX in other.flags) && 
-            !(.STATIC_HITBOX in other.flags) &&
-            !(.TRIGGER_HITBOX in other.flags)
-        {
-            continue
-        }
-
-        // collision for each other entiity is checked twice for trigger
-        // hitboxes, trigger collision events are only when a new collision
-        // starts so if there was a collision last frame then dont do anything
-
-        { // collision last frame
-            distance := other.position - start_position
-            distance_abs := Vector2{abs(distance.x), abs(distance.y)}
-            distance_for_collision := (entity.size + other.size) * Vector2{0.5, 0.5}
-   
-            // if there was a collision then don't check for this frame
-            if (distance_for_collision[0] >= distance_abs[0] && distance_for_collision[1] >= distance_abs[1])
-                    {
-                        continue;
-            }
-        }
-
-        { // collision this frame
-            distance := other.position - entity.position
-            distance_abs := Vector2{abs(distance.x), abs(distance.y)}
-            distance_for_collision := (entity.size + other.size) * Vector2{0.5, 0.5}
     
-            // basic AABB collision detection, everything is a square
-            if !(distance_for_collision[0] >= distance_abs[0] && distance_for_collision[1] >= distance_abs[1])
+                on_solid_collision(entity, other) 
+            } 
+        }
+        
+        trigger_hitbox: {
+            if !(.TRIGGER_HITBOX in entity.flags) {
+                break trigger_hitbox
+            }
+    
+            for _o in 0..<state.entity_count {
+                other := &state.entities[_o]
+        
+                if entity == other {
+                    continue
+                }
+        
+                if  !(.SOLID_HITBOX in other.flags) && 
+                    !(.STATIC_HITBOX in other.flags) &&
+                    !(.TRIGGER_HITBOX in other.flags)
+                {
+                    continue
+                }
+        
+                // collision for each other entiity is checked twice for trigger
+                // hitboxes, trigger collision events are only when a new collision
+                // starts so if there was a collision last frame then dont do anything
+        
+                { // collision last frame
+                    distance := other.position - start_position
+                    distance_abs := Vector2{abs(distance.x), abs(distance.y)}
+                    distance_for_collision := (entity.size + other.size) * Vector2{0.5, 0.5}
+           
+                    // if there was a collision then don't check for this frame
+                    if (distance_for_collision[0] >= distance_abs[0] && distance_for_collision[1] >= distance_abs[1])
                     {
                         continue;
+                    }
+                }
+        
+                { // collision this frame
+                    distance := other.position - entity.position
+                    distance_abs := Vector2{abs(distance.x), abs(distance.y)}
+                    distance_for_collision := (entity.size + other.size) * Vector2{0.5, 0.5}
+            
+                    // basic AABB collision detection, everything is a square
+                    if !(distance_for_collision[0] >= distance_abs[0] && distance_for_collision[1] >= distance_abs[1])
+                    {
+                        continue;
+                    }
+                }
+        
+                on_trigger_collision(entity, other)
             }
         }
-
-        on_trigger_collision(entity, other)
-        }
-    }
     }
 }
 
@@ -976,9 +990,9 @@ CircleCollider :: struct {
 
 new_circle_collider :: proc(position: Vector2, radius: f32) -> CircleCollider {
     return CircleCollider {
-    index = 0,
-    position = position,
-    radius = radius
+        index = 0,
+        position = position,
+        radius = radius
     }
 }
 
@@ -986,15 +1000,15 @@ next :: proc(collider: ^CircleCollider) -> (^Entity, bool) {
     start := collider.index
 
     if start >= state.entity_count {
-    return nil, false
+        return nil, false
     }
 
     for &entity in state.entities[start:state.entity_count] {
-    collider.index += 1
-
-    if length(entity.position - collider.position) < collider.radius {
-        return &entity, true
-    }
+        collider.index += 1
+    
+        if length(entity.position - collider.position) < collider.radius {
+            return &entity, true
+        }
     }
 
     return nil, false
@@ -1085,28 +1099,27 @@ draw :: proc() {
     
     in_screen_space = true
 
-    player_ammo: {
-        player := get_entity_with_flag(.PLAYER)
-        if player == nil {
-            break player_ammo
-        }
-    
-        string_buffer: [20]u8
+    { // top UI bar
+        string_buffer: [256]u8
         builder := strings.builder_from_bytes(string_buffer[0:])
-        text := fmt.sbprintf(&builder, "Ammo: %v", player.magazine_ammo) // utf8 lol
-        
-        draw_rectangle({state.screen_width - 150, 25}, {300, 50}, BLACK)
-        draw_text(text, {state.screen_width - 275, 25}, YELLOW, 3)
-    }
 
-    { // display gold count
-        string_buffer: [20]u8
-        builder := strings.builder_from_bytes(string_buffer[0:])
-        text := fmt.sbprintf(&builder, "%v", state.gold)
-   
-        background := Vector2{f32(25 * (1 + len(text))), 60}
-        draw_rectangle(background * 0.5, background, BLACK)
-        draw_text(text, {20, background.y / 2}, YELLOW, 3)
+        ammo: uint
+        player := get_entity_with_flag(.PLAYER)
+        if player != nil {
+            ammo = player.magazine_ammo
+        }
+
+        text := fmt.sbprintf(
+            &builder, 
+            "Wave: %v/%v   Ammo: %v   Enemies Left: %v   Gold: %v", 
+            state.wave, MAX_WAVES, 
+            ammo, 
+            state.enemies_to_kill, 
+            state.gold
+        )
+
+        draw_rectangle({state.screen_width / 2, 25}, {state.screen_width, 50}, BLACK)
+        draw_text(text, {25, 25}, YELLOW, 3)
     }
 
     { // bottom defence layout
@@ -1165,6 +1178,10 @@ draw :: proc() {
     }
 }
 
+enemies_for_wave :: proc(wave: uint) -> uint {
+    return 10 + (wave * 3)
+}
+
 ///////////////////////////////// @commands
 command_echo :: proc(message: string) {
     log.info(message)
@@ -1172,6 +1189,11 @@ command_echo :: proc(message: string) {
 
 command_restart :: proc() {
     init()
+}
+
+command_spawning :: proc(value: bool) {
+    settings_spawning = value
+    log.infof("Spawning set to %v", value)
 }
 
 load_textures :: proc() -> bool {
@@ -1251,34 +1273,34 @@ window_event_callback :: proc "c" (event: ^sapp.Event) {
     context = runtime.default_context()
     
     if event == nil {
-    return
+        return
     }
 
     switch event.type {
     case .MOUSE_MOVE:
-    state.mouse_screen_position = {event.mouse_x, event.mouse_y}
+        state.mouse_screen_position = {event.mouse_x, event.mouse_y}
     case .MOUSE_UP: 
-    fallthrough
+        fallthrough
     case .MOUSE_DOWN:
-    if event.mouse_button == .INVALID {
-        log.warn("got invalid mouse button input")
-        return
-    }
+        if event.mouse_button == .INVALID {
+            log.warn("got invalid mouse button input")
+            return
+        }
 
-    state.mouse_button_inputs[event.mouse_button] = .DOWN if event.type == .MOUSE_DOWN else .UP
+        state.mouse_button_inputs[event.mouse_button] = .DOWN if event.type == .MOUSE_DOWN else .UP
     case .KEY_UP: 
-    fallthrough
+        fallthrough
     case .KEY_DOWN:
-    if event.key_code == .INVALID {
-        log.warn("got invalid key input")
-        return
-    }
+        if event.key_code == .INVALID {
+            log.warn("got invalid key input")
+            return
+        }
 
-    state.key_inputs_this_frame[event.key_code] = .DOWN if event.type == .KEY_DOWN else .UP
+        state.key_inputs_this_frame[event.key_code] = .DOWN if event.type == .KEY_DOWN else .UP
     case .CHAR:
-    state.character_input = event.char_code
+        state.character_input = event.char_code
     case .QUIT_REQUESTED:
-    sapp.quit()
+        sapp.quit()
     case .INVALID, 
      .MOUSE_SCROLL, .MOUSE_ENTER, .MOUSE_LEAVE, 
      .TOUCHES_BEGAN, .TOUCHES_ENDED, .TOUCHES_MOVED, .TOUCHES_CANCELLED, 
@@ -1291,13 +1313,13 @@ log_callback :: proc(data: rawptr, level: runtime.Logger_Level, text: string, op
     switch level {
     case .Debug:
     case .Info:
-     fmt.print(ansi.CSI + ansi.FG_CYAN + ansi.SGR)
+        fmt.print(ansi.CSI + ansi.FG_CYAN + ansi.SGR)
     case .Warning: 
-    fmt.print(ansi.CSI + ansi.FG_YELLOW + ansi.SGR)
+        fmt.print(ansi.CSI + ansi.FG_YELLOW + ansi.SGR)
     case .Error:
-    fmt.print(ansi.CSI + ansi.FG_BRIGHT_RED + ansi.SGR)
+        fmt.print(ansi.CSI + ansi.FG_BRIGHT_RED + ansi.SGR)
     case .Fatal:
-    fmt.print(ansi.CSI + ansi.FG_RED + ansi.SGR)
+        fmt.print(ansi.CSI + ansi.FG_RED + ansi.SGR)
     }
 
 
@@ -1305,7 +1327,7 @@ log_callback :: proc(data: rawptr, level: runtime.Logger_Level, text: string, op
     fmt.printfln("[%v] %v(%v:%v) %v", level, file, location.line, location.column, text) 
 
     if level != .Debug {
-    fmt.print(ansi.CSI + ansi.RESET + ansi.SGR)
+        fmt.print(ansi.CSI + ansi.RESET + ansi.SGR)
     }
 }
 
