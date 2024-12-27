@@ -19,6 +19,7 @@ Mat4 :: linalg.Matrix4f32
 Vector2 :: [2]f32
 Vector3 :: [3]f32
 Vector4 :: [4]f32
+Vector2i :: [2]int
 
 normalize :: linalg.normalize0
 length :: linalg.length
@@ -56,67 +57,81 @@ draw_circle :: proc(position: Vector2, radius: f32, colour: Colour) {
     draw_quad(position, {radius * 2, radius * 2}, 0, colour, DEFAULT_UVS, .CIRCLE)
 }
 
+draw_line :: proc(start: Vector2, end: Vector2, thickness: f32, colour: Colour) {
+    direction := end - start
+    radians := linalg.angle_between(direction, Vector2{0, 1})
+    degrees := math.DEG_PER_RAD * radians
+
+    if end.x < start.x {
+        degrees *= -1
+    }
+
+    rectangle_position := start + (direction * 0.5)
+    line_length := length(direction)
+    draw_rectangle(rectangle_position, {thickness, line_length}, colour, degrees)
+}
+
 draw_text :: proc(text: string, position: Vector2, colour: Colour, font_size: f32) {
     x: f32
     y: f32
 
     for c in text {
-	position_offset := Vector2{x, y}
+    position_offset := Vector2{x, y}
 
-	advanced_x: f32
-	advanced_y: f32
+    advanced_x: f32
+    advanced_y: f32
 
-	q: stbtt.aligned_quad
-	stbtt.GetBakedQuad(&alagard.characters[0], font_bitmap_w, font_bitmap_h, (cast(i32)c) - 32, &advanced_x, &advanced_y, &q, false)
-	// this is the the data for the aligned_quad we're given, with y+ going down
-	//	   x0, y0       x1, y0
-	//     s0, t0       s1, t0
-	//	    o tl        o tr
+    q: stbtt.aligned_quad
+    stbtt.GetBakedQuad(&alagard.characters[0], font_bitmap_w, font_bitmap_h, (cast(i32)c) - 32, &advanced_x, &advanced_y, &q, false)
+    // this is the the data for the aligned_quad we're given, with y+ going down
+    //	   x0, y0       x1, y0
+    //     s0, t0       s1, t0
+    //	    o tl        o tr
     
     
-	//     x0, y1      x1, y1
-	//     s0, t1      s1, t1
-	//	    o bl        o br
-	// 
-	// x, and y and expected vertex positions
-	// s and t are texture uv position
+    //     x0, y1      x1, y1
+    //     s0, t1      s1, t1
+    //	    o bl        o br
+    // 
+    // x, and y and expected vertex positions
+    // s and t are texture uv position
    
-	x += advanced_x * font_size
-	y += advanced_y * font_size 
-	size := Vector2{ abs(q.x0 - q.x1), abs(q.y0 - q.y1) } * font_size
-    	
-	bottom_left_uv := Vector2{ q.s0, q.t1 }
-	top_right_uv := Vector2{ q.s1, q.t0 }
-	bottom_right_uv := Vector2{q.s1, q.t1}
-	top_left_uv := Vector2{q.s0, q.t0}
-	
-	draw_quad(
-	    position + position_offset, 
-	    size, 
-	    0,
-	    colour,
-	    {top_left_uv, top_right_uv, bottom_right_uv, bottom_left_uv}, 
-	    .FONT
-	)
+    x += advanced_x * font_size
+    y += advanced_y * font_size 
+    size := Vector2{ abs(q.x0 - q.x1), abs(q.y0 - q.y1) } * font_size
+        
+    bottom_left_uv := Vector2{ q.s0, q.t1 }
+    top_right_uv := Vector2{ q.s1, q.t0 }
+    bottom_right_uv := Vector2{q.s1, q.t1}
+    top_left_uv := Vector2{q.s0, q.t0}
+    
+    draw_quad(
+        position + position_offset, 
+        size, 
+        0,
+        colour,
+        {top_left_uv, top_right_uv, bottom_right_uv, bottom_left_uv}, 
+        .FONT
+    )
     }
 }
 
 draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colour, uvs: [4]Vector2, draw_type: DrawType) {
-    model_view_projection : Mat4
+    transformation_matrix : Mat4
 
     if !in_screen_space {
-	model_matrix := translate_matrix(position) * scale_matrix(size) * rotate_matrix(linalg.to_radians(rotation))
-	view_matrix := get_view_matrix()
-	projection_matrix := get_projection_matrix()
-	model_view_projection = projection_matrix * view_matrix * model_matrix
+        transformation_matrix = translate_matrix(position) * rotate_matrix(-linalg.to_radians(rotation)) * scale_matrix(size)
+        transformation_matrix = get_view_matrix() * transformation_matrix
+        transformation_matrix = scale_matrix({state.zoom, state.zoom}) * transformation_matrix
+        transformation_matrix = get_projection_matrix() * transformation_matrix
     }
     else {
-	ndc_position := screen_position_to_ndc(position)		    // turn pixel position into ndc
-	ndc_size := size / (Vector2{state.screen_width, state.screen_height} * 0.5) // scale size based on proportion of the screen it occupies
-										    // 0.5 because ndc is -1 to 1
-
-	model_matrix := translate_matrix(ndc_position) * scale_matrix(ndc_size) * rotate_matrix(linalg.to_radians(rotation))
-	model_view_projection = model_matrix
+        ndc_position := screen_position_to_ndc(position)		    // turn pixel position into ndc
+        ndc_size := size / (Vector2{state.screen_width, state.screen_height} * 0.5) // scale size based on proportion of the screen it occupies
+                                                // 0.5 because ndc is -1 to 1
+    
+        model_matrix := translate_matrix(ndc_position) * scale_matrix(ndc_size) * rotate_matrix(linalg.to_radians(rotation))
+        transformation_matrix = model_matrix
     }
 
     // the order that the vertices are drawen and that the 
@@ -126,10 +141,10 @@ draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colou
     quad := &state.quads[state.quad_count]
     state.quad_count += 1
 
-    quad[0].position = (model_view_projection * Vector4{-0.5, 0.5, 0, 1}).xyz
-    quad[1].position = (model_view_projection * Vector4{0.5, 0.5, 0, 1}).xyz
-    quad[2].position = (model_view_projection * Vector4{0.5, -0.5, 0, 1}).xyz
-    quad[3].position = (model_view_projection * Vector4{-0.5, -0.5, 0, 1}).xyz
+    quad[0].position = (transformation_matrix * Vector4{-0.5, 0.5, 0, 1}).xyz
+    quad[1].position = (transformation_matrix * Vector4{0.5, 0.5, 0, 1}).xyz
+    quad[2].position = (transformation_matrix * Vector4{0.5, -0.5, 0, 1}).xyz
+    quad[3].position = (transformation_matrix * Vector4{-0.5, -0.5, 0, 1}).xyz
  
     quad[0].colour = cast(Vector4) colour
     quad[1].colour = cast(Vector4) colour
@@ -144,13 +159,13 @@ draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colou
     texture_index: f32
     switch draw_type {
     case .SOLID:
-	texture_index = 0
+    texture_index = 0
     case .CIRCLE:
-	texture_index = 1
+    texture_index = 1
     case .TEXTURE:
-	texture_index = 2
+    texture_index = 2
     case .FONT:
-	texture_index = 3
+    texture_index = 3
     }
 
     quad[0].texture_index = texture_index
@@ -181,36 +196,36 @@ renderer_init :: proc "c" () {
     context = game_context
 
     sg.setup({
-	environment = sglue.environment(),
-	logger = { func = slog.func },
+    environment = sglue.environment(),
+    logger = { func = slog.func },
     })
 
     // create vertex buffer
     state.bindings.vertex_buffers[0] = sg.make_buffer({
-	usage = .DYNAMIC,
-	size = size_of(Quad) * len(state.quads),
-	label = "quad-vertices"
+    usage = .DYNAMIC,
+    size = size_of(Quad) * len(state.quads),
+    label = "quad-vertices"
     })
 
     // create index buffer
     index_buffer: [len(state.quads) * 6]u16
     i := 0
     for i < len(index_buffer) {
-	// vertex offset pattern to draw a quad
-	// { 0, 1, 2,  0, 2, 3 }
-	index_buffer[i + 0] = auto_cast ((i/6)*4 + 0)
-	index_buffer[i + 1] = auto_cast ((i/6)*4 + 1)
-	index_buffer[i + 2] = auto_cast ((i/6)*4 + 2)
-	index_buffer[i + 3] = auto_cast ((i/6)*4 + 0)
-	index_buffer[i + 4] = auto_cast ((i/6)*4 + 2)
-	index_buffer[i + 5] = auto_cast ((i/6)*4 + 3)
-	i += 6
+    // vertex offset pattern to draw a quad
+    // { 0, 1, 2,  0, 2, 3 }
+    index_buffer[i + 0] = auto_cast ((i/6)*4 + 0)
+    index_buffer[i + 1] = auto_cast ((i/6)*4 + 1)
+    index_buffer[i + 2] = auto_cast ((i/6)*4 + 2)
+    index_buffer[i + 3] = auto_cast ((i/6)*4 + 0)
+    index_buffer[i + 4] = auto_cast ((i/6)*4 + 2)
+    index_buffer[i + 5] = auto_cast ((i/6)*4 + 3)
+    i += 6
     }
 
     state.bindings.index_buffer = sg.make_buffer({
-	type = .INDEXBUFFER,
-	data = { ptr = &index_buffer, size = size_of(index_buffer) },
-	label = "quad-indices"
+    type = .INDEXBUFFER,
+    data = { ptr = &index_buffer, size = size_of(index_buffer) },
+    label = "quad-indices"
     })
 
     // just loading the face texture :^] 
@@ -219,8 +234,8 @@ renderer_init :: proc "c" () {
         width = 8,
         height = 8,
         label = "default_texture",
-	data = {
-	    subimage = {
+    data = {
+        subimage = {
                 0 = {
                     0 = { ptr = face_texture.data, size = auto_cast(face_texture.width * face_texture.height * 4)}, // 4 bytes per pixel
                 },
@@ -231,10 +246,10 @@ renderer_init :: proc "c" () {
     state.bindings.images[shaders.IMG_font_texture] = sg.make_image({
         width = auto_cast font_bitmap_w,
         height = auto_cast font_bitmap_h,
-	pixel_format = .R8,
+    pixel_format = .R8,
         label = "font_texture",
-	data = {
-	    subimage = {
+    data = {
+        subimage = {
                 0 = {
                     0 = { ptr = auto_cast &alagard.bitmap, size = size_of(alagard.bitmap)},
                 },
@@ -243,42 +258,42 @@ renderer_init :: proc "c" () {
     })
 
     state.bindings.samplers[shaders.SMP_default_sampler] = sg.make_sampler({
-	label = "default_sampler"
+    label = "default_sampler"
     })
 
     shader := sg.make_shader(shaders.basic_shader_desc(sg.query_backend()))
 
     state.render_pipeline = sg.make_pipeline({
-	shader = shader,
-	index_type = .UINT16,
-	layout = {
-	    attrs = {
-		shaders.ATTR_basic_position = { format = .FLOAT3 },
-		shaders.ATTR_basic_color0 = { format = .FLOAT4 },
-		shaders.ATTR_basic_texture_uv0 = { format = .FLOAT2 },
-		shaders.ATTR_basic_texture_index0 = { format = .FLOAT },
-	    },
-	},
-	colors = {
-	    0 = {
-		blend = {
-		    enabled = true,
-		    src_factor_rgb = .SRC_ALPHA,
-		    dst_factor_rgb = .ONE_MINUS_SRC_ALPHA,
-		    op_rgb = .ADD,
-		    src_factor_alpha = .ONE,
-		    dst_factor_alpha = .ONE_MINUS_SRC_ALPHA,
-		    op_alpha = .ADD,
-		}
-	    }
-	},
-	label = "basic-pipeline"
+    shader = shader,
+    index_type = .UINT16,
+    layout = {
+        attrs = {
+        shaders.ATTR_basic_position = { format = .FLOAT3 },
+        shaders.ATTR_basic_color0 = { format = .FLOAT4 },
+        shaders.ATTR_basic_texture_uv0 = { format = .FLOAT2 },
+        shaders.ATTR_basic_texture_index0 = { format = .FLOAT },
+        },
+    },
+    colors = {
+        0 = {
+        blend = {
+            enabled = true,
+            src_factor_rgb = .SRC_ALPHA,
+            dst_factor_rgb = .ONE_MINUS_SRC_ALPHA,
+            op_rgb = .ADD,
+            src_factor_alpha = .ONE,
+            dst_factor_alpha = .ONE_MINUS_SRC_ALPHA,
+            op_alpha = .ADD,
+        }
+        }
+    },
+    label = "basic-pipeline"
     })
 
 
     state.pass_action = {
         colors = {
-	    0 = { load_action = .CLEAR, clear_value = {SKY_BLUE.r,  SKY_BLUE.g, SKY_BLUE.b, 1} },
+        0 = { load_action = .CLEAR, clear_value = {0.1, 0.1, 0.1, 1} },
         }
     }
 }
@@ -297,13 +312,13 @@ renderer_frame :: proc "c" () {
     frame()
 
     if state.quad_count == 0 {
-	return
+        return
     }
 
     // update vertex buffer with new quad data for this frame
     sg.update_buffer(
-	state.bindings.vertex_buffers[0],
-	{ ptr = &state.quads[0], size = size_of(Quad) * state.quad_count }
+        state.bindings.vertex_buffers[0],
+        { ptr = &state.quads[0], size = size_of(Quad) * state.quad_count }
     )
 
     sg.begin_pass({action = state.pass_action, swapchain = sglue.swapchain()})
@@ -325,12 +340,12 @@ renderer_cleanup :: proc "c" () {
 
 get_view_matrix :: proc() -> Mat4 {
     view := linalg.matrix4_look_at_f32(
-	{state.camera_position.x, state.camera_position.y, 1}, // where it is looking at
-	{state.camera_position.x, state.camera_position.y, 0}, // the position
-	{0, 1, 0}		     // what is considered "up"
+        {state.camera_position.x, state.camera_position.y, 1},  // where it is looking at
+        {state.camera_position.x, state.camera_position.y, 0},  // the position
+        {0, 1, 0}						// what is considered "up"
     )
 
-    return view * scale_matrix(state.zoom)
+    return view
 }
 
 get_projection_matrix :: proc() -> Mat4 {
@@ -339,8 +354,8 @@ get_projection_matrix :: proc() -> Mat4 {
 
 range :: proc(buffer: []$T) -> sg.Range {
     return sg.Range{
-	ptr = &buffer[0],
-	size = len(buffer) * size_of(T)
+        ptr = &buffer[0],
+        size = len(buffer) * size_of(T)
     }
 }
 
@@ -349,11 +364,11 @@ translate_matrix :: proc(position: Vector2) -> Mat4 {
 }
 
 scale_matrix :: proc(scale: Vector2) -> Mat4 {
-	return linalg.matrix4_scale_f32(Vector3{scale.x, scale.y, 1})
+    return linalg.matrix4_scale_f32(Vector3{scale.x, scale.y, 1})
 }
 
 rotate_matrix :: proc(radians: f32) -> Mat4 {
-	return linalg.matrix4_rotate_f32(radians, Vector3{0, 0, 1})
+    return linalg.matrix4_rotate_f32(radians, Vector3{0, 0, 1})
 }
 
 rotate_normalised_vector :: proc(vector: Vector2, degrees: f32) -> Vector2 {

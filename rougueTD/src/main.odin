@@ -1,9 +1,7 @@
 package src
 
 // TODO:
-// player can buy defences
-// player can attack enemies
-// mouse world position
+// player gets gold from killing enemies
 
 import "core:fmt"
 import "core:log"
@@ -13,8 +11,10 @@ import "core:time"
 import "core:os"
 import "core:strings"
 import "core:math"
+import "core:math/rand"
 import "core:path/filepath"
 import "core:encoding/ansi"
+import sa "core:container/small_array"
 
 import stbi "vendor:stb/image"
 import stbtt "vendor:stb/truetype"
@@ -26,11 +26,11 @@ import sglue "sokol/glue"
 
 import shaders "shaders"
 
-DEFAULT_SCREEN_WIDTH	:: 1300
-DEFAULT_SCREEN_HEIGHT	:: 900
+DEFAULT_SCREEN_WIDTH	:: 1800
+DEFAULT_SCREEN_HEIGHT	:: 1200
 
 MAX_ENTITIES	:: 256
-MAX_QUADS	:: 512
+MAX_QUADS	:: 1024
 
 MAX_WAVES :: 20
 
@@ -53,11 +53,19 @@ GOLD_FROM_BASIC_ENEMY :: 50
 TICKS_PER_SECONDS :: 20
 TICK_RATE :: 1.0 / TICKS_PER_SECONDS
 
-// settings
-setting_start_gold      : uint = 0
-settings_spawning       : bool = true 
 
-///////////////////////////////// @state
+LEVEL_SPAWNER_COUNT :: 6
+LEVEL_WIDTH         :: 300
+LEVEL_HEIGHT        :: 600
+NAV_MESH_WIDTH      :: LEVEL_WIDTH / 30
+NAV_MESH_HEIGHT     :: LEVEL_HEIGHT / 30
+
+// @settings
+setting_start_gold      : uint = 0
+settings_spawning       : bool = false
+settings_nav_mesh       : bool = true
+
+// @state
 State :: struct {
     // window
     screen_width: f32,
@@ -81,6 +89,7 @@ State :: struct {
     // game state
     entities: [MAX_ENTITIES]Entity,
     entity_count: uint,
+    nav_mesh: NavMesh,
     wave: uint,
     enemies_to_spawn: uint,
     enemies_to_kill: uint,
@@ -104,10 +113,69 @@ State :: struct {
 
 state := State {}
 
-///////////////////////////////// @context
+// @context
 game_context := runtime.default_context()
 
-///////////////////////////////// @input
+// @navmesh
+NavMesh :: struct {
+    nodes: [NAV_MESH_HEIGHT][NAV_MESH_WIDTH]NavNode,
+    connections: sa.Small_Array(4 * NAV_MESH_WIDTH * NAV_MESH_HEIGHT, [2]Vector2i)
+}
+
+NavNode :: struct {
+    world_position: Vector2,
+    nav_mesh_position: Vector2i,
+}
+
+create_nav_mesh :: proc() -> NavMesh {
+    MIN_X : f32 : -(LEVEL_WIDTH / 2) * 0.9
+    MAX_X : f32 : (LEVEL_WIDTH / 2) * 0.9
+    STEP_X : f32 : (MAX_X - MIN_X) / (NAV_MESH_WIDTH - 1)
+
+    MIN_Y : f32 : -(LEVEL_HEIGHT / 2) * 0.9
+    MAX_Y : f32 : (LEVEL_HEIGHT / 2) * 0.9
+    STEP_Y : f32 : (MAX_Y - MIN_Y) / (NAV_MESH_HEIGHT - 1)
+
+    DOWN :: Vector2i{0, -1}
+    LEFT :: Vector2i{-1, 0}
+
+    nav_mesh: NavMesh
+
+    for y in 0..<NAV_MESH_HEIGHT {
+        for x in 0..<NAV_MESH_WIDTH {
+            node := &nav_mesh.nodes[y][x]
+
+            // set world position
+            node.world_position = {
+                MIN_X + (f32(x) * STEP_X),
+                MIN_Y + (f32(y) * STEP_Y)
+            }
+
+            // set nav mesh position
+            node.nav_mesh_position = {x, y}
+
+            {// set connections
+                // set left direction
+                if node.nav_mesh_position.x != 0 {
+                    connection := [2]Vector2i{node.nav_mesh_position, node.nav_mesh_position + LEFT}
+                    sa.push_back(&nav_mesh.connections, connection)
+                }
+
+                if node.nav_mesh_position.y != 0 {
+                    connection := [2]Vector2i{node.nav_mesh_position, node.nav_mesh_position + DOWN}
+                    sa.push_back(&nav_mesh.connections, connection)
+                }
+            }
+        }
+    }
+
+    return nav_mesh
+}
+
+find_path :: proc(nav_mesh: ^NavMesh, start: Vector2i, end: Vector2i) {
+}
+
+// @input
 InputState :: enum {
     UP,
     DOWN,
@@ -434,6 +502,7 @@ init :: proc() {
         screen_height = state.screen_height,
         gold = setting_start_gold,
         zoom = 2.5,
+        nav_mesh = create_nav_mesh(),
         wave =  1,
         enemies_to_spawn = enemies_for_wave(1),
         enemies_to_kill = enemies_for_wave(1),
@@ -444,40 +513,59 @@ init :: proc() {
 
     state = new_state
 
-    // floor
-    create_entity(Entity {
-        position = {0, 0}, 
-        size = {300, 300}, 
-        colour = WHITE
-    })
-    
-    // player
-    create_entity(Entity {
-        flags = {.PLAYER, .HAS_WEAPON, .SOLID_HITBOX},
-        position = {0, 30}, 
-        size = {10, 10}, 
-        colour = BLUE,
-        weapon = .SHOTGUN,
-        magazine_ammo = magazine_size(.SHOTGUN)
-    }) 
-    
-    // nexus
-    create_entity(Entity {
-        flags = {.NEXUS, .HAS_HEALTH, .STATIC_HITBOX},
-        position = {0, 0}, 
-        size = {100, 10}, 
-        colour = SKY_BLUE,
-        health = NEXUS_HEALTH,
-        max_health = NEXUS_HEALTH
-    })
-    
-    // spawner
-    create_entity(Entity {
-        flags = {.SPAWNER},
-        position = {-90, 90}, 
-        size = {10, 10}, 
-        colour = PINK,
-    })
+    { // generate level
+        // floor
+        create_entity(Entity {
+            position = {0, 0}, 
+            size = {LEVEL_WIDTH, LEVEL_HEIGHT}, 
+            colour = WHITE
+        })
+        
+        // player
+        create_entity(Entity {
+            flags = {.PLAYER, .HAS_WEAPON, .SOLID_HITBOX},
+            // position = {0, -LEVEL_HEIGHT / 3}, 
+            position = {0, 0},
+            size = {10, 10}, 
+            colour = BLUE,
+            weapon = .SHOTGUN,
+            magazine_ammo = magazine_size(.SHOTGUN)
+        }) 
+        
+        // nexus
+        create_entity(Entity {
+            flags = {.NEXUS, .HAS_HEALTH, .STATIC_HITBOX},
+            position = {0, -(LEVEL_HEIGHT / 2)}, 
+            size = {100, 10}, 
+            colour = SKY_BLUE,
+            health = NEXUS_HEALTH,
+            max_health = NEXUS_HEALTH
+        }) 
+
+        // spawners
+        for i in 0..<LEVEL_SPAWNER_COUNT {
+            MIN_Y :: -(LEVEL_HEIGHT / 2) * 0.3
+            MAX_Y :: (LEVEL_HEIGHT / 2) * 0.9
+            RANGE_Y :: MAX_Y - MIN_Y
+
+            MIN_X :: -(LEVEL_WIDTH / 2) * 0.9
+            MAX_X :: (LEVEL_WIDTH / 2) * 0.9
+            RANGE_X :: MAX_X - MIN_X
+
+            y_random := rand.float32()
+            x_random := rand.float32()
+            
+            y := MIN_Y + (RANGE_Y * y_random)
+            x := MIN_X + (RANGE_X * x_random)
+
+            create_entity(Entity {
+                flags = {.SPAWNER},
+                position = {x, y}, 
+                size = {10, 10}, 
+                colour = PINK,
+            })
+        }
+    }
 }
 
 
@@ -569,7 +657,7 @@ update :: proc() {
         // because we want to do stuff when it reaches 0
         entity.defence_cooldown = clamp(entity.defence_cooldown - TICK_RATE, 0, math.F32_MAX)
         entity.spawner_cooldown = clamp(entity.spawner_cooldown - TICK_RATE, 0, math.F32_MAX)
-            entity.firing_cooldown = clamp(entity.firing_cooldown - TICK_RATE, 0, math.F32_MAX)
+        entity.firing_cooldown = clamp(entity.firing_cooldown - TICK_RATE, 0, math.F32_MAX)
     
         player: {
             if !(.PLAYER in entity.flags) {
@@ -856,6 +944,11 @@ on_solid_collision :: proc(entity: ^Entity, other: ^Entity) {
 
 ///////////////////////////////// @physics
 physics :: proc(delta_time: f32) {
+    player := get_entity_with_flag(.PLAYER)
+    if player != nil {
+        state.camera_position.y = player.position.y
+    }
+
     for _i in 0..<state.entity_count {
         entity := &state.entities[_i]
     
@@ -1096,7 +1189,32 @@ draw :: proc() {
     
         draw_rectangle(entity.position, entity.size, entity_colour, entity.rotation)	
     }
-    
+
+    if settings_nav_mesh {
+        for y in 0..< len(state.nav_mesh.nodes) {
+            for x in 0..< len(state.nav_mesh.nodes[0]) {
+                node := state.nav_mesh.nodes[y][x]
+
+                colour := BLACK
+                if node.nav_mesh_position.x == 0 || node.nav_mesh_position.x == NAV_MESH_WIDTH - 1 {
+                    colour = BLUE
+                }
+                else if node.nav_mesh_position.y == 0 || node.nav_mesh_position.y == NAV_MESH_HEIGHT - 1 {
+                    colour = RED
+                }
+
+                draw_circle(node.world_position, 5, with_alpha(colour, 0.5))
+            }
+        }
+
+        for connection in state.nav_mesh.connections.data[0:state.nav_mesh.connections.len] {
+            left := &state.nav_mesh.nodes[connection[0].y][connection[0].x]
+            right := &state.nav_mesh.nodes[connection[1].y][connection[1].x]
+
+            draw_line(left.world_position, right.world_position, 1, with_alpha(BLACK, 0.5))
+        }
+    }
+
     in_screen_space = true
 
     { // top UI bar
@@ -1126,7 +1244,7 @@ draw :: proc() {
         card_width : f32 = state.screen_width * 0.15
         padding : f32 = card_width * 0.2
         card_y : f32 = state.screen_height - 25
-        card_start_x : f32 = 100
+        card_start_x : f32 = (card_width / 2) + 30
     
         for defence, i in DefenceType {
             if i == 0 {
