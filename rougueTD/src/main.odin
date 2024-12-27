@@ -53,7 +53,6 @@ GOLD_FROM_BASIC_ENEMY :: 50
 TICKS_PER_SECONDS :: 20
 TICK_RATE :: 1.0 / TICKS_PER_SECONDS
 
-
 LEVEL_SPAWNER_COUNT :: 6
 LEVEL_WIDTH         :: 300
 LEVEL_HEIGHT        :: 600
@@ -62,7 +61,7 @@ NAV_MESH_HEIGHT     :: LEVEL_HEIGHT / 30
 
 // @settings
 setting_start_gold      : uint = 0
-settings_spawning       : bool = false
+settings_spawning       : bool = true
 settings_nav_mesh       : bool = true
 
 // @state
@@ -89,10 +88,13 @@ State :: struct {
     // game state
     entities: [MAX_ENTITIES]Entity,
     entity_count: uint,
-    nav_mesh: NavMesh,
     wave: uint,
     enemies_to_spawn: uint,
     enemies_to_kill: uint,
+
+    // nav mesh state
+    nav_mesh: NavMesh,
+    nav_paths: [LEVEL_SPAWNER_COUNT][]NavMeshPosition,
 
     // command state
     in_command_mode: bool,
@@ -119,13 +121,15 @@ game_context := runtime.default_context()
 // @navmesh
 NavMesh :: struct {
     nodes: [NAV_MESH_HEIGHT][NAV_MESH_WIDTH]NavNode,
-    connections: sa.Small_Array(4 * NAV_MESH_WIDTH * NAV_MESH_HEIGHT, [2]Vector2i)
+    connections: sa.Small_Array(4 * NAV_MESH_WIDTH * NAV_MESH_HEIGHT, [2]NavMeshPosition)
 }
 
 NavNode :: struct {
     world_position: Vector2,
     nav_mesh_position: Vector2i,
 }
+
+NavMeshPosition :: Vector2i
 
 create_nav_mesh :: proc() -> NavMesh {
     MIN_X : f32 : -(LEVEL_WIDTH / 2) * 0.9
@@ -136,8 +140,8 @@ create_nav_mesh :: proc() -> NavMesh {
     MAX_Y : f32 : (LEVEL_HEIGHT / 2) * 0.9
     STEP_Y : f32 : (MAX_Y - MIN_Y) / (NAV_MESH_HEIGHT - 1)
 
-    DOWN :: Vector2i{0, -1}
-    LEFT :: Vector2i{-1, 0}
+    DOWN :: NavMeshPosition{0, -1}
+    LEFT :: NavMeshPosition{-1, 0}
 
     nav_mesh: NavMesh
 
@@ -157,12 +161,12 @@ create_nav_mesh :: proc() -> NavMesh {
             {// set connections
                 // set left direction
                 if node.nav_mesh_position.x != 0 {
-                    connection := [2]Vector2i{node.nav_mesh_position, node.nav_mesh_position + LEFT}
+                    connection := [2]NavMeshPosition{node.nav_mesh_position, node.nav_mesh_position + LEFT}
                     sa.push_back(&nav_mesh.connections, connection)
                 }
 
                 if node.nav_mesh_position.y != 0 {
-                    connection := [2]Vector2i{node.nav_mesh_position, node.nav_mesh_position + DOWN}
+                    connection := [2]NavMeshPosition{node.nav_mesh_position, node.nav_mesh_position + DOWN}
                     sa.push_back(&nav_mesh.connections, connection)
                 }
             }
@@ -191,13 +195,13 @@ closest_node :: proc(nav_mesh: ^NavMesh, world_position: Vector2) -> NavNode {
     return best_node
 }
 
-get_node :: proc(nav_mesh: ^NavMesh, nav_mesh_position: Vector2i) -> NavNode {
-    return nav_mesh.nodes[nav_mesh_position.y][nav_mesh_position.x]
+get_node :: proc(nav_mesh: ^NavMesh, position: NavMeshPosition) -> NavNode {
+    return nav_mesh.nodes[position.y][position.x]
 }
 
-find_path :: proc(nav_mesh: ^NavMesh, start: Vector2i, end: Vector2i) -> ([]Vector2i, bool) {
-    stack := make([dynamic]Vector2i, context.temp_allocator)
-    checked := make([dynamic]Vector2i, context.temp_allocator)
+find_path :: proc(nav_mesh: ^NavMesh, start: NavMeshPosition, end: NavMeshPosition) -> ([]NavMeshPosition, bool) {
+    stack := make([dynamic]NavMeshPosition)
+    checked := make([dynamic]NavMeshPosition)
 
     append(&stack, start)
     found := find_path_recursive(nav_mesh, &stack, &checked, end)
@@ -208,14 +212,14 @@ find_path :: proc(nav_mesh: ^NavMesh, start: Vector2i, end: Vector2i) -> ([]Vect
     return nil, false
 }
 
-find_path_recursive :: proc(nav_mesh: ^NavMesh, stack: ^[dynamic]Vector2i, checked: ^[dynamic]Vector2i, end: Vector2i) -> bool {
+find_path_recursive :: proc(nav_mesh: ^NavMesh, stack: ^[dynamic]NavMeshPosition, checked: ^[dynamic]NavMeshPosition, end: Vector2i) -> bool {
     // dont pop the stack yet as we want to keep it here if the end
     // point is found
     current := stack[len(stack) - 1]
 
-    already_checked :: proc(checked: ^[dynamic]Vector2i, point: Vector2i) -> bool {
+    already_checked :: proc(checked: ^[dynamic]NavMeshPosition, point: Vector2i) -> bool {
         for c in checked {
-            if vector2i_equal(point, c) {
+            if equal(point, c) {
                 return true
             }    
         }
@@ -227,13 +231,13 @@ find_path_recursive :: proc(nav_mesh: ^NavMesh, stack: ^[dynamic]Vector2i, check
         return false
     }
 
-    if vector2i_equal(current, end) {
+    if equal(current, end) {
         return true 
     }
 
     append(checked, current)
     for connection in nav_mesh.connections.data[0:nav_mesh.connections.len] {
-        if vector2i_equal(current, connection.x) {
+        if equal(current, connection.x) {
             append(stack, connection.y)
             found := find_path_recursive(nav_mesh, stack, checked, end)
             if found {
@@ -243,7 +247,7 @@ find_path_recursive :: proc(nav_mesh: ^NavMesh, stack: ^[dynamic]Vector2i, check
             pop(stack)
         }
 
-        if vector2i_equal(current, connection.y) {
+        if equal(current, connection.y) {
             append(stack, connection.x)
             found := find_path_recursive(nav_mesh, stack, checked, end)
             if found {
@@ -261,7 +265,11 @@ find_path_recursive :: proc(nav_mesh: ^NavMesh, stack: ^[dynamic]Vector2i, check
 }
 
 nav_node_equal :: proc(a: NavNode, b: NavNode) -> bool {
-    return vector2i_equal(a.nav_mesh_position, b.nav_mesh_position)
+    return equal(a.nav_mesh_position, b.nav_mesh_position)
+}
+
+nav_mesh_position_equal :: proc(a: NavMeshPosition, b: NavMeshPosition) -> bool {
+    return a.x == b.x && a.y == b.y
 }
 
 // @input
@@ -317,6 +325,11 @@ Entity :: struct {
     // flag: spawner
     spawner_cooldown: f32,
 
+    // flag: ai
+    nav_path: uint,         // spawners also set this to pass to ai
+    nav_path_index: uint,
+    entity_target: EntityFlag,
+
     // flag: weapon
     weapon: WeaponType,
     magazine_ammo: uint,
@@ -325,6 +338,7 @@ Entity :: struct {
 }
 
 EntityFlag :: enum {
+    NONE = 0,
     PLAYER,
     AI,
     NEXUS,
@@ -339,6 +353,7 @@ EntityFlag :: enum {
 }
 
 DynamicEntityFlag :: enum {
+    NONE = 0,
     DELETE,
     FIRING,
     RELOADING
@@ -622,14 +637,16 @@ init :: proc() {
         }) 
         
         // nexus
-        create_entity(Entity {
+        nexus := create_entity(Entity {
             flags = {.NEXUS, .HAS_HEALTH, .STATIC_HITBOX},
             position = {0, -(LEVEL_HEIGHT / 2)}, 
             size = {100, 10}, 
             colour = SKY_BLUE,
             health = NEXUS_HEALTH,
             max_health = NEXUS_HEALTH
-        }) 
+        })
+
+        nexus_node := closest_node(&state.nav_mesh, nexus.position)
 
         // spawners
         for i in 0..<LEVEL_SPAWNER_COUNT {
@@ -647,12 +664,22 @@ init :: proc() {
             y := MIN_Y + (RANGE_Y * y_random)
             x := MIN_X + (RANGE_X * x_random)
 
-            create_entity(Entity {
+            spawner := create_entity(Entity {
                 flags = {.SPAWNER},
                 position = {x, y}, 
                 size = {10, 10}, 
                 colour = PINK,
+                nav_path = uint(i)
             })
+
+            spawner_node := closest_node(&state.nav_mesh, spawner.position)
+            path, ok := find_path(&state.nav_mesh, spawner_node.nav_mesh_position, nexus_node.nav_mesh_position)
+            if !ok {
+                log.warn("there was a problem generating nav mesh path for a spawner")
+                continue
+            }
+
+            state.nav_paths[i] = path
         }
     }
 }
@@ -830,22 +857,39 @@ update :: proc() {
             if !(.AI in entity.flags) {
                 break ai
             }
-    
-            nexus := get_entity_with_flag(.NEXUS)
-            if nexus == nil {
-                entity.velocity = 0
-                break ai
+
+            if entity.nav_path_index == len(state.nav_paths[entity.nav_path]) {
+                entity.entity_target = .NEXUS
             }
-    
-            delta := nexus.position - entity.position
+
+            target_position: Vector2
+
+            if entity.entity_target == .NONE {
+                node_position := state.nav_paths[entity.nav_path][entity.nav_path_index]
+                node := get_node(&state.nav_mesh, node_position)
+                target_position = node.world_position 
+            } else {
+                target_entity := get_entity_with_flag(entity.entity_target)
+                if target_entity == nil {
+                    break ai
+                }
+
+                target_position = target_entity.position
+            }
+
+            delta := target_position - entity.position
             distance := length(delta)
             direction := normalize(delta)
             entity.velocity = direction * AI_SPEED
-    
-            if distance < 10 {
-                entity.dynamic_flags += {.DELETE}
-                entity_take_damage(nexus, BASIC_ENEMY_DAMAGE)
+
+            if distance < 10 && entity.entity_target == .NONE {
+                entity.nav_path_index += 1
             }
+    
+            // if distance < 10 {
+                // entity.dynamic_flags += {.DELETE}
+                // entity_take_damage(nexus, BASIC_ENEMY_DAMAGE)
+            // }
         }
     
         health: {
@@ -916,7 +960,9 @@ update :: proc() {
                 size = {10, 10}, 
                 colour = DARK_RED,
                 health = BASIC_ENEMY_HEALTH,
-                max_health = BASIC_ENEMY_HEALTH
+                max_health = BASIC_ENEMY_HEALTH,
+                nav_path = entity.nav_path,
+                nav_path_index = 0,
             })
         }
     
@@ -1289,11 +1335,8 @@ draw :: proc(delta_time: f32) {
             break draw_nav_mesh
         }
 
-        start_node := closest_node(&state.nav_mesh, player.position)
-        end_node := get_node(&state.nav_mesh, {0, 0})
-
-        path, ok := find_path(&state.nav_mesh, start_node.nav_mesh_position, end_node.nav_mesh_position)
-        if !ok {
+        nexus := get_entity_with_flag(.NEXUS)
+        if nexus == nil {
             break draw_nav_mesh
         }
 
@@ -1302,15 +1345,22 @@ draw :: proc(delta_time: f32) {
                 node := state.nav_mesh.nodes[y][x]
 
                 colour := BLACK
-                if eqaul(start_node, node) {
-                    colour = GREEN
-                }
-                else if eqaul(end_node, node) {
-                    colour = RED
-                } else {
-                    for position in path {
-                        if eqaul(position, node.nav_mesh_position) {
-                            colour = SKY_BLUE
+                for path in state.nav_paths {
+                    assert(len(path) > 0)
+                        
+                    start_node_position := path[0]
+                    end_node_position := path[len(path) - 1]
+
+                    if equal(start_node_position, node.nav_mesh_position) {
+                        colour = GREEN
+                    }
+                    else if equal(end_node_position, node.nav_mesh_position) {
+                        colour = RED
+                    } else {
+                        for node_position in path {
+                            if equal(node_position, node.nav_mesh_position) {
+                                colour = SKY_BLUE
+                            }
                         }
                     }
                 }

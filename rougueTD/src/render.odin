@@ -356,10 +356,6 @@ range :: proc(buffer: []$T) -> sg.Range {
     }
 }
 
-vector2i_equal :: proc(a: Vector2i, b: Vector2i) -> bool {
-    return a.x == b.x && a.y == b.y
-}
-
 translate_matrix :: proc(position: Vector2) -> Mat4 {
     return linalg.matrix4_translate_f32({position.x, position.y, 0})
 }

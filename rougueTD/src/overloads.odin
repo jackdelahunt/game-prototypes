@@ -2,9 +2,9 @@ package src
 
 import "core:math/linalg"
 
-eqaul :: proc {
-    vector2i_equal,
+equal :: proc {
     nav_node_equal,
+    nav_mesh_position_equal,
 }
 
 length :: linalg.length
