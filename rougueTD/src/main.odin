@@ -31,8 +31,8 @@ import shaders "shaders"
 DEFAULT_SCREEN_WIDTH	:: 1500
 DEFAULT_SCREEN_HEIGHT	:: 1000
 
-MAX_ENTITIES	:: 256
-MAX_QUADS	:: 1024
+MAX_ENTITIES	:: 512
+MAX_QUADS	:: 2048
 
 MAX_WAVES :: 20
 
@@ -56,12 +56,12 @@ TICKS_PER_SECONDS :: 20
 TICK_RATE :: 1.0 / TICKS_PER_SECONDS
 
 LEVEL_SPAWNER_COUNT :: 6
-LEVEL_WIDTH         :: 300
-LEVEL_HEIGHT        :: 600
-NAV_MESH_WIDTH      :: LEVEL_WIDTH / 30
-NAV_MESH_HEIGHT     :: LEVEL_HEIGHT / 30
+LEVEL_WIDTH         :: 400
+LEVEL_HEIGHT        :: 1200
+NAV_MESH_WIDTH      :: LEVEL_WIDTH / 20
+NAV_MESH_HEIGHT     :: LEVEL_HEIGHT / 20
 
-// @settings
+//settings
 setting_start_gold      : uint = 0
 settings_spawning       : bool = true
 settings_nav_mesh       : bool = true
@@ -88,7 +88,7 @@ State :: struct {
     selected_defence: DefenceType,
 
     // game state
-    entities: [MAX_ENTITIES]Entity,
+    entities: []Entity,
     entity_count: uint,
     wave: uint,
     enemies_to_spawn: uint,
@@ -96,7 +96,7 @@ State :: struct {
 
     // nav mesh state
     nav_mesh: NavMesh,
-    nav_paths: [LEVEL_SPAWNER_COUNT][]NavMeshPosition,
+    nav_paths: sa.Small_Array(LEVEL_SPAWNER_COUNT, []NavMeshPosition),
 
     // command state
     in_command_mode: bool,
@@ -108,7 +108,7 @@ State :: struct {
     // renderer state
     camera_position: Vector2,
     zoom: f32,
-    quads: [MAX_QUADS]Quad,
+    quads: []Quad,
     quad_count: uint,
     render_pipeline: sg.Pipeline,
     bindings: sg.Bindings,
@@ -168,7 +168,7 @@ create_nav_mesh :: proc() -> NavMesh {
 }
 
 bake_navmesh :: proc(nav_mesh: ^NavMesh) {
-    for &entity in state.entities[0:state.entity_count] {
+    for &entity, i in state.entities[0:state.entity_count] {
         if !(.BLOCKS_NAV_MESH in entity.flags) {
             continue
         }
@@ -395,8 +395,8 @@ Entity :: struct {
     spawner_cooldown: f32,
 
     // flag: ai
-    nav_path: uint,         // spawners also set this to pass to ai
-    nav_path_index: uint,
+    nav_path: int,         // spawners also set this to pass to ai
+    nav_path_index: int,
     entity_target: EntityFlag,
 
     // flag: weapon
@@ -656,9 +656,10 @@ main :: proc() {
             log.fatal("error loading fonts.. exiting")
             return
         }
-    } 
+    }
 
-    init()
+    init_state()
+    setup_game()
 
     sapp.run({
         init_cb = renderer_init,
@@ -673,23 +674,27 @@ main :: proc() {
     })
 }
 
+
+
 ///////////////////////////////// @init
-init :: proc() {
-    new_state := State{
+init_state :: proc() {
+    state = State {
         screen_width = state.screen_width,
         screen_height = state.screen_height,
-        gold = setting_start_gold,
-        zoom = 2.5,
-        nav_mesh = create_nav_mesh(),
-        wave =  1,
-        enemies_to_spawn = enemies_for_wave(1),
-        enemies_to_kill = enemies_for_wave(1),
-        render_pipeline = state.render_pipeline,
-        bindings = state.bindings,
-        pass_action = state.pass_action
+        entities = make([]Entity, MAX_ENTITIES),
+        quads = make([]Quad, MAX_QUADS)
     }
+}
 
-    state = new_state
+setup_game :: proc() {
+    {
+        state.gold = setting_start_gold
+        state.zoom = 2.5
+        state.nav_mesh = create_nav_mesh()
+        state.wave =  1
+        state.enemies_to_spawn = enemies_for_wave(1)
+        state.enemies_to_kill = enemies_for_wave(1)
+    }
 
     { // generate level
         // floor
@@ -722,24 +727,24 @@ init :: proc() {
         nexus_node := closest_node(&state.nav_mesh, nexus.position)
 
         // generate walls
-        for y in 0..<NAV_MESH_HEIGHT {
+        for y in 2..<NAV_MESH_HEIGHT {
             for x in 0..<NAV_MESH_WIDTH {
-                node := state.nav_mesh.nodes[y][x]
-                if equal(nexus_node, node) {
+                MAX_SIZE : f32 : 20
+                MIN_SIZE : f32 : 5
+                NOISE_SCALE :: 0.15
+    
+                f := noise.noise_2d_improve_x(69, {auto_cast x, auto_cast y} * NOISE_SCALE)
+                f = (f + 1) * 0.5 // make f from 0 -1
+                if f < 0.7 {
                     continue
                 }
 
-                f := noise.noise_2d_improve_x(69, [2]f64{auto_cast node.world_position.x, auto_cast node.world_position.y})
-
-                if f < 0.8 {
-                    continue
-                }
-
+                position := get_node_ptr(&state.nav_mesh, {x, y}).world_position
                 create_entity(Entity{
                     flags = {.STATIC_HITBOX, .BLOCKS_NAV_MESH},
-                    position = node.world_position, 
+                    position = position, 
                     size = {20, 20}, 
-                    colour = RED,
+                    colour = {WHITE.r - f, WHITE.g - f, WHITE.b - f, 1},
                 })
             }
         }
@@ -778,7 +783,7 @@ init :: proc() {
                 position = spawner_position, 
                 size = {10, 10}, 
                 colour = PINK,
-                nav_path = uint(i)
+                nav_path = i
             })
 
             spawner_node := closest_node(&state.nav_mesh, spawner.position)
@@ -788,9 +793,20 @@ init :: proc() {
                 continue
             }
 
-            state.nav_paths[i] = path
+            sa.append(&state.nav_paths, path)
         }
     }
+}
+
+reset_game :: proc() {
+    state.entity_count = 0
+    state.quad_count = 0
+    
+    for path in sa.slice(&state.nav_paths) {
+        delete(path)
+    }
+
+    state.nav_paths.len = 0
 }
 
 
@@ -821,37 +837,37 @@ apply_inputs :: proc() {
     }
 
     for index in 0..<len(state.key_inputs) {	
-    // input state from key_inputs_this_frame can only 
-    // be DOWN or UP, need to apply this to the key
-    // inputs while allowing for pressing and released states
-
-    state_last_tick := &state.key_inputs[auto_cast index]
-    state_last_frame := state.key_inputs_this_frame[auto_cast index]
-
-    switch state_last_tick^ {
-    case .UP:
-        if state_last_frame == .DOWN {
-        state_last_tick^ = .DOWN
+        // input state from key_inputs_this_frame can only 
+        // be DOWN or UP, need to apply this to the key
+        // inputs while allowing for pressing and released states
+    
+        state_last_tick := &state.key_inputs[auto_cast index]
+        state_last_frame := state.key_inputs_this_frame[auto_cast index]
+    
+        switch state_last_tick^ {
+        case .UP:
+            if state_last_frame == .DOWN {
+                state_last_tick^ = .DOWN
+            }
+        case .DOWN:
+            if state_last_frame == .DOWN {
+                state_last_tick^ = .PRESSING
+            }
+            else if state_last_frame == .UP {
+                state_last_tick^ = .RELEASED
+            }
+        case .PRESSING:
+            if state_last_frame == .UP {
+                state_last_tick^ = .RELEASED
+            }
+        case .RELEASED:
+            if state_last_frame == .UP {
+                state_last_tick^ = .UP
+            }
+            else if state_last_frame == .DOWN {
+                state_last_tick^ = .DOWN
+            }
         }
-    case .DOWN:
-        if state_last_frame == .DOWN {
-        state_last_tick^ = .PRESSING
-        }
-        else if state_last_frame == .UP {
-        state_last_tick^ = .RELEASED
-        }
-    case .PRESSING:
-        if state_last_frame == .UP {
-        state_last_tick^ = .RELEASED
-        }
-    case .RELEASED:
-        if state_last_frame == .UP {
-        state_last_tick^ = .UP
-        }
-        else if state_last_frame == .DOWN {
-        state_last_tick^ = .DOWN
-        }
-    }
     }
 }
 
@@ -859,7 +875,11 @@ apply_inputs :: proc() {
 update :: proc() {
     if state.key_inputs[.ESCAPE] == .DOWN {
         sapp.quit()
-    }	
+    }
+
+    if state.key_inputs[.R] == .PRESSING {
+        command_restart()
+    }
 
     // go through each number key and select defence
     for type, index in DefenceType {
@@ -967,14 +987,14 @@ update :: proc() {
                 break ai
             }
 
-            if entity.nav_path_index == len(state.nav_paths[entity.nav_path]) {
+            if entity.nav_path_index == len(sa.get(state.nav_paths, entity.nav_path)) {
                 entity.entity_target = .NEXUS
             }
 
             target_position: Vector2
 
             if entity.entity_target == .NONE {
-                node_position := state.nav_paths[entity.nav_path][entity.nav_path_index]
+                node_position := state.nav_paths.data[entity.nav_path][entity.nav_path_index]
                 node := get_node(&state.nav_mesh, node_position)
                 target_position = node.world_position 
             } else {
@@ -1458,7 +1478,7 @@ draw :: proc(delta_time: f32) {
                 }
 
                 colour := BLACK
-                for path in state.nav_paths {
+                for path in sa.slice(&state.nav_paths) {
                     if len(path) == 0 {
                         continue
                     }
@@ -1485,7 +1505,7 @@ draw :: proc(delta_time: f32) {
         }
 
         // drawing lines between all nodes
-        for path in state.nav_paths {
+        for path in sa.slice(&state.nav_paths) {
             if len(path) == 0 {
                 continue
             }
@@ -1598,7 +1618,8 @@ command_echo :: proc(message: string) {
 }
 
 command_restart :: proc() {
-    init()
+    reset_game()
+    setup_game()
 }
 
 command_spawning :: proc(value: bool) {

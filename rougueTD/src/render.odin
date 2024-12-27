@@ -156,13 +156,13 @@ draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colou
     texture_index: f32
     switch draw_type {
     case .SOLID:
-    texture_index = 0
+        texture_index = 0
     case .CIRCLE:
-    texture_index = 1
+        texture_index = 1
     case .TEXTURE:
-    texture_index = 2
+        texture_index = 2
     case .FONT:
-    texture_index = 3
+        texture_index = 3
     }
 
     quad[0].texture_index = texture_index
@@ -193,36 +193,36 @@ renderer_init :: proc "c" () {
     context = game_context
 
     sg.setup({
-    environment = sglue.environment(),
-    logger = { func = slog.func },
+        environment = sglue.environment(),
+        logger = { func = slog.func },
     })
 
     // create vertex buffer
     state.bindings.vertex_buffers[0] = sg.make_buffer({
-    usage = .DYNAMIC,
-    size = size_of(Quad) * len(state.quads),
-    label = "quad-vertices"
+        usage = .DYNAMIC,
+        size = size_of(Quad) * len(state.quads),
+        label = "quad-vertices"
     })
 
     // create index buffer
-    index_buffer: [len(state.quads) * 6]u16
+    index_buffer: [MAX_QUADS * 6]u16
     i := 0
     for i < len(index_buffer) {
-    // vertex offset pattern to draw a quad
-    // { 0, 1, 2,  0, 2, 3 }
-    index_buffer[i + 0] = auto_cast ((i/6)*4 + 0)
-    index_buffer[i + 1] = auto_cast ((i/6)*4 + 1)
-    index_buffer[i + 2] = auto_cast ((i/6)*4 + 2)
-    index_buffer[i + 3] = auto_cast ((i/6)*4 + 0)
-    index_buffer[i + 4] = auto_cast ((i/6)*4 + 2)
-    index_buffer[i + 5] = auto_cast ((i/6)*4 + 3)
-    i += 6
+        // vertex offset pattern to draw a quad
+        // { 0, 1, 2,  0, 2, 3 }
+        index_buffer[i + 0] = auto_cast ((i/6)*4 + 0)
+        index_buffer[i + 1] = auto_cast ((i/6)*4 + 1)
+        index_buffer[i + 2] = auto_cast ((i/6)*4 + 2)
+        index_buffer[i + 3] = auto_cast ((i/6)*4 + 0)
+        index_buffer[i + 4] = auto_cast ((i/6)*4 + 2)
+        index_buffer[i + 5] = auto_cast ((i/6)*4 + 3)
+        i += 6
     }
 
     state.bindings.index_buffer = sg.make_buffer({
-    type = .INDEXBUFFER,
-    data = { ptr = &index_buffer, size = size_of(index_buffer) },
-    label = "quad-indices"
+        type = .INDEXBUFFER,
+        data = { ptr = &index_buffer, size = size_of(index_buffer) },
+        label = "quad-indices"
     })
 
     // just loading the face texture :^] 
@@ -231,8 +231,8 @@ renderer_init :: proc "c" () {
         width = 8,
         height = 8,
         label = "default_texture",
-    data = {
-        subimage = {
+        data = {
+            subimage = {
                 0 = {
                     0 = { ptr = face_texture.data, size = auto_cast(face_texture.width * face_texture.height * 4)}, // 4 bytes per pixel
                 },
@@ -243,10 +243,10 @@ renderer_init :: proc "c" () {
     state.bindings.images[shaders.IMG_font_texture] = sg.make_image({
         width = auto_cast font_bitmap_w,
         height = auto_cast font_bitmap_h,
-    pixel_format = .R8,
+        pixel_format = .R8,
         label = "font_texture",
-    data = {
-        subimage = {
+        data = {
+            subimage = {
                 0 = {
                     0 = { ptr = auto_cast &alagard.bitmap, size = size_of(alagard.bitmap)},
                 },
@@ -255,7 +255,7 @@ renderer_init :: proc "c" () {
     })
 
     state.bindings.samplers[shaders.SMP_default_sampler] = sg.make_sampler({
-    label = "default_sampler"
+        label = "default_sampler"
     })
 
     shader := sg.make_shader(shaders.basic_shader_desc(sg.query_backend()))
@@ -265,32 +265,32 @@ renderer_init :: proc "c" () {
     index_type = .UINT16,
     layout = {
         attrs = {
-        shaders.ATTR_basic_position = { format = .FLOAT3 },
-        shaders.ATTR_basic_color0 = { format = .FLOAT4 },
-        shaders.ATTR_basic_texture_uv0 = { format = .FLOAT2 },
-        shaders.ATTR_basic_texture_index0 = { format = .FLOAT },
+            shaders.ATTR_basic_position = { format = .FLOAT3 },
+            shaders.ATTR_basic_color0 = { format = .FLOAT4 },
+            shaders.ATTR_basic_texture_uv0 = { format = .FLOAT2 },
+            shaders.ATTR_basic_texture_index0 = { format = .FLOAT },
         },
     },
     colors = {
         0 = {
-        blend = {
-            enabled = true,
-            src_factor_rgb = .SRC_ALPHA,
-            dst_factor_rgb = .ONE_MINUS_SRC_ALPHA,
-            op_rgb = .ADD,
-            src_factor_alpha = .ONE,
-            dst_factor_alpha = .ONE_MINUS_SRC_ALPHA,
-            op_alpha = .ADD,
-        }
+            blend = {
+                enabled = true,
+                src_factor_rgb = .SRC_ALPHA,
+                dst_factor_rgb = .ONE_MINUS_SRC_ALPHA,
+                op_rgb = .ADD,
+                src_factor_alpha = .ONE,
+                dst_factor_alpha = .ONE_MINUS_SRC_ALPHA,
+                op_alpha = .ADD,
+            }
         }
     },
-    label = "basic-pipeline"
+        label = "basic-pipeline"
     })
 
 
     state.pass_action = {
         colors = {
-        0 = { load_action = .CLEAR, clear_value = {0.1, 0.1, 0.1, 1} },
+            0 = { load_action = .CLEAR, clear_value = {0.1, 0.1, 0.1, 1} },
         }
     }
 }
@@ -302,7 +302,6 @@ renderer_frame :: proc "c" () {
     state.screen_height = sapp.heightf()
   
     // reset quad data for this frame
-    runtime.mem_zero(&state.quads, size_of(Quad) * len(state.quads))
     state.quad_count = 0
 
     // let the game create and set any quads it wants for this frame
