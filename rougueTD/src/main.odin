@@ -1,7 +1,7 @@
 package src
 
 // TODO:
-// player gets gold from killing enemies
+// player gets gold from killing enemies, context.temp_allocator
 
 import "core:fmt"
 import "core:log"
@@ -11,6 +11,8 @@ import "core:time"
 import "core:os"
 import "core:strings"
 import "core:math"
+import "core:slice"
+import "core:math/noise"
 import "core:math/rand"
 import "core:path/filepath"
 import "core:encoding/ansi"
@@ -98,7 +100,7 @@ State :: struct {
 
     // command state
     in_command_mode: bool,
-    command_input_buffer: [256]u8,
+    command_input_buffer: [64]u8,
     command_input_length: uint,
     command_output_buffer: [1024]u8,
     command_output_length: uint,
@@ -121,12 +123,12 @@ game_context := runtime.default_context()
 // @navmesh
 NavMesh :: struct {
     nodes: [NAV_MESH_HEIGHT][NAV_MESH_WIDTH]NavNode,
-    connections: sa.Small_Array(4 * NAV_MESH_WIDTH * NAV_MESH_HEIGHT, [2]NavMeshPosition)
 }
 
 NavNode :: struct {
     world_position: Vector2,
     nav_mesh_position: Vector2i,
+    blocked: bool,
 }
 
 NavMeshPosition :: Vector2i
@@ -136,8 +138,8 @@ create_nav_mesh :: proc() -> NavMesh {
     MAX_X : f32 : (LEVEL_WIDTH / 2) * 0.9
     STEP_X : f32 : (MAX_X - MIN_X) / (NAV_MESH_WIDTH - 1)
 
-    MIN_Y : f32 : -(LEVEL_HEIGHT / 2) * 0.9
-    MAX_Y : f32 : (LEVEL_HEIGHT / 2) * 0.9
+    MIN_Y : f32 : -(LEVEL_HEIGHT / 2) * 0.95
+    MAX_Y : f32 : (LEVEL_HEIGHT / 2) * 0.95
     STEP_Y : f32 : (MAX_Y - MIN_Y) / (NAV_MESH_HEIGHT - 1)
 
     DOWN :: NavMeshPosition{0, -1}
@@ -149,6 +151,8 @@ create_nav_mesh :: proc() -> NavMesh {
         for x in 0..<NAV_MESH_WIDTH {
             node := &nav_mesh.nodes[y][x]
 
+            node.blocked = false
+
             // set world position
             node.world_position = {
                 MIN_X + (f32(x) * STEP_X),
@@ -157,24 +161,37 @@ create_nav_mesh :: proc() -> NavMesh {
 
             // set nav mesh position
             node.nav_mesh_position = {x, y}
-
-            {// set connections
-                // set left direction
-                if node.nav_mesh_position.x != 0 {
-                    connection := [2]NavMeshPosition{node.nav_mesh_position, node.nav_mesh_position + LEFT}
-                    sa.push_back(&nav_mesh.connections, connection)
-                }
-
-                if node.nav_mesh_position.y != 0 {
-                    connection := [2]NavMeshPosition{node.nav_mesh_position, node.nav_mesh_position + DOWN}
-                    sa.push_back(&nav_mesh.connections, connection)
-                }
-            }
         }
     }
 
     return nav_mesh
 }
+
+bake_navmesh :: proc(nav_mesh: ^NavMesh) {
+    for &entity in state.entities[0:state.entity_count] {
+        if !(.BLOCKS_NAV_MESH in entity.flags) {
+            continue
+        }
+
+        left_bound := entity.position.x - (entity.size.x * 0.5)
+        right_bound := entity.position.x + (entity.size.x * 0.5)
+
+        up_bound := entity.position.y + (entity.size.y * 0.5)
+        down_bound := entity.position.y - (entity.size.y * 0.5)
+
+        for y in 0..<NAV_MESH_HEIGHT {
+            for x in 0..<NAV_MESH_WIDTH {
+                node := &nav_mesh.nodes[y][x]
+
+                if node.world_position.x >= left_bound && node.world_position.x <= right_bound && 
+                    node.world_position.y >= down_bound && node.world_position.y <= up_bound {
+                        node.blocked = true
+                }
+            }
+        }
+    }
+}
+
 
 closest_node :: proc(nav_mesh: ^NavMesh, world_position: Vector2) -> NavNode {
     best_distance : f32 = math.F32_MAX
@@ -199,69 +216,121 @@ get_node :: proc(nav_mesh: ^NavMesh, position: NavMeshPosition) -> NavNode {
     return nav_mesh.nodes[position.y][position.x]
 }
 
-find_path :: proc(nav_mesh: ^NavMesh, start: NavMeshPosition, end: NavMeshPosition) -> ([]NavMeshPosition, bool) {
-    stack := make([dynamic]NavMeshPosition)
-    checked := make([dynamic]NavMeshPosition)
+get_node_ptr :: proc(nav_mesh: ^NavMesh, position: NavMeshPosition) -> ^NavNode {
+    return &nav_mesh.nodes[position.y][position.x]
+}
 
-    append(&stack, start)
-    found := find_path_recursive(nav_mesh, &stack, &checked, end)
-    if found {
-        return stack[0:], true
+get_node_connections :: proc(nav_mesh: ^NavMesh, node_position: NavMeshPosition) -> [4]^NavNode {
+    UP      :: NavMeshPosition{0, 1}
+    DOWN    :: NavMeshPosition{0, -1}
+    LEFT    :: NavMeshPosition{-1, 0}
+    RIGHT   :: NavMeshPosition{1, 0}
+
+    neighbour_positions := [4]NavMeshPosition {
+        node_position + UP,
+        node_position + DOWN,
+        node_position + LEFT,
+        node_position + RIGHT,
+    }
+
+    nodes: [4]^NavNode
+
+    for p, i in neighbour_positions {
+        if p.x >= 0 && p.x < NAV_MESH_WIDTH {
+            if p.y >= 0 && p.y < NAV_MESH_HEIGHT {
+                nodes[i] = &nav_mesh.nodes[p.y][p.x]
+                continue
+            }
+        }
+
+        nodes[i] = nil
+    }
+
+    return nodes
+}
+
+a_star :: proc(nav_mesh: ^NavMesh, start: NavMeshPosition, end: NavMeshPosition) -> ([]NavMeshPosition, bool) {
+    open_list := make([dynamic]^NavNode, context.temp_allocator)
+    g_scores := make(map[^NavNode]int, context.temp_allocator)
+    f_scores := make(map[^NavNode]int, context.temp_allocator)
+    came_from := make(map[^NavNode]^NavNode, context.temp_allocator)
+
+    start_node := get_node_ptr(nav_mesh, start)
+    append(&open_list, start_node)
+
+    g_scores[start_node] = 0 // g score is distance to start so start is 0
+    f_scores[start_node] = h_score(start_node, end)
+
+    for len(open_list) > 0 {
+        lowest_score := 100_000_000
+        current_index := -1
+        current: ^NavNode
+
+        // find lowest cost node in the open list
+        for node, i in open_list {
+            score := f_scores[node] 
+            if score < lowest_score {
+                lowest_score = score
+                current = node
+                current_index = i
+            }
+        }
+
+        if equal(current.nav_mesh_position, end) {
+            return build_path(came_from, current), true // FOUND
+        }
+
+        ordered_remove(&open_list, current_index) 
+
+        for neighbour in get_node_connections(nav_mesh, current.nav_mesh_position) {
+            if neighbour == nil || neighbour.blocked {
+                continue
+            }
+
+            maybe_new_g_score := g_scores[current] + 1
+            score, ok := g_scores[neighbour]
+            if !ok || maybe_new_g_score < score {
+                came_from[neighbour] = current
+                g_scores[neighbour] = score
+                f_scores[neighbour] = score + h_score(neighbour, end)
+
+                for node in open_list {
+                    if node == neighbour {
+                        break
+                    }  
+                }
+
+                append(&open_list, neighbour)
+            }
+        }
     }
 
     return nil, false
 }
 
-find_path_recursive :: proc(nav_mesh: ^NavMesh, stack: ^[dynamic]NavMeshPosition, checked: ^[dynamic]NavMeshPosition, end: Vector2i) -> bool {
-    // dont pop the stack yet as we want to keep it here if the end
-    // point is found
-    current := stack[len(stack) - 1]
+h_score :: proc(node: ^NavNode, end: NavMeshPosition) -> int {
+    return abs(node.nav_mesh_position.x - end.x) + abs(node.nav_mesh_position.y - end.y)
+}
 
-    already_checked :: proc(checked: ^[dynamic]NavMeshPosition, point: Vector2i) -> bool {
-        for c in checked {
-            if equal(point, c) {
-                return true
-            }    
+build_path :: proc(from_map: map[^NavNode]^NavNode, end: ^NavNode) -> []NavMeshPosition {
+    positions := make([dynamic]NavMeshPosition)
+
+    current := end
+
+    for current != nil {
+        append(&positions, current.nav_mesh_position)
+
+        next, ok := from_map[current]
+        if !ok {
+            break
         }
 
-        return false
+        current = next
     }
 
-    if already_checked(checked, current) {
-        return false
-    }
-
-    if equal(current, end) {
-        return true 
-    }
-
-    append(checked, current)
-    for connection in nav_mesh.connections.data[0:nav_mesh.connections.len] {
-        if equal(current, connection.x) {
-            append(stack, connection.y)
-            found := find_path_recursive(nav_mesh, stack, checked, end)
-            if found {
-                return true
-            }
-
-            pop(stack)
-        }
-
-        if equal(current, connection.y) {
-            append(stack, connection.x)
-            found := find_path_recursive(nav_mesh, stack, checked, end)
-            if found {
-                return true
-            }
-
-            pop(stack)
-        }
-    }
-
-    // none of its connections led to a find so remove the current from the stack
-    pop(stack)
-
-    return false
+    s := positions[0:]
+    slice.reverse(s)
+    return s
 }
 
 nav_node_equal :: proc(a: NavNode, b: NavNode) -> bool {
@@ -349,7 +418,8 @@ EntityFlag :: enum {
     HAS_WEAPON,
     SOLID_HITBOX,
     STATIC_HITBOX,
-    TRIGGER_HITBOX
+    TRIGGER_HITBOX,
+    BLOCKS_NAV_MESH,
 }
 
 DynamicEntityFlag :: enum {
@@ -366,26 +436,30 @@ create_entity :: proc(entity: Entity) -> ^Entity {
     ptr^ = entity
 
     { // basic checking fo values with their flags
-    if .HAS_HEALTH in entity.flags {
-        assert(entity.health > 0 && entity.max_health > 0)
-        assert(entity.health <= entity.max_health)
-    }
+        if .HAS_HEALTH in entity.flags {
+            assert(entity.health > 0 && entity.max_health > 0)
+            assert(entity.health <= entity.max_health)
+        }
+    
+        if .DEFENCE in entity.flags {
+            assert(entity.defence_type != .NONE)
+        }
+    
+        if .HAS_WEAPON in entity.flags {
+            assert(entity.weapon != .NONE)
+        }
+    
+        if .SOLID_HITBOX in entity.flags {
+            assert(!(.STATIC_HITBOX in entity.flags))
+        }
+    
+        if .STATIC_HITBOX in entity.flags {
+            assert(!(.SOLID_HITBOX in entity.flags))
+        }
 
-    if .DEFENCE in entity.flags {
-        assert(entity.defence_type != .NONE)
-    }
-
-    if .HAS_WEAPON in entity.flags {
-        assert(entity.weapon != .NONE)
-    }
-
-    if .SOLID_HITBOX in entity.flags {
-        assert(!(.STATIC_HITBOX in entity.flags))
-    }
-
-    if .STATIC_HITBOX in entity.flags {
-        assert(!(.SOLID_HITBOX in entity.flags))
-    }
+        if .BLOCKS_NAV_MESH in entity.flags {
+            assert(.STATIC_HITBOX in entity.flags)
+        }
     }
 
     return ptr
@@ -393,9 +467,9 @@ create_entity :: proc(entity: Entity) -> ^Entity {
 
 get_entity_with_flag :: proc(flag: EntityFlag) -> ^Entity {
     for &entity in state.entities[0:state.entity_count] {
-    if flag in entity.flags {
-        return &entity
-    }
+        if flag in entity.flags {
+            return &entity
+        }
     }
 
     return nil
@@ -624,12 +698,11 @@ init :: proc() {
             size = {LEVEL_WIDTH, LEVEL_HEIGHT}, 
             colour = WHITE
         })
-        
+
         // player
         create_entity(Entity {
             flags = {.PLAYER, .HAS_WEAPON, .SOLID_HITBOX},
-            // position = {0, -LEVEL_HEIGHT / 3}, 
-            position = {0, 0},
+            position = {0, -LEVEL_HEIGHT / 3}, 
             size = {10, 10}, 
             colour = BLUE,
             weapon = .SHOTGUN,
@@ -648,6 +721,32 @@ init :: proc() {
 
         nexus_node := closest_node(&state.nav_mesh, nexus.position)
 
+        // generate walls
+        for y in 0..<NAV_MESH_HEIGHT {
+            for x in 0..<NAV_MESH_WIDTH {
+                node := state.nav_mesh.nodes[y][x]
+                if equal(nexus_node, node) {
+                    continue
+                }
+
+                f := noise.noise_2d_improve_x(69, [2]f64{auto_cast node.world_position.x, auto_cast node.world_position.y})
+
+                if f < 0.8 {
+                    continue
+                }
+
+                create_entity(Entity{
+                    flags = {.STATIC_HITBOX, .BLOCKS_NAV_MESH},
+                    position = node.world_position, 
+                    size = {20, 20}, 
+                    colour = RED,
+                })
+            }
+        }
+
+        // done before spawners are created because they need the nav mesh
+        bake_navmesh(&state.nav_mesh)
+
         // spawners
         for i in 0..<LEVEL_SPAWNER_COUNT {
             MIN_Y :: -(LEVEL_HEIGHT / 2) * 0.3
@@ -658,22 +757,32 @@ init :: proc() {
             MAX_X :: (LEVEL_WIDTH / 2) * 0.9
             RANGE_X :: MAX_X - MIN_X
 
-            y_random := rand.float32()
-            x_random := rand.float32()
-            
-            y := MIN_Y + (RANGE_Y * y_random)
-            x := MIN_X + (RANGE_X * x_random)
+            spawner_position: Vector2
+
+            // keeps trying to find a node that is not blocked in the 
+            // nav mesh to spawn on top of
+            for true {
+                y_random := rand.float32()
+                x_random := rand.float32()
+                
+                testing_position := Vector2{MIN_X + (RANGE_X * x_random), MIN_Y + (RANGE_Y * y_random)}
+                node := closest_node(&state.nav_mesh, testing_position)
+                if !node.blocked {
+                    spawner_position = node.world_position
+                    break
+                }
+            }
 
             spawner := create_entity(Entity {
                 flags = {.SPAWNER},
-                position = {x, y}, 
+                position = spawner_position, 
                 size = {10, 10}, 
                 colour = PINK,
                 nav_path = uint(i)
             })
 
             spawner_node := closest_node(&state.nav_mesh, spawner.position)
-            path, ok := find_path(&state.nav_mesh, spawner_node.nav_mesh_position, nexus_node.nav_mesh_position)
+            path, ok := a_star(&state.nav_mesh, spawner_node.nav_mesh_position, nexus_node.nav_mesh_position)
             if !ok {
                 log.warn("there was a problem generating nav mesh path for a spawner")
                 continue
@@ -1340,13 +1449,19 @@ draw :: proc(delta_time: f32) {
             break draw_nav_mesh
         }
 
+        // drawing nodes
         for y in 0..< len(state.nav_mesh.nodes) {
             for x in 0..< len(state.nav_mesh.nodes[0]) {
                 node := state.nav_mesh.nodes[y][x]
+                if node.blocked {
+                    continue
+                }
 
                 colour := BLACK
                 for path in state.nav_paths {
-                    assert(len(path) > 0)
+                    if len(path) == 0 {
+                        continue
+                    }
                         
                     start_node_position := path[0]
                     end_node_position := path[len(path) - 1]
@@ -1365,15 +1480,23 @@ draw :: proc(delta_time: f32) {
                     }
                 }
 
-                draw_circle(node.world_position, 5, with_alpha(colour, 0.5))
+                draw_circle(node.world_position, 3, with_alpha(colour, 1))
             }
         }
 
-        // for connection in state.nav_mesh.connections.data[0:state.nav_mesh.connections.len] {
-            // left := &state.nav_mesh.nodes[connection[0].y][connection[0].x]
-            // right := &state.nav_mesh.nodes[connection[1].y][connection[1].x]
-            // draw_line(left.world_position, right.world_position, 1, with_alpha(BLACK, 0.5))
-        // }
+        // drawing lines between all nodes
+        for path in state.nav_paths {
+            if len(path) == 0 {
+                continue
+            }
+
+            for position, i in path[0 : len(path) - 1] {
+                source_node := get_node(&state.nav_mesh, position)
+                destination_node := get_node(&state.nav_mesh, path[i + 1])
+                
+                draw_line(source_node.world_position, destination_node.world_position, 1, RED)
+            }
+        }
     } 
 
     in_screen_space = true
@@ -1481,6 +1604,11 @@ command_restart :: proc() {
 command_spawning :: proc(value: bool) {
     settings_spawning = value
     log.infof("Spawning set to %v", value)
+}
+
+command_nav :: proc() {
+    settings_nav_mesh = !settings_nav_mesh
+    log.infof("Nav Mesh display set to %v", settings_nav_mesh)
 }
 
 load_textures :: proc() -> bool {
@@ -1594,6 +1722,16 @@ window_event_callback :: proc "c" (event: ^sapp.Event) {
      .RESIZED, .ICONIFIED, .RESTORED, .FOCUSED, .UNFOCUSED, .SUSPENDED, .RESUMED, 
      .CLIPBOARD_PASTED, .FILES_DROPPED:
     }
+}
+
+contains :: proc(list: []$T, t: T, f: proc(a: T, b: T) -> bool) -> (int, bool) {
+    for value, i in list {
+        if f(value, t) {
+            return i, true
+        }
+    }
+
+    return -1, false
 }
 
 log_callback :: proc(data: rawptr, level: runtime.Logger_Level, text: string, options: bit_set[runtime.Logger_Option], location := #caller_location) {

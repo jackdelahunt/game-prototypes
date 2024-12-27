@@ -38,6 +38,9 @@ run_command :: proc(input: []u8) {
 
         command_spawning(value)
     }
+    else if strings.compare(name, "nav") == 0 {
+        command_nav()
+    }
     else {
         log.error("No command found with name", name)
     }
