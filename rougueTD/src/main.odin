@@ -26,8 +26,8 @@ import sglue "sokol/glue"
 
 import shaders "shaders"
 
-DEFAULT_SCREEN_WIDTH	:: 1800
-DEFAULT_SCREEN_HEIGHT	:: 1200
+DEFAULT_SCREEN_WIDTH	:: 1500
+DEFAULT_SCREEN_HEIGHT	:: 1000
 
 MAX_ENTITIES	:: 256
 MAX_QUADS	:: 1024
@@ -172,7 +172,96 @@ create_nav_mesh :: proc() -> NavMesh {
     return nav_mesh
 }
 
-find_path :: proc(nav_mesh: ^NavMesh, start: Vector2i, end: Vector2i) {
+closest_node :: proc(nav_mesh: ^NavMesh, world_position: Vector2) -> NavNode {
+    best_distance : f32 = math.F32_MAX
+    best_node: NavNode
+
+    for y in 0..<NAV_MESH_HEIGHT {
+        for x in 0..<NAV_MESH_WIDTH {
+            node := nav_mesh.nodes[y][x]
+            distance := length(node.world_position - world_position)
+
+            if distance < best_distance {
+                best_node = node
+                best_distance = distance
+            }
+        }
+    }
+
+    return best_node
+}
+
+get_node :: proc(nav_mesh: ^NavMesh, nav_mesh_position: Vector2i) -> NavNode {
+    return nav_mesh.nodes[nav_mesh_position.y][nav_mesh_position.x]
+}
+
+find_path :: proc(nav_mesh: ^NavMesh, start: Vector2i, end: Vector2i) -> ([]Vector2i, bool) {
+    stack := make([dynamic]Vector2i, context.temp_allocator)
+    checked := make([dynamic]Vector2i, context.temp_allocator)
+
+    append(&stack, start)
+    found := find_path_recursive(nav_mesh, &stack, &checked, end)
+    if found {
+        return stack[0:], true
+    }
+
+    return nil, false
+}
+
+find_path_recursive :: proc(nav_mesh: ^NavMesh, stack: ^[dynamic]Vector2i, checked: ^[dynamic]Vector2i, end: Vector2i) -> bool {
+    // dont pop the stack yet as we want to keep it here if the end
+    // point is found
+    current := stack[len(stack) - 1]
+
+    already_checked :: proc(checked: ^[dynamic]Vector2i, point: Vector2i) -> bool {
+        for c in checked {
+            if vector2i_equal(point, c) {
+                return true
+            }    
+        }
+
+        return false
+    }
+
+    if already_checked(checked, current) {
+        return false
+    }
+
+    if vector2i_equal(current, end) {
+        return true 
+    }
+
+    append(checked, current)
+    for connection in nav_mesh.connections.data[0:nav_mesh.connections.len] {
+        if vector2i_equal(current, connection.x) {
+            append(stack, connection.y)
+            found := find_path_recursive(nav_mesh, stack, checked, end)
+            if found {
+                return true
+            }
+
+            pop(stack)
+        }
+
+        if vector2i_equal(current, connection.y) {
+            append(stack, connection.x)
+            found := find_path_recursive(nav_mesh, stack, checked, end)
+            if found {
+                return true
+            }
+
+            pop(stack)
+        }
+    }
+
+    // none of its connections led to a find so remove the current from the stack
+    pop(stack)
+
+    return false
+}
+
+nav_node_equal :: proc(a: NavNode, b: NavNode) -> bool {
+    return vector2i_equal(a.nav_mesh_position, b.nav_mesh_position)
 }
 
 // @input
@@ -586,7 +675,7 @@ frame :: proc() {
     }
 
     physics(auto_cast delta_time)
-    draw() 
+    draw(auto_cast delta_time) 
 }
 
 ///////////////////////////////// @apply_inputs
@@ -1108,7 +1197,7 @@ next :: proc(collider: ^CircleCollider) -> (^Entity, bool) {
 }
 
 ///////////////////////////////// @draw
-draw :: proc() {
+draw :: proc(delta_time: f32) {
     for &entity in state.entities[0:state.entity_count] {
         // this can be changed based on entity state
         entity_colour := entity.colour
@@ -1190,30 +1279,52 @@ draw :: proc() {
         draw_rectangle(entity.position, entity.size, entity_colour, entity.rotation)	
     }
 
-    if settings_nav_mesh {
+    draw_nav_mesh: {
+        if !settings_nav_mesh {
+            break draw_nav_mesh
+        }
+
+        player := get_entity_with_flag(.PLAYER)
+        if player == nil {
+            break draw_nav_mesh
+        }
+
+        start_node := closest_node(&state.nav_mesh, player.position)
+        end_node := get_node(&state.nav_mesh, {0, 0})
+
+        path, ok := find_path(&state.nav_mesh, start_node.nav_mesh_position, end_node.nav_mesh_position)
+        if !ok {
+            break draw_nav_mesh
+        }
+
         for y in 0..< len(state.nav_mesh.nodes) {
             for x in 0..< len(state.nav_mesh.nodes[0]) {
                 node := state.nav_mesh.nodes[y][x]
 
                 colour := BLACK
-                if node.nav_mesh_position.x == 0 || node.nav_mesh_position.x == NAV_MESH_WIDTH - 1 {
-                    colour = BLUE
+                if eqaul(start_node, node) {
+                    colour = GREEN
                 }
-                else if node.nav_mesh_position.y == 0 || node.nav_mesh_position.y == NAV_MESH_HEIGHT - 1 {
+                else if eqaul(end_node, node) {
                     colour = RED
+                } else {
+                    for position in path {
+                        if eqaul(position, node.nav_mesh_position) {
+                            colour = SKY_BLUE
+                        }
+                    }
                 }
 
                 draw_circle(node.world_position, 5, with_alpha(colour, 0.5))
             }
         }
 
-        for connection in state.nav_mesh.connections.data[0:state.nav_mesh.connections.len] {
-            left := &state.nav_mesh.nodes[connection[0].y][connection[0].x]
-            right := &state.nav_mesh.nodes[connection[1].y][connection[1].x]
-
-            draw_line(left.world_position, right.world_position, 1, with_alpha(BLACK, 0.5))
-        }
-    }
+        // for connection in state.nav_mesh.connections.data[0:state.nav_mesh.connections.len] {
+            // left := &state.nav_mesh.nodes[connection[0].y][connection[0].x]
+            // right := &state.nav_mesh.nodes[connection[1].y][connection[1].x]
+            // draw_line(left.world_position, right.world_position, 1, with_alpha(BLACK, 0.5))
+        // }
+    } 
 
     in_screen_space = true
 
@@ -1278,6 +1389,14 @@ draw :: proc() {
                 draw_text(text, {card_x - (card_width * 0.45), card_y - 30}, card_colour, 1)
             }
         }
+    }
+
+    { // fps counter
+        string_buffer: [256]u8
+        builder := strings.builder_from_bytes(string_buffer[0:])
+
+        text := fmt.sbprintf(&builder, "FPS: %v", 1 / delta_time)
+        draw_text(text, {state.screen_width - 150, state.screen_height - 20}, YELLOW, 1)
     }
 
     if state.in_command_mode {

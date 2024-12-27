@@ -21,9 +21,6 @@ Vector3 :: [3]f32
 Vector4 :: [4]f32
 Vector2i :: [2]int
 
-normalize :: linalg.normalize0
-length :: linalg.length
-
 Vertex :: struct {
     position: Vector3,
     colour: Vector4,
@@ -357,6 +354,10 @@ range :: proc(buffer: []$T) -> sg.Range {
         ptr = &buffer[0],
         size = len(buffer) * size_of(T)
     }
+}
+
+vector2i_equal :: proc(a: Vector2i, b: Vector2i) -> bool {
+    return a.x == b.x && a.y == b.y
 }
 
 translate_matrix :: proc(position: Vector2) -> Mat4 {
