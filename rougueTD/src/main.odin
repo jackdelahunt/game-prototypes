@@ -31,7 +31,7 @@ import shaders "shaders"
 DEFAULT_SCREEN_WIDTH	:: 1500
 DEFAULT_SCREEN_HEIGHT	:: 1000
 
-MAX_ENTITIES	:: 512
+MAX_ENTITIES	:: 2048
 MAX_QUADS	:: 2048
 
 MAX_WAVES :: 20
@@ -639,6 +639,7 @@ alagard: Font
 main :: proc() {
     game_context.logger.lowest_level = .Debug if ODIN_DEBUG else .Warning
     game_context.logger.procedure = log_callback
+    game_context.allocator.procedure = allocator_callback
 
     context = game_context
 
@@ -1753,6 +1754,30 @@ contains :: proc(list: []$T, t: T, f: proc(a: T, b: T) -> bool) -> (int, bool) {
     }
 
     return -1, false
+}
+
+allocator_callback :: proc(allocator_data: rawptr, mode: runtime.Allocator_Mode, size, alignment: int, old_memory: rawptr, old_size: int, location: runtime.Source_Code_Location = #caller_location) -> ([]byte, runtime.Allocator_Error) {
+    KB :: 1024
+    MB :: KB * 1024
+    GB :: MB * 1024
+
+    size_string := "b"
+    converted_size := size
+    if size >= KB && size < MB {
+        size_string = "Kb"
+        converted_size /= KB
+    }
+    else if size >= MB && size < GB {
+        size_string = "Mb" 
+        converted_size /= MB
+    }
+    else if size >= GB {
+        size_string = "Gb" 
+        converted_size /= GB
+    }
+
+    log.debugf("[%v] %v -> %v (%v%v)", mode, old_size, size, converted_size, size_string, location = location)
+    return runtime.default_context().allocator.procedure(allocator_data, mode, size, alignment, old_memory, old_size, location)
 }
 
 log_callback :: proc(data: rawptr, level: runtime.Logger_Level, text: string, options: bit_set[runtime.Logger_Option], location := #caller_location) {
