@@ -182,7 +182,7 @@ screen_position_to_world_position :: proc(position: Vector2) -> Vector2 {
     ndc_vec_2 := screen_position_to_ndc(position)
     ndc_position := Vector4{ndc_vec_2.x, ndc_vec_2.y, -1, 1} // -1 here for near plane
 
-    inverse_vp := linalg.inverse(get_projection_matrix() * get_view_matrix())
+    inverse_vp := linalg.inverse(get_projection_matrix() * (scale_matrix(state.zoom) * get_view_matrix()))
     world_position := inverse_vp * ndc_position
     world_position /= world_position.w
 

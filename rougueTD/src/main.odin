@@ -62,7 +62,7 @@ NAV_MESH_WIDTH      :: LEVEL_WIDTH / 20
 NAV_MESH_HEIGHT     :: LEVEL_HEIGHT / 20
 
 // @settings
-setting_start_gold      : uint = 0
+setting_start_gold      : uint = 10000
 settings_spawning       : bool = true
 settings_nav_mesh       : bool = false
 
@@ -825,6 +825,7 @@ frame :: proc() {
 
     // only does once per frame as it it expensive
     state.mouse_world_position = screen_position_to_world_position(state.mouse_screen_position)
+    log.info(state.mouse_screen_position, screen_position_to_ndc(state.mouse_screen_position))
 
     if state.tick_timer >= TICK_RATE {
         apply_inputs()
@@ -840,7 +841,7 @@ frame :: proc() {
 ///////////////////////////////// @apply_inputs
 apply_inputs :: proc() {
     if !state.in_command_mode {
-    state.character_input = 0
+        state.character_input = 0
     }
 
     for index in 0..<len(state.key_inputs) {	
