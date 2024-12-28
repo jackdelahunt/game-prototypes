@@ -28,8 +28,8 @@ import sglue "sokol/glue"
 
 import shaders "shaders"
 
-DEFAULT_SCREEN_WIDTH	:: 1500
-DEFAULT_SCREEN_HEIGHT	:: 1000
+DEFAULT_SCREEN_WIDTH	:: 1200
+DEFAULT_SCREEN_HEIGHT	:: 900
 
 MAX_ENTITIES	:: 2048
 MAX_QUADS	:: 2048
@@ -692,7 +692,7 @@ init_state :: proc() {
 setup_game :: proc() {
     {
         state.gold = setting_start_gold
-        state.zoom = 2.5
+        state.zoom = 2
         state.nav_mesh = create_nav_mesh()
         state.wave =  1
         state.wave_started = false
@@ -825,7 +825,6 @@ frame :: proc() {
 
     // only does once per frame as it it expensive
     state.mouse_world_position = screen_position_to_world_position(state.mouse_screen_position)
-    log.info(state.mouse_screen_position, screen_position_to_ndc(state.mouse_screen_position))
 
     if state.tick_timer >= TICK_RATE {
         apply_inputs()
@@ -1194,7 +1193,11 @@ update :: proc() {
         }
     
         // character input to the command buffer
-        if state.character_input != 0 {
+        switch state.character_input {
+            case '\r', '\t', '\n':
+                state.character_input = 0
+            case 0:
+            case:
             if state.command_input_length < len(state.command_input_buffer) - 1 {
                 state.command_input_buffer[state.command_input_length] = cast(u8)state.character_input
                 state.command_input_length += 1
@@ -1797,16 +1800,6 @@ window_event_callback :: proc "c" (event: ^sapp.Event) {
      .RESIZED, .ICONIFIED, .RESTORED, .FOCUSED, .UNFOCUSED, .SUSPENDED, .RESUMED, 
      .CLIPBOARD_PASTED, .FILES_DROPPED:
     }
-}
-
-contains :: proc(list: []$T, t: T, f: proc(a: T, b: T) -> bool) -> (int, bool) {
-    for value, i in list {
-        if f(value, t) {
-            return i, true
-        }
-    }
-
-    return -1, false
 }
 
 allocator_callback :: proc(allocator_data: rawptr, mode: runtime.Allocator_Mode, size, alignment: int, old_memory: rawptr, old_size: int, location: runtime.Source_Code_Location = #caller_location) -> ([]byte, runtime.Allocator_Error) {
