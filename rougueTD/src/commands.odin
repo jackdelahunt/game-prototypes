@@ -27,6 +27,9 @@ run_command :: proc(input: []u8) {
 
         command_echo(message)
     }
+    else if strings.compare(name, "kill") == 0 {
+        command_kill()
+    }
     else if strings.compare(name, "restart") == 0 {
         command_restart()
     }

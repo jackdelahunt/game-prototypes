@@ -55,16 +55,16 @@ GOLD_FROM_BASIC_ENEMY :: 50
 TICKS_PER_SECONDS :: 20
 TICK_RATE :: 1.0 / TICKS_PER_SECONDS
 
-LEVEL_SPAWNER_COUNT :: 6
+LEVEL_SPAWNER_COUNT :: 8
 LEVEL_WIDTH         :: 400
 LEVEL_HEIGHT        :: 1200
 NAV_MESH_WIDTH      :: LEVEL_WIDTH / 20
 NAV_MESH_HEIGHT     :: LEVEL_HEIGHT / 20
 
-//settings
+// @settings
 setting_start_gold      : uint = 0
 settings_spawning       : bool = true
-settings_nav_mesh       : bool = true
+settings_nav_mesh       : bool = false
 
 // @state
 State :: struct {
@@ -93,6 +93,7 @@ State :: struct {
     wave: uint,
     enemies_to_spawn: uint,
     enemies_to_kill: uint,
+    wave_started: bool,
 
     // nav mesh state
     nav_mesh: NavMesh,
@@ -382,6 +383,7 @@ Entity :: struct {
     size: Vector2,
     rotation: f32,
     colour: Colour,
+    inactive: bool,
     
     // flag: health
     health: f32,
@@ -693,6 +695,8 @@ setup_game :: proc() {
         state.zoom = 2.5
         state.nav_mesh = create_nav_mesh()
         state.wave =  1
+        state.wave_started = false
+        state.in_command_mode = false
         state.enemies_to_spawn = enemies_for_wave(1)
         state.enemies_to_kill = enemies_for_wave(1)
     }
@@ -755,7 +759,7 @@ setup_game :: proc() {
 
         // spawners
         for i in 0..<LEVEL_SPAWNER_COUNT {
-            MIN_Y :: -(LEVEL_HEIGHT / 2) * 0.3
+            MIN_Y :: -(LEVEL_HEIGHT / 2) * 0.5
             MAX_Y :: (LEVEL_HEIGHT / 2) * 0.9
             RANGE_Y :: MAX_Y - MIN_Y
 
@@ -782,6 +786,7 @@ setup_game :: proc() {
             spawner := create_entity(Entity {
                 flags = {.SPAWNER},
                 position = spawner_position, 
+                // inactive = true,
                 size = {10, 10}, 
                 colour = PINK,
                 nav_path = i
@@ -823,6 +828,7 @@ frame :: proc() {
 
     if state.tick_timer >= TICK_RATE {
         apply_inputs()
+        update_game()
         update()
         state.tick_timer = 0
     }
@@ -873,13 +879,23 @@ apply_inputs :: proc() {
 }
 
 ///////////////////////////////// @update
+update_game :: proc() {
+    if state.enemies_to_kill == 0 {
+        state.wave += 1
+        state.wave_started = false
+
+        state.enemies_to_spawn = enemies_for_wave(state.wave)
+        state.enemies_to_kill = enemies_for_wave(state.wave)
+    }
+}
+
 update :: proc() {
     if state.key_inputs[.ESCAPE] == .DOWN {
         sapp.quit()
     }
 
-    if state.key_inputs[.R] == .PRESSING {
-        command_restart()
+    if state.key_inputs[.K] == .DOWN {
+        state.wave_started = true
     }
 
     // go through each number key and select defence
@@ -898,6 +914,10 @@ update :: proc() {
 
     // update pass
     for &entity in state.entities[0:state.entity_count] {
+        if entity.inactive {
+            continue
+        }
+
         // count down each cooldown in the entity
         // some cooldown timers are not set here, reload cooldown is set in weapon 
         // because we want to do stuff when it reaches 0
@@ -1070,6 +1090,10 @@ update :: proc() {
             }
     
             if !settings_spawning {
+                break spawner
+            }
+
+            if state.wave_started == false {
                 break spawner
             }
     
@@ -1451,6 +1475,16 @@ draw :: proc(delta_time: f32) {
                 entity_colour = RED
             }
         }
+
+        spawner: {
+            if !(.SPAWNER in entity.flags) {
+                break spawner
+            }
+
+            if entity.inactive {
+                entity_colour = GRAY
+            }
+        }
     
         draw_rectangle(entity.position, entity.size, entity_colour, entity.rotation)	
     }
@@ -1541,8 +1575,13 @@ draw :: proc(delta_time: f32) {
             state.gold
         )
 
+        colour := YELLOW
+        if !state.wave_started {
+            colour = WHITE
+        }
+
         draw_rectangle({state.screen_width / 2, 25}, {state.screen_width, 50}, BLACK)
-        draw_text(text, {25, 25}, YELLOW, 3)
+        draw_text(text, {25, 25}, colour, 3)
     }
 
     { // bottom defence layout
@@ -1618,7 +1657,20 @@ command_echo :: proc(message: string) {
     log.info(message)
 }
 
+command_kill :: proc() {
+    for &entity in state.entities[0:state.entity_count] {
+        if .AI in entity.flags {
+            entity.dynamic_flags += {.DELETE}
+        }
+    }
+}
+
 command_restart :: proc() {
+    // TODO:
+    // because if we use the current logger the allocator debug info
+    // will crsah it
+    context.logger.procedure = log_callback
+
     reset_game()
     setup_game()
 }
