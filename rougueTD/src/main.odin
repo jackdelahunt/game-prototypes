@@ -1589,7 +1589,44 @@ draw :: proc(delta_time: f32) {
                 draw_line(source_node.world_position, destination_node.world_position, 1, RED)
             }
         }
-    } 
+    }
+
+    if !state.wave_started { // active spawner indicator
+        screen_top := Vector2{0, 0}
+        screen_bottom := Vector2{state.screen_width, state.screen_height}
+
+        screen_top_world := screen_position_to_world_position(screen_top)
+        screen_bottom_world := screen_position_to_world_position(screen_bottom)
+
+        camera_top_y := screen_top_world.y
+        camera_bottom_y := screen_bottom_world.y
+
+        for &entity in state.entities[0:state.entity_count] {
+            if !(.SPAWNER in entity.flags) {
+                continue
+            }
+
+            if entity.inactive {
+                continue
+            }
+
+            // in the camereas view
+            if entity.position.y >= camera_bottom_y && entity.position.y <= camera_top_y {
+                continue
+            }
+
+            draw_y: f32
+
+            if entity.position.y > camera_top_y {
+                draw_y = camera_top_y - 40
+            }
+            else {
+                draw_y = camera_bottom_y + 30
+            }
+
+            draw_rectangle({entity.position.x, draw_y}, {10, 10}, with_alpha(PINK, 0.5), 45)
+        }
+    }
 
     in_screen_space = true
 
