@@ -8,3 +8,4 @@ zig-out/
 **/sokol/**/*.pdb
 **/sokol/**/*.exp
 **.rdbg
+**/*.pdb
