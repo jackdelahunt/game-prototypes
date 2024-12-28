@@ -31,8 +31,8 @@ import shaders "shaders"
 DEFAULT_SCREEN_WIDTH	:: 1200
 DEFAULT_SCREEN_HEIGHT	:: 900
 
-MAX_ENTITIES	:: 2048
-MAX_QUADS	:: 2048
+MAX_ENTITIES	:: 5_000
+MAX_QUADS	:: 10_000
 
 MAX_WAVES :: 20
 
@@ -47,22 +47,21 @@ PLACE_RADIUS :: 50
 
 TOWER_DAMAGE :: 50
 
-SPAWNER_COOLDOWN :: 2
-
 GOLD_FROM_DAMAGE :: 10
 GOLD_FROM_BASIC_ENEMY :: 50
 
 TICKS_PER_SECONDS :: 20
 TICK_RATE :: 1.0 / TICKS_PER_SECONDS
 
-LEVEL_SPAWNER_COUNT :: 8
+LEVEL_SPAWNER_COUNT :: 10
 LEVEL_WIDTH         :: 400
 LEVEL_HEIGHT        :: 1200
 NAV_MESH_WIDTH      :: LEVEL_WIDTH / 20
 NAV_MESH_HEIGHT     :: LEVEL_HEIGHT / 20
 
 // @settings
-setting_start_gold      : uint = 10000
+setting_start_gold      : uint = 1000
+setting_start_wave      : uint = 1
 settings_spawning       : bool = true
 settings_nav_mesh       : bool = false
 
@@ -94,6 +93,7 @@ State :: struct {
     enemies_to_spawn: uint,
     enemies_to_kill: uint,
     wave_started: bool,
+    active_spawners: uint,
 
     // nav mesh state
     nav_mesh: NavMesh,
@@ -481,6 +481,15 @@ entity_take_damage :: proc(entity: ^Entity, damage: f32) {
     assert(.HAS_HEALTH in entity.flags)
 
     entity.health -= damage
+
+    if .AI in entity.flags {
+        if damage <= 0 {
+            state.gold += 100
+        } else {
+            state.gold += 50
+        }
+    }
+
     if entity.health < 0 {
         entity.health = 0
     }
@@ -496,7 +505,7 @@ magazine_size :: proc(weapon: WeaponType) -> uint {
     switch weapon {
     case .NONE:
     case .SHOTGUN:
-        return 5
+        return 8
     }
 
     panic("weapon type is none")
@@ -516,7 +525,7 @@ reload_cooldown :: proc(weapon: WeaponType) -> f32 {
     switch weapon {
     case .NONE:
     case .SHOTGUN:
-        return 3
+        return 2
     }
 
     panic("weapon type is none")
@@ -525,19 +534,23 @@ reload_cooldown :: proc(weapon: WeaponType) -> f32 {
 create_projectiles_for_weapon :: proc(position: Vector2, direction: Vector2, weapon: WeaponType) {
     SPEED :: 150
 
-    directions := [3]Vector2 {
-    direction,
-    rotate_normalised_vector(direction, 15),
-    rotate_normalised_vector(direction, -15),
+    directions := [5]Vector2 {
+        direction,
+
+        rotate_normalised_vector(direction, 6),
+        rotate_normalised_vector(direction, -6),
+
+        rotate_normalised_vector(direction, 12),
+        rotate_normalised_vector(direction, -12),
     }
 
     for d in directions {
         create_entity(Entity {
-        flags = {.PROJECTILE, .TRIGGER_HITBOX},
-        position = position,
-        size = {3, 3}, 
-        colour = BLACK,
-        velocity = d * SPEED
+            flags = {.PROJECTILE, .TRIGGER_HITBOX},
+            position = position,
+            size = {3, 3}, 
+            colour = BLACK,
+            velocity = d * SPEED
         })
     }
 }
@@ -689,16 +702,13 @@ init_state :: proc() {
     }
 }
 
-setup_game :: proc() {
+setup_game :: proc() { 
     {
         state.gold = setting_start_gold
         state.zoom = 2
         state.nav_mesh = create_nav_mesh()
-        state.wave =  1
-        state.wave_started = false
         state.in_command_mode = false
-        state.enemies_to_spawn = enemies_for_wave(1)
-        state.enemies_to_kill = enemies_for_wave(1)
+        state.active_spawners = 0
     }
 
     { // generate level
@@ -786,7 +796,7 @@ setup_game :: proc() {
             spawner := create_entity(Entity {
                 flags = {.SPAWNER},
                 position = spawner_position, 
-                // inactive = true,
+                inactive = true,
                 size = {10, 10}, 
                 colour = PINK,
                 nav_path = i
@@ -802,6 +812,8 @@ setup_game :: proc() {
             sa.append(&state.nav_paths, path)
         }
     }
+
+    begin_wave(setting_start_wave)
 }
 
 reset_game :: proc() {
@@ -815,6 +827,34 @@ reset_game :: proc() {
     state.nav_paths.len = 0
 }
 
+begin_wave :: proc(wave: uint) {
+    assert(wave > 0)
+
+    state.wave = wave
+    state.wave_started = false
+    state.enemies_to_spawn = enemies_for_wave(wave)
+    state.enemies_to_kill = enemies_for_wave(wave)
+
+    if state.active_spawners < active_spawners_for_wave(wave) {
+        active_spawners_needed : uint = active_spawners_for_wave(wave)
+        log.infof("activating more spawners to %v -> %v", state.active_spawners, active_spawners_needed)
+
+        activated : uint = 0
+
+        for &entity in state.entities[0:state.entity_count] {
+            if .SPAWNER in entity.flags && entity.inactive {
+                entity.inactive = false
+                activated += 1
+            }
+
+            if activated == active_spawners_needed - state.active_spawners {
+                break
+            }
+        }
+    }
+
+    state.active_spawners = active_spawners_for_wave(wave)
+}
 
 ///////////////////////////////// @frame
 frame :: proc() {
@@ -881,11 +921,7 @@ apply_inputs :: proc() {
 ///////////////////////////////// @update
 update_game :: proc() {
     if state.enemies_to_kill == 0 {
-        state.wave += 1
-        state.wave_started = false
-
-        state.enemies_to_spawn = enemies_for_wave(state.wave)
-        state.enemies_to_kill = enemies_for_wave(state.wave)
+        begin_wave(state.wave + 1)
     }
 }
 
@@ -1035,11 +1071,6 @@ update :: proc() {
             if distance < 10 && entity.entity_target == .NONE {
                 entity.nav_path_index += 1
             }
-    
-            // if distance < 10 {
-                // entity.dynamic_flags += {.DELETE}
-                // entity_take_damage(nexus, BASIC_ENEMY_DAMAGE)
-            // }
         }
     
         health: {
@@ -1106,7 +1137,7 @@ update :: proc() {
             }
     
             state.enemies_to_spawn -= 1
-            entity.spawner_cooldown = SPAWNER_COOLDOWN
+            entity.spawner_cooldown = spawn_cooldown_for_wave(state.wave)
     
             create_entity(Entity {
                 flags = {.AI, .HAS_HEALTH, .SOLID_HITBOX},
@@ -1194,7 +1225,8 @@ update :: proc() {
     
         // character input to the command buffer
         switch state.character_input {
-            case '\r', '\t', '\n':
+            // 127 is delte on unix anyway, sigh..
+            case '\r', '\t', '\n', '\b', 127:
                 state.character_input = 0
             case 0:
             case:
@@ -1225,7 +1257,8 @@ on_trigger_collision :: proc(trigger: ^Entity, other: ^Entity) {
     }
 
     assert(.HAS_HEALTH in other.flags)
-    entity_take_damage(other, 20)
+
+    entity_take_damage(other, 30)
 }
 
 on_solid_collision :: proc(entity: ^Entity, other: ^Entity) {
@@ -1572,11 +1605,12 @@ draw :: proc(delta_time: f32) {
 
         text := fmt.sbprintf(
             &builder, 
-            "Wave: %v/%v   Ammo: %v   Enemies Left: %v   Gold: %v", 
+            "Wave: %v/%v   Ammo: %v   Enemies Left: %v   Gold: %v   Spawners: %v", 
             state.wave, MAX_WAVES, 
             ammo, 
             state.enemies_to_kill, 
-            state.gold
+            state.gold,
+            state.active_spawners
         )
 
         colour := YELLOW
@@ -1585,7 +1619,7 @@ draw :: proc(delta_time: f32) {
         }
 
         draw_rectangle({state.screen_width / 2, 25}, {state.screen_width, 50}, BLACK)
-        draw_text(text, {25, 25}, colour, 3)
+        draw_text(text, {25, 25}, colour, 2)
     }
 
     { // bottom defence layout
@@ -1652,8 +1686,34 @@ draw :: proc(delta_time: f32) {
     }
 }
 
+spawn_cooldown_for_wave :: proc(wave: uint) -> f32 {
+    switch wave {
+    case 1..=5:
+        return 3
+    case 6..=11:
+        return 2
+    case:
+        return 1
+    }
+}
+
 enemies_for_wave :: proc(wave: uint) -> uint {
     return 10 + (wave * 3)
+}
+
+active_spawners_for_wave :: proc(wave: uint) -> uint {
+    switch wave {
+    case 1..=4:
+        return 2
+    case 5..=7:
+        return 4
+    case 8..=11:
+        return 6
+    case 12..=15:
+        return 8
+    case:
+        return LEVEL_SPAWNER_COUNT
+    }
 }
 
 ///////////////////////////////// @commands
@@ -1667,6 +1727,11 @@ command_kill :: proc() {
             entity.dynamic_flags += {.DELETE}
         }
     }
+}
+
+command_wave :: proc(wave: uint) {
+    command_kill()
+    begin_wave(wave)
 }
 
 command_restart :: proc() {

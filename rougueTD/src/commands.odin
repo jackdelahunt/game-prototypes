@@ -23,12 +23,22 @@ run_command :: proc(input: []u8) {
         message, ok := parse_string_argument(&lexer) 
         if !ok {
             log.errorf("Couldn't parse first argument for echo as string")
+            return
         }
 
         command_echo(message)
     }
     else if strings.compare(name, "kill") == 0 {
         command_kill()
+    }
+    else if strings.compare(name, "wave") == 0 {
+        wave, ok := parse_number_argument(&lexer) 
+        if !ok {
+            log.errorf("Couldn't parse first argument for wave as number")
+            return
+        }
+
+        command_wave(wave)
     }
     else if strings.compare(name, "restart") == 0 {
         command_restart()
@@ -37,16 +47,32 @@ run_command :: proc(input: []u8) {
         value, ok := parse_bool_argument(&lexer) 
         if !ok {
             log.errorf("Couldn't parse first argument for spawning as bool")
+            return
         }
 
         command_spawning(value)
     }
     else if strings.compare(name, "nav") == 0 {
         command_nav()
+        return
     }
     else {
         log.error("No command found with name", name)
     }
+}
+
+parse_number_argument :: proc(lexer: ^ArgumentLexer) -> (uint, bool) {
+    token, token_ok := next_token_type(lexer, .NUMBER)
+    if !token_ok {
+        return 0, false
+    }
+
+    n, _, parse_ok := fmt._parse_int(transmute(string) token.value, 0)
+    if !parse_ok {
+        return 0, false
+    }
+
+    return cast(uint)n, true
 }
 
 parse_string_argument :: proc(lexer: ^ArgumentLexer) -> (string, bool) {
@@ -86,6 +112,7 @@ TokenType :: enum {
     EOF,
     STRING,
     BOOL,
+    NUMBER
 }
 
 next_token :: proc(lexer: ^ArgumentLexer) -> Token {
@@ -99,6 +126,20 @@ next_token :: proc(lexer: ^ArgumentLexer) -> Token {
     }
 
     {
+        switch lexer.input[lexer.current_index] {
+        case '0'..='9':
+            start := lexer.current_index
+            for lexer.current_index < len(lexer.input) && !is_deliminator(lexer.input[lexer.current_index]) {
+                lexer.current_index += 1
+            }
+    
+            number := lexer.input[start:lexer.current_index]
+
+            return Token{type = .NUMBER, value = number}
+        }
+    }
+
+    { // strings and key words
         start := lexer.current_index
         for lexer.current_index < len(lexer.input) && !is_deliminator(lexer.input[lexer.current_index]) {
             lexer.current_index += 1
