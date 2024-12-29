@@ -2,6 +2,7 @@
 #include "common.h"
 
 #include <assert.h>
+#include <cstdio>
 #include <cstdlib>
 #include <stdlib.h>
 
@@ -35,6 +36,10 @@ typedef void(*d3d11_mouse_pos_func)(float x, float y);
 typedef void(*d3d11_mouse_wheel_func)(float v);
 
 struct State {
+    HMODULE game_dll;
+    HANDLE std_out;
+    HANDLE std_err;
+
     bool quit_requested;
     bool in_create_window;
     HWND hwnd;
@@ -44,9 +49,7 @@ struct State {
     int width;
     int height;
     int sample_count;
-    bool no_depth_buffer;
-    HANDLE std_out;
-    HANDLE std_err;
+    bool no_depth_buffer; 
     ID3D11Device* device;
     ID3D11DeviceContext* device_context;
     IDXGISwapChain* swap_chain;
@@ -462,18 +465,35 @@ internal set_platform_type *set_platform_callback;
 typedef decltype(start) start_type;
 internal start_type *start_callback;
 
+typedef decltype(reload) reload_type;
+internal reload_type *reload_callback;
+
+typedef decltype(run) run_type;
+internal run_type *run_callback;
+
 internal
-HMODULE load_game_dll() {
-    HMODULE dll = LoadLibrary("build\\game.dll");
-    assert(dll);
+void load_game_dll() {
+    if (state.game_dll) {
+        FreeLibrary(state.game_dll);
+        DeleteFileA("build\\game.dll");
+    }
+
+    bool copy_ok = CopyFileA("build\\game_preload.dll", "build\\game.dll", true);
+
+    state.game_dll = LoadLibrary("build\\game.dll");
+    assert(state.game_dll);
     
-    set_platform_callback = (set_platform_type*) GetProcAddress(dll, "set_platform");
+    set_platform_callback = (set_platform_type*) GetProcAddress(state.game_dll, "set_platform");
     assert(set_platform_callback);
 
-    start_callback = (start_type*) GetProcAddress(dll, "start");
+    start_callback = (start_type*) GetProcAddress(state.game_dll, "start");
     assert(start_callback);
 
-    return dll;
+    reload_callback = (reload_type*) GetProcAddress(state.game_dll, "reload");
+    assert(reload_callback);
+
+    run_callback = (run_type*) GetProcAddress(state.game_dll, "run");
+    assert(run_callback);
 }
 
 internal void *game_state;
@@ -484,20 +504,39 @@ void *platform_alloc_state(i32 size) {
     return game_state;
 }
 
+void platform_reload_game() {
+    load_game_dll();
+    set_platform_callback({
+        .init = platform_init,
+        .alloc_state = platform_alloc_state,
+        .present = platform_present,
+        .reload_game = platform_reload_game,
+        .swapchain = platform_swapchain,
+        .enviroment = platform_enviroment,
+        .write = platform_write,
+    });
+
+    reload_callback(game_state);
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     load_game_dll();
 
-    set_platform_callback({
+    set_platform_callback(Platform{
         .init = platform_init,
-        .process_events = platform_process_events,
         .alloc_state = platform_alloc_state,
         .present = platform_present,
+        .reload_game = platform_reload_game,
         .swapchain = platform_swapchain,
         .enviroment = platform_enviroment,
         .write = platform_write,
     });
 
     start_callback(); 
+
+    while(platform_process_events()) {
+        run_callback();
+    }
 
     d3d11_shutdown();
     return 0;

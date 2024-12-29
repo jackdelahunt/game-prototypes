@@ -75,6 +75,8 @@ void set_platform(Platform p) {
     platform = p;    
 }
 
+internal i32 timer = 0;
+
 DLL_EXPORT
 void start() {
     state = (State *) platform.alloc_state(sizeof(State));
@@ -88,13 +90,28 @@ void start() {
 
     platform.init(state->width, state->height, L"Cool game");
     renderer_init();
-    
-    // draw loop
-    while (platform.process_events()) {
-        renderer_draw();
-    }
+    // sg_shutdown();
+}
 
-    sg_shutdown();
+DLL_EXPORT
+void reload(void *game_state) {
+    assert(game_state);
+    state = (State *)game_state;
+
+    renderer_init(); 
+}
+
+DLL_EXPORT
+void run() {
+    renderer_draw();
+
+    timer += 1;
+    if (timer > 100) {
+        timer = 0;
+     
+        platform.write("EOF\n", 4);
+        platform.reload_game();
+    }
 }
 
 internal
@@ -157,8 +174,8 @@ internal
 void renderer_draw() {
     state->quad_count = 0;
 
-    draw_quad({-2, 0}, {1, 1},  RED);
-    draw_quad({5, -3}, {0.5, 5},  GREEN);
+    draw_quad({-2, 0}, {3, 1},  GREEN);
+    draw_quad({5, -3}, {0.5, 5},  RED);
 
 
     if (state->quad_count <= 0) {

@@ -7,9 +7,9 @@
 extern "C" {
     typedef struct {
         Func(void, init, i32 width, i32 height, const wchar_t *title);
-        Func(bool, process_events);
         Func(void *, alloc_state, i32 size);
         Func(void, present);
+        Func(void, reload_game);
         Func(sg_swapchain, swapchain);
         Func(sg_environment, enviroment);
         Func(void, write, const char *text, i32 length);
@@ -19,4 +19,8 @@ extern "C" {
     void set_platform(Platform p);
     DLL_EXPORT
     void start();
+    DLL_EXPORT
+    void reload(void *state);
+    DLL_EXPORT
+    void run();
 }
