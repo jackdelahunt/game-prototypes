@@ -1,6 +1,10 @@
 #include "platform.h"
 #include "common.h"
 
+#include <assert.h>
+#include <cstdlib>
+#include <stdlib.h>
+
 #pragma warning(disable:4201)   // needed for /W4 and including d3d11.h
 
 #define COBJMACROS
@@ -452,20 +456,49 @@ void platform_write(const char *text, i32 length) {
     WriteConsoleA(state.std_out, text, length, NULL, NULL);
 }
 
+typedef decltype(set_platform) set_platform_type;
+internal set_platform_type *set_platform_callback;
+
+typedef decltype(start) start_type;
+internal start_type *start_callback;
+
+internal
+HMODULE load_game_dll() {
+    HMODULE dll = LoadLibrary("build\\game.dll");
+    assert(dll);
+    
+    set_platform_callback = (set_platform_type*) GetProcAddress(dll, "set_platform");
+    assert(set_platform_callback);
+
+    start_callback = (start_type*) GetProcAddress(dll, "start");
+    assert(start_callback);
+
+    return dll;
+}
+
+internal void *game_state;
+
+void *platform_alloc_state(i32 size) {
+    game_state = malloc(size);
+    assert(game_state);
+    return game_state;
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-    set_platform({
+    load_game_dll();
+
+    set_platform_callback({
         .init = platform_init,
         .process_events = platform_process_events,
+        .alloc_state = platform_alloc_state,
         .present = platform_present,
         .swapchain = platform_swapchain,
         .enviroment = platform_enviroment,
         .write = platform_write,
     });
 
-    start(); 
+    start_callback(); 
 
-    // shutdown sokol_gfx and D3D11 app wrapper
-    sg_shutdown();
     d3d11_shutdown();
     return 0;
 }

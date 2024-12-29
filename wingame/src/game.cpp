@@ -3,9 +3,13 @@
 #include "glm/ext/vector_float3.hpp"
 #include "glm/ext/vector_float4.hpp"
 #include "glm/trigonometric.hpp"
+
 #include "platform.h"
 #include "common.h"
+#include <cassert>
 
+#define SOKOL_D3D11
+#define SOKOL_IMPL
 #include "sokol/sokol_log.h"
 #include "shaders/basic_shader.h"
 
@@ -62,27 +66,35 @@ struct State {
     sg_pass_action pass_action;
 };
 
-internal State state;
+internal State *state;
+
 internal Platform platform;
 
+DLL_EXPORT
 void set_platform(Platform p) {
     platform = p;    
 }
 
+DLL_EXPORT
 void start() {
-    state = {
+    state = (State *) platform.alloc_state(sizeof(State));
+    assert(state);
+
+    *state = {
         .width = DEFAULT_WIDTH,
         .height = DEFAULT_HEIGHT,
         .zoom = 0.1,
     };
 
-    platform.init(state.width, state.height, L"Cool game");
+    platform.init(state->width, state->height, L"Cool game");
     renderer_init();
     
     // draw loop
     while (platform.process_events()) {
         renderer_draw();
     }
+
+    sg_shutdown();
 }
 
 internal
@@ -92,21 +104,21 @@ glm::mat4x4 view_matrix(glm::vec2 camera) {
 
 internal
 glm::mat4x4 projection_matrix() {
-    return glm::perspective(glm::radians(90.0f), (f32)state.width / (f32)state.height, 0.1f, 100.0f);
+    return glm::perspective(glm::radians(90.0f), (f32)state->width / (f32)state->height, 0.1f, 100.0f);
 }
 
 internal 
 void draw_quad(glm::vec2 position, glm::vec2 size, Colour colour) {
-    Quad *quad = &state.quads[state.quad_count];
-    state.quad_count += 1;
+    Quad *quad = &state->quads[state->quad_count];
+    state->quad_count += 1;
 
     glm::mat4x4 transformation_matrix = glm::mat4(1.0f);
     transformation_matrix = glm::translate(transformation_matrix, {position.x, position.y, 0});
     transformation_matrix = glm::scale(transformation_matrix, {size.x, size.y, 1});
 
 #if 1
-    transformation_matrix *= view_matrix(state.camera);
-    transformation_matrix = glm::scale(transformation_matrix, {state.zoom, state.zoom, 1});
+    transformation_matrix *= view_matrix(state->camera);
+    transformation_matrix = glm::scale(transformation_matrix, {state->zoom, state->zoom, 1});
 
     transformation_matrix *= projection_matrix();
 #endif
@@ -143,31 +155,31 @@ void draw_quad(glm::vec2 position, glm::vec2 size, Colour colour) {
 
 internal
 void renderer_draw() {
-    state.quad_count = 0;
+    state->quad_count = 0;
 
     draw_quad({-2, 0}, {1, 1},  RED);
     draw_quad({5, -3}, {0.5, 5},  GREEN);
 
 
-    if (state.quad_count <= 0) {
+    if (state->quad_count <= 0) {
         return;
     }
 
     sg_update_buffer(
-        state.bindings.vertex_buffers[0],
-        { .ptr = state.quads, .size = sizeof(Quad) * state.quad_count }
+        state->bindings.vertex_buffers[0],
+        { .ptr = state->quads, .size = sizeof(Quad) * state->quad_count }
     );
 
     sg_begin_pass({
-        .action = state.pass_action,
+        .action = state->pass_action,
         .swapchain = platform.swapchain()
     });
 
 
-    sg_apply_pipeline(state.render_pipeline);
-    sg_apply_bindings(state.bindings);
+    sg_apply_pipeline(state->render_pipeline);
+    sg_apply_bindings(state->bindings);
 
-    sg_draw(0, 6 * state.quad_count, 1);
+    sg_draw(0, 6 * state->quad_count, 1);
     
 
     sg_end_pass();
@@ -187,7 +199,7 @@ void renderer_init() {
 
     sg_setup(&sg_description);
 
-    state.bindings.vertex_buffers[0] = sg_make_buffer({
+    state->bindings.vertex_buffers[0] = sg_make_buffer({
         .size = sizeof(Quad) * MAX_QUADS,
         .usage = SG_USAGE_DYNAMIC,
         .label = "quad-vertices"
@@ -207,7 +219,7 @@ void renderer_init() {
         i += 6;
     }
 
-    state.bindings.index_buffer = sg_make_buffer({
+    state->bindings.index_buffer = sg_make_buffer({
         .type = SG_BUFFERTYPE_INDEXBUFFER,
         .data = {.ptr = index_buffer, .size = sizeof(index_buffer)},
         .label = "quad-indices"
@@ -239,9 +251,9 @@ void renderer_init() {
         }
     };
 
-    state.render_pipeline = sg_make_pipeline(pipeline_desc);
+    state->render_pipeline = sg_make_pipeline(pipeline_desc);
 
-    state.pass_action = {
+    state->pass_action = {
         .colors = {
             {.load_action = SG_LOADACTION_CLEAR, .clear_value = { 0.3f, 0.3f, 0.7f, 1.0f }}
         }
