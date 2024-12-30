@@ -3,8 +3,7 @@
 
 #include "common.h"
 
-#include "glm/vec2.hpp"
-#include "glm/mat4x4.hpp"
+#include "glm/glm.hpp"
 #include "sokol/sokol_gfx.h"
 
 #define MAX_QUADS 1000
@@ -32,6 +31,11 @@ struct Quad {
     Vertex vertices[4];
 };
 
+enum class DrawType {
+    RECTANGLE,
+    CIRCLE
+};
+
 struct State {
     bool running;
 
@@ -39,7 +43,7 @@ struct State {
     i32 height;
 
     glm::vec2 camera;
-    f32 zoom;
+    f32 camera_view_width; // in world units
 
     Quad quads[MAX_QUADS];
     i32 quad_count;
@@ -58,11 +62,14 @@ struct Slice {
 
 internal void game_main();
 internal void game_quit();
+
 internal void renderer_init();
 internal void renderer_draw();
-internal void draw_quad(glm::vec2 position, glm::vec2 size, Colour colour);
-internal glm::mat4x4 view_matrix(glm::vec2 camera);
-internal glm::mat4x4 projection_matrix();
+internal void draw_rectangle(glm::vec2 position, glm::vec2 size, Colour colour);
+internal void draw_circle(glm::vec2 position, f32 radius, Colour colour);
+internal void draw_quad(glm::vec2 position, glm::vec2 size, Colour colour, DrawType type);
+internal glm::mat4x4 get_view_matrix(glm::vec2 camera);
+internal glm::mat4x4 get_projection_matrix(f32 aspect_ratio, f32 orthographic_size);
 
 internal Slice<char> new_slice(const char *string);
 

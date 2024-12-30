@@ -17,7 +17,6 @@
 #include "sokol/sokol_gfx.h"
 #include "sokol/sokol_log.h"
 
-
 static LRESULT CALLBACK d3d11_winproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 internal void d3d11_create_default_render_targets();

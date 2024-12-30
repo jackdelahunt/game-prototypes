@@ -25,7 +25,7 @@ in float texture_index;
 out vec4 frag_color;
 
 void main() {
-    // solid
+    // rectangle
     if (texture_index == 0) {
         frag_color = color;
     }

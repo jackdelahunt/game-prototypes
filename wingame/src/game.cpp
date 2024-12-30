@@ -1,32 +1,31 @@
 #include "game.h"
 
 #include "common.h"
+#include "glm/ext/matrix_clip_space.hpp"
+#include "glm/ext/matrix_float4x4.hpp"
+#include "glm/ext/matrix_transform.hpp"
 #include "platform.h"
 #include "shaders/basic_shader.h"
 
 #include "sokol/sokol_log.h"
-#include "glm/ext/matrix_float4x4.hpp"
-#include "glm/ext/vector_float2.hpp"
-#include "glm/ext/vector_float3.hpp"
-#include "glm/ext/vector_float4.hpp"
-#include "glm/trigonometric.hpp"
-#include "glm/ext/matrix_clip_space.hpp"
-#include "glm/ext/matrix_transform.hpp"
+#include "glm/glm.hpp"
+#include "glm/gtc/matrix_transform.hpp"
 
+#include <cassert>
 #include <string.h>
 
-#define DEFAULT_WIDTH 1000
-#define DEFAULT_HEIGHT 750
+#define DEFAULT_WIDTH 1280
+#define DEFAULT_HEIGHT 720
 
 internal State state;
 
-internal
+internal // @main
 void game_main() {
     state = {
         .running = true,
         .width = DEFAULT_WIDTH,
         .height = DEFAULT_HEIGHT,
-        .zoom = 0.1f,
+        .camera_view_width = 10.0f,
     };
 
     platform_init_window(state.width, state.height, new_slice("Cool game"));
@@ -42,49 +41,6 @@ void game_main() {
 
 void game_quit() {
     state.running = false;
-}
-
-internal
-Slice<char> new_slice(const char *string) {
-	return Slice<char> {
-		.data = string,
-		.length = (i64) strlen(string)
-	};
-}
-
-internal
-void renderer_draw() {
-    state.quad_count = 0;
-
-    draw_quad({-2, 0}, {1, 1},  RED);
-    draw_quad({5, -3}, {0.5, 5},  GREEN);
-
-
-    if (state.quad_count <= 0) {
-        return;
-    }
-
-    sg_update_buffer(
-        state.bindings.vertex_buffers[0],
-        { .ptr = state.quads, .size = sizeof(Quad) * state.quad_count }
-    );
-
-    sg_begin_pass({
-        .action = state.pass_action,
-        .swapchain = platform_swapchain()
-    });
-
-
-    sg_apply_pipeline(state.render_pipeline);
-    sg_apply_bindings(state.bindings);
-
-    sg_draw(0, 6 * state.quad_count, 1);
-    
-
-    sg_end_pass();
-
-    sg_commit();
-    platform_present();
 }
 
 internal
@@ -159,58 +115,136 @@ void renderer_init() {
     };
 }
 
+internal
+void renderer_draw() {
+    state.quad_count = 0;
+
+    for(i32 i = 0; i < 10; i++) {
+        Colour c = RED;
+
+        if (i % 2 == 0) {
+            c = BLUE;
+        }
+
+        draw_rectangle({(f32)i + 0.5f, 0}, {1, 1}, c);
+    }
+
+    draw_circle({0, 0}, 0.2f, WHITE);
+    draw_circle({8, 0}, 0.2f, WHITE);
+
+    if (state.quad_count <= 0) {
+        return;
+    }
+
+    sg_update_buffer(
+        state.bindings.vertex_buffers[0],
+        { .ptr = state.quads, .size = sizeof(Quad) * state.quad_count }
+    );
+
+    sg_begin_pass({
+        .action = state.pass_action,
+        .swapchain = platform_swapchain()
+    });
+
+
+    sg_apply_pipeline(state.render_pipeline);
+    sg_apply_bindings(state.bindings);
+
+    sg_draw(0, 6 * state.quad_count, 1);
+    
+
+    sg_end_pass();
+
+    sg_commit();
+    platform_present();
+}
+
 internal 
-void draw_quad(glm::vec2 position, glm::vec2 size, Colour colour) {
+void draw_rectangle(glm::vec2 position, glm::vec2 size, Colour colour) {
+    draw_quad(position, size, colour, DrawType::RECTANGLE);
+}
+
+internal 
+void draw_circle(glm::vec2 position, f32 radius, Colour colour) {
+    draw_quad(position, {radius * 2, radius * 2}, colour, DrawType::CIRCLE);
+}
+
+internal 
+void draw_quad(glm::vec2 position, glm::vec2 size, Colour colour, DrawType type) {
     Quad *quad = &state.quads[state.quad_count];
     state.quad_count += 1;
 
-    glm::mat4x4 transformation_matrix = glm::mat4(1.0f);
-    transformation_matrix = glm::translate(transformation_matrix, {position.x, position.y, 0});
-    transformation_matrix = glm::scale(transformation_matrix, {size.x, size.y, 1});
+    glm::mat4 model_matrix = glm::translate(glm::mat4(1.0f), {position.x, position.y, 0});
+    model_matrix = glm::scale(model_matrix, {size.x, size.y, 1.0f});
 
-#if 1
-    transformation_matrix *= view_matrix(state.camera);
-    transformation_matrix = glm::scale(transformation_matrix, {state.zoom, state.zoom, 1});
+    glm::mat4 view_matrix = get_view_matrix(state.camera);
+    glm::mat4 projection_matrix = get_projection_matrix((f32)state.width / (f32)state.height, state.camera_view_width * 0.5f);
 
-    transformation_matrix *= projection_matrix();
-#endif
+    glm::mat4x4 transformation_matrix = projection_matrix * view_matrix * model_matrix;
 
     glm::vec4 top_left = transformation_matrix * glm::vec4{-0.5, 0.5, 0, 1};
     glm::vec4 top_right = transformation_matrix * glm::vec4{0.5, 0.5, 0, 1};
     glm::vec4 bottom_right = transformation_matrix * glm::vec4{0.5, -0.5, 0, 1};
     glm::vec4 bottom_left = transformation_matrix * glm::vec4{-0.5, -0.5, 0, 1};
 
+    f32 texture_index = 0;
+    switch (type) {
+        case DrawType::RECTANGLE: {
+            texture_index = 0;
+            break;
+        }
+        case DrawType::CIRCLE: {
+            texture_index = 1;
+            break;
+        }
+        default: {
+            assert(0);
+        }
+    }
+
     quad->vertices[0] = {
         .position = {top_left.x, top_left.y, 0},
         .colour = colour,
         .texture_uv = {0, 1},
+        .texture_index = texture_index,
     };
 
     quad->vertices[1] = {
         .position = {top_right.x, top_right.y, 0},
         .colour = colour,
         .texture_uv = {1, 1},
+        .texture_index = texture_index,
     };
 
     quad->vertices[2] = {
         .position = {bottom_right.x, bottom_right.y, 0},
         .colour = colour,
         .texture_uv = {1, 0},
+        .texture_index = texture_index,
     };
 
     quad->vertices[3] = {
         .position = {bottom_left.x, bottom_left.y, 0},
         .colour = colour,
         .texture_uv = {0, 0},
+        .texture_index = texture_index,
     };
 }
 
 internal
-glm::mat4x4 view_matrix(glm::vec2 camera) {
-    return glm::lookAt({camera.x, camera.y, 1}, glm::vec3{}, {0, 1, 0});
+glm::mat4x4 get_view_matrix(glm::vec2 camera) {
+    return glm::lookAt({camera.x, camera.y, 1}, glm::vec3{camera.x, camera.y, 0}, {0, 1, 0});
 }
 
 internal
-glm::mat4x4 projection_matrix() {
-    return glm::perspective(glm::radians(90.0f), (f32)state.width / (f32)state.height, 0.1f, 100.0f);
+glm::mat4x4 get_projection_matrix(f32 aspect_ratio, f32 orthographic_size) {
+    return glm::ortho(-orthographic_size * aspect_ratio, orthographic_size * aspect_ratio, -orthographic_size, orthographic_size, 0.1f, 100.0f);
+}
+
+internal
+Slice<char> new_slice(const char *string) {
+	return Slice<char> {
+		.data = string,
+		.length = (i64) strlen(string)
+	};
 }
