@@ -1,4 +1,5 @@
-#pragma once
+#ifndef H_COMMON
+#define H_COMMON
 
 // project wide macro definitions
 // WINDOWS      - compiling for windows
@@ -8,10 +9,6 @@
 // DEBUG        - compiling in debug mode
 
 #define internal static
-
-#define DLL_EXPORT __declspec(dllexport)
-
-#define Func(ret, name, ...) ret (* name)(__VA_ARGS__);
 
 typedef char             i8;
 typedef short           i16;
@@ -25,3 +22,5 @@ typedef int long long unsigned   u64;
 
 typedef float  f32;
 typedef double f64;
+
+#endif

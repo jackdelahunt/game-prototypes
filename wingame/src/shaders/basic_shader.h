@@ -1,5 +1,4 @@
 #pragma once
-#include "../sokol/sokol_gfx.h"
 /*
     #version:1# (machine generated, don't edit!)
 

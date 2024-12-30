@@ -1,5 +1,3 @@
-@header #include "../sokol/sokol_gfx.h"
-
 @vs vs
 
 in vec3 position;
