@@ -229,6 +229,10 @@ Key convert_key(WPARAM w_param) {
     // https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
     i64 key_code = (i64)w_param;
 
+    switch (key_code) {
+        case VK_ESCAPE: return KEY_ESCAPE;
+    }
+
     // 0-9
     if (key_code >= 0x30 && key_code <= 0x39) {
         return (Key) (key_code - 0x30);

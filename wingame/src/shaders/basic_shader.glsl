@@ -18,6 +18,9 @@ void main() {
 @end
 
 @fs fs
+layout(binding=1) uniform texture2D font_texture;
+layout(binding=0) uniform sampler default_sampler;
+
 in vec4 color;
 in vec2 texture_uv;
 in float texture_index;
@@ -38,6 +41,11 @@ void main() {
         if (d <= 0.5) {
             frag_color = color;
         }
+    }
+
+    if (texture_index == 2) {
+        // font texture only has values in the red channel
+        frag_color = texture(sampler2D(font_texture, default_sampler), texture_uv).r * color;
     }
 
     if (false) {

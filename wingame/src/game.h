@@ -5,6 +5,7 @@
 #include "glm/ext/vector_float2.hpp"
 #include "platform.h"
 
+#include "stb/stb_truetype.h"
 #include "glm/glm.hpp"
 #include "sokol/sokol_gfx.h"
 
@@ -14,6 +15,11 @@ template<typename T>
 struct Slice {
     T *data;
     i64 length;
+
+    T operator[] (i64 index) {
+        assert(index < this->length);
+        return this->data[index];
+    }
 };
 
 template <typename T>
@@ -29,7 +35,7 @@ Slice<char> { .data = buffer, .length = snprintf(buffer, size, fmt, __VA_ARGS__)
 
 // -1 to not include null byte
 #define STR(s) \
-Slice<char> {.data = s, .length = sizeof(s) - 1 } 
+Slice<char>{(char *) s, sizeof(s) - 1 } 
 
 struct Colour {
     f32 r;
@@ -56,7 +62,17 @@ struct Quad {
 
 enum class DrawType {
     RECTANGLE,
-    CIRCLE
+    CIRCLE,
+    TEXT,
+};
+
+struct Font {
+    i32 bitmap_width;
+    i32 bitmap_height;
+    i32 character_count;
+    f32 font_height;
+    u8 *bitmap;
+    stbtt_bakedchar *characters;
 };
 
 enum EntityFlag {
@@ -78,6 +94,8 @@ struct State {
     bool running;
     i32 width;
     i32 height;
+
+    Font font;
 
     // input
     InputState mouse_buttons[_MOUSE_LAST_];
@@ -112,7 +130,12 @@ internal void renderer_init();
 internal void renderer_draw();
 internal void draw_rectangle(glm::vec2 position, glm::vec2 size, Colour colour);
 internal void draw_circle(glm::vec2 position, f32 radius, Colour colour);
+internal void draw_text(Slice<char> text, glm::vec2 position, f32 font_size, Colour colour);
 internal void draw_quad(glm::vec2 position, glm::vec2 size, Colour colour, DrawType type);
+internal void draw_quad(glm::vec2 position, glm::vec2 size, Colour colour, DrawType type, glm::vec2 top_left_uv, glm::vec2 top_right_uv, glm::vec2 bottom_right_uv, glm::vec2 bottom_left_uv);
+
+internal bool load_fonts();
+internal Slice<u8> read_file(const char *path);
 
 internal glm::mat4x4 get_view_matrix(glm::vec2 camera);
 internal glm::mat4x4 get_projection_matrix(f32 aspect_ratio, f32 orthographic_size);

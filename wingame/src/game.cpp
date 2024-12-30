@@ -1,13 +1,21 @@
 #include "game.h"
 
 #include "common.h"
-#include "glm/geometric.hpp"
 #include "platform.h"
 #include "shaders/basic_shader.h"
 
 #include "sokol/sokol_log.h"
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
+#include "glm/geometric.hpp"
+
+#define STB_TRUETYPE_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#define STBTT_STATIC
+#include "stb/stb_truetype.h"
+#include "stb/stb_image.h"
+#include "stb/stb_image_write.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -20,7 +28,7 @@
 #define MAX_ENTITIES 128
 #define MAX_QUADS 512
 
-#define PLAYER_SPEED 50.0f
+#define PLAYER_SPEED 1000.0f
 
 internal State state;
 
@@ -30,26 +38,21 @@ void game_main() {
         .running = true,
         .width = DEFAULT_WIDTH,
         .height = DEFAULT_HEIGHT,
-        .camera_view_width = 10.0f,
+        .camera_view_width = 200.0f,
         .entities = {.data = (Entity *)malloc(sizeof(Entity) * MAX_ENTITIES), .length = MAX_ENTITIES},
         .quads = {.data = (Quad *)malloc(sizeof(Quad) * MAX_QUADS), .length = MAX_QUADS},
     };
+
+    assert(load_fonts());
 
     platform_init_window(state.width, state.height, "Cool game");
     renderer_init();
 
     create_entity({
         .flags = EF_PLAYER,
-        .position = {1, 0},
-        .size = {1, 1},
+        .position = {0, 0},
+        .size = {10, 10},
         .colour = RED,
-    });
-
-    create_entity({
-        .flags = EF_NONE,
-        .position = {-1, 0},
-        .size = {0.5, 0.5},
-        .colour = GREEN,
     });
 
     f32 delta_time = 1.0f / 1000.0f;
@@ -71,7 +74,7 @@ void game_quit() {
 }
 
 internal void update() {
-    if (state.keys[KEY_K] == InputState::DOWN) {
+    if (state.keys[KEY_ESCAPE] == InputState::DOWN) {
         game_quit();
     }
 
@@ -105,10 +108,6 @@ internal void update() {
                 }
                 
                 entity->velocity = input * PLAYER_SPEED;
-
-                char buffer[120];
-                Slice<char> text = fmt_string(buffer, 120, "x: %f, y: %f\n", entity->velocity.x, entity->velocity.y);
-                platform_stdout(text.data, text.length);
             }
         }
     }
@@ -126,6 +125,9 @@ internal void draw() {
         Entity *entity = at_ptr(&state.entities, entity_index);
         draw_rectangle(entity->position, entity->size, entity->colour);
     }
+
+
+    draw_text(STR("Hello this is a message"), { 0, 0 }, 1, BLUE);
 }
 
 internal 
@@ -176,6 +178,19 @@ void renderer_init() {
         .label = "quad-indices"
     });
 
+    sg_image_desc image_description = {
+        .width = state.font.bitmap_width,
+        .height = state.font.bitmap_height,
+        .pixel_format = SG_PIXELFORMAT_R8,
+        .label = "font_texture", 
+    };
+    image_description.data.subimage[0][0] = {.ptr = state.font.bitmap, .size = (u32)(state.font.bitmap_width * state.font.bitmap_height)};
+
+    state.bindings.images[IMG_font_texture] = sg_make_image(image_description);
+
+    state.bindings.samplers[SMP_default_sampler] = sg_make_sampler({
+        .label = "default_sampler"
+    });
 
     sg_shader shader = sg_make_shader(basic_shader_desc(sg_query_backend()));
 
@@ -251,7 +266,55 @@ void draw_circle(glm::vec2 position, f32 radius, Colour colour) {
 }
 
 internal 
+void draw_text(Slice<char> text, glm::vec2 position, f32 font_size, Colour colour) {
+    f32 x = 0;
+    f32 y = 0;
+
+    for (i64 i = 0; i < text.length; i++) {
+        char c = text[i];
+
+        glm::vec2 position_offset = {x, y};
+
+        f32 advanced_x = 0;
+        f32 advanced_y = 0;
+
+        stbtt_aligned_quad alligned_quad = {};
+
+
+        // this is the the data for the aligned_quad we're given, with y+ going down
+        //	   x0, y0       x1, y0
+        //     s0, t0       s1, t0
+        //	    o tl        o tr
+        // 
+        //
+        //     x0, y1      x1, y1
+        //     s0, t1      s1, t1
+        //	    o bl        o br
+        // 
+        // x, and y and expected vertex positions
+        // s and t are texture uv position
+        stbtt_GetBakedQuad(state.font.characters, state.font.bitmap_width, state.font.bitmap_height, c - 32, &advanced_x, &advanced_y, &alligned_quad, false);
+
+        x += advanced_x * font_size;
+        y += advanced_y * font_size;
+
+        glm::vec2 size = glm::vec2{alligned_quad.x1 - alligned_quad.x0, alligned_quad.y1 - alligned_quad.y0} * font_size;
+
+        glm::vec2 bottom_left_uv    = { alligned_quad.s0, alligned_quad.t1 };
+        glm::vec2 top_right_uv      = { alligned_quad.s1, alligned_quad.t0 };
+        glm::vec2 bottom_right_uv   = {alligned_quad.s1, alligned_quad.t1};
+        glm::vec2 top_left_uv       = {alligned_quad.s0, alligned_quad.t0};
+
+        draw_quad(position + position_offset, size, colour, DrawType::TEXT, top_left_uv, top_right_uv, bottom_right_uv, bottom_left_uv);
+    }
+}
+
+internal 
 void draw_quad(glm::vec2 position, glm::vec2 size, Colour colour, DrawType type) {
+    draw_quad(position, size, colour, type, {0, 1}, {1, 1}, {1, 0}, {0, 0});
+}
+
+internal void draw_quad(glm::vec2 position, glm::vec2 size, Colour colour, DrawType type, glm::vec2 top_left_uv, glm::vec2 top_right_uv, glm::vec2 bottom_right_uv, glm::vec2 bottom_left_uv) {
     Quad *quad = at_ptr(&state.quads, state.quad_count);
     state.quad_count += 1;
 
@@ -278,6 +341,10 @@ void draw_quad(glm::vec2 position, glm::vec2 size, Colour colour, DrawType type)
             texture_index = 1;
             break;
         }
+        case DrawType::TEXT: {
+            texture_index = 2;
+            break;
+        }
         default: {
             assert(0);
         }
@@ -286,30 +353,85 @@ void draw_quad(glm::vec2 position, glm::vec2 size, Colour colour, DrawType type)
     quad->vertices[0] = {
         .position = {top_left.x, top_left.y, 0},
         .colour = colour,
-        .texture_uv = {0, 1},
+        .texture_uv = {top_left_uv.x, top_left_uv.y},
         .texture_index = texture_index,
     };
 
     quad->vertices[1] = {
         .position = {top_right.x, top_right.y, 0},
         .colour = colour,
-        .texture_uv = {1, 1},
+        .texture_uv = {top_right_uv.x, top_right_uv.y},
         .texture_index = texture_index,
     };
 
     quad->vertices[2] = {
         .position = {bottom_right.x, bottom_right.y, 0},
         .colour = colour,
-        .texture_uv = {1, 0},
+        .texture_uv = {bottom_right_uv.x, bottom_right_uv.y},
         .texture_index = texture_index,
     };
 
     quad->vertices[3] = {
         .position = {bottom_left.x, bottom_left.y, 0},
         .colour = colour,
-        .texture_uv = {0, 0},
+        .texture_uv = {bottom_left_uv.x, bottom_left_uv.y},
         .texture_index = texture_index,
     };
+}
+
+internal bool load_fonts() {
+    state.font = {
+        .bitmap_width = 256,
+        .bitmap_height = 256,
+        .character_count = 96,
+        .font_height = 15.0f,
+    };
+
+    state.font.bitmap = (u8 *) malloc(state.font.bitmap_width * state.font.bitmap_height);
+    assert(state.font.bitmap);
+
+    state.font.characters = (stbtt_bakedchar *) malloc(sizeof(stbtt_bakedchar) * state.font.character_count);
+    assert(state.font.characters);
+
+    Slice<u8> bytes = read_file("resources/alagard.ttf");
+
+    i64 bake_result = stbtt_BakeFontBitmap(
+        bytes.data, 
+        0, 
+        state.font.font_height, 
+        state.font.bitmap, 
+        state.font.bitmap_width, 
+        state.font.bitmap_height, 
+        32, 
+        state.font.character_count,
+        state.font.characters
+    );
+
+    assert(bake_result > 0);
+
+    i64 write_result = stbi_write_png("build/font.png", state.font.bitmap_width, state.font.bitmap_height, 1, state.font.bitmap, state.font.bitmap_width);
+    assert(write_result != 0);
+
+    return true;
+}
+
+internal 
+Slice<u8> read_file(const char *path) {
+    // TODO: using malloc for this and not freeing LUL
+    FILE *file = fopen(path, "rb");
+    assert(file);
+
+    fseek(file, 0, SEEK_END);
+    i64 file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    u8 *data = (u8 *)malloc(file_size + 1);
+    assert(data);
+
+    fread(data, file_size, 1, file);
+    fclose(file);
+
+    return Slice<u8> {.data = data, .length = file_size + 1};
 }
 
 internal
