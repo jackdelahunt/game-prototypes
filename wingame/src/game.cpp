@@ -1,9 +1,7 @@
 #include "game.h"
 
 #include "common.h"
-#include "glm/ext/matrix_clip_space.hpp"
-#include "glm/ext/matrix_float4x4.hpp"
-#include "glm/ext/matrix_transform.hpp"
+#include "glm/geometric.hpp"
 #include "platform.h"
 #include "shaders/basic_shader.h"
 
@@ -12,11 +10,17 @@
 #include "glm/gtc/matrix_transform.hpp"
 
 #include <assert.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720
+
+#define MAX_ENTITIES 128
+#define MAX_QUADS 512
+
+#define PLAYER_SPEED 50.0f
 
 internal State state;
 
@@ -27,34 +31,116 @@ void game_main() {
         .width = DEFAULT_WIDTH,
         .height = DEFAULT_HEIGHT,
         .camera_view_width = 10.0f,
+        .entities = {.data = (Entity *)malloc(sizeof(Entity) * MAX_ENTITIES), .length = MAX_ENTITIES},
+        .quads = {.data = (Quad *)malloc(sizeof(Quad) * MAX_QUADS), .length = MAX_QUADS},
     };
 
     platform_init_window(state.width, state.height, "Cool game");
     renderer_init();
 
-    while (state.running) {
-        for (i64 i = 0; i < _KEY_LAST_; i++) {
-            if (state.keys[i] == InputState::DOWN) {
-                char buffer[120];
-                Slice<char> s = fmt_string(buffer, 120, "%llu is down\n", i); 
-                platform_stdout(s.data, s.length);
-            }
-        }
+    create_entity({
+        .flags = EF_PLAYER,
+        .position = {1, 0},
+        .size = {1, 1},
+        .colour = RED,
+    });
 
+    create_entity({
+        .flags = EF_NONE,
+        .position = {-1, 0},
+        .size = {0.5, 0.5},
+        .colour = GREEN,
+    });
+
+    f32 delta_time = 1.0f / 1000.0f;
+
+    while (state.running) {
         platform_process_events();
+        update();
+        physics(delta_time);
+        draw();
         renderer_draw();
     }
 
     sg_shutdown();
 }
 
+internal
 void game_quit() {
     state.running = false;
 }
 
+internal void update() {
+    if (state.keys[KEY_K] == InputState::DOWN) {
+        game_quit();
+    }
+
+    for (i64 entity_index = 0; entity_index < state.entity_count; ++entity_index) {
+        Entity *entity = at_ptr(&state.entities, entity_index);
+
+        if (entity->flags & EF_PLAYER) {
+
+            { // movement input
+                glm::vec2 input = {};
+
+                if (state.keys[KEY_W] == InputState::DOWN) {
+                    input.y += 1.0f;
+                }
+
+                if (state.keys[KEY_S] == InputState::DOWN) {
+                    input.y -= 1.0f;
+                }
+
+                if (state.keys[KEY_A] == InputState::DOWN) {
+                    input.x -= 1.0f;
+                }
+
+                if (state.keys[KEY_D] == InputState::DOWN) {
+                    input.x += 1.0f;
+                }
+
+                if (glm::length(input) > 0) {
+                    // if there is no input (len == 0) then it becomes NaN
+                    input = glm::normalize(input);
+                }
+                
+                entity->velocity = input * PLAYER_SPEED;
+
+                char buffer[120];
+                Slice<char> text = fmt_string(buffer, 120, "x: %f, y: %f\n", entity->velocity.x, entity->velocity.y);
+                platform_stdout(text.data, text.length);
+            }
+        }
+    }
+}
+
+internal void physics(f32 delta_time) {
+    for (i64 entity_index = 0; entity_index < state.entity_count; ++entity_index) {
+        Entity *entity = at_ptr(&state.entities, entity_index);
+        entity->position += entity->velocity * delta_time;
+    }
+}
+
+internal void draw() {
+    for (i64 entity_index = 0; entity_index < state.entity_count; ++entity_index) {
+        Entity *entity = at_ptr(&state.entities, entity_index);
+        draw_rectangle(entity->position, entity->size, entity->colour);
+    }
+}
+
+internal 
+Entity *create_entity(Entity entity) {
+    Entity *entity_ptr = at_ptr(&state.entities, state.entity_count);
+
+    *entity_ptr = entity;
+    state.entity_count++;
+
+    return entity_ptr;
+}
+
+
 internal
 void renderer_init() {
-
     sg_desc sg_description {
         .logger = {
             .func = slog_func
@@ -120,35 +206,18 @@ void renderer_init() {
 
     state.pass_action = {
         .colors = {
-            {.load_action = SG_LOADACTION_CLEAR, .clear_value = { 0.3f, 0.3f, 0.7f, 1.0f }}
+            {.load_action = SG_LOADACTION_CLEAR, .clear_value = { 0.6f, 0.75f, 0.8f, 1.0f }}
         }
     };
 }
 
 internal
 void renderer_draw() {
-    state.quad_count = 0;
-
-    for(i32 i = 0; i < 10; i++) {
-        Colour c = RED;
-
-        if (i % 2 == 0) {
-            c = BLUE;
-        }
-
-        draw_rectangle({(f32)i + 0.5f, 0}, {1, 1}, c);
-    }
-
-    draw_circle({0, 0}, 0.2f, WHITE);
-    draw_circle({8, 0}, 0.2f, WHITE);
-
-    if (state.quad_count <= 0) {
-        return;
-    }
+    if (state.quad_count == 0) return;
 
     sg_update_buffer(
         state.bindings.vertex_buffers[0],
-        { .ptr = state.quads, .size = sizeof(Quad) * state.quad_count }
+        { .ptr = state.quads.data, .size = sizeof(Quad) * state.quad_count }
     );
 
     sg_begin_pass({
@@ -160,13 +229,15 @@ void renderer_draw() {
     sg_apply_pipeline(state.render_pipeline);
     sg_apply_bindings(state.bindings);
 
-    sg_draw(0, 6 * state.quad_count, 1);
+    sg_draw(0, (i32) state.quad_count * 6, 1);
     
 
     sg_end_pass();
 
     sg_commit();
     platform_present();
+
+    state.quad_count = 0;
 }
 
 internal 
@@ -181,7 +252,7 @@ void draw_circle(glm::vec2 position, f32 radius, Colour colour) {
 
 internal 
 void draw_quad(glm::vec2 position, glm::vec2 size, Colour colour, DrawType type) {
-    Quad *quad = &state.quads[state.quad_count];
+    Quad *quad = at_ptr(&state.quads, state.quad_count);
     state.quad_count += 1;
 
     glm::mat4 model_matrix = glm::translate(glm::mat4(1.0f), {position.x, position.y, 0});

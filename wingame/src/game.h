@@ -2,12 +2,34 @@
 #define H_GAME
 
 #include "common.h"
+#include "glm/ext/vector_float2.hpp"
 #include "platform.h"
 
 #include "glm/glm.hpp"
 #include "sokol/sokol_gfx.h"
 
-#define MAX_QUADS 1000
+#include <assert.h>
+
+template<typename T>
+struct Slice {
+    T *data;
+    i64 length;
+};
+
+template <typename T>
+T *at_ptr(Slice<T> *slice, i64 index) {
+    assert(index >= 0);
+    assert(index < slice->length);
+
+    return &slice->data[index];
+}
+
+#define fmt_string(buffer, size, fmt, ...) \
+Slice<char> { .data = buffer, .length = snprintf(buffer, size, fmt, __VA_ARGS__) }
+
+// -1 to not include null byte
+#define STR(s) \
+Slice<char> {.data = s, .length = sizeof(s) - 1 } 
 
 struct Colour {
     f32 r;
@@ -37,6 +59,20 @@ enum class DrawType {
     CIRCLE
 };
 
+enum EntityFlag {
+    EF_NONE = 0,
+    EF_PLAYER
+};
+
+struct Entity {
+    // meta
+    u64 flags;
+    glm::vec2 position;
+    glm::vec2 velocity;
+    glm::vec2 size;
+    Colour colour;
+};
+
 struct State {
     // application state
     bool running;
@@ -51,9 +87,13 @@ struct State {
     glm::vec2 camera;
     f32 camera_view_width; // world units
 
+    // entities
+    Slice<Entity> entities;
+    i64 entity_count;
+
     // render stuff
-    Quad quads[MAX_QUADS];
-    i32 quad_count;
+    Slice<Quad> quads;
+    i64 quad_count;
     sg_bindings bindings;
     sg_pipeline render_pipeline;
     sg_pass_action pass_action;
@@ -61,6 +101,12 @@ struct State {
 
 internal void game_main();
 internal void game_quit();
+
+internal void update();
+internal void physics(f32 delta_time);
+internal void draw();
+
+internal Entity *create_entity(Entity entity);
 
 internal void renderer_init();
 internal void renderer_draw();
@@ -73,14 +119,5 @@ internal glm::mat4x4 get_projection_matrix(f32 aspect_ratio, f32 orthographic_si
 
 internal void mouse_button_event(MouseButton button, InputState input_state);
 internal void key_event(Key key, InputState input_state);
-
-template<typename T>
-struct Slice {
-	const T *data;
-	i64 length;
-};
-
-#define fmt_string(buffer, size, fmt, ...) \
-Slice<char> { .data = buffer, .length = snprintf(buffer, size, fmt, __VA_ARGS__) }
 
 #endif

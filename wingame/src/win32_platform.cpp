@@ -398,7 +398,7 @@ void platform_stdout(const char *text, i64 length) {
     if(length == 0) return;
 
     assert(text != nullptr);
-    WriteConsoleA(win32_state.std_out, text, length, NULL, NULL);
+    WriteConsoleA(win32_state.std_out, text, (DWORD)length, NULL, NULL); // TODO: figure out what DWORD is and see if I care
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
