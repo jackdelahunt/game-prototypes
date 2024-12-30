@@ -9,3 +9,4 @@ zig-out/
 **/sokol/**/*.exp
 **.rdbg
 **/*.pdb
+**/*.vs

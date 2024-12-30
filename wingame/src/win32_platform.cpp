@@ -1,3 +1,4 @@
+#include "game.h"
 #include "platform.h"
 #include "common.h"
 #include "game.cpp"
@@ -17,7 +18,7 @@
 #include "sokol/sokol_gfx.h"
 #include "sokol/sokol_log.h"
 
-static LRESULT CALLBACK d3d11_winproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+static LRESULT CALLBACK winproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 internal void d3d11_create_default_render_targets();
 internal void d3d11_destroy_default_render_targets();
@@ -36,7 +37,6 @@ struct Win32State {
     bool no_depth_buffer;
 
     HANDLE std_out;
-    HANDLE std_err;
 
     DXGI_SWAP_CHAIN_DESC swap_chain_desc;
     ID3D11Device* device;
@@ -52,10 +52,10 @@ struct Win32State {
 
 internal Win32State win32_state;
 
-void platform_init_window(i32 width, i32 height, Slice<char> title) {
+void platform_init_window(i32 width, i32 height, const char *title) {
     assert(width > 0);
     assert(height > 0);
-    assert(title.data);
+    assert(title);
 
     win32_state = {
         .win_style = WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SIZEBOX,
@@ -68,7 +68,6 @@ void platform_init_window(i32 width, i32 height, Slice<char> title) {
     }
 
     win32_state.std_out = GetStdHandle(STD_OUTPUT_HANDLE);
-    win32_state.std_err = GetStdHandle(STD_ERROR_HANDLE);
 
     int sample_count = 1;
 
@@ -80,7 +79,7 @@ void platform_init_window(i32 width, i32 height, Slice<char> title) {
     // register window class
     WNDCLASSA window_class = {
         .style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC,
-        .lpfnWndProc = (WNDPROC) d3d11_winproc,
+        .lpfnWndProc = (WNDPROC) winproc,
         .hInstance = GetModuleHandleW(NULL),
         .hIcon = LoadIcon(NULL, IDI_WINLOGO),
         .hCursor = LoadCursor(NULL, IDC_ARROW),
@@ -99,7 +98,7 @@ void platform_init_window(i32 width, i32 height, Slice<char> title) {
     win32_state.hwnd = CreateWindowExA(
         win32_state.win_ex_style, // dwExStyle
         window_class.lpszClassName, // lpClassName
-        title.data,              // lpWindowName
+        title,              // lpWindowName
         win32_state.win_style,    // dwStyle
         CW_USEDEFAULT,      // X
         CW_USEDEFAULT,      // Y
@@ -226,36 +225,77 @@ sg_environment platform_enviroment() {
 }
 
 internal
-LRESULT CALLBACK d3d11_winproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-    switch (uMsg) {
+Key convert_key(WPARAM w_param) {
+    // https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
+    i64 key_code = (i64)w_param;
+
+    // 0-9
+    if (key_code >= 0x30 && key_code <= 0x39) {
+        return (Key) (key_code - 0x30);
+    }
+
+    // A-Z
+    if (key_code >= 0x41 && key_code <= 0x5A) {
+        return (Key)(KEY_A + (key_code - 0x41));
+    }
+
+    // could not convert it, :[
+    return _KEY_LAST_;
+}
+
+internal
+LRESULT CALLBACK winproc(HWND window_handle, UINT message, WPARAM w_param, LPARAM l_param) {
+    switch (message) {
         case WM_CLOSE:
             game_quit();
             return 0;
         case WM_ERASEBKGND:
             return TRUE;
-        case WM_LBUTTONDOWN:
+        case WM_LBUTTONDOWN: {
+            mouse_button_event(MOUSE_LEFT, InputState::DOWN);
             break;
-        case WM_RBUTTONDOWN:
+        }
+        case WM_RBUTTONDOWN: {
+            mouse_button_event(MOUSE_RIGHT, InputState::DOWN);
             break;
-        case WM_LBUTTONUP:
+        }
+        case WM_LBUTTONUP: {
+            mouse_button_event(MOUSE_LEFT, InputState::UP);
             break;
-        case WM_RBUTTONUP:
+        }
+        case WM_RBUTTONUP: {
+            mouse_button_event(MOUSE_RIGHT, InputState::UP);
             break;
+        }
         case WM_MOUSEMOVE:
             break;
         case WM_MOUSEWHEEL:
             break;
         case WM_CHAR:
             break;
-        case WM_KEYDOWN:
+        case WM_KEYDOWN: {
+            Key key = convert_key(w_param);
+            if (key == _KEY_LAST_) {
+                break;
+            }
+
+            key_event(key, InputState::DOWN);
             break;
-        case WM_KEYUP:
+        }
+        case WM_KEYUP: {
+            Key key = convert_key(w_param);
+            if (key == _KEY_LAST_) {
+                break;
+            }
+
+            key_event(key, InputState::UP);
             break;
+        }
         default:
             break;
     }
 
-    return DefWindowProcW(hWnd, uMsg, wParam, lParam);
+    return DefWindowProcW(window_handle, message, w_param, l_param);
 }
 
 internal
@@ -351,9 +391,18 @@ void d3d11_shutdown() {
     UnregisterClassW(L"SOKOLD3D11", GetModuleHandleW(NULL));
 }
 
+internal 
+void platform_stdout(const char *text, i64 length) {
+    assert(length >= 0);
+
+    if(length == 0) return;
+
+    assert(text != nullptr);
+    WriteConsoleA(win32_state.std_out, text, length, NULL, NULL);
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     game_main();
-
     d3d11_shutdown();
     return 0;
 }

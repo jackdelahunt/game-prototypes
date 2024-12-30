@@ -15,5 +15,3 @@ cl %compile_flags% %extra_flags% ..\src\win32_platform.cpp /Fegame.exe /link %li
 if %errorlevel% neq 0 exit /b %errorlevel%
 
 popd
-
-.\build\game.exe

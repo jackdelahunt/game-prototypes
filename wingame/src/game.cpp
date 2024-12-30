@@ -11,7 +11,8 @@
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
 
-#include <cassert>
+#include <assert.h>
+#include <stdio.h>
 #include <string.h>
 
 #define DEFAULT_WIDTH 1280
@@ -28,10 +29,18 @@ void game_main() {
         .camera_view_width = 10.0f,
     };
 
-    platform_init_window(state.width, state.height, new_slice("Cool game"));
+    platform_init_window(state.width, state.height, "Cool game");
     renderer_init();
-    
+
     while (state.running) {
+        for (i64 i = 0; i < _KEY_LAST_; i++) {
+            if (state.keys[i] == InputState::DOWN) {
+                char buffer[120];
+                Slice<char> s = fmt_string(buffer, 120, "%llu is down\n", i); 
+                platform_stdout(s.data, s.length);
+            }
+        }
+
         platform_process_events();
         renderer_draw();
     }
@@ -45,6 +54,7 @@ void game_quit() {
 
 internal
 void renderer_init() {
+
     sg_desc sg_description {
         .logger = {
             .func = slog_func
@@ -241,10 +251,10 @@ glm::mat4x4 get_projection_matrix(f32 aspect_ratio, f32 orthographic_size) {
     return glm::ortho(-orthographic_size * aspect_ratio, orthographic_size * aspect_ratio, -orthographic_size, orthographic_size, 0.1f, 100.0f);
 }
 
-internal
-Slice<char> new_slice(const char *string) {
-	return Slice<char> {
-		.data = string,
-		.length = (i64) strlen(string)
-	};
+internal void mouse_button_event(MouseButton button, InputState input_state) {
+    state.mouse_buttons[(i64) button] = input_state;
+}
+
+internal void key_event(Key key, InputState input_state) {
+    state.keys[(i64) key] = input_state;
 }
