@@ -39,6 +39,14 @@ enum class DrawType {
     TEXT,
 };
 
+struct GlyphRenderInfo {
+    f32 relative_x;
+    f32 relative_y;
+    f32 width;
+    f32 height;
+    glm::vec2 uvs[4];
+};
+
 struct Font {
     i32 bitmap_width;
     i32 bitmap_height;

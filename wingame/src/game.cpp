@@ -34,7 +34,7 @@
 #define MAX_ENTITIES 128
 #define MAX_QUADS 512
 
-#define PLAYER_SPEED 1000.0f
+#define PLAYER_SPEED 500.0f
 
 internal State state;
 
@@ -44,7 +44,7 @@ void game_main() {
         .running = true,
         .width = DEFAULT_WIDTH,
         .height = DEFAULT_HEIGHT,
-        .camera_view_width = 200.0f,
+        .camera_view_width = 10.0f,
     };
 
     init(&state.allocator, MAIN_ALLOCATOR_SIZE);
@@ -61,7 +61,7 @@ void game_main() {
     create_entity({
         .flags = EF_PLAYER,
         .position = {0, 0},
-        .size = {10, 10},
+        .size = {1, 1},
         .colour = RED,
     });
 
@@ -137,6 +137,8 @@ internal void physics(f32 delta_time) {
     }
 }
 
+f32 fs = 0.1;
+
 // @draw
 internal void draw() {
     for (i64 entity_index = 0; entity_index < state.entity_count; ++entity_index) {
@@ -145,9 +147,10 @@ internal void draw() {
         draw_rectangle(entity->position, entity->size, entity->colour);
     }
 
+    fs += 0.001f;
+
     glm::vec2 draw_position = {0 ,0};
-    draw_text(STR("Hello sailor"), draw_position, 1, BLACK);
-    draw_circle(draw_position, 2, RED);
+    draw_text(STR("Hello sailor"), draw_position, fs, BLACK);
 }
 
 internal 
@@ -287,13 +290,16 @@ void draw_circle(glm::vec2 position, f32 radius, Colour colour) {
 
 internal 
 void draw_text(Slice<char> text, glm::vec2 position, f32 font_size, Colour colour) {
-    f32 x = 0;
-    f32 y = 0;
+    if (text.length == 0) return;
+
+    Slice<GlyphRenderInfo> infos = alloc<GlyphRenderInfo>(&state.frame_allocator, text.length);
+
+    f32 total_x = 0;
+    f32 total_y = 0;
+    f32 max_height = 0;
 
     for (i64 i = 0; i < text.length; i++) {
         char c = text[i];
-
-        glm::vec2 position_offset = {x, y};
 
         f32 advanced_x = 0;
         f32 advanced_y = 0;
@@ -315,17 +321,63 @@ void draw_text(Slice<char> text, glm::vec2 position, f32 font_size, Colour colou
         // s and t are texture uv position
         stbtt_GetBakedQuad(state.font.characters, state.font.bitmap_width, state.font.bitmap_height, c - 32, &advanced_x, &advanced_y, &alligned_quad, false);
 
-        x += advanced_x * font_size;
-        y += advanced_y * font_size;
+        f32 width = alligned_quad.x1 - alligned_quad.x0;
+        f32 height = alligned_quad.y1 - alligned_quad.y0;
 
-        glm::vec2 size = glm::vec2{alligned_quad.x1 - alligned_quad.x0, alligned_quad.y1 - alligned_quad.y0} * font_size;
+        if (height > max_height) {
+            max_height = height;
+        }
 
-        glm::vec2 bottom_left_uv    = { alligned_quad.s0, alligned_quad.t1 };
+        glm::vec2 top_left_uv       = {alligned_quad.s0, alligned_quad.t0};
         glm::vec2 top_right_uv      = { alligned_quad.s1, alligned_quad.t0 };
         glm::vec2 bottom_right_uv   = {alligned_quad.s1, alligned_quad.t1};
-        glm::vec2 top_left_uv       = {alligned_quad.s0, alligned_quad.t0};
+        glm::vec2 bottom_left_uv    = { alligned_quad.s0, alligned_quad.t1 };
 
-        draw_quad(position + position_offset, size, colour, DrawType::TEXT, top_left_uv, top_right_uv, bottom_right_uv, bottom_left_uv);
+        infos[i] = {
+            .relative_x = total_x,
+            .relative_y = total_y,
+            .width = width,
+            .height = height,
+            .uvs = {
+                top_left_uv,
+                top_right_uv,
+                bottom_right_uv,
+                bottom_left_uv
+            }
+        };
+
+        total_x += advanced_x;
+        total_y += advanced_y;
+    }
+
+    f32 scale_factor = (1 / max_height);
+    f32 height_scale_factor = scale_factor * font_size; // font size of 1 means tallest glyph is 1 world unit tall
+    f32 total_scaled_width = total_x * scale_factor * font_size;
+
+    for (i64 i = 0; i < infos.length; i++) {
+        GlyphRenderInfo *info = &infos[i];
+
+        f32 width_proportion = info->width / total_x;
+        f32 x_proportion = info->relative_x / total_x;
+
+        f32 width = width_proportion * total_scaled_width;
+        f32 x = x_proportion * total_scaled_width;
+
+        // TODO: right now the text is just centred, could add an origin
+        // vec2 which dictates where the centre of the text should be
+        glm::vec2 size = {width, info->height * height_scale_factor};
+        glm::vec2 offset_position = glm::vec2{x - (total_scaled_width * 0.5), info->relative_y};
+
+        draw_quad(
+            position + offset_position,
+            size,
+            colour,
+            DrawType::TEXT,
+            info->uvs[0],
+            info->uvs[1],
+            info->uvs[2],
+            info->uvs[3]
+        );
     }
 }
 

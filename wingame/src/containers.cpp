@@ -20,7 +20,7 @@ struct Slice {
     T *data;
     i64 length;
 
-    T operator[] (i64 index) {
+    T& operator[] (i64 index) {
         assert(index < this->length);
         return this->data[index];
     }
