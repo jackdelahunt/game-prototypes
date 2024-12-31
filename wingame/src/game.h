@@ -2,40 +2,12 @@
 #define H_GAME
 
 #include "common.h"
-#include "glm/ext/vector_float2.hpp"
 #include "platform.h"
+#include "containers.cpp"
 
 #include "stb/stb_truetype.h"
 #include "glm/glm.hpp"
 #include "sokol/sokol_gfx.h"
-
-#include <assert.h>
-
-template<typename T>
-struct Slice {
-    T *data;
-    i64 length;
-
-    T operator[] (i64 index) {
-        assert(index < this->length);
-        return this->data[index];
-    }
-};
-
-template <typename T>
-T *at_ptr(Slice<T> *slice, i64 index) {
-    assert(index >= 0);
-    assert(index < slice->length);
-
-    return &slice->data[index];
-}
-
-#define fmt_string(buffer, size, fmt, ...) \
-Slice<char> { .data = buffer, .length = snprintf(buffer, size, fmt, __VA_ARGS__) }
-
-// -1 to not include null byte
-#define STR(s) \
-Slice<char>{(char *) s, sizeof(s) - 1 } 
 
 struct Colour {
     f32 r;
@@ -45,6 +17,7 @@ struct Colour {
 };
 
 #define WHITE   Colour{1, 1, 1, 1}
+#define BLACK   Colour{0, 0, 0, 1}
 #define RED     Colour{1, 0, 0, 1}
 #define GREEN   Colour{0, 1, 0, 1}
 #define BLUE    Colour{0, 0, 1, 1}
@@ -90,6 +63,9 @@ struct Entity {
 };
 
 struct State {
+    Allocator allocator;
+    Allocator frame_allocator;
+
     // application state
     bool running;
     i32 width;

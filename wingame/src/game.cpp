@@ -2,6 +2,7 @@
 
 #include "common.h"
 #include "platform.h"
+#include "containers.cpp"
 #include "shaders/basic_shader.h"
 
 #include "sokol/sokol_log.h"
@@ -25,6 +26,11 @@
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720
 
+// 10 Mb
+#define MAIN_ALLOCATOR_SIZE 1024 * 1024 * 10
+// 10 Kb
+#define FRAME_ALLOCATOR_SIZE 1024 * 10
+
 #define MAX_ENTITIES 128
 #define MAX_QUADS 512
 
@@ -39,9 +45,13 @@ void game_main() {
         .width = DEFAULT_WIDTH,
         .height = DEFAULT_HEIGHT,
         .camera_view_width = 200.0f,
-        .entities = {.data = (Entity *)malloc(sizeof(Entity) * MAX_ENTITIES), .length = MAX_ENTITIES},
-        .quads = {.data = (Quad *)malloc(sizeof(Quad) * MAX_QUADS), .length = MAX_QUADS},
     };
+
+    init(&state.allocator, MAIN_ALLOCATOR_SIZE);
+    init(&state.frame_allocator, FRAME_ALLOCATOR_SIZE);
+
+    state.entities = alloc<Entity>(&state.allocator, MAX_ENTITIES);
+    state.quads = alloc<Quad>(&state.allocator, MAX_QUADS);
 
     assert(load_fonts());
 
@@ -63,7 +73,13 @@ void game_main() {
         physics(delta_time);
         draw();
         renderer_draw();
+
+        reset(&state.frame_allocator);
     }
+
+    // dont need to do this but who cares
+    deinit(&state.allocator);
+    deinit(&state.frame_allocator);
 
     sg_shutdown();
 }
@@ -73,6 +89,7 @@ void game_quit() {
     state.running = false;
 }
 
+// @update
 internal void update() {
     if (state.keys[KEY_ESCAPE] == InputState::DOWN) {
         game_quit();
@@ -120,14 +137,17 @@ internal void physics(f32 delta_time) {
     }
 }
 
+// @draw
 internal void draw() {
     for (i64 entity_index = 0; entity_index < state.entity_count; ++entity_index) {
         Entity *entity = at_ptr(&state.entities, entity_index);
+
         draw_rectangle(entity->position, entity->size, entity->colour);
     }
 
-
-    draw_text(STR("Hello this is a message"), { 0, 0 }, 1, BLUE);
+    glm::vec2 draw_position = {0 ,0};
+    draw_text(STR("Hello sailor"), draw_position, 1, BLACK);
+    draw_circle(draw_position, 2, RED);
 }
 
 internal 
