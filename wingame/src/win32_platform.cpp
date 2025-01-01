@@ -31,10 +31,12 @@ struct Win32State {
     DWORD win_style;
     DWORD win_ex_style;
 
-    int width;
-    int height;
-    int sample_count;
+    i32 width;
+    i32 height;
+    i32 sample_count;
     bool no_depth_buffer;
+
+    i32 sync_interval; // 0 for vsync off
 
     HANDLE std_out;
 
@@ -60,6 +62,7 @@ void platform_init_window(i32 width, i32 height, const char *title) {
     win32_state = {
         .win_style = WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SIZEBOX,
         .win_ex_style = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE,
+        .sync_interval = 1,
     };
 
     bool ok = AllocConsole();
@@ -177,7 +180,7 @@ void platform_process_events() {
 }
 
 void platform_present() {
-    win32_state.swap_chain->Present(1, 0);
+    win32_state.swap_chain->Present(win32_state.sync_interval, 0);
 
     /* handle window resizing */
     RECT r;
@@ -271,8 +274,17 @@ LRESULT CALLBACK winproc(HWND window_handle, UINT message, WPARAM w_param, LPARA
             mouse_button_event(MOUSE_RIGHT, InputState::UP);
             break;
         }
-        case WM_MOUSEMOVE:
+        case WM_MOUSEMOVE: {
+            f32 x = (f32) GET_X_LPARAM(l_param);
+            f32 y = (f32) GET_Y_LPARAM(l_param);
+
+            // Game is always assuming y0 is bottom, so need
+            // to convert it, windows is y0 at the top
+            y = win32_state.height - y;
+
+            mouse_move_event(x, y);
             break;
+        }
         case WM_MOUSEWHEEL:
             break;
         case WM_CHAR:
@@ -293,6 +305,18 @@ LRESULT CALLBACK winproc(HWND window_handle, UINT message, WPARAM w_param, LPARA
             }
 
             key_event(key, InputState::UP);
+            break;
+        }
+        case WM_SIZING: {
+            RECT *window_rect = (RECT *)l_param;
+
+            i32 width = window_rect->left - window_rect->right;
+            i32 height = window_rect->top - window_rect->bottom;
+
+            win32_state.width = width;
+            win32_state.height = height;
+
+            window_resize(width, height);
             break;
         }
         default:

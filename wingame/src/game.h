@@ -9,6 +9,8 @@
 #include "glm/glm.hpp"
 #include "sokol/sokol_gfx.h"
 
+#include <time.h>
+
 struct Colour {
     f32 r;
     f32 g;
@@ -56,6 +58,28 @@ struct Font {
     stbtt_bakedchar *characters;
 };
 
+enum TextureId {
+    TX_NONE,
+    TX_PLAYER,
+    TX_CRAWLER,
+    _TX_LAST_
+};
+
+struct Texture {
+    TextureId id;
+    i64 width;
+    i64 height;
+    u8 *data;
+    glm::vec2 atlas_uvs[4];
+};
+
+struct TextureAtlas {
+    i32 width;
+    i32 height;
+    sg_image image;
+    Slice<u8> data;
+};
+
 enum EntityFlag {
     EF_NONE = 0,
     EF_PLAYER
@@ -82,6 +106,7 @@ struct State {
     Font font;
 
     // input
+    glm::vec2 mouse_screen_position;
     InputState mouse_buttons[_MOUSE_LAST_];
     InputState keys[_KEY_LAST_];
 
@@ -94,6 +119,8 @@ struct State {
     i64 entity_count;
 
     // render stuff
+    TextureAtlas atlas;
+    Texture textures[(i64)_TX_LAST_];
     Slice<Quad> quads;
     i64 quad_count;
     sg_bindings bindings;
@@ -112,19 +139,31 @@ internal Entity *create_entity(Entity entity);
 
 internal void renderer_init();
 internal void renderer_draw();
-internal void draw_rectangle(glm::vec2 position, glm::vec2 size, Colour colour);
+internal void draw_rectangle(glm::vec2 position, glm::vec2 size, Colour colour, f32 rotation = 0.0f);
 internal void draw_circle(glm::vec2 position, f32 radius, Colour colour);
+internal void draw_line(glm::vec2 start, glm::vec2 end, f32 thickness, Colour colour);
 internal void draw_text(Slice<char> text, glm::vec2 position, f32 font_size, Colour colour);
-internal void draw_quad(glm::vec2 position, glm::vec2 size, Colour colour, DrawType type);
-internal void draw_quad(glm::vec2 position, glm::vec2 size, Colour colour, DrawType type, glm::vec2 top_left_uv, glm::vec2 top_right_uv, glm::vec2 bottom_right_uv, glm::vec2 bottom_left_uv);
-
-internal bool load_fonts();
-internal Slice<u8> read_file(const char *path);
+internal void draw_quad(glm::vec2 position, glm::vec2 size, f32 rotation, Colour colour, DrawType type);
+internal void draw_quad(glm::vec2 position, glm::vec2 size, f32 rotation, Colour colour, DrawType type, glm::vec2 top_left_uv, glm::vec2 top_right_uv, glm::vec2 bottom_right_uv, glm::vec2 bottom_left_uv);
 
 internal glm::mat4x4 get_view_matrix(glm::vec2 camera);
 internal glm::mat4x4 get_projection_matrix(f32 aspect_ratio, f32 orthographic_size);
 
+internal void load_fonts();
+internal void load_textures();
+internal Slice<u8> read_file(Slice<char> path);
+internal void write_file(Slice<char> path, Slice<u8> buffer);
+
+internal Slice<char> texture_file_name(TextureId id);
+
+internal glm::vec2 screen_to_ndc(glm::vec2 screen_position);
+internal glm::vec2 screen_to_world(glm::vec2 screen_position);
+
+internal Colour with_alpha(Colour c, f32 alpha);
+
+internal void mouse_move_event(f32 x, f32 y);
 internal void mouse_button_event(MouseButton button, InputState input_state);
 internal void key_event(Key key, InputState input_state);
+internal void window_resize(i32 width, i32 height);
 
 #endif

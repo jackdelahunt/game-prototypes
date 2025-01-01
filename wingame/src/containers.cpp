@@ -39,8 +39,8 @@ Slice<char> fmt_string(Allocator *allocator, Slice<char> format, Ts... args) {
     // TODO: this just triple the length of the format, dont know what
     // else to do here...
     Slice<char> buffer = alloc<char>(allocator, format.length * 3);
-    snprintf(buffer.data, buffer.length, format.data, args...);
-
+    i64 write_count = snprintf(buffer.data, buffer.length, format.data, args...);
+    buffer.length = write_count;
     return buffer;
 }
 
