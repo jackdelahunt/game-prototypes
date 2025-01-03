@@ -1,11 +1,9 @@
 #ifndef CPP_GAME
 #define CPP_GAME
 
-#include "game.h"
-
 #include "common.h"
-#include "platform.h"
 #include "containers.cpp"
+#include "platform.h"
 #include "shaders/basic_shader.h"
 
 // what a guy has to do to get an angle
@@ -17,16 +15,22 @@
 #include "glm/gtc/matrix_transform.hpp"
 #include "glm/geometric.hpp"
 
-#include "sokol/sokol_log.h"
 #include "stb/stb.cpp"
+#include "sokol/sokol.cpp"
 
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
-#define DEFAULT_WIDTH 1280
-#define DEFAULT_HEIGHT 720
+#ifdef WINDOWS
+#include <windows.h>
+#endif
+
+#define DEFAULT_WIDTH 1500
+#define DEFAULT_HEIGHT 900
+
+#define GRID_STEP_SIZE 10.0f
 
 // 10 Mb
 #define MAIN_ALLOCATOR_SIZE 1024 * 1024 * 10
@@ -38,10 +42,181 @@
 
 #define PLAYER_SPEED 100.0f
 
+struct Colour {
+    f32 r;
+    f32 g;
+    f32 b;
+    f32 a;
+};
+
+#define WHITE   Colour{1, 1, 1, 1}
+#define BLACK   Colour{0, 0, 0, 1}
+#define RED     Colour{1, 0, 0, 1}
+#define GREEN   Colour{0, 1, 0, 1}
+#define BLUE    Colour{0, 0, 1, 1}
+
+struct Vertex {
+    f32 position[3];
+    Colour colour;
+    f32 texture_uv[2];
+    f32 texture_index;
+};
+
+struct Quad {
+    Vertex vertices[4];
+};
+
+enum RenderLayer {
+    RL_FLOOR,
+    RL_FORGROUND
+};
+
+enum DrawType {
+    DT_RECTANGLE,
+    DT_CIRCLE,
+    DT_TEXT,
+};
+
+struct GlyphRenderInfo {
+    f32 relative_x;
+    f32 relative_y;
+    f32 width;
+    f32 height;
+    glm::vec2 uvs[4];
+};
+
+struct Font {
+    i32 bitmap_width;
+    i32 bitmap_height;
+    i32 character_count;
+    f32 font_height;
+    u8 *bitmap;
+    stbtt_bakedchar *characters;
+};
+
+enum TextureId {
+    TX_NONE,
+    TX_PLAYER,
+    TX_CRAWLER,
+    _TX_LAST_
+};
+
+struct Texture {
+    TextureId id;
+    i64 width;
+    i64 height;
+    u8 *data;
+    glm::vec2 atlas_uvs[4];
+};
+
+struct TextureAtlas {
+    i32 width;
+    i32 height;
+    sg_image image;
+    Slice<u8> data;
+};
+
+enum EntityFlag {
+    EF_NONE = 0,
+    EF_PLAYER
+};
+
+struct Entity {
+    // meta
+    u64 flags;
+    glm::vec2 position;
+    glm::vec2 velocity;
+    glm::vec2 size;
+    Colour colour;
+    RenderLayer layer;
+
+    // grid
+    i64 grid_position[2];
+};
+
+struct State {
+    Allocator allocator;
+    Allocator frame_allocator;
+
+    // application state
+    bool running;
+    i32 width;
+    i32 height;
+
+    // level state
+    Slice<u8> level_data;
+
+    // input
+    glm::vec2 mouse_screen_position;
+    InputState mouse_buttons[_MOUSE_LAST_];
+    InputState keys[_KEY_LAST_];
+
+    // camera
+    glm::vec2 camera;
+    f32 camera_view_width; // world units
+
+    // entities
+    Slice<Entity> entities;
+    i64 entity_count;
+
+    // render stuff
+    Font font;
+    TextureAtlas atlas;
+    Texture textures[(i64)_TX_LAST_];
+    Slice<Quad> quads;
+    i64 quad_count;
+    sg_bindings bindings;
+    sg_pipeline render_pipeline;
+    sg_pass_action pass_action;
+};
+
+internal void init_sokol();
+internal void frame();
+internal void event(const sapp_event *event);
+internal void cleanup();
+
+internal void update();
+internal void physics(f32 delta_time);
+internal void draw();
+
+internal Entity *create_entity(Entity entity);
+internal Entity *create_player(i64 grid_x, i64 grid_y);
+internal Entity *create_floor(i64 grid_x, i64 grid_y);
+
+internal void generate_level();
+
+internal void renderer_init();
+internal void renderer_draw();
+internal void draw_rectangle(glm::vec2 position, glm::vec2 size, Colour colour, RenderLayer layer, f32 rotation = 0.0f);
+internal void draw_circle(glm::vec2 position, f32 radius, Colour colour, RenderLayer layer);
+internal void draw_line(glm::vec2 start, glm::vec2 end, f32 thickness, Colour colour, RenderLayer layer);
+internal void draw_text(Slice<char> text, glm::vec2 position, f32 font_size, Colour colour, RenderLayer layer);
+internal void draw_quad(glm::vec2 position, glm::vec2 size, f32 rotation, Colour colour, RenderLayer layer, DrawType type);
+internal void draw_quad(glm::vec2 position, glm::vec2 size, f32 rotation, Colour colour, RenderLayer layer, DrawType type, 
+                        glm::vec2 top_left_uv, glm::vec2 top_right_uv, glm::vec2 bottom_right_uv, glm::vec2 bottom_left_uv);
+
+internal glm::mat4x4 get_view_matrix(glm::vec2 camera);
+internal glm::mat4x4 get_projection_matrix(f32 aspect_ratio, f32 orthographic_size);
+
+internal void load_levels();
+internal void load_fonts();
+internal void load_textures();
+internal Slice<u8> read_file(Slice<char> path);
+internal void write_file(Slice<char> path, Slice<u8> buffer);
+
+internal Slice<char> texture_file_name(TextureId id);
+
+internal glm::vec2 screen_to_ndc(glm::vec2 screen_position);
+internal glm::vec2 screen_to_world(glm::vec2 screen_position);
+
+internal Colour with_alpha(Colour c, f32 alpha);
+internal Key convert_key(sapp_keycode keycode);
+internal void print(Slice<u8> string);
+
 internal State state;
 
 internal // @main
-void game_main() {
+sapp_desc sokol_main(i32 argc, char **argv) {
     state = {
         .running = true,
         .width = DEFAULT_WIDTH,
@@ -49,153 +224,49 @@ void game_main() {
         .camera_view_width = 100.0f,
     };
 
+#ifdef WINDOWS
+    assert(AllocConsole());
+#endif
+
     init(&state.allocator, MAIN_ALLOCATOR_SIZE);
     init(&state.frame_allocator, FRAME_ALLOCATOR_SIZE);
 
     state.entities = alloc<Entity>(&state.allocator, MAX_ENTITIES);
     state.quads = alloc<Quad>(&state.allocator, MAX_QUADS);
 
-    platform_init_window(state.width, state.height, "Cool game");
+    srand(120);
 
+    load_levels();
     load_fonts();
     load_textures();
 
-    renderer_init();
+    generate_level(); 
 
-    create_entity({
-        .flags = EF_NONE,
-        .position = {0, 0},
-        .size = {125, 75},
-        .colour = WHITE,
-    });
-
-    create_entity({
-        .flags = EF_NONE,
-        .position = {0, 0},
-        .size = {15, 15},
-        .colour = with_alpha(BLUE, 0.5),
-    });
-
-    create_entity({
-        .flags = EF_NONE,
-        .position = {15, 15},
-        .size = {10, 10},
-        .colour = with_alpha(GREEN, 0.5),
-    });
-
-    create_entity({
-        .flags = EF_PLAYER,
-        .position = {0, 0},
-        .size = {10, 10},
-        .colour = with_alpha(RED, 0.5f),
-    });
-
-    f32 delta_time = 1.0 / 60.0f;
-
-    while (state.running) {
-        platform_process_events();
-        update();
-        physics(delta_time);
-        draw();
-
-        renderer_draw();
-
-        reset(&state.frame_allocator);
-    }
-
-    // dont need to do this but who cares
-    deinit(&state.allocator);
-    deinit(&state.frame_allocator);
-
-    sg_shutdown();
-}
-
-internal
-void game_quit() {
-    state.running = false;
-}
-
-// @update
-internal void update() {
-    if (state.keys[KEY_ESCAPE] == InputState::DOWN) {
-        game_quit();
-    }
-
-    for (i64 entity_index = 0; entity_index < state.entity_count; ++entity_index) {
-        Entity *entity = at_ptr(&state.entities, entity_index);
-
-        if (entity->flags & EF_PLAYER) {
-
-            { // movement input
-                glm::vec2 input = {};
-
-                if (state.keys[KEY_W] == InputState::DOWN) {
-                    input.y += 1.0f;
-                }
-
-                if (state.keys[KEY_S] == InputState::DOWN) {
-                    input.y -= 1.0f;
-                }
-
-                if (state.keys[KEY_A] == InputState::DOWN) {
-                    input.x -= 1.0f;
-                }
-
-                if (state.keys[KEY_D] == InputState::DOWN) {
-                    input.x += 1.0f;
-                }
-
-                if (glm::length(input) > 0) {
-                    // if there is no input (len == 0) then it becomes NaN
-                    input = glm::normalize(input);
-                }
-                
-                entity->velocity = input * PLAYER_SPEED;
-            }
-        }
-    }
-}
-
-internal void physics(f32 delta_time) {
-    for (i64 entity_index = 0; entity_index < state.entity_count; ++entity_index) {
-        Entity *entity = at_ptr(&state.entities, entity_index);
-        entity->position += entity->velocity * delta_time;
-    }
-}
-
-// @draw
-internal void draw() {
-    for (i64 entity_index = 0; entity_index < state.entity_count; ++entity_index) {
-        Entity *entity = at_ptr(&state.entities, entity_index);
-
-        draw_rectangle(entity->position, entity->size, entity->colour);
-
-        if (entity->flags & EF_PLAYER) {
-            draw_line(entity->position, {0, 0}, 1, RED);
-        }
-    }
-}
-
-internal 
-Entity *create_entity(Entity entity) {
-    Entity *entity_ptr = at_ptr(&state.entities, state.entity_count);
-
-    *entity_ptr = entity;
-    state.entity_count++;
-
-    return entity_ptr;
-}
-
-internal
-void renderer_init() {
-    sg_desc sg_description {
+    return sapp_desc {
+        .init_cb = init_sokol,
+        .frame_cb = frame,
+        .cleanup_cb = cleanup,
+        .event_cb = event,
+        .width = DEFAULT_WIDTH,
+        .height = DEFAULT_HEIGHT,
+        .window_title = "Clear (sokol app)",
+        .icon = {
+            .sokol_default = true
+        },
         .logger = {
             .func = slog_func
         },
-        .environment = platform_enviroment(),
-    };
+    }; 
+}
 
-    sg_setup(&sg_description);
+internal
+void init_sokol() {
+    sg_setup({
+        .logger = {
+            .func = slog_func
+        },
+        .environment = sglue_environment(),
+    });
 
     state.bindings.vertex_buffers[0] = sg_make_buffer({
         .size = sizeof(Quad) * MAX_QUADS,
@@ -241,8 +312,13 @@ void renderer_init() {
 
     sg_pipeline_desc pipeline_desc = {
         .shader = shader,
+        .depth = {
+            .compare = SG_COMPAREFUNC_LESS_EQUAL,
+            .write_enabled = true,
+        },
         .index_type = SG_INDEXTYPE_UINT16,
-        .label = "basic-pipeline"
+        .cull_mode = SG_CULLMODE_BACK,
+        .label = "basic-pipeline",
     };
 
     pipeline_desc.layout.attrs[ATTR_basic_position] = {.format = SG_VERTEXFORMAT_FLOAT3};
@@ -259,7 +335,7 @@ void renderer_init() {
             .src_factor_alpha = SG_BLENDFACTOR_ONE,
             .dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
             .op_alpha = SG_BLENDOP_ADD,
-        }
+        }, 
     };
 
     state.render_pipeline = sg_make_pipeline(pipeline_desc);
@@ -268,11 +344,15 @@ void renderer_init() {
         .colors = {
             {.load_action = SG_LOADACTION_CLEAR, .clear_value = { 0.6f, 0.75f, 0.8f, 1.0f }}
         }
-    };
+    }; 
 }
 
 internal
-void renderer_draw() {
+void frame() {
+    update();
+    physics(1.0f / 60.0f);
+    draw();
+
     if (state.quad_count == 0) return;
 
     sg_update_buffer(
@@ -282,7 +362,7 @@ void renderer_draw() {
 
     sg_begin_pass({
         .action = state.pass_action,
-        .swapchain = platform_swapchain()
+        .swapchain = sglue_swapchain()
     });
 
 
@@ -295,23 +375,255 @@ void renderer_draw() {
     sg_end_pass();
 
     sg_commit();
-    platform_present();
 
     state.quad_count = 0;
 }
 
 internal 
-void draw_rectangle(glm::vec2 position, glm::vec2 size, Colour colour, f32 rotation) {
-    draw_quad(position, size, rotation, colour, DrawType::RECTANGLE);
-}
+void event(const sapp_event *event) {
+    switch (event->type) {
+        case SAPP_EVENTTYPE_KEY_DOWN: {
+            Key key = convert_key(event->key_code);
+            
+            if (key != _KEY_LAST_) {
+                state.keys[(i64) key] = InputState::DOWN;
+            }
+            break;
+        }
+        case SAPP_EVENTTYPE_KEY_UP: {
+            Key key = convert_key(event->key_code);
+            
+            if (key != _KEY_LAST_) {
+                state.keys[(i64) key] = InputState::UP;
+            }
+            break;
+        }
+        case SAPP_EVENTTYPE_RESIZED: {
+            state.width = event->window_width;
+            state.height = event->window_height;
 
-internal 
-void draw_circle(glm::vec2 position, f32 radius, Colour colour) {
-    draw_quad(position, {radius * 2, radius * 2}, 0, colour, DrawType::CIRCLE);
+            break;
+        }
+        default: break;
+    }
 }
 
 internal
-void draw_line(glm::vec2 start, glm::vec2 end, f32 thickness, Colour colour) {
+void cleanup() {
+    deinit(&state.allocator);
+    deinit(&state.frame_allocator);
+    sg_shutdown();
+}
+
+// @update
+internal void update() {
+    if (state.keys[KEY_ESCAPE] == InputState::DOWN) {
+        sapp_quit();
+    }
+
+    for (i64 entity_index = 0; entity_index < state.entity_count; ++entity_index) {
+        Entity *entity = &state.entities[entity_index];
+
+        if (entity->flags & EF_PLAYER) {
+
+            { // movement input
+                glm::vec2 input = {};
+
+                if (state.keys[KEY_W] == InputState::DOWN) {
+                    input.y += 1.0f;
+                }
+
+                if (state.keys[KEY_S] == InputState::DOWN) {
+                    input.y -= 1.0f;
+                }
+
+                if (state.keys[KEY_A] == InputState::DOWN) {
+                    input.x -= 1.0f;
+                }
+
+                if (state.keys[KEY_D] == InputState::DOWN) {
+                    input.x += 1.0f;
+                }
+
+                if (glm::length(input) > 0) {
+                    // if there is no input (len == 0) then it becomes NaN
+                    input = glm::normalize(input);
+                }
+                
+                entity->velocity = input * PLAYER_SPEED;
+            }
+        }
+    }
+}
+
+internal void physics(f32 delta_time) {
+    for (i64 entity_index = 0; entity_index < state.entity_count; ++entity_index) {
+        Entity *entity = &state.entities[entity_index];
+
+        entity->position += entity->velocity * delta_time;
+    }
+}
+
+// @draw
+internal void draw() {
+    for (i64 entity_index = 0; entity_index < state.entity_count; ++entity_index) {
+        Entity *entity = &state.entities[entity_index];
+
+        draw_rectangle(entity->position, entity->size, entity->colour, entity->layer);
+    }
+}
+
+internal 
+Entity *create_entity(Entity entity) {
+    Entity *entity_ptr = &state.entities[state.entity_count];
+    state.entity_count++;
+
+    *entity_ptr = entity;
+
+    return entity_ptr;
+}
+
+internal 
+Entity *create_player(i64 grid_x, i64 grid_y) {
+    return create_entity({
+        .flags = EF_PLAYER,
+        .position = {(f32) grid_x * GRID_STEP_SIZE, (f32) grid_y * GRID_STEP_SIZE},
+        .size = {GRID_STEP_SIZE * 0.8f, GRID_STEP_SIZE * 0.8f},
+        .colour = RED,
+        .layer = RL_FORGROUND,
+        .grid_position = {grid_x, grid_y},
+    });
+}
+
+internal 
+Entity *create_floor(i64 grid_x, i64 grid_y) {
+    i32 n = rand();
+    f32 f = (f32) n / (f32) RAND_MAX;
+
+    return create_entity({
+        .flags = EF_NONE,
+        .position = {(f32) grid_x * GRID_STEP_SIZE, (f32) grid_y * GRID_STEP_SIZE},
+        .size = {GRID_STEP_SIZE, GRID_STEP_SIZE},
+        .colour = {f, f, f, 1.0f},
+        .layer = RL_FLOOR,
+        .grid_position = {grid_x, grid_y},
+    });
+}
+
+// does not include line endings just the text from that line
+internal 
+Slice<u8> read_line(Slice<u8> text) {
+    if (text.len == 0) {
+        return {};
+    }
+
+    i64 index = 0;
+    while (text[index] != '\n') {
+        index += 1;
+    }
+
+    // if there is no line and just line ending, then just return
+    // that as the length, 0. But if there was some text then reduce
+    // the index so the returned slice is just the line, no endings
+    i64 line_length = index;
+
+    if (line_length > 0) {
+        line_length -= 1;
+    }
+
+    return {.data = text.data, .len = line_length};
+}
+
+// line numbers starts at 1
+internal 
+Slice<u8> read_line_n(Slice<u8> text, i64 line) {
+    if (text.len == 0) {
+        return {};
+    }
+
+    i64 current_line = 0;
+
+    while (true) {
+        current_line += 1;
+
+        Slice<u8> current = read_line(text);
+
+        if (current_line == line) {
+            return current; 
+        }
+
+        // TODO: assuming CRLF line endings, need to
+        // check for UNIX system
+        text.data = text.data + current.len + 2;
+        text.len -= current.len + 2;
+
+        if (text.len <= 2) {
+            // only line endings left
+            return {};
+        }
+    }
+}
+
+internal 
+void generate_level() {
+    i64 line_number = 1;
+    
+    while (true) {
+        Slice<u8> line = read_line_n(state.level_data, line_number);
+        if (line.len == 0) {
+            break;
+        }
+
+        line_number += 1;
+
+        for (i64 i = 0; i < line.len; i++) {
+            glm::vec2 position = {GRID_STEP_SIZE * (f32) i, GRID_STEP_SIZE * (f32) -(line_number - 1)};
+            u8 byte = line[i];
+
+            switch (byte) {
+                case ' ': break;
+                case 'P': {
+                    create_floor(i, line_number);
+                    Entity *player = create_player(i, line_number);
+                    state.camera = player->position;
+
+                    break;
+                }
+                case '0': {
+                    create_floor(i, line_number);
+                    break;
+                }
+                default: {
+                    // unknown character in level file
+                    assert(0);
+                }
+            }
+        }
+    }
+}
+
+internal
+void renderer_init() {
+    
+}
+
+internal
+void renderer_draw() {
+    
+}
+
+internal 
+void draw_rectangle(glm::vec2 position, glm::vec2 size, Colour colour, RenderLayer layer, f32 rotation) {
+    draw_quad(position, size, rotation, colour, layer, DT_RECTANGLE);
+}
+
+internal 
+void draw_circle(glm::vec2 position, f32 radius, Colour colour, RenderLayer layer) {
+    draw_quad(position, {radius * 2, radius * 2}, 0, colour, layer, DT_CIRCLE);
+}
+
+internal
+void draw_line(glm::vec2 start, glm::vec2 end, f32 thickness, Colour colour, RenderLayer layer) {
     glm::vec2 direction = end - start;
     f32 radians = glm::angle({0, 1.0f}, glm::normalize(direction));
     f32 degrees = glm::degrees(radians);
@@ -323,23 +635,23 @@ void draw_line(glm::vec2 start, glm::vec2 end, f32 thickness, Colour colour) {
         degrees *= -1;
     }
 
-    draw_rectangle(line_centre, {thickness, length}, colour, degrees);
+    draw_rectangle(line_centre, {thickness, length}, colour, layer, degrees);
 }
 
 internal 
-void draw_text(Slice<char> text, glm::vec2 position, f32 font_size, Colour colour) {
+void draw_text(Slice<char> text, glm::vec2 position, f32 font_size, Colour colour, RenderLayer layer) {
     // Font size is the final height of the text drawn in world units
     // 10 font size == size{#chars * avg_char_width, font_size}
 
-    if (text.length == 0) return;
+    if (text.len == 0) return;
 
-    Slice<GlyphRenderInfo> infos = alloc<GlyphRenderInfo>(&state.frame_allocator, text.length);
+    Slice<GlyphRenderInfo> infos = alloc<GlyphRenderInfo>(&state.frame_allocator, text.len);
 
     f32 total_x = 0;
     f32 total_y = 0;
     f32 max_height = 0;
 
-    for (i64 i = 0; i < text.length; i++) {
+    for (i64 i = 0; i < text.len; i++) {
         char c = text[i];
 
         f32 advanced_x = 0;
@@ -395,7 +707,7 @@ void draw_text(Slice<char> text, glm::vec2 position, f32 font_size, Colour colou
     f32 height_scale_factor = scale_factor * font_size; // font size of 1 means tallest glyph is 1 world unit tall
     f32 total_scaled_width = total_x * scale_factor * font_size;
 
-    for (i64 i = 0; i < infos.length; i++) {
+    for (i64 i = 0; i < infos.len; i++) {
         GlyphRenderInfo *info = &infos[i];
 
         f32 width_proportion = info->width / total_x;
@@ -414,7 +726,8 @@ void draw_text(Slice<char> text, glm::vec2 position, f32 font_size, Colour colou
             size,
             0,
             colour,
-            DrawType::TEXT,
+            layer,
+            DT_TEXT,
             info->uvs[0],
             info->uvs[1],
             info->uvs[2],
@@ -424,12 +737,13 @@ void draw_text(Slice<char> text, glm::vec2 position, f32 font_size, Colour colou
 }
 
 internal 
-void draw_quad(glm::vec2 position, glm::vec2 size, f32 rotation, Colour colour, DrawType type) {
-    draw_quad(position, size, rotation, colour, type, {0, 1}, {1, 1}, {1, 0}, {0, 0});
+void draw_quad(glm::vec2 position, glm::vec2 size, f32 rotation, Colour colour, RenderLayer layer, DrawType type) {
+    draw_quad(position, size, rotation, colour, layer, type, {0, 1}, {1, 1}, {1, 0}, {0, 0});
 }
 
-internal void draw_quad(glm::vec2 position, glm::vec2 size, f32 rotation, Colour colour, DrawType type, glm::vec2 top_left_uv, glm::vec2 top_right_uv, glm::vec2 bottom_right_uv, glm::vec2 bottom_left_uv) {
-    Quad *quad = at_ptr(&state.quads, state.quad_count);
+internal void draw_quad(glm::vec2 position, glm::vec2 size, f32 rotation, Colour colour, RenderLayer layer, DrawType type, glm::vec2 top_left_uv, glm::vec2 top_right_uv, glm::vec2 bottom_right_uv, glm::vec2 bottom_left_uv) {
+    // Quad *quad = &state.quads[state.quad_count];
+    Quad *quad = &state.quads.data[state.quad_count];
     state.quad_count += 1;
 
     glm::mat4 model_matrix = glm::translate(glm::mat4(1.0f), {position.x, position.y, 0});
@@ -448,15 +762,15 @@ internal void draw_quad(glm::vec2 position, glm::vec2 size, f32 rotation, Colour
 
     f32 texture_index = 0;
     switch (type) {
-        case DrawType::RECTANGLE: {
+        case DT_RECTANGLE: {
             texture_index = 0;
             break;
         }
-        case DrawType::CIRCLE: {
+        case DT_CIRCLE: {
             texture_index = 1;
             break;
         }
-        case DrawType::TEXT: {
+        case DT_TEXT: {
             texture_index = 2;
             break;
         }
@@ -465,29 +779,38 @@ internal void draw_quad(glm::vec2 position, glm::vec2 size, f32 rotation, Colour
         }
     }
 
+    f32 z;
+    switch (layer) {
+        case RL_FLOOR: z = 1;
+            break;
+        case RL_FORGROUND: z = 0; 
+            break;
+        default: assert(0);
+    }
+
     quad->vertices[0] = {
-        .position = {top_left.x, top_left.y, 0},
+        .position = {top_left.x, top_left.y, z},
         .colour = colour,
         .texture_uv = {top_left_uv.x, top_left_uv.y},
         .texture_index = texture_index,
     };
 
     quad->vertices[1] = {
-        .position = {top_right.x, top_right.y, 0},
+        .position = {top_right.x, top_right.y, z},
         .colour = colour,
         .texture_uv = {top_right_uv.x, top_right_uv.y},
         .texture_index = texture_index,
     };
 
     quad->vertices[2] = {
-        .position = {bottom_right.x, bottom_right.y, 0},
+        .position = {bottom_right.x, bottom_right.y, z},
         .colour = colour,
         .texture_uv = {bottom_right_uv.x, bottom_right_uv.y},
         .texture_index = texture_index,
     };
 
     quad->vertices[3] = {
-        .position = {bottom_left.x, bottom_left.y, 0},
+        .position = {bottom_left.x, bottom_left.y, z},
         .colour = colour,
         .texture_uv = {bottom_left_uv.x, bottom_left_uv.y},
         .texture_index = texture_index,
@@ -502,6 +825,12 @@ glm::mat4x4 get_view_matrix(glm::vec2 camera) {
 internal
 glm::mat4x4 get_projection_matrix(f32 aspect_ratio, f32 orthographic_size) {
     return glm::ortho(-orthographic_size * aspect_ratio, orthographic_size * aspect_ratio, -orthographic_size, orthographic_size, 0.1f, 100.0f);
+}
+
+internal 
+void load_levels() {
+    Slice<u8> level_data = read_file(STR("resources/levels/start.level"));
+    state.level_data = level_data;
 }
 
 internal 
@@ -653,13 +982,12 @@ Slice<u8> read_file(Slice<char> path) {
     i64 file_size = ftell(file);
     fseek(file, 0, SEEK_SET);
 
-    u8 *data = (u8 *)malloc(file_size + 1);
-    assert(data);
+    Slice<u8> bytes = alloc<u8>(&state.allocator, file_size);
 
-    fread(data, file_size, 1, file);
+    fread(bytes.data, file_size, 1, file);
     fclose(file);
 
-    return Slice<u8> {.data = data, .length = file_size + 1};
+    return bytes;
 }
 
 internal 
@@ -668,7 +996,7 @@ void write_file(Slice<char> path, Slice<u8> buffer) {
     FILE *file = fopen(path.data, "wb");
     assert(file);
 
-    fwrite(buffer.data, buffer.length, 1, file);
+    fwrite(buffer.data, buffer.len, 1, file);
     fclose(file);
 }
 
@@ -709,25 +1037,36 @@ Colour with_alpha(Colour colour, f32 alpha) {
     return Colour {colour.r, colour.g, colour.b, alpha};
 }
 
-internal 
-void mouse_move_event(f32 x, f32 y) {
-    state.mouse_screen_position = {x, y};
+internal
+Key convert_key(sapp_keycode keycode) {
+    if (keycode >= SAPP_KEYCODE_0 && keycode <= SAPP_KEYCODE_9) {
+        return (Key)(keycode - SAPP_KEYCODE_0);
+    }
+
+    if (keycode >= SAPP_KEYCODE_A && keycode <= SAPP_KEYCODE_Z) {
+        i64 key = KEY_A + (keycode - SAPP_KEYCODE_A);
+        return (Key) key;
+    }
+
+    if (keycode == SAPP_KEYCODE_ESCAPE) {
+        return KEY_ESCAPE;
+    }
+
+    return _KEY_LAST_;
 }
 
 internal 
-void mouse_button_event(MouseButton button, InputState input_state) {
-    state.mouse_buttons[(i64) button] = input_state;
-}
+void print(Slice<u8> string) {
+    if(string.len == 0) return;
+    assert(string.data != nullptr);
 
-internal 
-void key_event(Key key, InputState input_state) {
-    state.keys[(i64) key] = input_state;
-}
-
-internal 
-void window_resize(i32 width, i32 height) {
-    state.width = width;
-    state.height = height;
+#ifdef WINDOWS
+    HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+    WriteConsoleA(out, string.data, (DWORD)string.len, NULL, NULL);
+    WriteConsoleA(out, "\n\r", 2, NULL, NULL);
+#else
+#error Need to add a print implementation for this platform
+#endif
 }
 
 #endif

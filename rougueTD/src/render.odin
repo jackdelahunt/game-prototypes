@@ -73,43 +73,43 @@ draw_text :: proc(text: string, position: Vector2, colour: Colour, font_size: f3
     y: f32
 
     for c in text {
-    position_offset := Vector2{x, y}
-
-    advanced_x: f32
-    advanced_y: f32
-
-    q: stbtt.aligned_quad
-    stbtt.GetBakedQuad(&alagard.characters[0], font_bitmap_w, font_bitmap_h, (cast(i32)c) - 32, &advanced_x, &advanced_y, &q, false)
-    // this is the the data for the aligned_quad we're given, with y+ going down
-    //	   x0, y0       x1, y0
-    //     s0, t0       s1, t0
-    //	    o tl        o tr
+        position_offset := Vector2{x, y}
     
+        advanced_x: f32
+        advanced_y: f32
     
-    //     x0, y1      x1, y1
-    //     s0, t1      s1, t1
-    //	    o bl        o br
-    // 
-    // x, and y and expected vertex positions
-    // s and t are texture uv position
-   
-    x += advanced_x * font_size
-    y += advanced_y * font_size 
-    size := Vector2{ abs(q.x0 - q.x1), abs(q.y0 - q.y1) } * font_size
+        q: stbtt.aligned_quad
+        stbtt.GetBakedQuad(&alagard.characters[0], font_bitmap_w, font_bitmap_h, (cast(i32)c) - 32, &advanced_x, &advanced_y, &q, false)
+        // this is the the data for the aligned_quad we're given, with y+ going down
+        //	   x0, y0       x1, y0
+        //     s0, t0       s1, t0
+        //	    o tl        o tr
         
-    bottom_left_uv := Vector2{ q.s0, q.t1 }
-    top_right_uv := Vector2{ q.s1, q.t0 }
-    bottom_right_uv := Vector2{q.s1, q.t1}
-    top_left_uv := Vector2{q.s0, q.t0}
-    
-    draw_quad(
-        position + position_offset, 
-        size, 
-        0,
-        colour,
-        {top_left_uv, top_right_uv, bottom_right_uv, bottom_left_uv}, 
-        .FONT
-    )
+        
+        //     x0, y1      x1, y1
+        //     s0, t1      s1, t1
+        //	    o bl        o br
+        // 
+        // x, and y and expected vertex positions
+        // s and t are texture uv position
+       
+        x += advanced_x * font_size
+        y += advanced_y * font_size 
+        size := Vector2{ abs(q.x0 - q.x1), abs(q.y0 - q.y1) } * font_size
+            
+        bottom_left_uv := Vector2{ q.s0, q.t1 }
+        top_right_uv := Vector2{ q.s1, q.t0 }
+        bottom_right_uv := Vector2{q.s1, q.t1}
+        top_left_uv := Vector2{q.s0, q.t0}
+        
+        draw_quad(
+            position + position_offset, 
+            size, 
+            0,
+            colour,
+            {top_left_uv, top_right_uv, bottom_right_uv, bottom_left_uv}, 
+            .FONT
+        )
     }
 }
 
