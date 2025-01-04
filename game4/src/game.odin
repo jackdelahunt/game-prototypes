@@ -7,20 +7,17 @@ import "base:runtime"
 import sapp "sokol/app"
 
 create_player :: proc(grid_position: Vector2i) -> ^Entity {
-    entity := create_entity(Entity{
+    return create_entity(Entity{
         flags = {.PLAYER},
         position = grid_position_to_world(grid_position),
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.7,
         colour = brightness(RED, 0.75),
         grid_position = grid_position
     })
-
-    set_entity_in_grid(entity, entity.grid_position)
-    return entity
 }
 
 create_rock :: proc(grid_position: Vector2i) -> ^Entity {
-    entity := create_entity(Entity{
+    return create_entity(Entity{
         flags = {.PUSHABLE},
         position = grid_position_to_world(grid_position),
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.85,
@@ -28,22 +25,16 @@ create_rock :: proc(grid_position: Vector2i) -> ^Entity {
         grid_position = grid_position,
         shape = .CIRCLE,
     })  
-    
-    set_entity_in_grid(entity, entity.grid_position)
-    return entity
 }
 
 create_wall :: proc(grid_position: Vector2i) -> ^Entity {
-    entity := create_entity(Entity{
+    return create_entity(Entity{
         flags = {.NONE},
         position = grid_position_to_world(grid_position),
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE},
         colour = BLACK,
         grid_position = grid_position
     })  
-    
-    set_entity_in_grid(entity, entity.grid_position)
-    return entity
 }
 
 move_entity :: proc(entity: ^Entity, direction: Direction) -> bool {
@@ -87,14 +78,44 @@ push_entity :: proc(entity: ^Entity, direction: Direction) -> bool {
     return move_entity(entity, direction)
 }
 
+// @setup
+setup_game :: proc() {
+    level, ok := load_level(.TEST)
+    if !ok {
+        log.fatal("error loading level..")
+        return
+    }
+
+    state.level = level
+
+    total_width := f32(GRID_TILE_SIZE * state.level.width)
+    total_height := f32(GRID_TILE_SIZE * state.level.height)
+
+    state.camera_position = {total_width, total_height} * 0.5
+    state.camera_position -= {GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5
+}
+
+restart :: proc() {
+    state.level_complete = false 
+    state.entity_count = 0
+    
+    setup_game()
+}
+
 // @update
 update :: proc() {
     if state.key_inputs[.ESCAPE] == .DOWN {
         sapp.quit()
     }
 
+    if state.level_complete {
+        restart()
+        return
+    }
+
     if state.key_inputs[.R] == .DOWN {
-        load_last_save_point()
+        restart()
+        return
     }
 
     // update pass
@@ -122,10 +143,10 @@ update :: proc() {
             }
 
             if movement_direction != .NONE {
-                moved := move_entity(entity, movement_direction)
+                move_entity(entity, movement_direction)
 
-                if moved {
-                    create_save_point()  
+                if entity.grid_position == state.level.end {
+                    state.level_complete = true 
                 }
             }
         }
@@ -153,28 +174,28 @@ update :: proc() {
     }
 }
 
-on_trigger_collision :: proc(trigger: ^Entity, other: ^Entity) {
-}
-
-on_solid_collision :: proc(entity: ^Entity, other: ^Entity) {
-}
-
 // @draw
 draw :: proc(delta_time: f32) {
     { // draw grid
-        for y in 0..<GRID_HEIGHT {
-            for x in 0..<GRID_WIDTH {
-                tile := &state.grid[y][x]
+        for y in 0..<state.level.height {
+            for x in 0..<state.level.width {
+                tile := &state.level.grid[y][x]
 
                 if !tile.is_floor {
                     continue
                 }
 
                 position := grid_position_to_world({x, y})
+                grid_position := Vector2i{x, y}
                 inner_rect_size := GRID_TILE_SIZE * f32(0.97)
 
-                draw_rectangle(position, {GRID_TILE_SIZE, GRID_TILE_SIZE}, LIGHT_GRAY)
-                draw_rectangle(position, {inner_rect_size, inner_rect_size}, WHITE)
+                tile_colour := WHITE
+                if grid_position == state.level.end {
+                    tile_colour = YELLOW
+                }
+
+                draw_rectangle(position, {GRID_TILE_SIZE, GRID_TILE_SIZE}, brightness(tile_colour, 0.9))
+                draw_rectangle(position, {inner_rect_size, inner_rect_size}, tile_colour)
             }
         }
     }
@@ -190,18 +211,24 @@ draw :: proc(delta_time: f32) {
 
     in_screen_space = true
 
+    if state.level_complete {
+        centre := Vector2{state.screen_width * 0.5, state.screen_height * 0.5}
+        draw_rectangle(centre, {state.screen_width, 100}, alpha(BLACK, 0.7))
+        draw_text("You win", centre, YELLOW, 60)
+    }
+
     { // fps counter
         text := fmt.tprintf("FPS: %v", int(1 / delta_time))
-        draw_text(text, {50, 25}, RED, 12)
+        draw_text(text, {50, 25}, RED, 15)
     }
 
     { // entity counter
         text := fmt.tprintf("E: %v/%v", state.entity_count, MAX_ENTITIES)
-        draw_text(text, {175, 25}, GREEN, 12)
+        draw_text(text, {175, 25}, GREEN, 15)
     }
 
     { // quad counter
         text := fmt.tprintf("Q: %v/%v", state.quad_count, MAX_QUADS)
-        draw_text(text, {300, 25}, BLUE, 12)
+        draw_text(text, {300, 25}, BLUE, 15)
     }
 }

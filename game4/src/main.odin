@@ -13,6 +13,7 @@ import "core:math/noise"
 import "core:math/rand"
 import "core:path/filepath"
 import "core:encoding/ansi"
+import "core:encoding/json"
 import sa "core:container/small_array"
 
 import stbi "vendor:stb/image"
@@ -34,7 +35,7 @@ TICK_RATE :: 1.0 / TICKS_PER_SECOND
 MAX_ENTITIES	:: 5_000
 MAX_QUADS	:: 15_000
 
-MAX_SAVE_POINTS :: 100
+MAX_SAVE_POINTS :: 200
 
 GRID_WIDTH  :: 5
 GRID_HEIGHT :: 5
@@ -60,9 +61,8 @@ State :: struct {
     // game state
     entities: []Entity,
     entity_count: uint,
-    grid: [GRID_HEIGHT][GRID_WIDTH]GridTile,
-    save_points: [MAX_SAVE_POINTS]SavePoint,
-    save_point_count: uint,
+    level: Level,
+    level_complete: bool,
 
     // renderer state
     camera_position: Vector2,
@@ -79,57 +79,32 @@ state := State {}
 // @context
 game_context := runtime.default_context()
 
+// @level
+Level :: struct {
+    level: LevelType,
+    end: Vector2i,
+    width: int,
+    height: int,
+    grid: [][]GridTile
+}
+
+LevelType :: enum {
+    TEST
+}
+
+level_name :: proc(level: LevelType) -> string {
+    switch level {
+    case .TEST:
+        return "test.json" 
+    }
+
+    unreachable()
+}
+
 // @savepoint
 SavePoint :: struct {
     grid: [GRID_HEIGHT][GRID_WIDTH]GridTile,
     entities: []Entity
-}
-
-create_save_point :: proc() {
-    save_point := SavePoint {
-        grid = state.grid,
-        entities = make([]Entity, state.entity_count),
-    }
-
-    for i in 0..<state.entity_count {
-        save_point.entities[i] = state.entities[i]
-    }
-
-    state.save_points[state.save_point_count] = save_point
-    state.save_point_count += 1
-    log.info("created new save point")
-}
-
-load_last_save_point :: proc() {
-    // save points are saved when an event happens
-    // so the latest save point is considered the 
-    // current state, we need to skip this point
-    // and load from the one before that, if there is
-    // only one save point stored it means there is none
-    // to load, once the save point is loaded that save
-    // point should not be deleted because that is now
-    // the current latest state so we want to keep it
-    // - 04/01/25
-    if state.save_point_count <= 1 {
-        return
-    }
-
-    { // delete latest save as we want the previous point
-        current_save_point := &state.save_points[state.save_point_count - 1]
-        delete(current_save_point.entities)
-        state.save_point_count -= 1
-    }
-
-
-    save_point := &state.save_points[state.save_point_count - 1]
-
-    // loading save point
-    state.grid = save_point.grid
-    for i in 0..<len(save_point.entities) {
-        state.entities[i] = save_point.entities[i]
-    }
-
-    state.entity_count = len(save_point.entities)
 }
 
 // @grid
@@ -138,41 +113,24 @@ GridTile :: struct {
     entity_id: Maybe(EntityId),
 } 
 
-setup_grid :: proc() {
-    for y in 0..<GRID_HEIGHT {
-        for x in 0..<GRID_WIDTH {
-            state.grid[y][x] = {
-                is_floor = true,
-                entity_id = nil
-            } 
-        }
-    }
-
-    // set camera to be the centre of the grid
-    total_width := f32(GRID_WIDTH * GRID_TILE_SIZE)
-    total_height := f32(GRID_HEIGHT * GRID_TILE_SIZE)
-
-    state.camera_position = {total_width / 2, total_height / 2}
-}
-
 valid :: proc(grid_position: Vector2i) -> bool {
-    return (grid_position.x >= 0 && grid_position.x < GRID_WIDTH) &&
-           (grid_position.y >= 0 && grid_position.y < GRID_HEIGHT)
+    return (grid_position.x >= 0 && grid_position.x < state.level.width) &&
+           (grid_position.y >= 0 && grid_position.y < state.level.height)
 }
 
 set_entity_in_grid :: proc (entity: ^Entity, position: Vector2i) {
     assert(entity.grid_position == position, "need to set entity grid position before setting it in the grid")
-    state.grid[position.y][position.x].entity_id = entity.id
+    state.level.grid[position.y][position.x].entity_id = entity.id
 }
 
 unset_entity_in_grid :: proc (position: Vector2i) {
-    state.grid[position.y][position.x].entity_id = nil
+    state.level.grid[position.y][position.x].entity_id = nil
 }
 
 get_tile :: proc(grid_position: Vector2i) -> ^GridTile {
     assert(valid(grid_position), "tried to get tile with invalid position")
 
-    return &state.grid[grid_position.y][grid_position.x]
+    return &state.level.grid[grid_position.y][grid_position.x]
 }
 
 grid_position_to_world :: proc(grid_position: Vector2i) -> Vector2 {
@@ -358,7 +316,7 @@ main :: proc() {
         if !loading_ok {
             log.fatal("error loading fonts.. exiting")
             return
-        }
+        } 
     }
 
     state = State {
@@ -370,14 +328,7 @@ main :: proc() {
         quads = make([]Quad, MAX_QUADS)
     }
 
-    { // game setup
-        setup_grid()
-        create_player({0, 0})
-        create_rock({2, 2})
-        create_wall({3, 3})
-
-        create_save_point()
-    }
+    setup_game()
 
     sapp.run({
         init_cb = renderer_init,
@@ -446,6 +397,88 @@ apply_inputs :: proc() {
             }
         }
     }
+}
+
+load_level :: proc(level: LevelType) -> (Level, bool) {
+    path := fmt.tprintf("resources/levels/%v", level_name(level))
+    
+    bytes, ok := os.read_entire_file(path, allocator = context.temp_allocator)
+    if !ok {
+        log.errorf("error loading level file %v", path)
+        return {}, false
+    }
+
+    LevelJson :: struct {
+        width: int,
+        height: int,
+        grid: [][]int
+    }
+
+    level_json: LevelJson
+    
+    err := json.unmarshal_any(bytes, &level_json, allocator = context.temp_allocator)
+    if err != nil {
+        log.errorf("error unmarshalling level file %v with error %v", path, err)
+        return {}, false
+    }
+
+    EMPTY   :: 0
+    FLOOR   :: 1
+    WALL    :: 2
+    PLAYER  :: 3
+    ROCK    :: 4
+    END     :: 5
+
+    loaded_level := Level {
+        level = level,
+        width = level_json.width,
+        height = level_json.height,
+        grid = make([][]GridTile, level_json.height)
+    }
+
+    // reversing input grid because you enter it as if y0 is the bottom
+    // but it is actually the top, so just need to reverse the y axis
+    slice.reverse(level_json.grid)
+
+    for y in 0..<loaded_level.height {
+        loaded_level.grid[y] = make([]GridTile, loaded_level.width)
+
+        for x in 0..<loaded_level.width {
+            value := level_json.grid[y][x]
+
+            is_floor := true
+            entity_id : Maybe(EntityId) = nil
+
+            switch value {
+                case EMPTY: {
+                    is_floor = false 
+                }
+                case WALL: {
+                    wall := create_wall({x, y})
+                    entity_id = wall.id
+                }
+                case PLAYER: {
+                    player := create_player({x, y})
+                    entity_id = player.id
+
+                }
+                case ROCK: {
+                    rock := create_rock({x, y})
+                    entity_id = rock.id
+                }
+                case END: {
+                    loaded_level.end = {x, y}
+                }
+            }
+
+            loaded_level.grid[y][x] = GridTile {
+                is_floor = is_floor,
+                entity_id = entity_id
+            }
+        }
+    }
+
+    return loaded_level, true
 }
 
 load_textures :: proc() -> bool {
