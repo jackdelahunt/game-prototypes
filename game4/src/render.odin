@@ -259,7 +259,12 @@ renderer_init :: proc "c" () {
     })
 
     // create index buffer
-    index_buffer: [MAX_QUADS * 6]u16
+    index_buffer_size : uint = MAX_QUADS * 6
+    index_buffer_bytes : uint = index_buffer_size * size_of(u16)
+
+    // get copied to gpu so only need temp allocator - 04/01/25
+    index_buffer := make([]u16, index_buffer_size, context.temp_allocator)
+
     i := 0
     for i < len(index_buffer) {
         // vertex offset pattern to draw a quad
@@ -275,7 +280,8 @@ renderer_init :: proc "c" () {
 
     state.bindings.index_buffer = sg.make_buffer({
         type = .INDEXBUFFER,
-        data = { ptr = &index_buffer, size = size_of(index_buffer) },
+        usage = .IMMUTABLE,
+        data = { ptr = &index_buffer[0], size = index_buffer_bytes },
         label = "quad-indices"
     })
 

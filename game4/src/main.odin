@@ -32,7 +32,7 @@ TICKS_PER_SECOND :: 20.0
 TICK_RATE :: 1.0 / TICKS_PER_SECOND
 
 MAX_ENTITIES	:: 5_000
-MAX_QUADS	:: 10_000
+MAX_QUADS	:: 15_000
 
 COLOUR_OUTPUT :: true
 
@@ -509,35 +509,21 @@ draw :: proc(delta_time: f32) {
         draw_rectangle(entity.position, entity.size, entity.colour, entity.rotation)	
     }
 
-    draw_text (
-        fmt.tprintf("s: %v", state.mouse_screen_position),
-        {0, -20},
-        WHITE,
-        25
-    )
-
-    draw_text (
-        fmt.tprintf("w: %v", state.mouse_world_position),
-        {0, 20},
-        WHITE,
-        25
-    )
-
-    draw_text (
-        fmt.tprintf("n: %v", screen_position_to_ndc(state.mouse_screen_position)),
-        {0, -50},
-        WHITE,
-        25
-    )
-
     in_screen_space = true
 
     { // fps counter
-        string_buffer: [256]u8
-        builder := strings.builder_from_bytes(string_buffer[0:])
+        text := fmt.tprintf("FPS: %v", int(1 / delta_time))
+        draw_text(text, {50, 25}, WHITE, 12)
+    }
 
-        text := fmt.sbprintf(&builder, "FPS: %v", 1 / delta_time)
-        draw_text(text, {state.screen_width - 150, state.screen_height - 20}, YELLOW, 1)
+    { // entity counter
+        text := fmt.tprintf("E: %v/%v", state.entity_count, MAX_ENTITIES)
+        draw_text(text, {175, 25}, WHITE, 12)
+    }
+
+    { // quad counter
+        text := fmt.tprintf("Q: %v/%v", state.quad_count, MAX_QUADS)
+        draw_text(text, {300, 25}, WHITE, 12)
     }
 }
 
