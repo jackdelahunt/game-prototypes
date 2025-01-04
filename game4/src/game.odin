@@ -93,6 +93,10 @@ update :: proc() {
         sapp.quit()
     }
 
+    if state.key_inputs[.R] == .DOWN {
+        load_last_save_point()
+    }
+
     // update pass
     for entity_index in 0..<state.entity_count {
         entity := &state.entities[entity_index]
@@ -118,7 +122,11 @@ update :: proc() {
             }
 
             if movement_direction != .NONE {
-                move_entity(entity, movement_direction)
+                moved := move_entity(entity, movement_direction)
+
+                if moved {
+                    create_save_point()  
+                }
             }
         }
     }

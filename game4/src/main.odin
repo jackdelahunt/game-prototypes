@@ -34,6 +34,8 @@ TICK_RATE :: 1.0 / TICKS_PER_SECOND
 MAX_ENTITIES	:: 5_000
 MAX_QUADS	:: 15_000
 
+MAX_SAVE_POINTS :: 100
+
 GRID_WIDTH  :: 5
 GRID_HEIGHT :: 5
 GRID_TILE_SIZE :: 50
@@ -59,6 +61,8 @@ State :: struct {
     entities: []Entity,
     entity_count: uint,
     grid: [GRID_HEIGHT][GRID_WIDTH]GridTile,
+    save_points: [MAX_SAVE_POINTS]SavePoint,
+    save_point_count: uint,
 
     // renderer state
     camera_position: Vector2,
@@ -74,6 +78,59 @@ state := State {}
 
 // @context
 game_context := runtime.default_context()
+
+// @savepoint
+SavePoint :: struct {
+    grid: [GRID_HEIGHT][GRID_WIDTH]GridTile,
+    entities: []Entity
+}
+
+create_save_point :: proc() {
+    save_point := SavePoint {
+        grid = state.grid,
+        entities = make([]Entity, state.entity_count),
+    }
+
+    for i in 0..<state.entity_count {
+        save_point.entities[i] = state.entities[i]
+    }
+
+    state.save_points[state.save_point_count] = save_point
+    state.save_point_count += 1
+    log.info("created new save point")
+}
+
+load_last_save_point :: proc() {
+    // save points are saved when an event happens
+    // so the latest save point is considered the 
+    // current state, we need to skip this point
+    // and load from the one before that, if there is
+    // only one save point stored it means there is none
+    // to load, once the save point is loaded that save
+    // point should not be deleted because that is now
+    // the current latest state so we want to keep it
+    // - 04/01/25
+    if state.save_point_count <= 1 {
+        return
+    }
+
+    { // delete latest save as we want the previous point
+        current_save_point := &state.save_points[state.save_point_count - 1]
+        delete(current_save_point.entities)
+        state.save_point_count -= 1
+    }
+
+
+    save_point := &state.save_points[state.save_point_count - 1]
+
+    // loading save point
+    state.grid = save_point.grid
+    for i in 0..<len(save_point.entities) {
+        state.entities[i] = save_point.entities[i]
+    }
+
+    state.entity_count = len(save_point.entities)
+}
 
 // @grid
 GridTile :: struct {
@@ -318,6 +375,8 @@ main :: proc() {
         create_player({0, 0})
         create_rock({2, 2})
         create_wall({3, 3})
+
+        create_save_point()
     }
 
     sapp.run({
@@ -462,7 +521,6 @@ load_fonts :: proc() -> bool {
     return true
 }
 
-// @event
 window_event_callback :: proc "c" (event: ^sapp.Event) {
     context = runtime.default_context()
     
