@@ -34,7 +34,9 @@ TICK_RATE :: 1.0 / TICKS_PER_SECOND
 MAX_ENTITIES	:: 5_000
 MAX_QUADS	:: 15_000
 
-COLOUR_OUTPUT :: true
+GRID_WIDTH  :: 5
+GRID_HEIGHT :: 5
+GRID_TILE_SIZE :: 50
 
 // @state
 State :: struct {
@@ -56,6 +58,7 @@ State :: struct {
     // game state
     entities: []Entity,
     entity_count: uint,
+    grid: [GRID_HEIGHT][GRID_WIDTH]GridTile,
 
     // renderer state
     camera_position: Vector2,
@@ -72,6 +75,82 @@ state := State {}
 // @context
 game_context := runtime.default_context()
 
+// @grid
+GridTile :: struct {
+    is_floor: bool,
+    entity_id: Maybe(EntityId),
+} 
+
+setup_grid :: proc() {
+    for y in 0..<GRID_HEIGHT {
+        for x in 0..<GRID_WIDTH {
+            state.grid[y][x] = {
+                is_floor = true,
+                entity_id = nil
+            } 
+        }
+    }
+
+    // set camera to be the centre of the grid
+    total_width := f32(GRID_WIDTH * GRID_TILE_SIZE)
+    total_height := f32(GRID_HEIGHT * GRID_TILE_SIZE)
+
+    state.camera_position = {total_width / 2, total_height / 2}
+}
+
+valid :: proc(grid_position: Vector2i) -> bool {
+    return (grid_position.x >= 0 && grid_position.x < GRID_WIDTH) &&
+           (grid_position.y >= 0 && grid_position.y < GRID_HEIGHT)
+}
+
+set_entity_in_grid :: proc (entity: ^Entity, position: Vector2i) {
+    assert(entity.grid_position == position, "need to set entity grid position before setting it in the grid")
+    state.grid[position.y][position.x].entity_id = entity.id
+}
+
+unset_entity_in_grid :: proc (position: Vector2i) {
+    state.grid[position.y][position.x].entity_id = nil
+}
+
+get_tile :: proc(grid_position: Vector2i) -> ^GridTile {
+    assert(valid(grid_position), "tried to get tile with invalid position")
+
+    return &state.grid[grid_position.y][grid_position.x]
+}
+
+grid_position_to_world :: proc(grid_position: Vector2i) -> Vector2 {
+    return Vector2 {
+        f32(grid_position.x * GRID_TILE_SIZE),
+        f32(grid_position.y * GRID_TILE_SIZE)
+    }
+}
+
+// @Direction
+Direction :: enum {
+    NONE,
+    UP,
+    DOWN,
+    LEFT,
+    RIGHT
+}
+
+direction_grid_offset :: proc(direction: Direction) -> Vector2i {
+    switch direction {
+    case .UP:
+        return {0, 1}
+    case .DOWN:
+        return {0, -1}
+    case .LEFT:
+        return {-1, 0}
+    case .RIGHT:
+        return {1, 0}
+    case .NONE:
+        assert(false, "tried to get grid offset from no direction")         
+    }
+
+    return {} // unreachable
+}
+
 // @input
 InputState :: enum {
     UP,
@@ -83,85 +162,77 @@ InputState :: enum {
 Key :: sapp.Keycode
 MouseButton :: sapp.Mousebutton
 
-///////////////////////////////// @colour
+//  @colour
 Colour :: distinct Vector4
 
 WHITE	    :: Colour{1, 1, 1, 1}
 BLACK	    :: Colour{0, 0, 0, 1}
-RED	    :: Colour{0.9, 0.05, 0.05, 1}
-DARK_RED    :: Colour{0.4, 0.05, 0.05, 1}
-GREEN	    :: Colour{0.05, 0.9, 0.05, 1}
-BLUE	    :: Colour{0.05, 0.05, 0.9, 1}
-GRAY	    :: Colour{0.4, 0.4, 0.4, 1}
-SKY_BLUE    :: Colour{0.07, 0.64, 0.72, 1}
+RED	    :: Colour{1, 0, 0, 1}
+GREEN	    :: Colour{0, 1, 0, 1}
+BLUE	    :: Colour{0, 0, 1, 1}
+LIGHT_GRAY  :: Colour{0.8, 0.8, 0.8, 1}
 YELLOW	    :: Colour{1, 0.9, 0.05, 1}
 PINK	    :: Colour{0.8, 0.05, 0.6, 1}
+BROWN       :: Colour{0.35, 0.16, 0.08, 1}
 
-with_alpha :: proc(colour: Colour, alpha: f32) -> Colour {
+alpha :: proc(colour: Colour, alpha: f32) -> Colour {
     return {colour.r, colour.g, colour.b, alpha} 
 }
 
-///////////////////////////////// @entity
+// level == 1      -> same colour
+// level == 0.5    -> 50% as beight
+// level == 1.5    -> 150% as beight
+// alpha is not effected
+brightness :: proc(colour: Colour, level: f32) -> Colour {
+    return Colour {
+        colour.r * level,
+        colour.g * level,
+        colour.b * level,
+        colour.a,
+    }
+}
+
+// @entity
 Entity :: struct {
     // meta
+    id: EntityId,
     flags: bit_set[EntityFlag],
-    dynamic_flags: bit_set[DynamicEntityFlag],
+    inactive: bool,
 
     // core
     position: Vector2,
-    velocity: Vector2,
     size: Vector2,
     rotation: f32,
+    shape: EntityShape,
     colour: Colour,
-    inactive: bool,
-    
-    // flag: health
-    health: f32,
-    max_health: f32,
+    grid_position: Vector2i
 }
+
+EntityId :: uint
 
 EntityFlag :: enum {
     NONE = 0,
     PLAYER,
-    AI,
-    NEXUS,
-    DEFENCE,
-    SPAWNER,
-    PROJECTILE,
-    HAS_HEALTH,
-    HAS_WEAPON,
-    SOLID_HITBOX,
-    STATIC_HITBOX,
-    TRIGGER_HITBOX,
-    BLOCKS_NAV_MESH,
+    PUSHABLE,
+    DELETE,
 }
 
-DynamicEntityFlag :: enum {
-    NONE = 0,
-    DELETE,
-    FIRING,
-    RELOADING
+EntityShape :: enum {
+    RECTANGLE,
+    CIRCLE
 }
 
 create_entity :: proc(entity: Entity) -> ^Entity {
+    @(static)
+    id_counter: uint = 0
+
     ptr := &state.entities[state.entity_count]
     state.entity_count += 1
 
     ptr^ = entity
 
-    { // basic checking fo values with their flags
-        if .SOLID_HITBOX in entity.flags {
-            assert(!(.STATIC_HITBOX in entity.flags))
-        }
-    
-        if .STATIC_HITBOX in entity.flags {
-            assert(!(.SOLID_HITBOX in entity.flags))
-        }
-
-        if .BLOCKS_NAV_MESH in entity.flags {
-            assert(.STATIC_HITBOX in entity.flags)
-        }
-    }
+    ptr.id = id_counter
+    id_counter += 1
 
     return ptr
 }
@@ -169,6 +240,16 @@ create_entity :: proc(entity: Entity) -> ^Entity {
 get_entity_with_flag :: proc(flag: EntityFlag) -> ^Entity {
     for &entity in state.entities[0:state.entity_count] {
         if flag in entity.flags {
+            return &entity
+        }
+    }
+
+    return nil
+}
+
+get_entity_with_id :: proc(id: EntityId) -> ^Entity {
+    for &entity in state.entities[0:state.entity_count] {
+        if entity.id == id {
             return &entity
         }
     }
@@ -185,7 +266,7 @@ Texture :: struct {
 
 face_texture: Texture
 
-///////////////////////////////// @fonts
+// @fonts
 // i dont know why any of these were chosen but i just want
 // to get fonts working and I dont want to look into it
 font_bitmap_w :: 256 
@@ -199,7 +280,7 @@ Font :: struct {
 
 alagard: Font
 
-///////////////////////////////// @main
+// @main
 main :: proc() {
     game_context.logger.lowest_level = .Debug if ODIN_DEBUG else .Warning
     game_context.logger.procedure = log_callback
@@ -232,6 +313,13 @@ main :: proc() {
         quads = make([]Quad, MAX_QUADS)
     }
 
+    { // game setup
+        setup_grid()
+        create_player({0, 0})
+        create_rock({2, 2})
+        create_wall({3, 3})
+    }
+
     sapp.run({
         init_cb = renderer_init,
         frame_cb = renderer_frame,
@@ -245,7 +333,7 @@ main :: proc() {
     })
 }
 
-///////////////////////////////// @frame
+// @frame
 frame :: proc() {
     free_all(context.temp_allocator)
 
@@ -261,11 +349,10 @@ frame :: proc() {
         state.tick_timer = 0
     }
 
-    physics(auto_cast delta_time)
     draw(auto_cast delta_time) 
 }
 
-///////////////////////////////// @apply_inputs
+// @apply_inputs
 apply_inputs :: proc() {
     for index in 0..<len(state.key_inputs) {	
         // input state from key_inputs_this_frame can only 
@@ -299,231 +386,6 @@ apply_inputs :: proc() {
                 state_last_tick^ = .DOWN
             }
         }
-    }
-}
-
-// @update
-update :: proc() {
-    if state.key_inputs[.ESCAPE] == .DOWN {
-        sapp.quit()
-    }
-
-    // update pass
-    for &entity in state.entities[0:state.entity_count] {
-        if entity.inactive {
-            continue
-        }
-    }
-
-    // delete pass
-    i : uint = 0
-    for i < state.entity_count {
-        entity := &state.entities[i]
-    
-        if .DELETE in entity.dynamic_flags {
-            if i == state.entity_count - 1 {
-                state.entity_count -= 1
-                break
-            }
-    
-            // swap remove with last entity
-            state.entities[i] = state.entities[state.entity_count - 1]
-            state.entity_count -= 1
-        } else {
-            // if we did remove then we want to re-check the current
-            // entity we swapped with so dont go to next index
-            i += 1
-        }
-    }
-}
-
-on_trigger_collision :: proc(trigger: ^Entity, other: ^Entity) {
-}
-
-on_solid_collision :: proc(entity: ^Entity, other: ^Entity) {
-}
-
-///////////////////////////////// @physics
-physics :: proc(delta_time: f32) {
-    for _i in 0..<state.entity_count {
-        entity := &state.entities[_i]
-    
-        // used to check if a collision occurs after
-        // a velocity is applied
-        start_position := entity.position
-    
-        entity.position += entity.velocity * delta_time
-    
-        solid_hitbox: {
-            // this means if we are ever doing a collision the 
-            // soldin one is always the entity, and if one is 
-            // static then it is the other entity
-            if !(.SOLID_HITBOX in entity.flags) {
-                break solid_hitbox
-            }
-    
-            for _o in 0..<state.entity_count {
-                other := &state.entities[_o]
-        
-                if entity == other {
-                    continue
-                }
-        
-                if !(.SOLID_HITBOX in other.flags) && !(.STATIC_HITBOX in other.flags) {
-                    continue
-                }
-        
-                distance := other.position - entity.position
-                distance_abs := Vector2{abs(distance.x), abs(distance.y)}
-                distance_for_collision := (entity.size + other.size) * Vector2{0.5, 0.5}
-        
-                // basic AABB collision detection, everything is a square
-                if !(distance_for_collision[0] >= distance_abs[0] && distance_for_collision[1] >= distance_abs[1]) {
-                    continue;
-                }
-        
-                overlap_amount := distance_for_collision - distance_abs
-                other_static := .STATIC_HITBOX in other.flags
-        
-                // if there is an overlap then measure on which axis has less 
-                // overlap and equally move both entities by that amount away
-                // from each other
-                //
-                // if other is static only move entity
-                // by the full overlap instead of sharing it
-                if overlap_amount[0] < overlap_amount[1] {
-                    if other_static { 
-                        x_push_amount := overlap_amount[0]
-                        entity.position[0] -= math.sign(distance[0]) * x_push_amount
-                    } 
-                    else  {
-                        x_push_amount := overlap_amount[0] * 0.5;
-                        entity.position[0] -= math.sign(distance[0]) * x_push_amount
-                        other.position[0] += math.sign(distance[0]) * x_push_amount;
-                    }
-                } 
-                else {
-                    if other_static { 
-                        y_push_amount := overlap_amount[1]
-                        entity.position[1] -= math.sign(distance[1]) * y_push_amount
-                    } 
-                    else  {
-                        y_push_amount := overlap_amount[1] * 0.5;
-                        entity.position[1] -= math.sign(distance[1]) * y_push_amount
-                        other.position[1] += math.sign(distance[1]) * y_push_amount;
-                    }
-                }
-    
-                on_solid_collision(entity, other) 
-            } 
-        }
-        
-        trigger_hitbox: {
-            if !(.TRIGGER_HITBOX in entity.flags) {
-                break trigger_hitbox
-            }
-    
-            for _o in 0..<state.entity_count {
-                other := &state.entities[_o]
-        
-                if entity == other {
-                    continue
-                }
-        
-                if  !(.SOLID_HITBOX in other.flags) && 
-                    !(.STATIC_HITBOX in other.flags) &&
-                    !(.TRIGGER_HITBOX in other.flags)
-                {
-                    continue
-                }
-        
-                // collision for each other entiity is checked twice for trigger
-                // hitboxes, trigger collision events are only when a new collision
-                // starts so if there was a collision last frame then dont do anything
-        
-                { // collision last frame
-                    distance := other.position - start_position
-                    distance_abs := Vector2{abs(distance.x), abs(distance.y)}
-                    distance_for_collision := (entity.size + other.size) * Vector2{0.5, 0.5}
-           
-                    // if there was a collision then don't check for this frame
-                    if (distance_for_collision[0] >= distance_abs[0] && distance_for_collision[1] >= distance_abs[1])
-                    {
-                        continue;
-                    }
-                }
-        
-                { // collision this frame
-                    distance := other.position - entity.position
-                    distance_abs := Vector2{abs(distance.x), abs(distance.y)}
-                    distance_for_collision := (entity.size + other.size) * Vector2{0.5, 0.5}
-            
-                    // basic AABB collision detection, everything is a square
-                    if !(distance_for_collision[0] >= distance_abs[0] && distance_for_collision[1] >= distance_abs[1])
-                    {
-                        continue;
-                    }
-                }
-        
-                on_trigger_collision(entity, other)
-            }
-        }
-    }
-}
-
-CircleCollider :: struct {
-    index: uint,
-    position: Vector2,
-    radius: f32
-}
-
-new_circle_collider :: proc(position: Vector2, radius: f32) -> CircleCollider {
-    return CircleCollider {
-        index = 0,
-        position = position,
-        radius = radius
-    }
-}
-
-next :: proc(collider: ^CircleCollider) -> (^Entity, bool) {
-    start := collider.index
-
-    if start >= state.entity_count {
-        return nil, false
-    }
-
-    for &entity in state.entities[start:state.entity_count] {
-        collider.index += 1
-    
-        if length(entity.position - collider.position) < collider.radius {
-            return &entity, true
-        }
-    }
-
-    return nil, false
-}
-
-// @draw
-draw :: proc(delta_time: f32) {
-    for &entity in state.entities[0:state.entity_count] {
-        draw_rectangle(entity.position, entity.size, entity.colour, entity.rotation)	
-    }
-
-    in_screen_space = true
-
-    { // fps counter
-        text := fmt.tprintf("FPS: %v", int(1 / delta_time))
-        draw_text(text, {50, 25}, WHITE, 12)
-    }
-
-    { // entity counter
-        text := fmt.tprintf("E: %v/%v", state.entity_count, MAX_ENTITIES)
-        draw_text(text, {175, 25}, WHITE, 12)
-    }
-
-    { // quad counter
-        text := fmt.tprintf("Q: %v/%v", state.quad_count, MAX_QUADS)
-        draw_text(text, {300, 25}, WHITE, 12)
     }
 }
 

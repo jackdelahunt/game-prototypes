@@ -350,7 +350,7 @@ renderer_init :: proc "c" () {
 
     state.pass_action = {
         colors = {
-            0 = { load_action = .CLEAR, clear_value = {0.1, 0.1, 0.1, 1} },
+            0 = { load_action = .CLEAR, clear_value = {0.2, 0.5, 0.6, 1} },
         }
     }
 }
