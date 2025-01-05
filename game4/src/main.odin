@@ -133,31 +133,49 @@ grid_position_to_world :: proc(grid_position: Vector2i) -> Vector2 {
 // @Direction
 Direction :: enum {
     NONE,
+    LEFT,
+    RIGHT,
     UP,
     DOWN,
-    LEFT,
-    RIGHT
 }
 
 oppisite :: proc(direction: Direction) -> Direction {
     switch direction {
-        case .NONE:     return .NONE
         case .UP:       return .DOWN
         case .DOWN:     return .UP
         case .LEFT:     return .RIGHT
         case .RIGHT:    return .LEFT
+        case .NONE:
+    }
+
+    unreachable()
+}
+
+clockwise :: proc(direction: Direction) -> Direction {
+    switch direction {
+        case .UP:       return .RIGHT
+        case .DOWN:     return .LEFT
+        case .LEFT:     return .UP
+        case .RIGHT:    return .DOWN
+        case .NONE:
     }
 
     unreachable()
 }
 
 // ouput direction that is reflected by a mirror based on the
-// incoming direction and the mirror direction
-mirror_reflection :: proc(mirror_direction: Direction, incoming_direction: Direction) -> Direction {
+// relative incoming direction and the mirror direction
+// income direction is based on the direction relative to the 
+// mirror
+//
+// if a beam travelling to the left hits the mirror, then the
+// relative incoming direction is RIGHT as it is from the perspective
+// of the mirror 
+mirror_reflection :: proc(mirror_direction: Direction, relative_income_direction: Direction) -> Direction {
     if mirror_direction == .RIGHT {
-        switch incoming_direction {
-            case .UP: return .RIGHT
-            case .DOWN: return .LEFT
+        switch relative_income_direction {
+            case .UP: return .LEFT
+            case .DOWN: return .RIGHT
             case .LEFT: return .UP
             case .RIGHT: return .DOWN
             case .NONE: unreachable()
@@ -165,9 +183,9 @@ mirror_reflection :: proc(mirror_direction: Direction, incoming_direction: Direc
     }
 
     if mirror_direction == .LEFT {
-        switch incoming_direction {
-            case .UP: return .LEFT
-            case .DOWN: return .RIGHT
+        switch relative_income_direction {
+            case .UP: return .RIGHT
+            case .DOWN: return .LEFT
             case .LEFT: return .DOWN
             case .RIGHT: return .UP
             case .NONE: unreachable()
@@ -218,7 +236,7 @@ YELLOW	    :: Colour{1, 0.9, 0.05, 1}
 PINK	    :: Colour{0.8, 0.05, 0.6, 1}
 BROWN       :: Colour{0.35, 0.16, 0.08, 1}
 LIGHT_GRAY  :: Colour{0.8, 0.8, 0.8, 1}
-SKY_BLUE    :: Colour{0.3, 0.3, 0.7, 1}
+SKY_BLUE    :: Colour{0.2, 0.6, 0.8, 1}
 ORANGE	    :: Colour{0.95, 0.6, 0, 1}
 
 alpha :: proc(colour: Colour, alpha: f32) -> Colour {
@@ -499,16 +517,22 @@ load_level :: proc(level: LevelType) -> (Level, bool) {
         return {}, false
     }
 
+    LevelJson :: struct {
+        width: int,
+        height: int,
+        grid: [][]int,
+        connections: []Connection,
+        rotations: []Rotation
+    }
+
     Connection :: struct {
         activator: Vector2i,
         watcher: Vector2i
     }
 
-    LevelJson :: struct {
-        width: int,
-        height: int,
-        grid: [][]int,
-        connections: []Connection
+    Rotation :: struct {
+        position: Vector2i,
+        direction: Direction
     }
 
     level_json: LevelJson
@@ -576,22 +600,39 @@ load_level :: proc(level: LevelType) -> (Level, bool) {
 
     for connection, index in level_json.connections {
         if !valid(connection.activator) {
-             log.errorf("connection[%v].activator value %v in level file %v is not valid", index, connection.activator,  path)
+             log.errorf("connection[%v].activator %v in level file %v is not valid", index, connection.activator,  path)
             return {}, false
         }
 
         if !valid(connection.watcher) {
-             log.errorf("connection[%v].watcher value %v in level file %v is not valid", index, connection.activator,  path)
+             log.errorf("connection[%v].watcher %v in level file %v is not valid", index, connection.activator,  path)
             return {}, false
         }
 
         activator_entity := get_first_entity_at_grid_position(connection.activator)
-        assert(activator_entity != nil)
+        if activator_entity == nil {
+             log.errorf("no entity found connection[%v].activator %v in level file %v", index, connection.activator,  path)
+            return {}, false
+        }
 
         watcher_entity := get_first_entity_at_grid_position(connection.watcher)
-        assert(watcher_entity != nil)
+        if watcher_entity == nil {
+             log.errorf("no entity found connection[%v].watcher %v in level file %v", index, connection.activator,  path)
+            return {}, false
+        }
 
         watcher_entity.watching_entity = activator_entity.id
+    }
+
+    for rotation, index in level_json.rotations {
+        entity := get_first_entity_at_grid_position(rotation.position)
+        if entity == nil {
+             log.errorf("no entity found rotation[%v].position %v in level file %v", index, rotation.position,  path)
+            return {}, false
+        }
+
+        assert(rotation.direction != .NONE)
+        entity.direction = rotation.direction
     }
 
     return loaded_level, true
