@@ -240,6 +240,7 @@ EntityFlag :: enum {
     DOOR,
     LAMP,
     LIGHT_RECEIVER,
+    MIRROR,
     ACTIVATED,
     PUSHABLE,
     NON_BLOCKING,
@@ -270,6 +271,14 @@ create_entity :: proc(entity: Entity) -> ^Entity {
 
         if .PUSHABLE in entity.flags {
             assert(!(.NON_BLOCKING in entity.flags))
+        }
+
+        if .LAMP in entity.flags {
+            assert(entity.direction != .NONE)
+        }
+
+        if .MIRROR in entity.flags {
+            assert(entity.direction != .NONE || entity.direction != .UP || entity.direction != .DOWN)
         }
     }
 
@@ -494,6 +503,7 @@ load_level :: proc(level: LevelType) -> (Level, bool) {
     DOOR            :: 7
     LAMP            :: 8
     LIGHT_RECEIVER  :: 9
+    MIRROR          :: 10
 
     loaded_level := Level {
         level = level,
@@ -526,6 +536,7 @@ load_level :: proc(level: LevelType) -> (Level, bool) {
                 case DOOR:              create_door(grid_position)
                 case LAMP:              create_lamp(grid_position)
                 case LIGHT_RECEIVER:    create_light_receiver(grid_position)
+                case MIRROR:            create_mirror(grid_position)
                 case:           unreachable()
             }
 

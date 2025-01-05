@@ -69,6 +69,17 @@ create_light_receiver :: proc(grid_position: Vector2i) -> ^Entity {
     })  
 }
 
+create_mirror :: proc(grid_position: Vector2i) -> ^Entity {
+    return create_entity(Entity{
+        flags = {.MIRROR},
+        position = grid_position_to_world(grid_position),
+        size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE},
+        colour = SKY_BLUE,
+        grid_position = grid_position,
+        direction = .RIGHT,
+    })  
+}
+
 create_button :: proc(grid_position: Vector2i) -> ^Entity {
     return create_entity(Entity{
         flags = {.BUTTON, .NON_BLOCKING},
@@ -341,37 +352,22 @@ draw :: proc(delta_time: f32) {
         }
 
         if .LAMP in entity.flags {
-            lamp_light_colour := alpha(entity.colour, 0.1)
-            draw_circle(entity.position, GRID_TILE_SIZE * 0.5, lamp_light_colour)
+            draw_beam_from_position(entity.grid_position, entity.direction, ORANGE) 
+        }
 
-            assert(entity.direction != .NONE)
-            check_position := entity.grid_position + direction_grid_offset(entity.direction)
-            
-            drawing_beams:
-            for valid(check_position) {
-                iter := new_grid_position_iterator(check_position)
-                other: ^Entity = next(&iter)
-
-                for other != nil {
-                    if !(.NON_BLOCKING in other.flags) && !(.LIGHT_RECEIVER in other.flags) {
-                        break drawing_beams
-                    }
-                    
-                    other = next(&iter)
-                }
-
-                size := Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE}
-
-                if entity.direction == .UP || entity.direction == .DOWN {
-                    size *= {0.3, 1}
-                } else {
-                    size *= {1, 0.3}
-                }
-                 
-                world_position := grid_position_to_world(check_position)
-                draw_rectangle(world_position, size, alpha(entity.colour, 0.1))
-                check_position += direction_grid_offset(entity.direction)
+        if .MIRROR in entity.flags {
+            // special drawing for a mirror
+            angle: f32
+            switch entity.direction {
+                case .RIGHT: angle = -45
+                case .LEFT: angle = 45
+                case .UP: fallthrough;
+                case .DOWN: fallthrough;
+                case .NONE: unreachable()
             }
+
+            draw_rectangle(entity.position, {GRID_TILE_SIZE, 10}, draw_colour, angle)
+            continue
         }
 
         switch entity.shape {
@@ -380,7 +376,7 @@ draw :: proc(delta_time: f32) {
         case .CIRCLE:
             draw_circle(entity.position, entity.size.x * 0.5, draw_colour)
         }
-    }
+    } 
 
     in_screen_space = true
 
@@ -405,3 +401,86 @@ draw :: proc(delta_time: f32) {
         draw_text(text, {300, 25}, BLUE, 15)
     }
 }
+
+draw_beam_from_position :: proc(position: Vector2i, direction: Direction, colour: Colour) {
+    assert(direction != .NONE)
+    assert(valid(position))
+
+    beam_colour := alpha(colour, 0.1)
+
+    // starting position is skipped
+    current_direction := direction
+    current_position := position + direction_grid_offset(current_direction)
+
+    drawing_beams:
+    for valid(current_position) {
+        iter := new_grid_position_iterator(current_position)
+        other: ^Entity = next(&iter)
+
+        for other != nil {
+            if .MIRROR in other.flags {
+                new_direction: Direction
+
+                if other.direction == .RIGHT {
+                    switch current_direction {
+                        case .UP:
+                            new_direction = .RIGHT
+                        case .DOWN:
+                            new_direction = .LEFT
+                        case .LEFT:
+                            new_direction = .UP
+                        case .RIGHT:
+                            new_direction = .DOWN
+                        case .NONE: unreachable()
+                    }
+                } else if other.direction == .LEFT {
+                    switch current_direction {
+                        case .UP:
+                            new_direction = .LEFT
+                        case .DOWN:
+                            new_direction = .RIGHT
+                        case .LEFT:
+                            new_direction = .DOWN
+                        case .RIGHT:
+                            new_direction = .UP
+                        case .NONE: unreachable()
+                    }
+                } else { unreachable() }
+
+                // set new direction and keep drawing but skip the mirror
+                current_direction = new_direction
+                current_position += direction_grid_offset(current_direction)
+                continue drawing_beams
+            }
+            else if !(.NON_BLOCKING in other.flags) && !(.LIGHT_RECEIVER in other.flags) {
+                break drawing_beams
+            }
+             
+            other = next(&iter)
+        }
+
+        size := Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE}
+        if current_direction == .UP || current_direction == .DOWN {
+            size *= {0.3, 1}
+        } else {
+            size *= {1, 0.3}
+        }
+         
+        world_position := grid_position_to_world(current_position)
+        draw_rectangle(world_position, size, beam_colour)
+        current_position += direction_grid_offset(current_direction)
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
