@@ -60,7 +60,7 @@ State :: struct {
 
     // game state
     entities: []Entity,
-    entity_count: uint,
+    entity_count: int,
     level: Level,
     level_complete: bool,
 
@@ -68,7 +68,7 @@ State :: struct {
     camera_position: Vector2,
     zoom: f32,
     quads: []Quad,
-    quad_count: uint,
+    quad_count: int,
     render_pipeline: sg.Pipeline,
     bindings: sg.Bindings,
     pass_action: sg.Pass_Action
@@ -146,6 +146,32 @@ oppisite :: proc(direction: Direction) -> Direction {
         case .DOWN:     return .UP
         case .LEFT:     return .RIGHT
         case .RIGHT:    return .LEFT
+    }
+
+    unreachable()
+}
+
+// ouput direction that is reflected by a mirror based on the
+// incoming direction and the mirror direction
+mirror_reflection :: proc(mirror_direction: Direction, incoming_direction: Direction) -> Direction {
+    if mirror_direction == .RIGHT {
+        switch incoming_direction {
+            case .UP: return .RIGHT
+            case .DOWN: return .LEFT
+            case .LEFT: return .UP
+            case .RIGHT: return .DOWN
+            case .NONE: unreachable()
+        }
+    }
+
+    if mirror_direction == .LEFT {
+        switch incoming_direction {
+            case .UP: return .LEFT
+            case .DOWN: return .RIGHT
+            case .LEFT: return .DOWN
+            case .RIGHT: return .UP
+            case .NONE: unreachable()
+        }
     }
 
     unreachable()

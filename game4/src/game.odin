@@ -6,6 +6,251 @@ import "base:runtime"
 
 import sapp "sokol/app"
 
+// @setup
+setup_game :: proc() {
+    level, ok := load_level(.TEST)
+    if !ok {
+        log.fatal("error loading level..")
+        return
+    }
+
+    total_width := f32(GRID_TILE_SIZE * state.level.width)
+    total_height := f32(GRID_TILE_SIZE * state.level.height)
+
+    state.camera_position = {total_width, total_height} * 0.5
+    state.camera_position -= {GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5
+}
+
+restart :: proc() {
+    state.level_complete = false 
+    state.entity_count = 0
+    
+    setup_game()
+}
+
+// @update
+update :: proc() {
+    if state.key_inputs[.ESCAPE] == .DOWN {
+        sapp.quit()
+    }
+
+    if state.level_complete {
+        restart()
+        return
+    }
+
+    if state.key_inputs[.R] == .DOWN {
+        restart()
+        return
+    }
+
+    // update pass
+    for entity_index in 0..<state.entity_count {
+        entity := &state.entities[entity_index]
+
+        if entity.inactive {
+            continue
+        }
+
+        if .PLAYER in entity.flags {
+            movement_direction := Direction.NONE
+
+            if state.key_inputs[.W] == .DOWN {
+                movement_direction = .UP
+            }
+            else if state.key_inputs[.S] == .DOWN {
+                movement_direction = .DOWN
+            }
+            else if state.key_inputs[.D] == .DOWN {
+                movement_direction = .RIGHT
+            }
+            else if state.key_inputs[.A] == .DOWN {
+                movement_direction = .LEFT
+            }
+
+            if movement_direction != .NONE {
+                move_entity(entity, movement_direction)
+
+                if entity.grid_position == state.level.end {
+                    state.level_complete = true 
+                }
+            }
+        }
+
+        if .BUTTON in entity.flags {
+            being_pressed := false
+
+            iter := new_grid_position_iterator(entity.grid_position)
+            other: ^Entity = next(&iter)
+            for other != nil {
+                being_pressed = true
+                other = next(&iter)
+            }
+
+            if being_pressed {
+                entity.flags += {.ACTIVATED}
+            }
+            else {
+                entity.flags -= {.ACTIVATED}
+            }
+        }
+
+        if .DOOR in entity.flags {
+            watching_entity := get_entity_with_id(entity.watching_entity)
+            assert(watching_entity != nil)
+
+            if .ACTIVATED in watching_entity.flags {
+                entity.flags += {.NON_BLOCKING}
+            }
+            else {
+                entity.flags -= {.NON_BLOCKING}
+            }
+        }
+
+        if .LIGHT_RECEIVER in entity.flags {
+            found_light := false
+
+            for direction in Direction {
+                if direction == .NONE {
+                    continue
+                }
+
+                if line_of_sight_to_lamp(entity.grid_position, direction) {
+                    found_light = true
+                    break
+                }
+            }
+
+            if found_light {
+                entity.flags += {.ACTIVATED}
+            }
+            else {
+                entity.flags -= {.ACTIVATED}
+            }
+        }
+    }
+
+    // delete pass
+    i := 0
+    for i < state.entity_count {
+        entity := &state.entities[i]
+    
+        if .DELETE in entity.flags {
+            if i == state.entity_count - 1 {
+                state.entity_count -= 1
+                break
+            }
+    
+            // swap remove with last entity
+            state.entities[i] = state.entities[state.entity_count - 1]
+            state.entity_count -= 1
+        } else {
+            // if we did remove then we want to re-check the current
+            // entity we swapped with so dont go to next index
+            i += 1
+        }
+    }
+}
+
+// @draw
+draw :: proc(delta_time: f32) {
+    { // draw grid
+        for y in 0..<state.level.height {
+            for x in 0..<state.level.width {
+                tile := &state.level.grid[y][x]
+
+                if !tile.is_floor {
+                    continue
+                }
+
+                position := grid_position_to_world({x, y})
+                grid_position := Vector2i{x, y}
+                inner_rect_size := GRID_TILE_SIZE * f32(0.97)
+
+                tile_colour := WHITE
+                if grid_position == state.level.end {
+                    tile_colour = YELLOW
+                }
+
+                draw_rectangle(position, {GRID_TILE_SIZE, GRID_TILE_SIZE}, brightness(tile_colour, 0.9))
+                draw_rectangle(position, {inner_rect_size, inner_rect_size}, tile_colour)
+            }
+        }
+    }
+
+    for &entity in state.entities[0:state.entity_count] {
+        draw_colour := entity.colour
+
+        if .BUTTON in entity.flags {
+            if .ACTIVATED in entity.flags {
+                draw_colour = brightness(draw_colour, 0.5)
+            }
+        }
+
+        if .DOOR in entity.flags {
+            if .NON_BLOCKING in entity.flags {
+                draw_colour = alpha(draw_colour, 0.2)
+            }
+        }
+
+        if .LIGHT_RECEIVER in entity.flags {
+            if .ACTIVATED in entity.flags {
+                draw_colour = brightness(draw_colour, 1.5)
+                draw_circle(entity.position, GRID_TILE_SIZE * 0.5, alpha(ORANGE, 0.1))
+            }
+        }
+
+        if .LAMP in entity.flags {
+            draw_beam_from_position(entity.grid_position, entity.direction, ORANGE) 
+        }
+
+        if .MIRROR in entity.flags {
+            // special drawing for a mirror
+            angle: f32
+            switch entity.direction {
+                case .RIGHT: angle = -45
+                case .LEFT: angle = 45
+                case .UP: fallthrough;
+                case .DOWN: fallthrough;
+                case .NONE: unreachable()
+            }
+
+            draw_rectangle(entity.position, {GRID_TILE_SIZE, 10}, draw_colour, angle)
+            continue
+        }
+
+        switch entity.shape {
+        case .RECTANGLE:
+            draw_rectangle(entity.position, entity.size, draw_colour, entity.rotation)	
+        case .CIRCLE:
+            draw_circle(entity.position, entity.size.x * 0.5, draw_colour)
+        }
+    } 
+
+    in_screen_space = true
+
+    if state.level_complete {
+        centre := Vector2{state.screen_width * 0.5, state.screen_height * 0.5}
+        draw_rectangle(centre, {state.screen_width, 100}, alpha(BLACK, 0.7))
+        draw_text("You win", centre, YELLOW, 60)
+    }
+
+    { // fps counter
+        text := fmt.tprintf("FPS: %v", int(1 / delta_time))
+        draw_text(text, {50, 25}, RED, 15)
+    }
+
+    { // entity counter
+        text := fmt.tprintf("E: %v/%v", state.entity_count, MAX_ENTITIES)
+        draw_text(text, {175, 25}, GREEN, 15)
+    }
+
+    { // quad counter
+        text := fmt.tprintf("Q: %v/%v", state.quad_count, MAX_QUADS)
+        draw_text(text, {300, 25}, BLUE, 15)
+    }
+}
+
 create_player :: proc(grid_position: Vector2i) -> ^Entity {
     return create_entity(Entity{
         flags = {.PLAYER},
@@ -132,331 +377,81 @@ push_entity :: proc(entity: ^Entity, direction: Direction) -> bool {
     return move_entity(entity, direction)
 }
 
-// @setup
-setup_game :: proc() {
-    level, ok := load_level(.TEST)
-    if !ok {
-        log.fatal("error loading level..")
-        return
-    }
+// takes into account reflections from mirrors, start position
+// is assumed to be an entity, so we skip that position
+// maybe this assumption will need to chang ebut right now
+// only light receivers are checking for lies of sight to lamps
+// and they always do it from their location - 05/01/25
+line_of_sight_to_lamp :: proc(start_position: Vector2i, direction: Direction) -> bool {
+    assert(direction != .NONE)
 
-    total_width := f32(GRID_TILE_SIZE * state.level.width)
-    total_height := f32(GRID_TILE_SIZE * state.level.height)
+    current_direction := direction
+    current_position := start_position + direction_grid_offset(direction)
 
-    state.camera_position = {total_width, total_height} * 0.5
-    state.camera_position -= {GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5
-}
+    check_current_position:
+    for valid(current_position) {
+        iter := new_grid_position_iterator(current_position)
 
-restart :: proc() {
-    state.level_complete = false 
-    state.entity_count = 0
-    
-    setup_game()
-}
-
-// @update
-update :: proc() {
-    if state.key_inputs[.ESCAPE] == .DOWN {
-        sapp.quit()
-    }
-
-    if state.level_complete {
-        restart()
-        return
-    }
-
-    if state.key_inputs[.R] == .DOWN {
-        restart()
-        return
-    }
-
-    // update pass
-    for entity_index in 0..<state.entity_count {
-        entity := &state.entities[entity_index]
-
-        if entity.inactive {
-            continue
-        }
-
-        if .PLAYER in entity.flags {
-            movement_direction := Direction.NONE
-
-            if state.key_inputs[.W] == .DOWN {
-                movement_direction = .UP
-            }
-            else if state.key_inputs[.S] == .DOWN {
-                movement_direction = .DOWN
-            }
-            else if state.key_inputs[.D] == .DOWN {
-                movement_direction = .RIGHT
-            }
-            else if state.key_inputs[.A] == .DOWN {
-                movement_direction = .LEFT
-            }
-
-            if movement_direction != .NONE {
-                move_entity(entity, movement_direction)
-
-                if entity.grid_position == state.level.end {
-                    state.level_complete = true 
-                }
-            }
-        }
-
-        if .BUTTON in entity.flags {
-            being_pressed := false
-
-            iter := new_grid_position_iterator(entity.grid_position)
-            other: ^Entity = next(&iter)
-            for other != nil {
-                being_pressed = true
-                other = next(&iter)
-            }
-
-            if being_pressed {
-                entity.flags += {.ACTIVATED}
-            }
-            else {
-                entity.flags -= {.ACTIVATED}
-            }
-        }
-
-        if .DOOR in entity.flags {
-            watching_entity := get_entity_with_id(entity.watching_entity)
-            assert(watching_entity != nil)
-
-            if .ACTIVATED in watching_entity.flags {
-                entity.flags += {.NON_BLOCKING}
-            }
-            else {
-                entity.flags -= {.NON_BLOCKING}
-            }
-        }
-
-        if .LIGHT_RECEIVER in entity.flags {
-            found_light := false
-
-            direction_check:
-            for direction in Direction {
-                if direction == .NONE {
-                    continue
-                }
-
-                check_position := entity.grid_position + direction_grid_offset(direction)
-                
-                for valid(check_position) {
-
-                    iter := new_grid_position_iterator(check_position)
-                    other: ^Entity = next(&iter)
-
-                    for other != nil {
-                        if .LAMP in other.flags {
-                            log.debug(direction, oppisite(direction))
-                            if other.direction == oppisite(direction) {
-                                found_light = true
-                                break direction_check
-                            } else {
-                                continue direction_check
-                            }
-                        }
-                        else if .NON_BLOCKING in other.flags || .LIGHT_RECEIVER in other.flags {
-                            other = next(&iter)
-                            continue
-                        }
-                        else {
-                            continue direction_check
-                        }
-                    }
-
-                    check_position += direction_grid_offset(direction)
-                }
-            }
-
-            if found_light {
-                entity.flags += {.ACTIVATED}
-            }
-            else {
-                entity.flags -= {.ACTIVATED}
-            }
-        }
-    }
-
-    // delete pass
-    i : uint = 0
-    for i < state.entity_count {
-        entity := &state.entities[i]
-    
-        if .DELETE in entity.flags {
-            if i == state.entity_count - 1 {
-                state.entity_count -= 1
+        for {
+            entity := next(&iter)
+            if entity == nil {
+                current_position += direction_grid_offset(current_direction)
                 break
             }
-    
-            // swap remove with last entity
-            state.entities[i] = state.entities[state.entity_count - 1]
-            state.entity_count -= 1
-        } else {
-            // if we did remove then we want to re-check the current
-            // entity we swapped with so dont go to next index
-            i += 1
+            else if .LAMP in entity.flags {
+                return true
+            }
+            else if .MIRROR in entity.flags {
+                current_direction = mirror_reflection(entity.direction, current_direction) 
+                current_position += direction_grid_offset(current_direction)
+                break
+            }
+            else if (.NON_BLOCKING) in entity.flags && !(.LIGHT_RECEIVER in entity.flags) {
+                return false
+            } else {
+                current_position += direction_grid_offset(current_direction)
+            }
         }
     }
+
+
+    return false
 }
 
-// @draw
-draw :: proc(delta_time: f32) {
-    { // draw grid
-        for y in 0..<state.level.height {
-            for x in 0..<state.level.width {
-                tile := &state.level.grid[y][x]
-
-                if !tile.is_floor {
-                    continue
-                }
-
-                position := grid_position_to_world({x, y})
-                grid_position := Vector2i{x, y}
-                inner_rect_size := GRID_TILE_SIZE * f32(0.97)
-
-                tile_colour := WHITE
-                if grid_position == state.level.end {
-                    tile_colour = YELLOW
-                }
-
-                draw_rectangle(position, {GRID_TILE_SIZE, GRID_TILE_SIZE}, brightness(tile_colour, 0.9))
-                draw_rectangle(position, {inner_rect_size, inner_rect_size}, tile_colour)
-            }
-        }
-    }
-
-    for &entity in state.entities[0:state.entity_count] {
-        draw_colour := entity.colour
-
-        if .BUTTON in entity.flags {
-            if .ACTIVATED in entity.flags {
-                draw_colour = brightness(draw_colour, 0.5)
-            }
-        }
-
-        if .DOOR in entity.flags {
-            if .NON_BLOCKING in entity.flags {
-                draw_colour = alpha(draw_colour, 0.2)
-            }
-        }
-
-        if .LIGHT_RECEIVER in entity.flags {
-            if .ACTIVATED in entity.flags {
-                draw_colour = brightness(draw_colour, 1.5)
-                draw_circle(entity.position, GRID_TILE_SIZE * 0.5, alpha(ORANGE, 0.1))
-            }
-        }
-
-        if .LAMP in entity.flags {
-            draw_beam_from_position(entity.grid_position, entity.direction, ORANGE) 
-        }
-
-        if .MIRROR in entity.flags {
-            // special drawing for a mirror
-            angle: f32
-            switch entity.direction {
-                case .RIGHT: angle = -45
-                case .LEFT: angle = 45
-                case .UP: fallthrough;
-                case .DOWN: fallthrough;
-                case .NONE: unreachable()
-            }
-
-            draw_rectangle(entity.position, {GRID_TILE_SIZE, 10}, draw_colour, angle)
-            continue
-        }
-
-        switch entity.shape {
-        case .RECTANGLE:
-            draw_rectangle(entity.position, entity.size, draw_colour, entity.rotation)	
-        case .CIRCLE:
-            draw_circle(entity.position, entity.size.x * 0.5, draw_colour)
-        }
-    } 
-
-    in_screen_space = true
-
-    if state.level_complete {
-        centre := Vector2{state.screen_width * 0.5, state.screen_height * 0.5}
-        draw_rectangle(centre, {state.screen_width, 100}, alpha(BLACK, 0.7))
-        draw_text("You win", centre, YELLOW, 60)
-    }
-
-    { // fps counter
-        text := fmt.tprintf("FPS: %v", int(1 / delta_time))
-        draw_text(text, {50, 25}, RED, 15)
-    }
-
-    { // entity counter
-        text := fmt.tprintf("E: %v/%v", state.entity_count, MAX_ENTITIES)
-        draw_text(text, {175, 25}, GREEN, 15)
-    }
-
-    { // quad counter
-        text := fmt.tprintf("Q: %v/%v", state.quad_count, MAX_QUADS)
-        draw_text(text, {300, 25}, BLUE, 15)
-    }
-}
-
+// position is assumed to be a lamp location so it is skipped
+// when checking to draw, the first beam to be draw will be
+// at the grid position adjacent to the starting position 
+// at the direction passed in, this assumption might change - 05/01/25
 draw_beam_from_position :: proc(position: Vector2i, direction: Direction, colour: Colour) {
     assert(direction != .NONE)
     assert(valid(position))
 
-    beam_colour := alpha(colour, 0.1)
+    beam_colour := alpha(colour, 0.3)
 
     // starting position is skipped
     current_direction := direction
     current_position := position + direction_grid_offset(current_direction)
 
-    drawing_beams:
+    current_position_check:
     for valid(current_position) {
         iter := new_grid_position_iterator(current_position)
-        other: ^Entity = next(&iter)
+        for {
+            other := next(&iter)
+            if other == nil {
+                break
+            }
 
-        for other != nil {
             if .MIRROR in other.flags {
-                new_direction: Direction
-
-                if other.direction == .RIGHT {
-                    switch current_direction {
-                        case .UP:
-                            new_direction = .RIGHT
-                        case .DOWN:
-                            new_direction = .LEFT
-                        case .LEFT:
-                            new_direction = .UP
-                        case .RIGHT:
-                            new_direction = .DOWN
-                        case .NONE: unreachable()
-                    }
-                } else if other.direction == .LEFT {
-                    switch current_direction {
-                        case .UP:
-                            new_direction = .LEFT
-                        case .DOWN:
-                            new_direction = .RIGHT
-                        case .LEFT:
-                            new_direction = .DOWN
-                        case .RIGHT:
-                            new_direction = .UP
-                        case .NONE: unreachable()
-                    }
-                } else { unreachable() }
+                new_direction := mirror_reflection(other.direction, current_direction)
 
                 // set new direction and keep drawing but skip the mirror
                 current_direction = new_direction
                 current_position += direction_grid_offset(current_direction)
-                continue drawing_beams
+                continue current_position_check
             }
             else if !(.NON_BLOCKING in other.flags) && !(.LIGHT_RECEIVER in other.flags) {
-                break drawing_beams
+                break current_position_check
             }
-             
-            other = next(&iter)
         }
 
         size := Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE}

@@ -374,7 +374,7 @@ renderer_frame :: proc "c" () {
     // update vertex buffer with new quad data for this frame
     sg.update_buffer(
         state.bindings.vertex_buffers[0],
-        { ptr = &state.quads[0], size = size_of(Quad) * state.quad_count }
+        { ptr = &state.quads[0], size = size_of(Quad) * uint(state.quad_count) }
     )
 
     sg.begin_pass({action = state.pass_action, swapchain = sglue.swapchain()})
