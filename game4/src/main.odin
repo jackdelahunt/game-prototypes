@@ -2,7 +2,6 @@ package src
 
 // TODO:
 // - portals
-// - pulling objects / a way to rotate
 // - more then one player
 // - death beam
 // - toggable floor tiles
@@ -10,6 +9,8 @@ package src
 // - hint system
 // - more then 1 connection for activating things
 // - level and game timer
+// - bugs:
+//      lamp activators dont check direction of lamp to activate
 
 import "core:fmt"
 import "core:log"
@@ -106,7 +107,7 @@ LevelType :: enum {
 level_name :: proc(level: LevelType) -> string {
     switch level {
     case .TEST:
-        return "test.json" 
+        return "test.level" 
     }
 
     unreachable()
@@ -281,9 +282,10 @@ Entity :: struct {
     shape: EntityShape,
     colour: Colour,
     grid_position: Vector2i,
-
     direction: Direction,
-    watching_entity: EntityId
+
+    watching_entity: EntityId,
+    lamp_type: LampType
 }
 
 EntityId :: uint
@@ -294,7 +296,7 @@ EntityFlag :: enum {
     BUTTON,
     DOOR,
     LAMP,
-    LIGHT_RECEIVER,
+    LIGHT_DETECTOR,
     MIRROR,
     ACTIVATED,
     PUSHABLE,
@@ -308,9 +310,23 @@ EntityShape :: enum {
     CIRCLE
 }
 
+LampType :: enum {
+    LIGHT,
+    DEATH
+}
+
+lamp_colour :: proc(type: LampType) -> Colour {
+    switch type {
+        case .LIGHT: return ORANGE
+        case .DEATH: return RED
+    }
+
+    unreachable()
+}
+
 create_entity :: proc(entity: Entity) -> ^Entity {
     @(static)
-    id_counter: uint = 0
+    id_counter: uint = 1
 
     ptr := &state.entities[state.entity_count]
     state.entity_count += 1
@@ -532,7 +548,7 @@ load_level :: proc(level: LevelType) -> (Level, bool) {
     LevelJson :: struct {
         width: int,
         height: int,
-        grid: [][]int,
+        grid: [][]TileID,
         connections: []Connection,
         rotations: []Rotation
     }
@@ -547,25 +563,29 @@ load_level :: proc(level: LevelType) -> (Level, bool) {
         direction: Direction
     }
 
+    TileID :: enum {
+        EMPTY               = 0,
+        FLOOR               = 1,
+        END                 = 2,
+        PLAYER              = 3,
+        ROCK                = 4,
+        BUTTON              = 5,
+        WALL                = 6,
+        DOOR                = 7,
+        LAMP_LIGHT          = 8,
+        LAMP_DEATH          = 9,
+        LIGHT_DETECTOR_LIGHT= 10,
+        LIGHT_DETECTOR_DEATH= 11,
+        MIRROR              = 12,
+    }
+
     level_json: LevelJson
     
-    err := json.unmarshal_any(bytes, &level_json, allocator = context.temp_allocator)
+    err := json.unmarshal_any(bytes, &level_json, spec = .JSON5, allocator = context.temp_allocator)
     if err != nil {
         log.errorf("error unmarshalling level file %v with error %v", path, err)
         return {}, false
     }
-
-    EMPTY           :: 0
-    FLOOR           :: 1
-    END             :: 2
-    PLAYER          :: 3
-    ROCK            :: 4
-    BUTTON          :: 5
-    WALL            :: 6
-    DOOR            :: 7
-    LAMP            :: 8
-    LIGHT_RECEIVER  :: 9
-    MIRROR          :: 10
 
     loaded_level := Level {
         level = level,
@@ -582,24 +602,25 @@ load_level :: proc(level: LevelType) -> (Level, bool) {
         loaded_level.grid[y] = make([]GridTile, loaded_level.width)
 
         for x in 0..<loaded_level.width {
-            value := level_json.grid[y][x]
+            tile := level_json.grid[y][x]
             grid_position := Vector2i{x, y}
 
             is_floor := true
 
-            switch value {
-                case FLOOR:
-                case EMPTY:             is_floor = false
-                case END:               loaded_level.end = grid_position
-                case PLAYER:            create_player(grid_position)
-                case ROCK:              create_rock(grid_position)
-                case BUTTON:            create_button(grid_position)
-                case WALL:              create_wall(grid_position)
-                case DOOR:              create_door(grid_position)
-                case LAMP:              create_lamp(grid_position)
-                case LIGHT_RECEIVER:    create_light_receiver(grid_position)
-                case MIRROR:            create_mirror(grid_position)
-                case:           unreachable()
+            switch tile {
+                case .EMPTY:                is_floor = false
+                case .FLOOR:
+                case .END:                  loaded_level.end = grid_position
+                case .PLAYER:               create_player(grid_position)
+                case .ROCK:                 create_rock(grid_position)
+                case .BUTTON:               create_button(grid_position)
+                case .WALL:                 create_wall(grid_position)
+                case .DOOR:                 create_door(grid_position)
+                case .LAMP_LIGHT:           create_lamp(grid_position, .LIGHT)
+                case .LAMP_DEATH:           create_lamp(grid_position, .DEATH)
+                case .LIGHT_DETECTOR_LIGHT: create_light_detector(grid_position, .LIGHT)
+                case .LIGHT_DETECTOR_DEATH: create_light_detector(grid_position, .DEATH)
+                case .MIRROR:               create_mirror(grid_position)
             }
 
             loaded_level.grid[y][x] = GridTile {
