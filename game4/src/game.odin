@@ -53,7 +53,8 @@ create_lamp :: proc(grid_position: Vector2i) -> ^Entity {
         position = grid_position_to_world(grid_position),
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5,
         colour = ORANGE,
-        grid_position = grid_position
+        grid_position = grid_position,
+        direction = .UP,
     })  
 }
 
@@ -230,27 +231,33 @@ update :: proc() {
                     continue
                 }
 
-                check_position := entity.grid_position
+                check_position := entity.grid_position + direction_grid_offset(direction)
                 
                 for valid(check_position) {
-                    check_position += direction_grid_offset(direction)
 
                     iter := new_grid_position_iterator(check_position)
                     other: ^Entity = next(&iter)
+
                     for other != nil {
-                        if .NON_BLOCKING in other.flags {
+                        if .LAMP in other.flags {
+                            log.debug(direction, oppisite(direction))
+                            if other.direction == oppisite(direction) {
+                                found_light = true
+                                break direction_check
+                            } else {
+                                continue direction_check
+                            }
+                        }
+                        else if .NON_BLOCKING in other.flags || .LIGHT_RECEIVER in other.flags {
                             other = next(&iter)
                             continue
                         }
-                        else if .LAMP in other.flags {
-                            found_light = true
-                            break direction_check
-                        }
                         else {
-                            found_light = false
                             continue direction_check
                         }
                     }
+
+                    check_position += direction_grid_offset(direction)
                 }
             }
 
@@ -337,36 +344,33 @@ draw :: proc(delta_time: f32) {
             lamp_light_colour := alpha(entity.colour, 0.1)
             draw_circle(entity.position, GRID_TILE_SIZE * 0.5, lamp_light_colour)
 
-            direction_check:
-            for direction in Direction {
-                if direction == .NONE {
-                    continue
-                }
-    
-                check_position := entity.grid_position + direction_grid_offset(direction)
-                 
-                for valid(check_position) {
-    
-                    iter := new_grid_position_iterator(check_position)
-                    other: ^Entity = next(&iter)
-                    for other != nil {
-                        if !(.NON_BLOCKING in other.flags) {
-                            continue direction_check
-                        }
-                    }
+            assert(entity.direction != .NONE)
+            check_position := entity.grid_position + direction_grid_offset(entity.direction)
+            
+            drawing_beams:
+            for valid(check_position) {
+                iter := new_grid_position_iterator(check_position)
+                other: ^Entity = next(&iter)
 
-                    size := Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE}
-                    if direction == .UP || direction == .DOWN {
-                        size *= {0.3, 1}
-                    } else {
-                        size *= {1, 0.3}
+                for other != nil {
+                    if !(.NON_BLOCKING in other.flags) && !(.LIGHT_RECEIVER in other.flags) {
+                        break drawing_beams
                     }
                     
-                    world_position := grid_position_to_world(check_position)
-                    draw_rectangle(world_position, size, alpha(entity.colour, 0.1))
-                    check_position += direction_grid_offset(direction)
                     other = next(&iter)
                 }
+
+                size := Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE}
+
+                if entity.direction == .UP || entity.direction == .DOWN {
+                    size *= {0.3, 1}
+                } else {
+                    size *= {1, 0.3}
+                }
+                 
+                world_position := grid_position_to_world(check_position)
+                draw_rectangle(world_position, size, alpha(entity.colour, 0.1))
+                check_position += direction_grid_offset(entity.direction)
             }
         }
 

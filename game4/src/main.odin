@@ -139,6 +139,18 @@ Direction :: enum {
     RIGHT
 }
 
+oppisite :: proc(direction: Direction) -> Direction {
+    switch direction {
+        case .NONE:     return .NONE
+        case .UP:       return .DOWN
+        case .DOWN:     return .UP
+        case .LEFT:     return .RIGHT
+        case .RIGHT:    return .LEFT
+    }
+
+    unreachable()
+}
+
 direction_grid_offset :: proc(direction: Direction) -> Vector2i {
     switch direction {
     case .UP:
@@ -215,6 +227,7 @@ Entity :: struct {
     colour: Colour,
     grid_position: Vector2i,
 
+    direction: Direction,
     watching_entity: EntityId
 }
 
