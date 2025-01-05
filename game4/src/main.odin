@@ -1,5 +1,16 @@
 package src
 
+// TODO:
+// - portals
+// - pulling objects / a way to rotate
+// - more then one player
+// - death beam
+// - toggable floor tiles
+// - revert moves
+// - hint system
+// - more then 1 connection for activating things
+// - level and game timer
+
 import "core:fmt"
 import "core:log"
 import "base:runtime"
@@ -287,6 +298,7 @@ EntityFlag :: enum {
     MIRROR,
     ACTIVATED,
     PUSHABLE,
+    ROTATABLE,
     NON_BLOCKING,
     DELETE,
 }

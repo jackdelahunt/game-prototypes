@@ -40,7 +40,7 @@ update :: proc() {
     }
 
     { // global controls
-        if state.key_inputs[.R] == .DOWN {
+        if state.key_inputs[.T] == .DOWN {
             restart()
             return
         }
@@ -91,10 +91,56 @@ update :: proc() {
             }
 
             if movement_direction != .NONE {
-                move_entity(entity, movement_direction)
+                // if the firection the player is facing is not the same
+                // as the current direction then first check if there
+                // is any entities that are rotatable in that tile if there is 
+                // then only change the direction of the player, this allows
+                // the player to rotate without push entities by accident
+                // - 05/01/25
+                move := true
+                if movement_direction != entity.direction {
+                    moving_to_position := entity.grid_position + direction_grid_offset(movement_direction)
+
+                    iter := new_grid_position_iterator(moving_to_position)
+                    for {
+                        neighbour := next(&iter)
+                        if neighbour == nil {
+                            break
+                        }
+
+                        if .ROTATABLE in neighbour.flags {
+                            move = false 
+                            break
+                        }
+                    }
+                }
+
+                entity.direction = movement_direction
+
+                if move {
+                    move_entity(entity, movement_direction)
+                }
 
                 if entity.grid_position == state.level.end {
                     state.level_complete = true 
+                }
+            }
+
+            if state.key_inputs[.R] == .DOWN {
+                facing_position := entity.grid_position + direction_grid_offset(entity.direction)
+
+                if valid(facing_position) {
+                    iter := new_grid_position_iterator(facing_position)
+                    for {
+                        other := next(&iter) 
+                        if other == nil {
+                            break
+                        }
+
+                        if .ROTATABLE in other.flags {
+                            other.direction = clockwise(other.direction) 
+                        }
+                    }
                 }
             }
         }
@@ -203,6 +249,47 @@ draw :: proc(delta_time: f32) {
     for &entity in state.entities[0:state.entity_count] {
         draw_colour := entity.colour
 
+        if .PLAYER in entity.flags {
+            eyes_centre_position: Vector2
+
+            eye_offset := entity.size * 0.5
+
+            switch entity.direction {
+                case .NONE: unreachable()
+                case .UP:
+                    eyes_centre_position.y = eye_offset.y
+                case .DOWN:
+                    eyes_centre_position.y = -eye_offset.y
+                case .LEFT:
+                    eyes_centre_position.x = -eye_offset.x
+                case .RIGHT:
+                    eyes_centre_position.x = eye_offset.x
+            }
+
+            EYE_GAP :: f32(GRID_TILE_SIZE * 0.25)
+
+            left_eye_position := eyes_centre_position
+            right_eye_position := eyes_centre_position
+
+            switch entity.direction {
+                case .NONE: unreachable()
+
+                case .UP: fallthrough;
+                case .DOWN: {
+                    left_eye_position.x -= EYE_GAP * 0.5
+                    right_eye_position.x += EYE_GAP * 0.5
+                }
+                case .LEFT: fallthrough;
+                case .RIGHT: {
+                    left_eye_position.y -= EYE_GAP * 0.5
+                    right_eye_position.y += EYE_GAP * 0.5
+                }
+            }
+
+            draw_circle(entity.position + right_eye_position, 5, BLACK)
+            draw_circle(entity.position + left_eye_position, 5, BLACK)
+        }
+
         if .BUTTON in entity.flags {
             if .ACTIVATED in entity.flags {
                 draw_colour = brightness(draw_colour, 0.5)
@@ -276,8 +363,9 @@ create_player :: proc(grid_position: Vector2i) -> ^Entity {
         flags = {.PLAYER},
         position = grid_position_to_world(grid_position),
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.7,
-        colour = brightness(RED, 0.75),
-        grid_position = grid_position
+        colour = brightness(BLUE, 0.75),
+        grid_position = grid_position,
+        direction = .RIGHT
     })
 }
 
@@ -325,7 +413,7 @@ create_door :: proc(grid_position: Vector2i) -> ^Entity {
 
 create_lamp :: proc(grid_position: Vector2i) -> ^Entity {
     return create_entity(Entity{
-        flags = {.LAMP, .PUSHABLE},
+        flags = {.LAMP, .PUSHABLE, .ROTATABLE},
         position = grid_position_to_world(grid_position),
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5,
         colour = ORANGE,
