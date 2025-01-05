@@ -37,6 +37,27 @@ create_wall :: proc(grid_position: Vector2i) -> ^Entity {
     })  
 }
 
+create_door :: proc(grid_position: Vector2i) -> ^Entity {
+    return create_entity(Entity{
+        flags = {.DOOR},
+        position = grid_position_to_world(grid_position),
+        size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE},
+        colour = PINK,
+        grid_position = grid_position
+    })  
+}
+
+create_button :: proc(grid_position: Vector2i) -> ^Entity {
+    return create_entity(Entity{
+        flags = {.BUTTON, .NON_BLOCKING},
+        position = grid_position_to_world(grid_position),
+        size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5,
+        colour = SKY_BLUE,
+        grid_position = grid_position,
+        shape = .CIRCLE
+    })  
+}
+
 move_entity :: proc(entity: ^Entity, direction: Direction) -> bool {
     new_position := entity.grid_position + direction_grid_offset(direction)
 
@@ -50,21 +71,21 @@ move_entity :: proc(entity: ^Entity, direction: Direction) -> bool {
         return false
     }
 
-    if tile.entity_id != nil {
-        other := get_entity_with_id(tile.entity_id.?)
-
+    iter := new_grid_position_iterator(new_position)
+    other: ^Entity = next(&iter)
+    for other != nil {
         // this is recursive, maybe this will cause issues in the future
         // but for right now it works - 04/01/25
         pushed := push_entity(other, direction)
+
+        other = next(&iter)
 
         if !pushed {
             return false
         }
     }
 
-    unset_entity_in_grid(entity.grid_position)
     entity.grid_position = new_position
-    set_entity_in_grid(entity, new_position)
     entity.position = grid_position_to_world(entity.grid_position)
 
     return true
@@ -85,8 +106,6 @@ setup_game :: proc() {
         log.fatal("error loading level..")
         return
     }
-
-    state.level = level
 
     total_width := f32(GRID_TILE_SIZE * state.level.width)
     total_height := f32(GRID_TILE_SIZE * state.level.height)
@@ -150,6 +169,36 @@ update :: proc() {
                 }
             }
         }
+
+        if .BUTTON in entity.flags {
+            being_pressed := false
+
+            iter := new_grid_position_iterator(entity.grid_position)
+            other: ^Entity = next(&iter)
+            for other != nil {
+                being_pressed = true
+                other = next(&iter)
+            }
+
+            connected := get_entity_with_id(entity.connected_entity)
+            assert(connected != nil)
+
+            if being_pressed {
+                connected.flags += {.ACTIVATED}
+            }
+            else {
+                connected.flags -= {.ACTIVATED}
+            }
+        }
+
+        if .DOOR in entity.flags {
+            if .ACTIVATED in entity.flags {
+                entity.flags += {.NON_BLOCKING}
+            }
+            else {
+                entity.flags -= {.NON_BLOCKING}
+            }
+        }
     }
 
     // delete pass
@@ -201,11 +250,19 @@ draw :: proc(delta_time: f32) {
     }
 
     for &entity in state.entities[0:state.entity_count] {
+        draw_colour := entity.colour
+
+        if .DOOR in entity.flags {
+            if .ACTIVATED in entity.flags {
+                draw_colour = alpha(draw_colour, 0.2)
+            }
+        }
+
         switch entity.shape {
         case .RECTANGLE:
-            draw_rectangle(entity.position, entity.size, entity.colour, entity.rotation)	
+            draw_rectangle(entity.position, entity.size, draw_colour, entity.rotation)	
         case .CIRCLE:
-            draw_circle(entity.position, entity.size.x * 0.5, entity.colour)
+            draw_circle(entity.position, entity.size.x * 0.5, draw_colour)
         }
     }
 

@@ -110,21 +110,11 @@ SavePoint :: struct {
 // @grid
 GridTile :: struct {
     is_floor: bool,
-    entity_id: Maybe(EntityId),
 } 
 
 valid :: proc(grid_position: Vector2i) -> bool {
     return (grid_position.x >= 0 && grid_position.x < state.level.width) &&
            (grid_position.y >= 0 && grid_position.y < state.level.height)
-}
-
-set_entity_in_grid :: proc (entity: ^Entity, position: Vector2i) {
-    assert(entity.grid_position == position, "need to set entity grid position before setting it in the grid")
-    state.level.grid[position.y][position.x].entity_id = entity.id
-}
-
-unset_entity_in_grid :: proc (position: Vector2i) {
-    state.level.grid[position.y][position.x].entity_id = nil
 }
 
 get_tile :: proc(grid_position: Vector2i) -> ^GridTile {
@@ -182,13 +172,16 @@ Colour :: distinct Vector4
 
 WHITE	    :: Colour{1, 1, 1, 1}
 BLACK	    :: Colour{0, 0, 0, 1}
+
 RED	    :: Colour{1, 0, 0, 1}
 GREEN	    :: Colour{0, 1, 0, 1}
 BLUE	    :: Colour{0, 0, 1, 1}
-LIGHT_GRAY  :: Colour{0.8, 0.8, 0.8, 1}
+
 YELLOW	    :: Colour{1, 0.9, 0.05, 1}
 PINK	    :: Colour{0.8, 0.05, 0.6, 1}
 BROWN       :: Colour{0.35, 0.16, 0.08, 1}
+LIGHT_GRAY  :: Colour{0.8, 0.8, 0.8, 1}
+SKY_BLUE    :: Colour{0.3, 0.3, 0.7, 1}
 
 alpha :: proc(colour: Colour, alpha: f32) -> Colour {
     return {colour.r, colour.g, colour.b, alpha} 
@@ -220,7 +213,9 @@ Entity :: struct {
     rotation: f32,
     shape: EntityShape,
     colour: Colour,
-    grid_position: Vector2i
+    grid_position: Vector2i,
+
+    connected_entity: EntityId
 }
 
 EntityId :: uint
@@ -228,7 +223,11 @@ EntityId :: uint
 EntityFlag :: enum {
     NONE = 0,
     PLAYER,
+    BUTTON,
+    DOOR,
+    ACTIVATED,
     PUSHABLE,
+    NON_BLOCKING,
     DELETE,
 }
 
@@ -249,6 +248,16 @@ create_entity :: proc(entity: Entity) -> ^Entity {
     ptr.id = id_counter
     id_counter += 1
 
+    { // sanity checking some values
+        if .NON_BLOCKING in entity.flags {
+            assert(!(.PUSHABLE in entity.flags))
+        }
+
+        if .PUSHABLE in entity.flags {
+            assert(!(.NON_BLOCKING in entity.flags))
+        }
+    }
+
     return ptr
 }
 
@@ -266,6 +275,38 @@ get_entity_with_id :: proc(id: EntityId) -> ^Entity {
     for &entity in state.entities[0:state.entity_count] {
         if entity.id == id {
             return &entity
+        }
+    }
+
+    return nil
+}
+
+get_first_entity_at_grid_position :: proc(grid_position: Vector2i) -> ^Entity {
+    for &entity in state.entities[0:state.entity_count] {
+        if entity.grid_position == grid_position {
+            return &entity
+        }
+    }
+
+    return nil
+}
+
+GridPositionIterator :: struct {
+    index: int,
+    grid_position: Vector2i
+}
+
+new_grid_position_iterator :: proc(grid_position: Vector2i) -> GridPositionIterator {
+    return {index = 0, grid_position = grid_position}
+}
+
+next :: proc(iterator: ^GridPositionIterator) -> ^Entity {
+    for iterator.index < auto_cast state.entity_count {
+        other := &state.entities[iterator.index]
+        iterator.index += 1
+
+        if other.grid_position == iterator.grid_position && !(.NON_BLOCKING in other.flags) {
+            return other 
         }
     }
 
@@ -323,7 +364,7 @@ main :: proc() {
         screen_width = state.screen_width,
         screen_height = state.screen_height,
         camera_position = {0, 0},
-        zoom = 2,
+        zoom = 1.5,
         entities = make([]Entity, MAX_ENTITIES),
         quads = make([]Quad, MAX_QUADS)
     }
@@ -408,10 +449,16 @@ load_level :: proc(level: LevelType) -> (Level, bool) {
         return {}, false
     }
 
+    Connection :: struct {
+        from: Vector2i,
+        to: Vector2i
+    }
+
     LevelJson :: struct {
         width: int,
         height: int,
-        grid: [][]int
+        grid: [][]int,
+        connections: []Connection
     }
 
     level_json: LevelJson
@@ -424,10 +471,12 @@ load_level :: proc(level: LevelType) -> (Level, bool) {
 
     EMPTY   :: 0
     FLOOR   :: 1
-    WALL    :: 2
+    END     :: 2
     PLAYER  :: 3
     ROCK    :: 4
-    END     :: 5
+    BUTTON  :: 5
+    WALL    :: 6
+    DOOR    :: 7
 
     loaded_level := Level {
         level = level,
@@ -445,37 +494,48 @@ load_level :: proc(level: LevelType) -> (Level, bool) {
 
         for x in 0..<loaded_level.width {
             value := level_json.grid[y][x]
+            grid_position := Vector2i{x, y}
 
             is_floor := true
-            entity_id : Maybe(EntityId) = nil
 
             switch value {
-                case EMPTY: {
-                    is_floor = false 
-                }
-                case WALL: {
-                    wall := create_wall({x, y})
-                    entity_id = wall.id
-                }
-                case PLAYER: {
-                    player := create_player({x, y})
-                    entity_id = player.id
-
-                }
-                case ROCK: {
-                    rock := create_rock({x, y})
-                    entity_id = rock.id
-                }
-                case END: {
-                    loaded_level.end = {x, y}
-                }
+                case FLOOR:
+                case EMPTY:     is_floor = false
+                case END:       loaded_level.end = grid_position
+                case PLAYER:    create_player(grid_position)
+                case ROCK:      create_rock(grid_position)
+                case BUTTON:    create_button(grid_position)
+                case WALL:      create_wall(grid_position)
+                case DOOR:      create_door(grid_position)
+                case:           unreachable()
             }
 
             loaded_level.grid[y][x] = GridTile {
                 is_floor = is_floor,
-                entity_id = entity_id
             }
         }
+    }
+
+    state.level = loaded_level
+
+    for connection, index in level_json.connections {
+        if !valid(connection.from) {
+             log.errorf("error, connection \"from\" value %v (index: %v) in level file %v is not valid", connection.from, index, path)
+            return {}, false
+        }
+
+        if !valid(connection.to) {
+             log.errorf("error, connection \"to\" value %v (index: %v) in level file %v is not valid", connection.to, index, path)
+            return {}, false
+        }
+
+        from_entity := get_first_entity_at_grid_position(connection.from)
+        assert(from_entity != nil)
+
+        to_entity := get_first_entity_at_grid_position(connection.to)
+        assert(to_entity != nil)
+
+        from_entity.connected_entity = to_entity.id
     }
 
     return loaded_level, true
