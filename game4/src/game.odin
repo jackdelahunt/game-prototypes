@@ -201,21 +201,19 @@ update :: proc() {
                 other = next(&iter)
             }
 
-            connected := get_entity_with_id(entity.connected_entity)
-            assert(connected != nil)
-
             if being_pressed {
                 entity.flags += {.ACTIVATED}
-                connected.flags += {.ACTIVATED}
             }
             else {
                 entity.flags -= {.ACTIVATED}
-                connected.flags -= {.ACTIVATED}
             }
         }
 
         if .DOOR in entity.flags {
-            if .ACTIVATED in entity.flags {
+            watching_entity := get_entity_with_id(entity.watching_entity)
+            assert(watching_entity != nil)
+
+            if .ACTIVATED in watching_entity.flags {
                 entity.flags += {.NON_BLOCKING}
             }
             else {
@@ -256,16 +254,11 @@ update :: proc() {
                 }
             }
 
-            connected := get_entity_with_id(entity.connected_entity)
-            assert(connected != nil)
-
             if found_light {
                 entity.flags += {.ACTIVATED}
-                connected.flags += {.ACTIVATED}
             }
             else {
                 entity.flags -= {.ACTIVATED}
-                connected.flags -= {.ACTIVATED}
             }
         }
     }
@@ -328,7 +321,7 @@ draw :: proc(delta_time: f32) {
         }
 
         if .DOOR in entity.flags {
-            if .ACTIVATED in entity.flags {
+            if .NON_BLOCKING in entity.flags {
                 draw_colour = alpha(draw_colour, 0.2)
             }
         }

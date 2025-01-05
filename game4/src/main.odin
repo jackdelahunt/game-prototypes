@@ -29,7 +29,7 @@ import shaders "shaders"
 DEFAULT_SCREEN_WIDTH	:: 1200
 DEFAULT_SCREEN_HEIGHT	:: 900
 
-TICKS_PER_SECOND :: 20.0
+TICKS_PER_SECOND :: 30.0
 TICK_RATE :: 1.0 / TICKS_PER_SECOND
 
 MAX_ENTITIES	:: 5_000
@@ -215,7 +215,7 @@ Entity :: struct {
     colour: Colour,
     grid_position: Vector2i,
 
-    connected_entity: EntityId
+    watching_entity: EntityId
 }
 
 EntityId :: uint
@@ -315,7 +315,7 @@ next :: proc(iterator: ^GridPositionIterator) -> ^Entity {
     return nil
 }
 
-///////////////////////////////// @textures
+// @textures
 Texture :: struct {
     width: i32,
     height: i32,
@@ -452,8 +452,8 @@ load_level :: proc(level: LevelType) -> (Level, bool) {
     }
 
     Connection :: struct {
-        from: Vector2i,
-        to: Vector2i
+        activator: Vector2i,
+        watcher: Vector2i
     }
 
     LevelJson :: struct {
@@ -525,23 +525,23 @@ load_level :: proc(level: LevelType) -> (Level, bool) {
     state.level = loaded_level
 
     for connection, index in level_json.connections {
-        if !valid(connection.from) {
-             log.errorf("error, connection \"from\" value %v (index: %v) in level file %v is not valid", connection.from, index, path)
+        if !valid(connection.activator) {
+             log.errorf("connection[%v].activator value %v in level file %v is not valid", index, connection.activator,  path)
             return {}, false
         }
 
-        if !valid(connection.to) {
-             log.errorf("error, connection \"to\" value %v (index: %v) in level file %v is not valid", connection.to, index, path)
+        if !valid(connection.watcher) {
+             log.errorf("connection[%v].watcher value %v in level file %v is not valid", index, connection.activator,  path)
             return {}, false
         }
 
-        from_entity := get_first_entity_at_grid_position(connection.from)
-        assert(from_entity != nil)
+        activator_entity := get_first_entity_at_grid_position(connection.activator)
+        assert(activator_entity != nil)
 
-        to_entity := get_first_entity_at_grid_position(connection.to)
-        assert(to_entity != nil)
+        watcher_entity := get_first_entity_at_grid_position(connection.watcher)
+        assert(watcher_entity != nil)
 
-        from_entity.connected_entity = to_entity.id
+        watcher_entity.watching_entity = activator_entity.id
     }
 
     return loaded_level, true
