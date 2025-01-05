@@ -4,6 +4,8 @@ zig-out/
 **/build
 **/*.DSYM
 **/sokol/**/*.dll
+**/sokol/**/*.a
+**/sokol/**/*.so
 **/sokol/**/*.lib
 **/sokol/**/*.pdb
 **/sokol/**/*.exp
