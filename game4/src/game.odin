@@ -47,6 +47,27 @@ create_door :: proc(grid_position: Vector2i) -> ^Entity {
     })  
 }
 
+create_lamp :: proc(grid_position: Vector2i) -> ^Entity {
+    return create_entity(Entity{
+        flags = {.LAMP, .PUSHABLE},
+        position = grid_position_to_world(grid_position),
+        size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5,
+        colour = ORANGE,
+        grid_position = grid_position
+    })  
+}
+
+create_light_receiver :: proc(grid_position: Vector2i) -> ^Entity {
+    return create_entity(Entity{
+        flags = {.LIGHT_RECEIVER},
+        position = grid_position_to_world(grid_position),
+        size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5,
+        colour = brightness(ORANGE, 0.6),
+        grid_position = grid_position,
+        shape = .CIRCLE
+    })  
+}
+
 create_button :: proc(grid_position: Vector2i) -> ^Entity {
     return create_entity(Entity{
         flags = {.BUTTON, .NON_BLOCKING},
@@ -184,9 +205,11 @@ update :: proc() {
             assert(connected != nil)
 
             if being_pressed {
+                entity.flags += {.ACTIVATED}
                 connected.flags += {.ACTIVATED}
             }
             else {
+                entity.flags -= {.ACTIVATED}
                 connected.flags -= {.ACTIVATED}
             }
         }
@@ -197,6 +220,52 @@ update :: proc() {
             }
             else {
                 entity.flags -= {.NON_BLOCKING}
+            }
+        }
+
+        if .LIGHT_RECEIVER in entity.flags {
+            found_light := false
+
+            direction_check:
+            for direction in Direction {
+                if direction == .NONE {
+                    continue
+                }
+
+                check_position := entity.grid_position
+                
+                for valid(check_position) {
+                    check_position += direction_grid_offset(direction)
+
+                    iter := new_grid_position_iterator(check_position)
+                    other: ^Entity = next(&iter)
+                    for other != nil {
+                        if .NON_BLOCKING in other.flags {
+                            other = next(&iter)
+                            continue
+                        }
+                        else if .LAMP in other.flags {
+                            found_light = true
+                            break direction_check
+                        }
+                        else {
+                            found_light = false
+                            continue direction_check
+                        }
+                    }
+                }
+            }
+
+            connected := get_entity_with_id(entity.connected_entity)
+            assert(connected != nil)
+
+            if found_light {
+                entity.flags += {.ACTIVATED}
+                connected.flags += {.ACTIVATED}
+            }
+            else {
+                entity.flags -= {.ACTIVATED}
+                connected.flags -= {.ACTIVATED}
             }
         }
     }
@@ -252,9 +321,59 @@ draw :: proc(delta_time: f32) {
     for &entity in state.entities[0:state.entity_count] {
         draw_colour := entity.colour
 
+        if .BUTTON in entity.flags {
+            if .ACTIVATED in entity.flags {
+                draw_colour = brightness(draw_colour, 0.5)
+            }
+        }
+
         if .DOOR in entity.flags {
             if .ACTIVATED in entity.flags {
                 draw_colour = alpha(draw_colour, 0.2)
+            }
+        }
+
+        if .LIGHT_RECEIVER in entity.flags {
+            if .ACTIVATED in entity.flags {
+                draw_colour = brightness(draw_colour, 1.5)
+                draw_circle(entity.position, GRID_TILE_SIZE * 0.5, alpha(ORANGE, 0.1))
+            }
+        }
+
+        if .LAMP in entity.flags {
+            lamp_light_colour := alpha(entity.colour, 0.1)
+            draw_circle(entity.position, GRID_TILE_SIZE * 0.5, lamp_light_colour)
+
+            direction_check:
+            for direction in Direction {
+                if direction == .NONE {
+                    continue
+                }
+    
+                check_position := entity.grid_position + direction_grid_offset(direction)
+                 
+                for valid(check_position) {
+    
+                    iter := new_grid_position_iterator(check_position)
+                    other: ^Entity = next(&iter)
+                    for other != nil {
+                        if !(.NON_BLOCKING in other.flags) {
+                            continue direction_check
+                        }
+                    }
+
+                    size := Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE}
+                    if direction == .UP || direction == .DOWN {
+                        size *= {0.3, 1}
+                    } else {
+                        size *= {1, 0.3}
+                    }
+                    
+                    world_position := grid_position_to_world(check_position)
+                    draw_rectangle(world_position, size, alpha(entity.colour, 0.1))
+                    check_position += direction_grid_offset(direction)
+                    other = next(&iter)
+                }
             }
         }
 

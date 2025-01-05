@@ -150,10 +150,9 @@ direction_grid_offset :: proc(direction: Direction) -> Vector2i {
     case .RIGHT:
         return {1, 0}
     case .NONE:
-        assert(false, "tried to get grid offset from no direction")         
     }
 
-    return {} // unreachable
+    unreachable()
 }
 
 // @input
@@ -182,6 +181,7 @@ PINK	    :: Colour{0.8, 0.05, 0.6, 1}
 BROWN       :: Colour{0.35, 0.16, 0.08, 1}
 LIGHT_GRAY  :: Colour{0.8, 0.8, 0.8, 1}
 SKY_BLUE    :: Colour{0.3, 0.3, 0.7, 1}
+ORANGE	    :: Colour{0.95, 0.6, 0, 1}
 
 alpha :: proc(colour: Colour, alpha: f32) -> Colour {
     return {colour.r, colour.g, colour.b, alpha} 
@@ -225,6 +225,8 @@ EntityFlag :: enum {
     PLAYER,
     BUTTON,
     DOOR,
+    LAMP,
+    LIGHT_RECEIVER,
     ACTIVATED,
     PUSHABLE,
     NON_BLOCKING,
@@ -469,14 +471,16 @@ load_level :: proc(level: LevelType) -> (Level, bool) {
         return {}, false
     }
 
-    EMPTY   :: 0
-    FLOOR   :: 1
-    END     :: 2
-    PLAYER  :: 3
-    ROCK    :: 4
-    BUTTON  :: 5
-    WALL    :: 6
-    DOOR    :: 7
+    EMPTY           :: 0
+    FLOOR           :: 1
+    END             :: 2
+    PLAYER          :: 3
+    ROCK            :: 4
+    BUTTON          :: 5
+    WALL            :: 6
+    DOOR            :: 7
+    LAMP            :: 8
+    LIGHT_RECEIVER  :: 9
 
     loaded_level := Level {
         level = level,
@@ -500,13 +504,15 @@ load_level :: proc(level: LevelType) -> (Level, bool) {
 
             switch value {
                 case FLOOR:
-                case EMPTY:     is_floor = false
-                case END:       loaded_level.end = grid_position
-                case PLAYER:    create_player(grid_position)
-                case ROCK:      create_rock(grid_position)
-                case BUTTON:    create_button(grid_position)
-                case WALL:      create_wall(grid_position)
-                case DOOR:      create_door(grid_position)
+                case EMPTY:             is_floor = false
+                case END:               loaded_level.end = grid_position
+                case PLAYER:            create_player(grid_position)
+                case ROCK:              create_rock(grid_position)
+                case BUTTON:            create_button(grid_position)
+                case WALL:              create_wall(grid_position)
+                case DOOR:              create_door(grid_position)
+                case LAMP:              create_lamp(grid_position)
+                case LIGHT_RECEIVER:    create_light_receiver(grid_position)
                 case:           unreachable()
             }
 
