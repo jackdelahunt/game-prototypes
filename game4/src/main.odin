@@ -54,8 +54,8 @@ GRID_TILE_SIZE :: 50
 
 START_MAXIMISED :: false
 
-START_LEVEL :: LevelType.FOUR
-REPEAT_LEVEL :: false
+START_LEVEL :: LevelType.TEST
+REPEAT_LEVEL :: true
 
 // @state
 State :: struct {
@@ -128,11 +128,6 @@ level_name :: proc(level: LevelType) -> string {
 }
 
 next_level :: proc() {
-    if REPEAT_LEVEL {
-        restart()
-        return
-    }
-
     current_level_number := i64(state.current_level)
 
     if current_level_number == len(LevelType) - 1 {
@@ -145,10 +140,6 @@ next_level :: proc() {
 }
 
 previous_level :: proc() {
-    if REPEAT_LEVEL {
-        restart()
-        return
-    }
     current_level_number := i64(state.current_level)
 
     if current_level_number - 1 < 0 {
@@ -333,7 +324,10 @@ Entity :: struct {
     grid_position: Vector2i,
     direction: Direction,
 
-    watching_entity: EntityId,
+    // flag: watching
+    watching: EntityId,
+
+    // flag: lamp
     lamp_type: LampType
 }
 
@@ -350,6 +344,7 @@ EntityFlag :: enum {
     ACTIVATED,
     PUSHABLE,
     ROTATABLE,
+    WATCHING,
     NON_BLOCKING,
     DELETE,
 }
@@ -526,7 +521,7 @@ main :: proc() {
         screen_width = state.screen_width,
         screen_height = state.screen_height,
         camera_position = {0, 0},
-        zoom = 2,
+        zoom = 1.25,
         current_level = START_LEVEL,
         entities = make([]Entity, MAX_ENTITIES),
         quads = make([]Quad, MAX_QUADS)
@@ -721,7 +716,7 @@ load_level :: proc(level: LevelType) -> (Level, bool) {
             return {}, false
         }
 
-        watcher_entity.watching_entity = activator_entity.id
+        watcher_entity.watching = activator_entity.id
     }
 
     for rotation, index in level_json.rotations {

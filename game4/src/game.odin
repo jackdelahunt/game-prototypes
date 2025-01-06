@@ -114,7 +114,12 @@ update :: proc() {
                     }
     
                     if entity.grid_position == state.level.end {
-                        next_level()
+                        if REPEAT_LEVEL {
+                            restart()
+                        } else {
+                            next_level()
+                        }
+
                         return
                     }
                 }
@@ -182,13 +187,13 @@ update :: proc() {
             should_be_open := false
 
             open_check: {
-                watching_entity := get_entity_with_id(entity.watching_entity)
-                if watching_entity == nil {
+                watching := get_entity_with_id(entity.watching)
+                if watching == nil {
                     log.errorf("door %v couldn't font entity to watch", entity.grid_position)
                     break door_update
                 }
 
-                if .ACTIVATED in watching_entity.flags {
+                if .ACTIVATED in watching.flags {
                     should_be_open = true
                     break open_check
                 }
@@ -252,8 +257,16 @@ update :: proc() {
     }
 }
 
+// TODO: find a better way to do this
+dot_drawing_offset : f32 = 0
+
 // @draw
 draw :: proc(delta_time: f32) {
+    dot_drawing_offset += delta_time
+    if dot_drawing_offset > 1 {
+        dot_drawing_offset = 0
+    }
+
     { // draw grid
         for y in 0..<state.level.height {
             for x in 0..<state.level.width {
@@ -281,9 +294,12 @@ draw :: proc(delta_time: f32) {
     for &entity in state.entities[0:state.entity_count] {
         draw_colour := entity.colour
 
-        if .PLAYER in entity.flags {
-            eyes_centre_position: Vector2
+        draw_player: {
+            if !(.PLAYER in entity.flags) {
+                break draw_player
+            }
 
+            eyes_centre_position: Vector2
             eye_offset := entity.size * 0.5
 
             switch entity.direction {
@@ -322,32 +338,52 @@ draw :: proc(delta_time: f32) {
             draw_circle(entity.position + left_eye_position, 5, BLACK)
         }
 
-        if .BUTTON in entity.flags {
+        draw_button: {
+            if !(.BUTTON in entity.flags) {
+                break draw_button
+            }
+
             if .ACTIVATED in entity.flags {
                 draw_colour = brightness(draw_colour, 0.5)
             }
         }
 
-        if .DOOR in entity.flags {
+        draw_door: {
+            if !(.DOOR in entity.flags) {
+                break draw_door
+            }
+
             if .NON_BLOCKING in entity.flags {
                 draw_colour = alpha(draw_colour, 0.2)
             }
         }
 
-        if .LIGHT_DETECTOR in entity.flags {
+        draw_light_detector: {
+            if !(.LIGHT_DETECTOR in entity.flags) {
+                break draw_light_detector
+            }
+
             if .ACTIVATED in entity.flags {
                 draw_colour = brightness(draw_colour, 2)
                 draw_circle(entity.position, GRID_TILE_SIZE * 0.5, alpha(draw_colour, 0.2))
             }
         }
 
-        if .LAMP in entity.flags {
+        draw_lamp: {
+            if !(.LAMP in entity.flags) {
+                break draw_lamp
+            }
+
             light_colour := alpha(entity.colour, 0.2)
             draw_circle(entity.position, GRID_TILE_SIZE * 0.5, light_colour)
             draw_beam_from_position(entity.grid_position, entity.direction, light_colour) 
-        }
+        } 
 
-        if .MIRROR in entity.flags {
+        draw_mirror: {
+            if !(.MIRROR in entity.flags) {
+                break draw_mirror
+            }
+
             // special drawing for a mirror
             angle: f32
             #partial switch entity.direction {
@@ -358,6 +394,26 @@ draw :: proc(delta_time: f32) {
 
             draw_rectangle(entity.position, {GRID_TILE_SIZE, 5}, draw_colour, angle)
             continue
+        }
+
+        draw_watching: {
+            if !(.WATCHING in entity.flags) {
+                break draw_watching
+            }
+
+            watching_entity := get_entity_with_id(entity.watching)
+            if watching_entity == nil {
+                break draw_watching
+            }
+
+            distance := length(watching_entity.position - entity.position)
+            dot_count := i64(distance / (GRID_TILE_SIZE * 0.5)) // dot every half tile
+
+            if dot_count < 5 {
+                dot_count = 5
+            }
+
+            draw_dotted_line(watching_entity.position, entity.position, dot_count, 2, alpha(BLUE, 0.2), dot_drawing_offset)
         }
 
         switch entity.shape {
@@ -436,7 +492,7 @@ create_wall :: proc(grid_position: Vector2i) -> ^Entity {
 
 create_door :: proc(grid_position: Vector2i) -> ^Entity {
     return create_entity(Entity{
-        flags = {.DOOR},
+        flags = {.DOOR, .WATCHING},
         position = grid_position_to_world(grid_position),
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE},
         colour = DARK_GRAY,

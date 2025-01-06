@@ -68,6 +68,21 @@ draw_line :: proc(start: Vector2, end: Vector2, thickness: f32, colour: Colour) 
     draw_rectangle(rectangle_position, {thickness, line_length}, colour, degrees)
 }
 
+draw_dotted_line :: proc(start: Vector2, end: Vector2, dot_count: i64, dot_radius: f32, colour: Colour, offset : f32 = 0) {
+    assert(dot_count > 0)
+    assert(offset >= 0 && offset <= 1.0)
+
+    gap_proportion := 1.0 / f32(dot_count) 
+
+    delta := end - start
+    distance := length(delta)
+
+    for i in 0..<dot_count {
+        dot_position := start + (delta * gap_proportion * (f32(i) + offset))
+        draw_circle(dot_position, dot_radius, colour)
+    }
+}
+
 draw_text :: proc(text: string, position: Vector2, colour: Colour, font_size: f32) {
     if len(text) == 0 {
         return
