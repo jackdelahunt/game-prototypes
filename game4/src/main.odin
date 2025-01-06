@@ -3,7 +3,6 @@ package src
 // TODO:
 // - portals
 // - more then one player
-// - death beam
 // - toggable floor tiles
 // - revert moves
 // - hint system

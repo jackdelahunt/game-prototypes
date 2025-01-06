@@ -153,6 +153,21 @@ update :: proc() {
                     }
                 }
             }
+
+            player_death_beam: {
+                // this is probably not the best way to do this but ohh well
+                for direction in Direction {
+                    if direction == .NONE {
+                        continue
+                    }
+    
+                    if line_of_sight_to_lamp(entity.grid_position, .DEATH, direction) {
+                        entity.inactive = true
+                        entity.colour = RED
+                        break
+                    }
+                }
+            }
         }
 
         if .BUTTON in entity.flags {
