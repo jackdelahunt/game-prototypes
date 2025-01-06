@@ -2,6 +2,7 @@ package src
 
 import "core:fmt"
 import "core:log"
+import "core:strings"
 import "base:runtime"
 
 import sapp "sokol/app"
@@ -10,7 +11,7 @@ MAX_BEAM_POSITION_CHECKS :: 50
 
 // @setup
 setup_game :: proc() {
-    level, ok := load_level(.TEST)
+    level, ok := load_level(state.current_level)
     if !ok {
         log.fatal("error loading level..")
         return
@@ -24,7 +25,6 @@ setup_game :: proc() {
 }
 
 restart :: proc() {
-    state.level_complete = false 
     state.entity_count = 0
     
     setup_game()
@@ -32,39 +32,24 @@ restart :: proc() {
 
 // @update
 update :: proc() {
-    if state.key_inputs[.ESCAPE] == .DOWN {
-        sapp.quit()
-    }
-
-    if state.level_complete {
-        restart()
-        return
-    }
-
     { // global controls
+        if state.key_inputs[.ESCAPE] == .DOWN {
+            sapp.quit()
+        }
+    
         if state.key_inputs[.T] == .DOWN {
             restart()
             return
         }
 
-        if state.key_inputs[.L] == .DOWN {
-            for entity_index in 0..<state.entity_count {
-                entity := &state.entities[entity_index]
-
-                if .LAMP in entity.flags {
-                    entity.direction = clockwise(entity.direction)
-                }
-            }
+        if state.key_inputs[.N] == .DOWN {
+            next_level()
+            return
         }
 
-        if state.key_inputs[.M] == .DOWN {
-            for entity_index in 0..<state.entity_count {
-                entity := &state.entities[entity_index]
-
-                if .MIRROR in entity.flags {
-                    entity.direction = oppisite(entity.direction)
-                }
-            }
+        if state.key_inputs[.P] == .DOWN {
+            previous_level()
+            return
         }
     }
 
@@ -129,7 +114,8 @@ update :: proc() {
                     }
     
                     if entity.grid_position == state.level.end {
-                        state.level_complete = true 
+                        next_level()
+                        return
                     }
                 }
             }
@@ -193,13 +179,27 @@ update :: proc() {
                 break door_update
             }
 
-            watching_entity := get_entity_with_id(entity.watching_entity)
-            if watching_entity == nil {
-                log.errorf("door %v couldn't font entity to watch", entity.grid_position)
-                break door_update
+            should_be_open := false
+
+            open_check: {
+                watching_entity := get_entity_with_id(entity.watching_entity)
+                if watching_entity == nil {
+                    log.errorf("door %v couldn't font entity to watch", entity.grid_position)
+                    break door_update
+                }
+
+                if .ACTIVATED in watching_entity.flags {
+                    should_be_open = true
+                    break open_check
+                }
+
+                if get_first_entity_at_position_filter(entity.grid_position, {.DOOR}) != nil {
+                    should_be_open = true
+                    break open_check
+                }
             }
- 
-            if .ACTIVATED in watching_entity.flags {
+
+            if should_be_open {
                 entity.flags += {.NON_BLOCKING}
             }
             else {
@@ -370,10 +370,9 @@ draw :: proc(delta_time: f32) {
 
     in_screen_space = true
 
-    if state.level_complete {
-        centre := Vector2{state.screen_width * 0.5, state.screen_height * 0.5}
-        draw_rectangle(centre, {state.screen_width, 100}, alpha(BLACK, 0.7))
-        draw_text("You win", centre, YELLOW, 60)
+    { // level name
+        text, _ := strings.replace_all(level_name(state.current_level), "_", "  ", context.temp_allocator)
+        draw_text(text, {state.screen_width * 0.5, state.screen_height - 20}, BLACK, 30)
     }
 
     { // fps counter
@@ -399,7 +398,7 @@ create_player :: proc(grid_position: Vector2i) -> ^Entity {
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.7,
         colour = brightness(BLUE, 0.75),
         grid_position = grid_position,
-        direction = .RIGHT
+        direction = .UP
     })
 }
 
@@ -440,7 +439,7 @@ create_door :: proc(grid_position: Vector2i) -> ^Entity {
         flags = {.DOOR},
         position = grid_position_to_world(grid_position),
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE},
-        colour = PINK,
+        colour = DARK_GRAY,
         grid_position = grid_position
     })  
 }

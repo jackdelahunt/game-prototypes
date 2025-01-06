@@ -52,6 +52,11 @@ GRID_WIDTH  :: 5
 GRID_HEIGHT :: 5
 GRID_TILE_SIZE :: 50
 
+START_MAXIMISED :: false
+
+START_LEVEL :: LevelType.FOUR
+REPEAT_LEVEL :: false
+
 // @state
 State :: struct {
     // window
@@ -72,8 +77,8 @@ State :: struct {
     // game state
     entities: []Entity,
     entity_count: int,
+    current_level: LevelType,
     level: Level,
-    level_complete: bool,
 
     // renderer state
     camera_position: Vector2,
@@ -100,16 +105,59 @@ Level :: struct {
 }
 
 LevelType :: enum {
-    TEST
+    TEST,
+    ONE,
+    TWO,
+    THREE,
+    FOUR,
+    FIVE
 }
 
 level_name :: proc(level: LevelType) -> string {
     switch level {
-    case .TEST:
-        return "test.level" 
+        case .TEST:     return "Test_Level"
+        case .ONE:      return "A_New_Hope"
+        case .TWO:      return "Push_It" 
+        case .THREE:    return "The_Gap" 
+        case .FOUR:     return "Hold_It!" 
+        case .FIVE:     return "Step_By_Step" 
+
     }
 
     unreachable()
+}
+
+next_level :: proc() {
+    if REPEAT_LEVEL {
+        restart()
+        return
+    }
+
+    current_level_number := i64(state.current_level)
+
+    if current_level_number == len(LevelType) - 1 {
+        state.current_level = LevelType(0)
+    } else {
+        state.current_level = LevelType(current_level_number + 1)
+    }
+
+    restart()
+}
+
+previous_level :: proc() {
+    if REPEAT_LEVEL {
+        restart()
+        return
+    }
+    current_level_number := i64(state.current_level)
+
+    if current_level_number - 1 < 0 {
+        state.current_level = LevelType(len(LevelType) - 1)
+    } else {
+        state.current_level = LevelType(current_level_number - 1)
+    }
+
+    restart()
 }
 
 // @savepoint
@@ -243,10 +291,12 @@ RED	    :: Colour{1, 0, 0, 1}
 GREEN	    :: Colour{0, 1, 0, 1}
 BLUE	    :: Colour{0, 0, 1, 1}
 
+DARK_GRAY   :: Colour{0.2, 0.2, 0.2, 1}
+LIGHT_GRAY  :: Colour{0.8, 0.8, 0.8, 1}
+
 YELLOW	    :: Colour{1, 0.9, 0.05, 1}
 PINK	    :: Colour{0.8, 0.05, 0.6, 1}
 BROWN       :: Colour{0.35, 0.16, 0.08, 1}
-LIGHT_GRAY  :: Colour{0.8, 0.8, 0.8, 1}
 SKY_BLUE    :: Colour{0.2, 0.6, 0.8, 1}
 ORANGE	    :: Colour{0.95, 0.6, 0, 1}
 
@@ -376,11 +426,28 @@ get_entity_with_id :: proc(id: EntityId) -> ^Entity {
     return nil
 }
 
-get_first_entity_at_grid_position :: proc(grid_position: Vector2i) -> ^Entity {
+get_first_entity_at_position :: proc(grid_position: Vector2i) -> ^Entity {
     for &entity in state.entities[0:state.entity_count] {
         if entity.grid_position == grid_position {
             return &entity
         }
+    }
+
+    return nil
+}
+
+get_first_entity_at_position_filter :: proc(grid_position: Vector2i, filter : bit_set[EntityFlag]) -> ^Entity {
+    for &entity in state.entities[0:state.entity_count] {
+        if entity.grid_position != grid_position {
+            continue
+        }
+
+        // flags that are in entity flags and filter should be empty
+        if entity.flags & filter != {} {
+            continue
+        }
+
+        return &entity
     }
 
     return nil
@@ -459,7 +526,8 @@ main :: proc() {
         screen_width = state.screen_width,
         screen_height = state.screen_height,
         camera_position = {0, 0},
-        zoom = 1.5,
+        zoom = 2,
+        current_level = START_LEVEL,
         entities = make([]Entity, MAX_ENTITIES),
         quads = make([]Quad, MAX_QUADS)
     }
@@ -536,7 +604,7 @@ apply_inputs :: proc() {
 }
 
 load_level :: proc(level: LevelType) -> (Level, bool) {
-    path := fmt.tprintf("resources/levels/%v", level_name(level))
+    path := fmt.tprintf("resources/levels/%v.level", level_name(level))
     
     bytes, ok := os.read_entire_file(path, allocator = context.temp_allocator)
     if !ok {
@@ -641,13 +709,13 @@ load_level :: proc(level: LevelType) -> (Level, bool) {
             return {}, false
         }
 
-        activator_entity := get_first_entity_at_grid_position(connection.activator)
+        activator_entity := get_first_entity_at_position(connection.activator)
         if activator_entity == nil {
              log.errorf("no entity found connection[%v].activator %v in level file %v", index, connection.activator,  path)
             return {}, false
         }
 
-        watcher_entity := get_first_entity_at_grid_position(connection.watcher)
+        watcher_entity := get_first_entity_at_position(connection.watcher)
         if watcher_entity == nil {
              log.errorf("no entity found connection[%v].watcher %v in level file %v", index, connection.activator,  path)
             return {}, false
@@ -657,7 +725,7 @@ load_level :: proc(level: LevelType) -> (Level, bool) {
     }
 
     for rotation, index in level_json.rotations {
-        entity := get_first_entity_at_grid_position(rotation.position)
+        entity := get_first_entity_at_position(rotation.position)
         if entity == nil {
              log.errorf("no entity found rotation[%v].position %v in level file %v", index, rotation.position,  path)
             return {}, false

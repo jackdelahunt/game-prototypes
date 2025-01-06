@@ -251,6 +251,10 @@ renderer_init :: proc "c" () {
         logger = { func = slog.func },
     })
 
+    if START_MAXIMISED {
+        sapp.toggle_fullscreen()
+    }
+
     // create vertex buffer
     state.bindings.vertex_buffers[0] = sg.make_buffer({
         usage = .DYNAMIC,
