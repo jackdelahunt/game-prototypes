@@ -11,7 +11,7 @@ MAX_BEAM_POSITION_CHECKS :: 50
 
 // @setup
 setup_game :: proc() {
-    level, ok := load_level(state.current_level)
+    ok := load_level(state.current_level)
     if !ok {
         log.fatal("error loading level..")
         return
@@ -270,14 +270,14 @@ draw :: proc(delta_time: f32) {
     { // draw grid
         for y in 0..<state.level.height {
             for x in 0..<state.level.width {
-                tile := &state.level.grid[y][x]
+                grid_position := Vector2i{x, y}
+                tile_active := is_tile_active(grid_position)
 
-                if !tile.is_floor {
+                if !tile_active {
                     continue
                 }
 
                 position := grid_position_to_world({x, y})
-                grid_position := Vector2i{x, y}
                 inner_rect_size := GRID_TILE_SIZE * f32(0.97)
 
                 tile_colour := WHITE
@@ -553,9 +553,9 @@ move_entity :: proc(entity: ^Entity, direction: Direction) -> bool {
         return false
     }
 
-    tile := get_tile(new_position)
+    tile_active := is_tile_active(new_position)
 
-    if !tile.is_floor {
+    if !tile_active {
         return false
     }
 

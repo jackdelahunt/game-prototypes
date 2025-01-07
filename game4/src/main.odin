@@ -54,7 +54,7 @@ GRID_TILE_SIZE :: 50
 
 START_MAXIMISED :: false
 
-START_LEVEL :: LevelType.TEST
+START_LEVEL :: LevelType.ONE
 REPEAT_LEVEL :: true
 
 // @state
@@ -97,11 +97,17 @@ game_context := runtime.default_context()
 
 // @level
 Level :: struct {
-    level: LevelType,
-    end: Vector2i,
-    width: int,
-    height: int,
-    grid: [][]GridTile
+    // computed
+    level:          LevelType,
+    tiles:          [][]bool,
+    width:          int,
+    height:         int,
+    end:            Vector2i,
+ 
+    // defined in level file
+    layout:         [][]TileLayout,
+    connections:    []ConnectionLayout,
+    rotations:      []RotationLayout
 }
 
 LevelType :: enum {
@@ -111,6 +117,32 @@ LevelType :: enum {
     THREE,
     FOUR,
     FIVE
+}
+
+ConnectionLayout :: struct {
+    activator: Vector2i,
+    watcher: Vector2i
+}
+
+RotationLayout :: struct {
+    position: Vector2i,
+    direction: Direction
+}
+
+TileLayout :: enum {
+    EMPTY               = 0,
+    FLOOR               = 1,
+    END                 = 2,
+    PLAYER              = 3,
+    ROCK                = 4,
+    BUTTON              = 5,
+    WALL                = 6,
+    DOOR                = 7,
+    LAMP_LIGHT          = 8,
+    LAMP_DEATH          = 9,
+    LIGHT_DETECTOR_LIGHT= 10,
+    LIGHT_DETECTOR_DEATH= 11,
+    MIRROR              = 12,
 }
 
 level_name :: proc(level: LevelType) -> string {
@@ -151,12 +183,6 @@ previous_level :: proc() {
     restart()
 }
 
-// @savepoint
-SavePoint :: struct {
-    grid: [GRID_HEIGHT][GRID_WIDTH]GridTile,
-    entities: []Entity
-}
-
 // @grid
 GridTile :: struct {
     is_floor: bool,
@@ -167,10 +193,10 @@ valid :: proc(grid_position: Vector2i) -> bool {
            (grid_position.y >= 0 && grid_position.y < state.level.height)
 }
 
-get_tile :: proc(grid_position: Vector2i) -> ^GridTile {
+is_tile_active :: proc(grid_position: Vector2i) -> bool {
     assert(valid(grid_position), "tried to get tile with invalid position")
 
-    return &state.level.grid[grid_position.y][grid_position.x]
+    return state.level.tiles[grid_position.y][grid_position.x]
 }
 
 grid_position_to_world :: proc(grid_position: Vector2i) -> Vector2 {
@@ -601,139 +627,136 @@ apply_inputs :: proc() {
     }
 }
 
-load_level :: proc(level: LevelType) -> (Level, bool) {
-    path := fmt.tprintf("resources/levels/%v.level", level_name(level))
+load_level :: proc(type: LevelType) -> bool {
+    level := Level {
+        level = type
+    }
+
+    name := level_name(type)
+    path := fmt.tprintf("resources/levels/%v.level", name)
+
+    log.infof("loading level file %v", path)
+
+    { // read level file and load into level struct and do any needed conversion
+        bytes, ok := os.read_entire_file(path, allocator = context.temp_allocator)
+        if !ok {
+            log.errorf("error loading level file %v", path)
+            return false
+        } 
     
-    bytes, ok := os.read_entire_file(path, allocator = context.temp_allocator)
-    if !ok {
-        log.errorf("error loading level file %v", path)
-        return {}, false
+        err := json.unmarshal_any(bytes, &level, spec = .JSON5, allocator = context.temp_allocator)
+        if err != nil {
+            log.errorf("error unmarshalling level file %v with error %v", path, err)
+            return false
+        }
+
+        // reversing layout because you enter it as if y0 is the bottom
+        // but it is actually the top, so just need to reverse the y axis
+        slice.reverse(level.layout)
     }
 
-    LevelJson :: struct {
-        width: int,
-        height: int,
-        grid: [][]TileID,
-        connections: []Connection,
-        rotations: []Rotation
-    }
+    { // get and verify width and height of layout
+        height := len(level.layout)
+        width: int
 
-    Connection :: struct {
-        activator: Vector2i,
-        watcher: Vector2i
-    }
+        if height  == 0 {
+            log.errorf("layout in level file %v is empty", path)
+            return false
+        }
 
-    Rotation :: struct {
-        position: Vector2i,
-        direction: Direction
-    }
+        // width is assumed to be the first one, all others
+        // are verified against this one
+        width = len(level.layout[0])
 
-    TileID :: enum {
-        EMPTY               = 0,
-        FLOOR               = 1,
-        END                 = 2,
-        PLAYER              = 3,
-        ROCK                = 4,
-        BUTTON              = 5,
-        WALL                = 6,
-        DOOR                = 7,
-        LAMP_LIGHT          = 8,
-        LAMP_DEATH          = 9,
-        LIGHT_DETECTOR_LIGHT= 10,
-        LIGHT_DETECTOR_DEATH= 11,
-        MIRROR              = 12,
-    }
-
-    level_json: LevelJson
-    
-    err := json.unmarshal_any(bytes, &level_json, spec = .JSON5, allocator = context.temp_allocator)
-    if err != nil {
-        log.errorf("error unmarshalling level file %v with error %v", path, err)
-        return {}, false
-    }
-
-    loaded_level := Level {
-        level = level,
-        width = level_json.width,
-        height = level_json.height,
-        grid = make([][]GridTile, level_json.height)
-    }
-
-    // reversing input grid because you enter it as if y0 is the bottom
-    // but it is actually the top, so just need to reverse the y axis
-    slice.reverse(level_json.grid)
-
-    for y in 0..<loaded_level.height {
-        loaded_level.grid[y] = make([]GridTile, loaded_level.width)
-
-        for x in 0..<loaded_level.width {
-            tile := level_json.grid[y][x]
-            grid_position := Vector2i{x, y}
-
-            is_floor := true
-
-            switch tile {
-                case .EMPTY:                is_floor = false
-                case .FLOOR:
-                case .END:                  loaded_level.end = grid_position
-                case .PLAYER:               create_player(grid_position)
-                case .ROCK:                 create_rock(grid_position)
-                case .BUTTON:               create_button(grid_position)
-                case .WALL:                 create_wall(grid_position)
-                case .DOOR:                 create_door(grid_position)
-                case .LAMP_LIGHT:           create_lamp(grid_position, .LIGHT)
-                case .LAMP_DEATH:           create_lamp(grid_position, .DEATH)
-                case .LIGHT_DETECTOR_LIGHT: create_light_detector(grid_position, .LIGHT)
-                case .LIGHT_DETECTOR_DEATH: create_light_detector(grid_position, .DEATH)
-                case .MIRROR:               create_mirror(grid_position)
+        for &row, y in level.layout {
+            if len(row) == width {
+                continue
             }
 
-            loaded_level.grid[y][x] = GridTile {
-                is_floor = is_floor,
+            log.errorf("width of row (y=%v) in layout in level file %v does not match first row defined, expected %v, got %v", y, path, width, len(row))
+            return false
+        }
+
+        level.width = width
+        level.height = height
+    }
+
+    { // initialise tile grid based on given layout
+        level.tiles = make([][]bool, level.height)
+        for y in 0..<level.height {
+            level.tiles[y] = make([]bool, level.width)
+    
+            for x in 0..<level.width {
+                tile := level.layout[y][x]
+                grid_position := Vector2i{x, y}
+    
+                is_floor := true
+    
+                switch tile {
+                    case .EMPTY:                is_floor = false
+                    case .FLOOR:
+                    case .END:                  level.end = grid_position
+                    case .PLAYER:               create_player(grid_position)
+                    case .ROCK:                 create_rock(grid_position)
+                    case .BUTTON:               create_button(grid_position)
+                    case .WALL:                 create_wall(grid_position)
+                    case .DOOR:                 create_door(grid_position)
+                    case .LAMP_LIGHT:           create_lamp(grid_position, .LIGHT)
+                    case .LAMP_DEATH:           create_lamp(grid_position, .DEATH)
+                    case .LIGHT_DETECTOR_LIGHT: create_light_detector(grid_position, .LIGHT)
+                    case .LIGHT_DETECTOR_DEATH: create_light_detector(grid_position, .DEATH)
+                    case .MIRROR:               create_mirror(grid_position)
+                }
+    
+                level.tiles[y][x] = is_floor
             }
         }
     }
 
-    state.level = loaded_level
+    // done before next step as it is assumed the level is set state and
+    // entities are already created for this level
+    state.level = level
 
-    for connection, index in level_json.connections {
-        if !valid(connection.activator) {
-             log.errorf("connection[%v].activator %v in level file %v is not valid", index, connection.activator,  path)
-            return {}, false
+    { // pass connection and rotation info to entities created
+        for connection, index in level.connections {
+            if !valid(connection.activator) {
+                 log.errorf("connection[%v].activator %v in level file %v is not valid", index, connection.activator,  path)
+                return false
+            }
+    
+            if !valid(connection.watcher) {
+                 log.errorf("connection[%v].watcher %v in level file %v is not valid", index, connection.activator,  path)
+                return false
+            }
+    
+            activator_entity := get_first_entity_at_position(connection.activator)
+            if activator_entity == nil {
+                 log.errorf("no entity found connection[%v].activator %v in level file %v", index, connection.activator,  path)
+                return false
+            }
+    
+            watcher_entity := get_first_entity_at_position(connection.watcher)
+            if watcher_entity == nil {
+                 log.errorf("no entity found connection[%v].watcher %v in level file %v", index, connection.activator,  path)
+                return false
+            }
+    
+            watcher_entity.watching = activator_entity.id
         }
-
-        if !valid(connection.watcher) {
-             log.errorf("connection[%v].watcher %v in level file %v is not valid", index, connection.activator,  path)
-            return {}, false
+    
+        for rotation, index in level.rotations {
+            entity := get_first_entity_at_position(rotation.position)
+            if entity == nil {
+                 log.errorf("no entity found rotation[%v].position %v in level file %v", index, rotation.position,  path)
+                return false
+            }
+    
+            assert(rotation.direction != .NONE)
+            entity.direction = rotation.direction
         }
-
-        activator_entity := get_first_entity_at_position(connection.activator)
-        if activator_entity == nil {
-             log.errorf("no entity found connection[%v].activator %v in level file %v", index, connection.activator,  path)
-            return {}, false
-        }
-
-        watcher_entity := get_first_entity_at_position(connection.watcher)
-        if watcher_entity == nil {
-             log.errorf("no entity found connection[%v].watcher %v in level file %v", index, connection.activator,  path)
-            return {}, false
-        }
-
-        watcher_entity.watching = activator_entity.id
     }
 
-    for rotation, index in level_json.rotations {
-        entity := get_first_entity_at_position(rotation.position)
-        if entity == nil {
-             log.errorf("no entity found rotation[%v].position %v in level file %v", index, rotation.position,  path)
-            return {}, false
-        }
-
-        assert(rotation.direction != .NONE)
-        entity.direction = rotation.direction
-    }
-
-    return loaded_level, true
+    return true
 }
 
 load_textures :: proc() -> bool {
