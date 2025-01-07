@@ -317,12 +317,15 @@ Entity :: struct {
 
     // core
     position: Vector2,
+    grid_position: Vector2i,
     size: Vector2,
     rotation: f32,
+    direction: Direction,
+
+    // rendering
     shape: EntityShape,
     colour: Colour,
-    grid_position: Vector2i,
-    direction: Direction,
+    layer: Layer,
 
     // flag: watching
     watching: EntityId,

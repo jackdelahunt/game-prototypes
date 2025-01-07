@@ -285,8 +285,8 @@ draw :: proc(delta_time: f32) {
                     tile_colour = YELLOW
                 }
 
-                draw_rectangle(position, {GRID_TILE_SIZE, GRID_TILE_SIZE}, brightness(tile_colour, 0.9))
-                draw_rectangle(position, {inner_rect_size, inner_rect_size}, tile_colour)
+                draw_rectangle(position, {GRID_TILE_SIZE, GRID_TILE_SIZE}, brightness(tile_colour, 0.9), .FLOOR)
+                draw_rectangle(position, {inner_rect_size, inner_rect_size}, tile_colour, .FLOOR)
             }
         }
     }
@@ -334,8 +334,8 @@ draw :: proc(delta_time: f32) {
                 }
             }
 
-            draw_circle(entity.position + right_eye_position, 5, BLACK)
-            draw_circle(entity.position + left_eye_position, 5, BLACK)
+            draw_circle(entity.position + right_eye_position, 5, BLACK, .UNDER_TOP)
+            draw_circle(entity.position + left_eye_position, 5, BLACK, .UNDER_TOP)
         }
 
         draw_button: {
@@ -365,7 +365,7 @@ draw :: proc(delta_time: f32) {
 
             if .ACTIVATED in entity.flags {
                 draw_colour = brightness(draw_colour, 2)
-                draw_circle(entity.position, GRID_TILE_SIZE * 0.5, alpha(draw_colour, 0.2))
+                draw_circle(entity.position, GRID_TILE_SIZE * 0.5, alpha(draw_colour, 0.2), .UNDER_TOP)
             }
         }
 
@@ -375,7 +375,7 @@ draw :: proc(delta_time: f32) {
             }
 
             light_colour := alpha(entity.colour, 0.2)
-            draw_circle(entity.position, GRID_TILE_SIZE * 0.5, light_colour)
+            draw_circle(entity.position, GRID_TILE_SIZE * 0.5, light_colour, .UNDER_TOP)
             draw_beam_from_position(entity.grid_position, entity.direction, light_colour) 
         } 
 
@@ -384,6 +384,8 @@ draw :: proc(delta_time: f32) {
                 break draw_mirror
             }
 
+            // TODO: just set the rotation in the entity
+            // that is what it is for
             // special drawing for a mirror
             angle: f32
             #partial switch entity.direction {
@@ -392,7 +394,7 @@ draw :: proc(delta_time: f32) {
                 case: unreachable()
             }
 
-            draw_rectangle(entity.position, {GRID_TILE_SIZE, 5}, draw_colour, angle)
+            draw_rectangle(entity.position, {GRID_TILE_SIZE, 5}, draw_colour, entity.layer, rotation = angle)
             continue
         }
 
@@ -413,14 +415,22 @@ draw :: proc(delta_time: f32) {
                 dot_count = 5
             }
 
-            draw_dotted_line(watching_entity.position, entity.position, dot_count, 2, alpha(BLUE, 0.2), dot_drawing_offset)
+            draw_dotted_line(
+                watching_entity.position,
+                entity.position,
+                dot_count,
+                2,
+                alpha(BLUE, 0.2),
+                .UNDER_TOP,
+                dot_drawing_offset
+            )
         }
 
         switch entity.shape {
-        case .RECTANGLE:
-            draw_rectangle(entity.position, entity.size, draw_colour, entity.rotation)	
-        case .CIRCLE:
-            draw_circle(entity.position, entity.size.x * 0.5, draw_colour)
+            case .RECTANGLE:
+                draw_rectangle(entity.position, entity.size, draw_colour, entity.layer, rotation = entity.rotation)	
+            case .CIRCLE:
+                draw_circle(entity.position, entity.size.x * 0.5, draw_colour, entity.layer)
         }
     } 
 
@@ -454,7 +464,7 @@ create_player :: proc(grid_position: Vector2i) -> ^Entity {
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.7,
         colour = brightness(BLUE, 0.75),
         grid_position = grid_position,
-        direction = .UP
+        direction = .UP,
     })
 }
 
@@ -465,7 +475,8 @@ create_button :: proc(grid_position: Vector2i) -> ^Entity {
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5,
         colour = SKY_BLUE,
         grid_position = grid_position,
-        shape = .CIRCLE
+        shape = .CIRCLE,
+        layer = .ON_FLOOR
     })  
 }
 
@@ -663,7 +674,7 @@ draw_beam_from_position :: proc(position: Vector2i, direction: Direction, colour
             if .MIRROR in other.flags {
                 { // draw mirror highlight
                     world_position := grid_position_to_world(current_position)
-                    draw_circle(world_position, GRID_TILE_SIZE * 0.5, colour)
+                    draw_circle(world_position, GRID_TILE_SIZE * 0.5, colour, .UNDER_TOP)
                 }
 
                 { // reflect beam direction
@@ -687,7 +698,7 @@ draw_beam_from_position :: proc(position: Vector2i, direction: Direction, colour
         }
          
         world_position := grid_position_to_world(current_position)
-        draw_rectangle(world_position, size, colour)
+        draw_rectangle(world_position, size, colour, .UNDER_TOP)
         current_position += direction_grid_offset(current_direction)
     }
 }

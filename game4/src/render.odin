@@ -37,6 +37,26 @@ DrawType :: enum {
     FONT,
 }
 
+Layer :: enum {
+    TOP,
+    UNDER_TOP,
+    ON_FLOOR,
+    FLOOR,
+}
+
+z_value :: proc(layer: Layer) -> f32 {
+    switch layer {
+        case .TOP:          return 1
+        case .UNDER_TOP:    return 0.66
+        case .ON_FLOOR:     return 0.33
+        case .FLOOR:        return 0
+    }
+
+    unreachable()
+}
+
+DEFAULT_LAYER :: Layer.TOP
+
 DEFAULT_UVS :: [4]Vector2{
     {0, 1},
     {1, 1},
@@ -46,15 +66,15 @@ DEFAULT_UVS :: [4]Vector2{
 
 in_screen_space := false
 
-draw_rectangle :: proc(position: Vector2, size: Vector2, colour: Colour, rotation: f32 = 0) {
-    draw_quad(position, size, rotation, colour, DEFAULT_UVS, .SOLID)
+draw_rectangle :: proc(position: Vector2, size: Vector2, colour: Colour, layer: Layer, rotation: f32 = 0) {
+    draw_quad(position, size, rotation, colour, DEFAULT_UVS, .SOLID, layer)
 }
 
-draw_circle :: proc(position: Vector2, radius: f32, colour: Colour) {
-    draw_quad(position, {radius * 2, radius * 2}, 0, colour, DEFAULT_UVS, .CIRCLE)
+draw_circle :: proc(position: Vector2, radius: f32, colour: Colour, layer: Layer) {
+    draw_quad(position, {radius * 2, radius * 2}, 0, colour, DEFAULT_UVS, .CIRCLE, layer)
 }
 
-draw_line :: proc(start: Vector2, end: Vector2, thickness: f32, colour: Colour) {
+draw_line :: proc(start: Vector2, end: Vector2, thickness: f32, layer: Layer, colour: Colour) {
     direction := end - start
     radians := linalg.angle_between(direction, Vector2{0, 1})
     degrees := math.DEG_PER_RAD * radians
@@ -65,10 +85,10 @@ draw_line :: proc(start: Vector2, end: Vector2, thickness: f32, colour: Colour) 
 
     rectangle_position := start + (direction * 0.5)
     line_length := length(direction)
-    draw_rectangle(rectangle_position, {thickness, line_length}, colour, degrees)
+    draw_rectangle(rectangle_position, {thickness, line_length}, colour, layer, rotation = degrees)
 }
 
-draw_dotted_line :: proc(start: Vector2, end: Vector2, dot_count: i64, dot_radius: f32, colour: Colour, offset : f32 = 0) {
+draw_dotted_line :: proc(start: Vector2, end: Vector2, dot_count: i64, radius: f32, colour: Colour, layer: Layer, offset: f32) {
     assert(dot_count > 0)
     assert(offset >= 0 && offset <= 1.0)
 
@@ -79,11 +99,11 @@ draw_dotted_line :: proc(start: Vector2, end: Vector2, dot_count: i64, dot_radiu
 
     for i in 0..<dot_count {
         dot_position := start + (delta * gap_proportion * (f32(i) + offset))
-        draw_circle(dot_position, dot_radius, colour)
+        draw_circle(dot_position, radius, colour, layer)
     }
 }
 
-draw_text :: proc(text: string, position: Vector2, colour: Colour, font_size: f32) {
+draw_text :: proc(text: string, position: Vector2, colour: Colour, font_size: f32, layer := Layer.TOP) {
     if len(text) == 0 {
         return
     }
@@ -177,12 +197,13 @@ draw_text :: proc(text: string, position: Vector2, colour: Colour, font_size: f3
             0,
             colour,
             info.uvs,
-            .FONT
+            .FONT,
+            layer
         );
     }
 }
 
-draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colour, uvs: [4]Vector2, draw_type: DrawType) {
+draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colour, uvs: [4]Vector2, draw_type: DrawType, layer: Layer) {
     transformation_matrix : Mat4
 
     if !in_screen_space {
@@ -207,10 +228,12 @@ draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colou
     quad := &state.quads[state.quad_count]
     state.quad_count += 1
 
-    quad[0].position = (transformation_matrix * Vector4{-0.5, 0.5, 0, 1}).xyz
-    quad[1].position = (transformation_matrix * Vector4{0.5, 0.5, 0, 1}).xyz
-    quad[2].position = (transformation_matrix * Vector4{0.5, -0.5, 0, 1}).xyz
-    quad[3].position = (transformation_matrix * Vector4{-0.5, -0.5, 0, 1}).xyz
+    z := z_value(layer)
+
+    quad[0].position = (transformation_matrix * Vector4{-0.5,  0.5,  z, 1}).xyz
+    quad[1].position = (transformation_matrix * Vector4{0.5,   0.5,  z, 1}).xyz
+    quad[2].position = (transformation_matrix * Vector4{0.5,  -0.5,  z, 1}).xyz
+    quad[3].position = (transformation_matrix * Vector4{-0.5, -0.5,  z, 1}).xyz
  
     quad[0].colour = cast(Vector4) colour
     quad[1].colour = cast(Vector4) colour
@@ -340,30 +363,41 @@ renderer_init :: proc "c" () {
     shader := sg.make_shader(shaders.basic_shader_desc(sg.query_backend()))
 
     state.render_pipeline = sg.make_pipeline({
-    shader = shader,
-    index_type = .UINT16,
-    layout = {
-        attrs = {
-            shaders.ATTR_basic_position = { format = .FLOAT3 },
-            shaders.ATTR_basic_color0 = { format = .FLOAT4 },
-            shaders.ATTR_basic_texture_uv0 = { format = .FLOAT2 },
-            shaders.ATTR_basic_texture_index0 = { format = .FLOAT },
+        shader = shader,
+        index_type = .UINT16,
+        label = "basic-pipeline",
+
+        // depth buffer options
+        depth = {
+            compare = .LESS_EQUAL,
+            write_enabled = true,
         },
-    },
-    colors = {
-        0 = {
-            blend = {
-                enabled = true,
-                src_factor_rgb = .SRC_ALPHA,
-                dst_factor_rgb = .ONE_MINUS_SRC_ALPHA,
-                op_rgb = .ADD,
-                src_factor_alpha = .ONE,
-                dst_factor_alpha = .ONE_MINUS_SRC_ALPHA,
-                op_alpha = .ADD,
+        cull_mode = .BACK,
+
+        // vertex buffer layout
+        layout = {
+            attrs = {
+                shaders.ATTR_basic_position = { format = .FLOAT3 },
+                shaders.ATTR_basic_color0 = { format = .FLOAT4 },
+                shaders.ATTR_basic_texture_uv0 = { format = .FLOAT2 },
+                shaders.ATTR_basic_texture_index0 = { format = .FLOAT },
+            },
+        },
+
+        // how alpha is used
+        colors = {
+            0 = {
+                blend = {
+                    enabled = true,
+                    src_factor_rgb = .SRC_ALPHA,
+                    dst_factor_rgb = .ONE_MINUS_SRC_ALPHA,
+                    op_rgb = .ADD,
+                    src_factor_alpha = .ONE,
+                    dst_factor_alpha = .ONE_MINUS_SRC_ALPHA,
+                    op_alpha = .ADD,
+                }
             }
-        }
-    },
-        label = "basic-pipeline"
+        },
     })
 
 
