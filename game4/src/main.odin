@@ -54,7 +54,7 @@ GRID_TILE_SIZE :: 50
 
 START_MAXIMISED :: false
 
-START_LEVEL :: LevelType.ONE
+START_LEVEL :: LevelId.ONE
 REPEAT_LEVEL :: true
 
 // @state
@@ -77,7 +77,7 @@ State :: struct {
     // game state
     entities: []Entity,
     entity_count: int,
-    current_level: LevelType,
+    current_level: LevelId,
     level: Level,
 
     // renderer state
@@ -98,7 +98,7 @@ game_context := runtime.default_context()
 // @level
 Level :: struct {
     // computed
-    level:          LevelType,
+    id:             LevelId,
     tiles:          [][]bool,
     width:          int,
     height:         int,
@@ -110,7 +110,7 @@ Level :: struct {
     rotations:      []RotationLayout
 }
 
-LevelType :: enum {
+LevelId :: enum {
     TEST,
     ONE,
     TWO,
@@ -145,7 +145,7 @@ TileLayout :: enum {
     MIRROR              = 12,
 }
 
-level_name :: proc(level: LevelType) -> string {
+level_name :: proc(level: LevelId) -> string {
     switch level {
         case .TEST:     return "Test_Level"
         case .ONE:      return "A_New_Hope"
@@ -162,10 +162,10 @@ level_name :: proc(level: LevelType) -> string {
 next_level :: proc() {
     current_level_number := i64(state.current_level)
 
-    if current_level_number == len(LevelType) - 1 {
-        state.current_level = LevelType(0)
+    if current_level_number == len(LevelId) - 1 {
+        state.current_level = LevelId(0)
     } else {
-        state.current_level = LevelType(current_level_number + 1)
+        state.current_level = LevelId(current_level_number + 1)
     }
 
     restart()
@@ -175,9 +175,9 @@ previous_level :: proc() {
     current_level_number := i64(state.current_level)
 
     if current_level_number - 1 < 0 {
-        state.current_level = LevelType(len(LevelType) - 1)
+        state.current_level = LevelId(len(LevelId) - 1)
     } else {
-        state.current_level = LevelType(current_level_number - 1)
+        state.current_level = LevelId(current_level_number - 1)
     }
 
     restart()
@@ -627,12 +627,12 @@ apply_inputs :: proc() {
     }
 }
 
-load_level :: proc(type: LevelType) -> bool {
+load_level :: proc(id: LevelId) -> bool {
     level := Level {
-        level = type
+        id = id
     }
 
-    name := level_name(type)
+    name := level_name(id)
     path := fmt.tprintf("resources/levels/%v.level", name)
 
     log.infof("loading level file %v", path)
