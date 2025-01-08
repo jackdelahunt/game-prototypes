@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:log"
 import "core:strings"
 import "base:runtime"
+import sa "core:container/small_array"
 
 import sapp "sokol/app"
 
@@ -82,47 +83,66 @@ update :: proc() {
                 else if state.key_inputs[.A] == .DOWN {
                     movement_direction = .LEFT
                 }
-    
-                if movement_direction != .NONE {
-                    // if the firection the player is facing is not the same
-                    // as the current direction then first check if there
-                    // is any entities that are rotatable/pushable in that tile if there is 
-                    // then only change the direction of the player, this allows
-                    // the player to rotate without push entities by accident
-                    // - 05/01/25
-                    move := true
-                    if movement_direction != entity.direction {
-                        moving_to_position := entity.grid_position + direction_grid_offset(movement_direction)
-    
-                        iter := new_grid_position_iterator(moving_to_position)
-                        for {
-                            neighbour := next(&iter)
-                            if neighbour == nil {
-                                break
-                            }
-    
-                            if .ROTATABLE in neighbour.flags || .PUSHABLE in neighbour.flags {
-                                move = false 
-                                break
-                            }
-                        }
-                    }
-    
-                    entity.direction = movement_direction
-    
-                    if move {
-                        move_entity(entity, movement_direction)
-                    }
-    
-                    if entity.grid_position == state.level.end {
-                        if REPEAT_LEVEL {
-                            restart()
-                        } else {
-                            next_level()
-                        }
 
-                        return
+                if movement_direction == .NONE {
+                    break player_movement
+                }
+
+                player_grab: {
+                    if state.key_inputs[.LEFT_SHIFT] != .PRESSING {
+                        break player_grab
                     }
+
+                    looking_direction   := entity.direction
+                    behind_direction    := oppisite(entity.direction)
+
+                    // can only grab and move backwards
+                    if movement_direction != behind_direction {
+                        break player_grab
+                    }
+
+                    looking_position := entity.grid_position + direction_grid_offset(looking_direction)
+
+                    grabbed_entity := get_entity_at_position_with_flags(looking_position, {.PUSHABLE})
+                    if grabbed_entity == nil {
+                        break player_grab 
+                    }
+                    
+                    move_entity(entity, behind_direction)
+                    move_entity(grabbed_entity, behind_direction)
+
+                    break player_movement
+                }
+                    
+                // if the direction the player is facing is not the same
+                // as the current direction then first check if there
+                // is any entities that are rotatable/pushable in that tile if there is 
+                // then only change the direction of the player, this allows
+                // the player to rotate without push entities by accident
+                // - 05/01/25
+                move := true
+                if movement_direction != entity.direction {
+                    moving_to_position := entity.grid_position + direction_grid_offset(movement_direction)
+
+                    other := get_entity_at_position_with_flags(moving_to_position, {.ROTATABLE, .PUSHABLE})
+                    if other != nil {
+                        move = false 
+                    }
+                }
+ 
+                entity.direction = movement_direction
+ 
+                if move {
+                    move_entity(entity, movement_direction)
+                }
+ 
+                if entity.grid_position == state.level.end {
+                    if REPEAT_LEVEL {
+                        restart()
+                    } else {
+                        next_level()
+                    }
+                    return
                 }
             }
 
@@ -185,23 +205,23 @@ update :: proc() {
                 break door_update
             }
 
-            should_be_open := false
+            should_be_open := true
 
             open_check: {
-                watching := get_entity_with_id(entity.watching)
-                if watching == nil {
-                    log.errorf("door %v couldn't font entity to watch", entity.grid_position)
-                    break door_update
+                for watching_id in sa.slice(&entity.watching) {
+                    watching_entity := get_entity_with_id(watching_id)
+                    if watching_entity == nil {
+                        log.errorf("door %v couldn't font entity to watch", entity.grid_position)
+                        break door_update
+                    }
+    
+                    if !(.ACTIVATED in watching_entity.flags) {
+                        should_be_open = false
+                    }
                 }
 
-                if .ACTIVATED in watching.flags {
+                if get_entity_at_position_without_flags(entity.grid_position, {.DOOR}) != nil {
                     should_be_open = true
-                    break open_check
-                }
-
-                if get_first_entity_at_position_filter(entity.grid_position, {.DOOR}) != nil {
-                    should_be_open = true
-                    break open_check
                 }
             }
 
@@ -390,8 +410,8 @@ draw :: proc(delta_time: f32) {
             // special drawing for a mirror
             angle: f32
             #partial switch entity.direction {
-                case .RIGHT: angle = -45
-                case .LEFT: angle = 45
+                case .RIGHT, .LEFT: angle = -45
+                case .UP, .DOWN: angle = 45
                 case: unreachable()
             }
 
@@ -404,27 +424,29 @@ draw :: proc(delta_time: f32) {
                 break draw_watching
             }
 
-            watching_entity := get_entity_with_id(entity.watching)
-            if watching_entity == nil {
-                break draw_watching
+            for watching_id in sa.slice(&entity.watching) {
+                watching_entity := get_entity_with_id(watching_id)
+                if watching_entity == nil {
+                    break draw_watching
+                }
+    
+                distance := length(watching_entity.position - entity.position)
+                dot_count := i64(distance / (GRID_TILE_SIZE * 0.5)) // dot every half tile
+    
+                if dot_count < 5 {
+                    dot_count = 5
+                }
+    
+                draw_dotted_line(
+                    watching_entity.position,
+                    entity.position,
+                    dot_count,
+                    2,
+                    alpha(BLUE, 0.2),
+                    .UNDER_TOP,
+                    dot_drawing_offset
+                )
             }
-
-            distance := length(watching_entity.position - entity.position)
-            dot_count := i64(distance / (GRID_TILE_SIZE * 0.5)) // dot every half tile
-
-            if dot_count < 5 {
-                dot_count = 5
-            }
-
-            draw_dotted_line(
-                watching_entity.position,
-                entity.position,
-                dot_count,
-                2,
-                alpha(BLUE, 0.2),
-                .UNDER_TOP,
-                dot_drawing_offset
-            )
         }
 
         switch entity.shape {
@@ -543,7 +565,7 @@ create_light_detector :: proc(grid_position: Vector2i, type: LampType) -> ^Entit
 
 create_mirror :: proc(grid_position: Vector2i) -> ^Entity {
     return create_entity(Entity{
-        flags = {.MIRROR, .PUSHABLE},
+        flags = {.MIRROR, .PUSHABLE, .ROTATABLE},
         position = grid_position_to_world(grid_position),
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE},
         colour = SKY_BLUE,

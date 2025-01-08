@@ -111,7 +111,8 @@ LevelId :: enum {
     TWO,
     THREE,
     FOUR,
-    FIVE
+    FIVE,
+    SIX
 }
 
 ConnectionLayout :: struct {
@@ -148,7 +149,7 @@ level_name :: proc(level: LevelId) -> string {
         case .THREE:    return "The_Gap" 
         case .FOUR:     return "Hold_It!" 
         case .FIVE:     return "Step_By_Step" 
-
+        case .SIX:      return "Mega_Light" 
     }
 
     unreachable()
@@ -243,24 +244,26 @@ clockwise :: proc(direction: Direction) -> Direction {
 // relative incoming direction is RIGHT as it is from the perspective
 // of the mirror 
 mirror_reflection :: proc(mirror_direction: Direction, relative_income_direction: Direction) -> Direction {
-    if mirror_direction == .RIGHT {
-        switch relative_income_direction {
-            case .UP: return .LEFT
-            case .DOWN: return .RIGHT
-            case .LEFT: return .UP
-            case .RIGHT: return .DOWN
-            case .NONE: unreachable()
+    switch mirror_direction {
+        case .RIGHT, .LEFT: {
+            switch relative_income_direction {
+                case .UP: return .LEFT
+                case .DOWN: return .RIGHT
+                case .LEFT: return .UP
+                case .RIGHT: return .DOWN
+                case .NONE: unreachable()
+            }
         }
-    }
-
-    if mirror_direction == .LEFT {
-        switch relative_income_direction {
-            case .UP: return .RIGHT
-            case .DOWN: return .LEFT
-            case .LEFT: return .DOWN
-            case .RIGHT: return .UP
-            case .NONE: unreachable()
+        case .UP, .DOWN: {
+            switch relative_income_direction {
+                case .UP: return .RIGHT
+                case .DOWN: return .LEFT
+                case .LEFT: return .DOWN
+                case .RIGHT: return .UP
+                case .NONE: unreachable()
+            }
         }
+        case .NONE:
     }
 
     unreachable()
@@ -349,10 +352,10 @@ Entity :: struct {
     layer: Layer,
 
     // flag: watching
-    watching: EntityId,
+    watching: sa.Small_Array(5, EntityId),
 
     // flag: lamp
-    lamp_type: LampType
+    lamp_type: LampType,
 }
 
 EntityId :: uint
@@ -455,14 +458,29 @@ get_first_entity_at_position :: proc(grid_position: Vector2i) -> ^Entity {
     return nil
 }
 
-get_first_entity_at_position_filter :: proc(grid_position: Vector2i, filter : bit_set[EntityFlag]) -> ^Entity {
+get_entity_at_position_without_flags :: proc(grid_position: Vector2i, blocked_flags : bit_set[EntityFlag]) -> ^Entity {
     for &entity in state.entities[0:state.entity_count] {
         if entity.grid_position != grid_position {
             continue
         }
 
-        // flags that are in entity flags and filter should be empty
-        if entity.flags & filter != {} {
+        if entity.flags & blocked_flags != {} {
+            continue
+        }
+
+        return &entity
+    }
+
+    return nil
+}
+
+get_entity_at_position_with_flags :: proc(grid_position: Vector2i, searching_flags: bit_set[EntityFlag]) -> ^Entity {
+    for &entity in state.entities[0:state.entity_count] {
+        if entity.grid_position != grid_position {
+            continue
+        }
+
+        if entity.flags & searching_flags == {} {
             continue
         }
 
@@ -732,8 +750,8 @@ load_level :: proc(id: LevelId) -> bool {
                  log.errorf("no entity found connection[%v].watcher %v in level file %v", index, connection.activator,  path)
                 return false
             }
-    
-            watcher_entity.watching = activator_entity.id
+
+            sa.append(&watcher_entity.watching, activator_entity.id)
         }
     
         for rotation, index in level.rotations {
