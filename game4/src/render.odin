@@ -282,7 +282,7 @@ screen_position_to_world_position :: proc(position: Vector2) -> Vector2 {
 }
 
 renderer_init :: proc "c" () {
-    context = game_context
+    context = custom_context()
 
     sg.setup({
         environment = sglue.environment(),
@@ -409,7 +409,7 @@ renderer_init :: proc "c" () {
 }
 
 renderer_frame :: proc "c" () {
-    context = game_context
+    context = custom_context()
 
     state.screen_width = sapp.widthf()
     state.screen_height = sapp.heightf()

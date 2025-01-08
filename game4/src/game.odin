@@ -26,7 +26,8 @@ setup_game :: proc() {
 
 restart :: proc() {
     state.entity_count = 0
-    
+    free_all(level_allocator)
+
     setup_game()
 }
 

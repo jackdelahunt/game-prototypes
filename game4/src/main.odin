@@ -22,8 +22,6 @@ import "core:math"
 import "core:slice"
 import "core:math/noise"
 import "core:math/rand"
-import "core:path/filepath"
-import "core:encoding/ansi"
 import "core:encoding/json"
 import sa "core:container/small_array"
 
@@ -91,9 +89,6 @@ State :: struct {
 }
 
 state := State {}
-
-// @context
-game_context := runtime.default_context()
 
 // @level
 Level :: struct {
@@ -524,11 +519,10 @@ alagard: Font
 
 // @main
 main :: proc() {
-    game_context.logger.lowest_level = .Debug if ODIN_DEBUG else .Warning
-    game_context.logger.procedure = log_callback
-    game_context.allocator.procedure = allocator_callback
+    context = custom_context()
 
-    context = game_context
+    _ = make([]u8, 1024 * 1024, level_allocator)
+    free_all(level_allocator)
 
     { // load resources
         loading_ok := true
@@ -552,8 +546,8 @@ main :: proc() {
         camera_position = {0, 0},
         zoom = 1.25,
         current_level = START_LEVEL,
-        entities = make([]Entity, MAX_ENTITIES),
-        quads = make([]Quad, MAX_QUADS)
+        entities = make([]Entity, MAX_ENTITIES, eternal_allocator),
+        quads = make([]Quad, MAX_QUADS, eternal_allocator)
     }
 
     setup_game()
@@ -634,8 +628,6 @@ load_level :: proc(id: LevelId) -> bool {
 
     name := level_name(id)
     path := fmt.tprintf("resources/levels/%v.level", name)
-
-    log.infof("loading level file %v", path)
 
     { // read level file and load into level struct and do any needed conversion
         bytes, ok := os.read_entire_file(path, allocator = context.temp_allocator)
@@ -756,6 +748,8 @@ load_level :: proc(id: LevelId) -> bool {
         }
     }
 
+    log.infof("loaded level %v", name)
+
     return true
 }
 
@@ -764,7 +758,7 @@ load_textures :: proc() -> bool {
 
     path := fmt.tprint(RESOURCE_DIR, "face", ".png", sep="")
     
-    png_data, ok := os.read_entire_file(path)
+    png_data, ok := os.read_entire_file(path, eternal_allocator)
     if !ok {
         log.errorf("error loading texture file %v", path)
         return false
@@ -797,7 +791,7 @@ load_fonts :: proc() -> bool {
 
     font_height := 15 // for some reason this only bakes properly at 15 ? it's a 16px font dou...
 
-    ttf_data, ok := os.read_entire_file(path)
+    ttf_data, ok := os.read_entire_file(path, eternal_allocator)
     if !ok || ttf_data == nil {
         log.errorf("error loading font file %v", path)
         return false
@@ -878,51 +872,7 @@ window_event_callback :: proc "c" (event: ^sapp.Event) {
     }
 }
 
-allocator_callback :: proc(allocator_data: rawptr, mode: runtime.Allocator_Mode, size, alignment: int, old_memory: rawptr, old_size: int, location: runtime.Source_Code_Location = #caller_location) -> ([]byte, runtime.Allocator_Error) {
-    KB :: 1024
-    MB :: KB * 1024
-    GB :: MB * 1024
 
-    size_string := "b"
-    converted_size := size
-    if size >= KB && size < MB {
-        size_string = "Kb"
-        converted_size /= KB
-    }
-    else if size >= MB && size < GB {
-        size_string = "Mb" 
-        converted_size /= MB
-    }
-    else if size >= GB {
-        size_string = "Gb" 
-        converted_size /= GB
-    }
-
-    log.debugf("[%v] %v -> %v (%v%v)", mode, old_size, size, converted_size, size_string, location = location)
-    return runtime.default_context().allocator.procedure(allocator_data, mode, size, alignment, old_memory, old_size, location)
-}
-
-log_callback :: proc(data: rawptr, level: runtime.Logger_Level, text: string, options: bit_set[runtime.Logger_Option], location := #caller_location) {
-    switch level {
-    case .Debug:
-    case .Info:
-        fmt.print(ansi.CSI + ansi.FG_CYAN + ansi.SGR)
-    case .Warning: 
-        fmt.print(ansi.CSI + ansi.FG_YELLOW + ansi.SGR)
-    case .Error:
-        fmt.print(ansi.CSI + ansi.FG_BRIGHT_RED + ansi.SGR)
-    case .Fatal:
-        fmt.print(ansi.CSI + ansi.FG_RED + ansi.SGR)
-    }
-
-
-    file := filepath.base(location.file_path)
-    fmt.printfln("[%v] %v(%v:%v) %v", level, file, location.line, location.column, text) 
-
-    if level != .Debug {
-        fmt.print(ansi.CSI + ansi.RESET + ansi.SGR)
-    }
-}
 
 
 
