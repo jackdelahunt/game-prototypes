@@ -50,9 +50,9 @@ GRID_WIDTH  :: 5
 GRID_HEIGHT :: 5
 GRID_TILE_SIZE :: 50
 
-START_MAXIMISED :: false
+START_MAXIMISED :: true
 
-START_LEVEL :: LevelId.ONE
+START_LEVEL :: LevelId.TEST
 REPEAT_LEVEL :: true
 
 // @state

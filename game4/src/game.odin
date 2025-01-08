@@ -456,6 +456,11 @@ draw :: proc(delta_time: f32) {
         text := fmt.tprintf("Q: %v/%v", state.quad_count, MAX_QUADS)
         draw_text(text, {300, 25}, BLUE, 15)
     }
+
+    { // controls
+        text := "move: WASD   restart: T   rotate: R   next: N   previous: P"
+        draw_text(text, {(state.screen_width * 0.75) - 200, 25}, BLACK, 20)
+    }
 }
 
 create_player :: proc(grid_position: Vector2i) -> ^Entity {
