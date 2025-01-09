@@ -23,6 +23,8 @@ import "core:slice"
 import "core:math/noise"
 import "core:math/rand"
 import "core:encoding/json"
+import "core:mem"
+
 import sa "core:container/small_array"
 
 import stbi "vendor:stb/image"
@@ -41,8 +43,8 @@ DEFAULT_SCREEN_HEIGHT	:: 900
 TICKS_PER_SECOND :: 30.0
 TICK_RATE :: 1.0 / TICKS_PER_SECOND
 
-MAX_ENTITIES	:: 5_000
-MAX_QUADS	:: 15_000
+MAX_ENTITIES	:: 1_000
+MAX_QUADS	:: 10_000
 
 MAX_SAVE_POINTS :: 200
 
@@ -50,7 +52,7 @@ GRID_WIDTH  :: 5
 GRID_HEIGHT :: 5
 GRID_TILE_SIZE :: 50
 
-START_MAXIMISED :: true
+START_MAXIMISED :: false
 
 START_LEVEL :: LevelId.TEST
 REPEAT_LEVEL :: true
@@ -77,6 +79,7 @@ State :: struct {
     entity_count: int,
     current_level: LevelId,
     level: Level,
+    save_this_tick: bool,
 
     // renderer state
     camera_position: Vector2,
@@ -90,6 +93,59 @@ State :: struct {
 
 state := State {}
 
+// @entity
+Entity :: struct {
+    // meta
+    id: EntityId,
+    flags: bit_set[EntityFlag],
+
+    // core
+    position: Vector2,
+    grid_position: Vector2i,
+    size: Vector2,
+    rotation: f32,
+    direction: Direction,
+
+    // rendering
+    shape: EntityShape,
+    colour: Colour,
+    layer: Layer,
+
+    // flag: watching
+    watching: sa.Small_Array(5, EntityId),
+
+    // flag: lamp
+    lamp_type: LampType,
+}
+
+EntityId :: uint
+
+EntityFlag :: enum {
+    NONE = 0,
+    PLAYER,
+    BUTTON,
+    KEY,
+    KEY_DOOR,
+    DOOR,
+    LAMP,
+    LIGHT_DETECTOR,
+    MIRROR,
+    ACTIVATED,
+    PUSHABLE,
+    ROTATABLE,
+    WATCHING,
+    NON_BLOCKING,
+    DELETED,
+    NO_UNDO,
+    IN_PLAYER_HAND,
+    KEY_USED
+}
+
+EntityShape :: enum {
+    RECTANGLE,
+    CIRCLE
+}
+
 // @level
 Level :: struct {
     // computed
@@ -98,6 +154,7 @@ Level :: struct {
     width:          int,
     height:         int,
     end:            Vector2i,
+    save_points:    [dynamic][]Entity,
  
     // defined in level file
     layout:         [][]TileLayout,
@@ -112,7 +169,8 @@ LevelId :: enum {
     THREE,
     FOUR,
     FIVE,
-    SIX
+    SIX,
+    SEVEN
 }
 
 ConnectionLayout :: struct {
@@ -139,6 +197,8 @@ TileLayout :: enum {
     LIGHT_DETECTOR_LIGHT= 10,
     LIGHT_DETECTOR_DEATH= 11,
     MIRROR              = 12,
+    KEY                 = 13,
+    KEY_DOOR            = 14,
 }
 
 level_name :: proc(level: LevelId) -> string {
@@ -148,8 +208,9 @@ level_name :: proc(level: LevelId) -> string {
         case .TWO:      return "Push_It" 
         case .THREE:    return "The_Gap" 
         case .FOUR:     return "Hold_It!" 
-        case .FIVE:     return "Step_By_Step" 
-        case .SIX:      return "Mega_Light" 
+        case .FIVE:     return "High_Beam" 
+        case .SIX:      return "Two_Point_O"
+        case .SEVEN:    return "Enlightend"
     }
 
     unreachable()
@@ -177,6 +238,57 @@ previous_level :: proc() {
     }
 
     restart()
+}
+
+save_tick :: proc() {
+    state.save_this_tick = true  
+}
+
+create_save_point :: proc() {
+    saved_entities := make([]Entity, state.entity_count, level_allocator)
+
+    for i in 0..<state.entity_count {
+        saved_entities[i] = state.entities[i]
+    }
+
+    append(&state.level.save_points, saved_entities)
+
+    log.debugf("created save point with %v entities", len(saved_entities))
+    log.debugf("%v total saved points", len(state.level.save_points))
+}
+
+load_save_point :: proc() {
+    // the last save point in the list is considered the latest state of the game
+    // to load the previous state, we pop the last save point off the list copy
+    // the new save point at the end of the list. This does not get removed. 
+    // Will only get removed when this is called again and it is the latest state
+    // - 09/01/25
+
+    if len(state.level.save_points) <= 1 {
+        log.debug("tried to load save point, but not enough exist.. doing nothing")
+        return
+    }
+
+    // removing current state and copying the remaining newest state
+    _ = pop(&state.level.save_points) // remove current state
+    saved_entities := state.level.save_points[len(state.level.save_points) - 1]
+
+    for i in 0..<len(saved_entities) {
+        current := &state.entities[i]
+        saved := &saved_entities[i]
+
+        // assumes entities are not moved in the buffer ever
+        assert(current.id == saved.id)
+
+        if .NO_UNDO in current.flags {
+            continue
+        }
+
+        current^ = saved^
+    }
+
+    state.entity_count = len(saved_entities)
+    log.debugf("loaded save point with %v entities", len(saved_entities))
 }
 
 // @grid
@@ -332,55 +444,7 @@ brightness :: proc(colour: Colour, level: f32) -> Colour {
     }
 }
 
-// @entity
-Entity :: struct {
-    // meta
-    id: EntityId,
-    flags: bit_set[EntityFlag],
-    inactive: bool,
-
-    // core
-    position: Vector2,
-    grid_position: Vector2i,
-    size: Vector2,
-    rotation: f32,
-    direction: Direction,
-
-    // rendering
-    shape: EntityShape,
-    colour: Colour,
-    layer: Layer,
-
-    // flag: watching
-    watching: sa.Small_Array(5, EntityId),
-
-    // flag: lamp
-    lamp_type: LampType,
-}
-
-EntityId :: uint
-
-EntityFlag :: enum {
-    NONE = 0,
-    PLAYER,
-    BUTTON,
-    DOOR,
-    LAMP,
-    LIGHT_DETECTOR,
-    MIRROR,
-    ACTIVATED,
-    PUSHABLE,
-    ROTATABLE,
-    WATCHING,
-    NON_BLOCKING,
-    DELETE,
-}
-
-EntityShape :: enum {
-    RECTANGLE,
-    CIRCLE
-}
-
+// @lamp
 LampType :: enum {
     LIGHT,
     DEATH
@@ -716,12 +780,16 @@ load_level :: proc(id: LevelId) -> bool {
                     case .LIGHT_DETECTOR_LIGHT: create_light_detector(grid_position, .LIGHT)
                     case .LIGHT_DETECTOR_DEATH: create_light_detector(grid_position, .DEATH)
                     case .MIRROR:               create_mirror(grid_position)
+                    case .KEY:                  create_key(grid_position)
+                    case .KEY_DOOR:             create_key_door(grid_position)
                 }
     
                 level.tiles[y][x] = is_floor
             }
         }
     }
+
+    level.save_points = make([dynamic][]Entity, level_allocator)
 
     // done before next step as it is assumed the level is set state and
     // entities are already created for this level

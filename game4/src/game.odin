@@ -18,6 +18,11 @@ setup_game :: proc() {
         return
     }
 
+    // when a new level is loaded, a new save point is created
+    // this ensure the state of the level at the start is saved
+    // and that it can be reverted to
+    create_save_point()
+
     total_width := f32(GRID_TILE_SIZE * state.level.width)
     total_height := f32(GRID_TILE_SIZE * state.level.height)
 
@@ -37,6 +42,7 @@ update :: proc() {
     { // global controls
         if state.key_inputs[.ESCAPE] == .DOWN {
             sapp.quit()
+            return
         }
     
         if state.key_inputs[.T] == .DOWN {
@@ -53,13 +59,18 @@ update :: proc() {
             previous_level()
             return
         }
+
+        if state.key_inputs[.B] == .DOWN {
+            load_save_point()
+            return
+        }
     }
 
     // update pass
     for entity_index in 0..<state.entity_count {
         entity := &state.entities[entity_index]
 
-        if entity.inactive {
+        if .DELETED in entity.flags {
             continue
         }
 
@@ -161,7 +172,7 @@ update :: proc() {
                     }
 
                     if .ROTATABLE in other.flags {
-                        other.direction = clockwise(other.direction) 
+                        rotate_entity(other)
                     }
                 }
             }
@@ -174,15 +185,18 @@ update :: proc() {
                     }
     
                     if line_of_sight_to_lamp(entity.grid_position, .DEATH, direction) {
-                        entity.inactive = true
-                        entity.colour = RED
+                        entity.flags += {.DELETED}
                         break
                     }
                 }
             }
         }
 
-        if .BUTTON in entity.flags {
+        button_update: {
+            if !(.BUTTON in entity.flags) {
+                break button_update
+            }
+
             being_pressed := false
 
             iter := new_grid_position_iterator(entity.grid_position)
@@ -197,6 +211,76 @@ update :: proc() {
             }
             else {
                 entity.flags -= {.ACTIVATED}
+            }
+        }
+
+        key_update: {
+            if !(.KEY in entity.flags) {
+                break key_update
+            }
+
+            if .KEY_USED in entity.flags {
+                break key_update
+            }
+
+            player := get_entity_with_flag(.PLAYER)
+            if player == nil {
+                break key_update 
+            }
+
+            pickup_check: {
+                if .IN_PLAYER_HAND in entity.flags {
+                    break pickup_check
+                }
+    
+                if entity.grid_position == player.grid_position {
+                    entity.flags += {.IN_PLAYER_HAND}
+                }
+            }
+
+            in_hand: {
+                if !(.IN_PLAYER_HAND in entity.flags) {
+                    break in_hand
+                }
+
+                entity.position = player.position
+
+                // check all adjacent tiles and check if there is a door
+                // if it is then activated it
+                for direction in Direction {
+                    if direction == .NONE {
+                        continue
+                    }
+                    
+                    checking_position := player.grid_position + direction_grid_offset(direction)
+
+                    other := get_entity_at_position_with_flags(checking_position, {.KEY_DOOR})
+                    if other == nil {
+                        continue
+                    }
+
+                    if !(.ACTIVATED in other.flags) {
+                        other.flags += {.ACTIVATED}
+
+                        entity.flags += {.KEY_USED}
+                        entity.flags -= {.IN_PLAYER_HAND}
+                    }
+                }
+            }
+        }
+
+        key_door_update: {
+            if !(.KEY_DOOR in entity.flags) {
+                break key_door_update
+            }
+
+            activated := .ACTIVATED in entity.flags
+
+            if activated {
+                entity.flags += {.NON_BLOCKING}    
+            }
+            else {
+                entity.flags -= {.NON_BLOCKING}    
             }
         }
 
@@ -217,8 +301,10 @@ update :: proc() {
     
                     if !(.ACTIVATED in watching_entity.flags) {
                         should_be_open = false
+                        break
                     }
                 }
+
 
                 if get_entity_at_position_without_flags(entity.grid_position, {.DOOR}) != nil {
                     should_be_open = true
@@ -256,25 +342,9 @@ update :: proc() {
         }
     }
 
-    // delete pass
-    i := 0
-    for i < state.entity_count {
-        entity := &state.entities[i]
-    
-        if .DELETE in entity.flags {
-            if i == state.entity_count - 1 {
-                state.entity_count -= 1
-                break
-            }
-    
-            // swap remove with last entity
-            state.entities[i] = state.entities[state.entity_count - 1]
-            state.entity_count -= 1
-        } else {
-            // if we did remove then we want to re-check the current
-            // entity we swapped with so dont go to next index
-            i += 1
-        }
+    if state.save_this_tick {
+        create_save_point()
+        state.save_this_tick = false
     }
 }
 
@@ -313,6 +383,10 @@ draw :: proc(delta_time: f32) {
     }
 
     for &entity in state.entities[0:state.entity_count] {
+        if .DELETED in entity.flags {
+            continue
+        }
+
         draw_colour := entity.colour
 
         draw_player: {
@@ -366,6 +440,26 @@ draw :: proc(delta_time: f32) {
 
             if .ACTIVATED in entity.flags {
                 draw_colour = brightness(draw_colour, 0.5)
+            }
+        }
+
+        draw_key: {
+            if !(.KEY in entity.flags) {
+                break draw_key
+            }
+
+            if .KEY_USED in entity.flags {
+                draw_colour = brightness(draw_colour, 0.5)
+            }
+        }
+
+        draw_key_door: {
+            if !(.KEY_DOOR in entity.flags) {
+                break draw_key_door
+            }
+
+            if .ACTIVATED in entity.flags {
+                draw_colour = alpha(draw_colour, 0.2)
             }
         }
 
@@ -508,6 +602,26 @@ create_button :: proc(grid_position: Vector2i) -> ^Entity {
     })  
 }
 
+create_key :: proc(grid_position: Vector2i) -> ^Entity {
+    return create_entity(Entity{
+        flags = {.KEY, .NON_BLOCKING},
+        position = grid_position_to_world(grid_position),
+        size = Vector2{GRID_TILE_SIZE * 0.5, GRID_TILE_SIZE * 0.18},
+        colour = YELLOW,
+        grid_position = grid_position,
+    })  
+}
+
+create_key_door :: proc(grid_position: Vector2i) -> ^Entity {
+    return create_entity(Entity{
+        flags = {.KEY_DOOR},
+        position = grid_position_to_world(grid_position),
+        size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE},
+        colour = brightness(YELLOW, 0.6),
+        grid_position = grid_position,
+    })  
+}
+
 create_rock :: proc(grid_position: Vector2i) -> ^Entity {
     return create_entity(Entity{
         flags = {.PUSHABLE},
@@ -540,26 +654,43 @@ create_door :: proc(grid_position: Vector2i) -> ^Entity {
 }
 
 create_lamp :: proc(grid_position: Vector2i, type: LampType) -> ^Entity {
-    return create_entity(Entity{
-        flags = {.LAMP, .PUSHABLE, .ROTATABLE},
-        position = grid_position_to_world(grid_position),
-        size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5,
-        colour = lamp_colour(type),
-        grid_position = grid_position,
-        direction = .UP,
-        lamp_type = type,
-    })  
+    if type == .LIGHT {
+        return create_entity(Entity{
+            flags = {.LAMP, .PUSHABLE, .ROTATABLE},
+            position = grid_position_to_world(grid_position),
+            size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5,
+            colour = lamp_colour(type),
+            grid_position = grid_position,
+            direction = .UP,
+            lamp_type = type,
+        })
+    }
+
+    if type == .DEATH {
+        return create_entity(Entity{
+            flags = {.LAMP, .PUSHABLE, .ROTATABLE, .NO_UNDO},
+            position = grid_position_to_world(grid_position),
+            size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5,
+            colour = lamp_colour(type),
+            grid_position = grid_position,
+            direction = .UP,
+            lamp_type = type,
+        })
+    }
+     
+    unreachable()
 }
 
 create_light_detector :: proc(grid_position: Vector2i, type: LampType) -> ^Entity {
     return create_entity(Entity{
-        flags = {.LIGHT_DETECTOR},
+        flags = {.LIGHT_DETECTOR, .NON_BLOCKING},
         position = grid_position_to_world(grid_position),
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5,
         colour = brightness(lamp_colour(type), 0.5),
         grid_position = grid_position,
         shape = .CIRCLE,
-        lamp_type = type
+        lamp_type = type,
+        layer = .UNDER_TOP
     })  
 }
 
@@ -588,31 +719,38 @@ move_entity :: proc(entity: ^Entity, direction: Direction) -> bool {
     }
 
     iter := new_grid_position_iterator(new_position)
-    other: ^Entity = next(&iter)
-    for other != nil {
-        // this is recursive, maybe this will cause issues in the future
-        // but for right now it works - 04/01/25
-        pushed := push_entity(other, direction)
+    for {
+        other := next(&iter)
+        if other == nil {
+            break
+        }
 
-        other = next(&iter)
-
-        if !pushed {
+        if .NON_BLOCKING in other.flags {
+            continue
+        }
+        else if .PUSHABLE in other.flags {
+            pushed := move_entity(other, direction)
+            if !pushed {
+                return false
+            }
+        } 
+        else {
             return false
         }
     }
 
     entity.grid_position = new_position
     entity.position = grid_position_to_world(entity.grid_position)
+    save_tick()
 
     return true
 }
 
-push_entity :: proc(entity: ^Entity, direction: Direction) -> bool {
-    if !(.PUSHABLE in entity.flags) {
-        return false
-    }
+rotate_entity :: proc(entity: ^Entity) {
+    assert(.ROTATABLE in entity.flags)
 
-    return move_entity(entity, direction)
+    entity.direction = clockwise(entity.direction)
+    save_tick()
 }
 
 // takes into account reflections from mirrors, start position
