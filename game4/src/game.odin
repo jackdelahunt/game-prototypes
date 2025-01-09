@@ -18,16 +18,12 @@ setup_game :: proc() {
         return
     }
 
+    centre_camera()
+
     // when a new level is loaded, a new save point is created
     // this ensure the state of the level at the start is saved
     // and that it can be reverted to
     create_save_point()
-
-    total_width := f32(GRID_TILE_SIZE * state.level.width)
-    total_height := f32(GRID_TILE_SIZE * state.level.height)
-
-    state.camera_position = {total_width, total_height} * 0.5
-    state.camera_position -= {GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5
 }
 
 restart :: proc() {
@@ -60,9 +56,17 @@ update :: proc() {
             return
         }
 
-        if state.key_inputs[.B] == .DOWN {
+        if state.key_inputs[.U] == .DOWN {
             load_save_point()
             return
+        }
+
+        if state.key_inputs[.UP] == .PRESSING {
+            zoom_in()
+        }
+
+        if state.key_inputs[.DOWN] == .PRESSING {
+            zoom_out()
         }
     }
 
@@ -387,7 +391,7 @@ draw :: proc(delta_time: f32) {
             continue
         }
 
-        draw_colour := entity.colour
+        draw_colour := entity.colour 
 
         draw_player: {
             if !(.PLAYER in entity.flags) {
@@ -541,13 +545,39 @@ draw :: proc(delta_time: f32) {
                     dot_drawing_offset
                 )
             }
+        } 
+
+        draw_no_undo: {
+            if !(.NO_UNDO in entity.flags) {
+                break draw_no_undo
+            }
+
+            highlight_alpha := 0.3 * draw_colour.a
+            highlight_colour := alpha(RED, highlight_alpha)
+
+            switch entity.shape {
+                case .RECTANGLE: {
+                    // this makes the outline around the rectangle the same size
+                    // for rectangles that are not equal width and height
+                    scaled_size := entity.size * 0.20
+                    highlight_size := entity.size + max(scaled_size.x, scaled_size.y) 
+
+                    draw_rectangle(entity.position, highlight_size, highlight_colour, .UNDER_TOP, rotation = entity.rotation)	
+                }
+                case .CIRCLE: {
+                    highlight_radius := (entity.size.x * 0.5) * 1.15
+                    draw_circle(entity.position, highlight_radius, highlight_colour, .UNDER_TOP)
+                }
+        }   
         }
 
         switch entity.shape {
-            case .RECTANGLE:
+            case .RECTANGLE: {
                 draw_rectangle(entity.position, entity.size, draw_colour, entity.layer, rotation = entity.rotation)	
-            case .CIRCLE:
+            }
+            case .CIRCLE: {
                 draw_circle(entity.position, entity.size.x * 0.5, draw_colour, entity.layer)
+            }
         }
     } 
 
@@ -574,8 +604,8 @@ draw :: proc(delta_time: f32) {
     }
 
     { // controls
-        text := "move: WASD   restart: T   rotate: R   next: N   previous: P"
-        draw_text(text, {(state.screen_width * 0.75) - 200, 25}, BLACK, 20)
+        text := "move: WASD   undo: U   restart: T   rotate: R   next: N   previous: P zoom in: Up   zoom out: Down"
+        draw_text(text, {state.screen_width * 0.5, 50}, BLACK, 15)
     }
 }
 

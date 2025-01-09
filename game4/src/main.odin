@@ -1,16 +1,5 @@
 package src
 
-// TODO:
-// - portals
-// - more then one player
-// - toggable floor tiles
-// - revert moves
-// - hint system
-// - more then 1 connection for activating things
-// - level and game timer
-// - bugs:
-//      lamp activators dont check direction of lamp to activate
-
 import "core:fmt"
 import "core:log"
 import "base:runtime"
@@ -40,17 +29,20 @@ import shaders "shaders"
 DEFAULT_SCREEN_WIDTH	:: 1200
 DEFAULT_SCREEN_HEIGHT	:: 900
 
-TICKS_PER_SECOND :: 30.0
-TICK_RATE :: 1.0 / TICKS_PER_SECOND
+TICKS_PER_SECOND    :: 30.0
+TICK_RATE           :: 1.0 / TICKS_PER_SECOND
 
 MAX_ENTITIES	:: 1_000
 MAX_QUADS	:: 10_000
 
 MAX_SAVE_POINTS :: 200
 
-GRID_WIDTH  :: 5
-GRID_HEIGHT :: 5
-GRID_TILE_SIZE :: 50
+GRID_WIDTH      :: 5
+GRID_HEIGHT     :: 5
+GRID_TILE_SIZE  :: 50
+
+DEFAULT_ZOOM    :: 1.25
+ZOOM_RATE       :: 0.25
 
 START_MAXIMISED :: false
 
@@ -158,8 +150,7 @@ Level :: struct {
  
     // defined in level file
     layout:         [][]TileLayout,
-    connections:    []ConnectionLayout,
-    rotations:      []RotationLayout
+    entities:       []EntityConfig,
 }
 
 LevelId :: enum {
@@ -173,14 +164,11 @@ LevelId :: enum {
     SEVEN
 }
 
-ConnectionLayout :: struct {
-    activator: Vector2i,
-    watcher: Vector2i
-}
-
-RotationLayout :: struct {
+EntityConfig :: struct {
     position: Vector2i,
-    direction: Direction
+    watching: []Vector2i,
+    direction: Direction,
+    no_undo: bool,
 }
 
 TileLayout :: enum {
@@ -289,6 +277,40 @@ load_save_point :: proc() {
 
     state.entity_count = len(saved_entities)
     log.debugf("loaded save point with %v entities", len(saved_entities))
+}
+
+centre_camera :: proc() {
+    total_width := f32(GRID_TILE_SIZE * state.level.width)
+    total_height := f32(GRID_TILE_SIZE * state.level.height)
+
+    state.camera_position = {total_width, total_height} * 0.5
+    state.camera_position -= {GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5
+}
+
+zoom_in :: proc() {
+    MAX_ZOOM :: 5
+
+    player := get_entity_with_flag(.PLAYER)
+    if player == nil {
+        return
+    }
+
+    state.camera_position = player.position
+
+    state.zoom += ZOOM_RATE
+
+    if state.zoom > MAX_ZOOM {
+        state.zoom = MAX_ZOOM
+    }
+}
+
+zoom_out :: proc() {
+    state.zoom -= ZOOM_RATE
+
+    if state.zoom < DEFAULT_ZOOM {
+        state.zoom = DEFAULT_ZOOM
+        centre_camera()
+    }
 }
 
 // @grid
@@ -626,7 +648,7 @@ main :: proc() {
         screen_width = state.screen_width,
         screen_height = state.screen_height,
         camera_position = {0, 0},
-        zoom = 1.25,
+        zoom = DEFAULT_ZOOM,
         current_level = START_LEVEL,
         entities = make([]Entity, MAX_ENTITIES, eternal_allocator),
         quads = make([]Quad, MAX_QUADS, eternal_allocator)
@@ -795,42 +817,33 @@ load_level :: proc(id: LevelId) -> bool {
     // entities are already created for this level
     state.level = level
 
-    { // pass connection and rotation info to entities created
-        for connection, index in level.connections {
-            if !valid(connection.activator) {
-                 log.errorf("connection[%v].activator %v in level file %v is not valid", index, connection.activator,  path)
-                return false
-            }
-    
-            if !valid(connection.watcher) {
-                 log.errorf("connection[%v].watcher %v in level file %v is not valid", index, connection.activator,  path)
-                return false
-            }
-    
-            activator_entity := get_first_entity_at_position(connection.activator)
-            if activator_entity == nil {
-                 log.errorf("no entity found connection[%v].activator %v in level file %v", index, connection.activator,  path)
-                return false
-            }
-    
-            watcher_entity := get_first_entity_at_position(connection.watcher)
-            if watcher_entity == nil {
-                 log.errorf("no entity found connection[%v].watcher %v in level file %v", index, connection.activator,  path)
+    { // update the entities with the given config
+        for entity_config, config_index in level.entities {
+            entity := get_first_entity_at_position(entity_config.position)
+            if entity == nil {
+                 log.errorf("entities[%v].position (%v) is invalid no entity found, in level file %v", config_index, entity_config.position,  path)
                 return false
             }
 
-            sa.append(&watcher_entity.watching, activator_entity.id)
-        }
-    
-        for rotation, index in level.rotations {
-            entity := get_first_entity_at_position(rotation.position)
-            if entity == nil {
-                 log.errorf("no entity found rotation[%v].position %v in level file %v", index, rotation.position,  path)
-                return false
+            // set watching
+            for watching_position, watching_index in entity_config.watching {
+                watching_entity := get_first_entity_at_position(watching_position)
+                if watching_entity == nil {
+                     log.errorf("entities[%v].watching[%v] (%v) is invalid no entity found, in level file %v", config_index, watching_index, watching_position,  path)
+                    return false
+                }
+
+                sa.append(&entity.watching, watching_entity.id)
             }
-    
-            assert(rotation.direction != .NONE)
-            entity.direction = rotation.direction
+
+            entity.direction = entity_config.direction
+
+            if entity_config.no_undo {
+                entity.flags += {.NO_UNDO}
+            }
+            else {
+                entity.flags -= {.NO_UNDO}
+            }
         }
     }
 
