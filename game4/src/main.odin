@@ -57,9 +57,9 @@ GRID_TILE_SIZE  :: 50
 DEFAULT_ZOOM    :: 1.25
 ZOOM_RATE       :: 0.25
 
-START_MAXIMISED :: false
+START_MAXIMISED :: true
 
-START_LEVEL :: LevelId.TEST
+START_LEVEL :: LevelId.TWO
 REPEAT_LEVEL :: true
 
 // @state
@@ -140,7 +140,7 @@ EntityFlag :: enum {
     LAMP,
     LIGHT_DETECTOR,
     MIRROR,
-    JUMP_PAD,
+    LAUNCH_PAD,
 
     // state flags
     DELETED,
@@ -177,6 +177,7 @@ Level :: struct {
 LevelId :: enum {
     TEST,
     ONE,
+    TWO,
 }
 
 EntityConfig :: struct {
@@ -203,13 +204,14 @@ TileLayout :: enum {
     MIRROR              = 12,
     KEY                 = 13,
     KEY_DOOR            = 14,
-    JUMP_PAD            = 15,
+    LAUNCH_PAD          = 15,
 }
 
 level_name :: proc(level: LevelId) -> string {
     switch level {
         case .TEST:     return "Test_Level"
         case .ONE:      return "A_New_Hope"
+        case .TWO:      return "Islands"
     }
 
     unreachable()
@@ -428,6 +430,27 @@ direction_grid_offset :: proc(direction: Direction) -> Vector2i {
     }
 
     unreachable()
+}
+
+direction_to_position :: proc(start: Vector2i, end: Vector2i) -> Direction {
+    delta := end - start
+
+    if abs(delta.x) >= abs(delta.y) {
+        if delta.x > 0 {
+            return .RIGHT
+        }
+        else {
+            return .LEFT
+        }
+    }
+    else {
+        if delta.y > 0 {
+            return .UP
+        }
+        else {
+            return .DOWN
+        }
+    }
 }
 
 // @input
@@ -812,7 +835,7 @@ load_level :: proc(id: LevelId) -> bool {
                     case .MIRROR:               create_mirror(grid_position)
                     case .KEY:                  create_key(grid_position)
                     case .KEY_DOOR:             create_key_door(grid_position)
-                    case .JUMP_PAD:             create_jump_pad(grid_position)
+                    case .LAUNCH_PAD:           create_launch_pad(grid_position)
 
                 }
     

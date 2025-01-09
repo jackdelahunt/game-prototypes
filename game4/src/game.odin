@@ -348,31 +348,51 @@ update :: proc() {
                 entity.flags -= {.ACTIVATED}
             }
         }
+    }
 
-        jump_pad_update: {
-            if !(.JUMP_PAD in entity.flags) {
-                break jump_pad_update
+    // HACK: this is here because you need to garuntee all entities are launched
+    // off of launch pads before the end of the tick because if another entity 
+    // move onto a launch pad without it being moved because that happened after
+    // the launch pad checked to see if it was there then a save will happen
+    // with that entity on the jump pad meaning it will forever go back and forth
+    // on it - 09/01/25
+
+    // there are two ways to fix this
+    // - have different entity types, each in their own buffer so the order at which
+    //   they are updated is not related to when they are created, but how we choose
+    // - don't undo a save point at a time but continue to roll back saves as the player
+    //   wants while they hold the undo button, this allows to not force an update while 
+    //   it is on the launch pad unless the player wants that to happen
+    for entity_index in 0..<state.entity_count {
+        entity := &state.entities[entity_index]
+
+        if .DELETED in entity.flags {
+            continue
+        }
+
+        if !(.LAUNCH_PAD in entity.flags) {
+            continue
+        }
+
+        iter := new_grid_position_iterator(entity.grid_position)
+        for {
+            other := next(&iter)
+            if other == nil {
+                break
             }
 
-            iter := new_grid_position_iterator(entity.grid_position)
-            for {
-                other := next(&iter)
-                if other == nil {
-                    break
-                }
-
-                if other == entity {
-                    continue
-                }
-
-                if !(.MOVEABLE in other.flags) {
-                    continue
-                }
-
-                launch_entity(other, entity.jump_pad_target)
+            if other == entity {
+                continue
             }
+
+            if !(.MOVEABLE in other.flags) {
+                continue
+            }
+
+            launch_entity(other, entity.jump_pad_target)
         }
     }
+
 
     if state.save_this_tick {
         create_save_point()
@@ -573,7 +593,33 @@ draw :: proc(delta_time: f32) {
                     dot_drawing_offset
                 )
             }
-        } 
+        }
+
+        draw_launch_pad: {
+            if !(.LAUNCH_PAD in entity.flags) {
+                break draw_launch_pad
+            }
+
+            start_position := entity.position
+            end_position := grid_position_to_world(entity.jump_pad_target)
+
+            distance := length(end_position - start_position)
+            dot_count := i64(distance / (GRID_TILE_SIZE * 0.5)) // dot every half tile
+ 
+            if dot_count < 5 {
+                dot_count = 5
+            }
+ 
+            draw_dotted_line(
+                start_position,
+                end_position,
+                dot_count,
+                2,
+                alpha(RED, 0.3),
+                .UNDER_TOP,
+                dot_drawing_offset
+            )
+        }
 
         draw_no_undo: {
             if !(.NO_UNDO in entity.flags) {
@@ -763,9 +809,9 @@ create_mirror :: proc(grid_position: Vector2i) -> ^Entity {
     })  
 }
 
-create_jump_pad :: proc(grid_position: Vector2i) -> ^Entity {
+create_launch_pad :: proc(grid_position: Vector2i) -> ^Entity {
     return create_entity(Entity{
-        flags = {.JUMP_PAD, .NON_BLOCKING},
+        flags = {.LAUNCH_PAD, .NON_BLOCKING},
         position = grid_position_to_world(grid_position),
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.8,
         colour = GREEN,
@@ -815,9 +861,48 @@ move_entity :: proc(entity: ^Entity, direction: Direction) -> bool {
     return true
 }
 
-launch_entity :: proc(entity: ^Entity, grid_position: Vector2i) {
-    entity.grid_position = grid_position
-    entity.position = grid_position_to_world(grid_position)
+launch_entity :: proc(entity: ^Entity, new_position: Vector2i) {
+    if !valid(new_position) {
+        return 
+    }
+
+    tile_active := is_tile_active(new_position)
+
+    if !tile_active {
+        return
+    }
+
+    // when an entity is launched to a new position we need to get the
+    // direction from the starting position, this is then used as the
+    // direction that any entity at the new position needs to move with
+    // if the entity at the new position cannot move then the launch is not
+    // done - 09/01/25
+    direction_to_new_position := direction_to_position(entity.grid_position, new_position)
+
+    iter := new_grid_position_iterator(new_position)
+    for {
+        other := next(&iter)
+        if other == nil {
+            break
+        }
+
+        if .NON_BLOCKING in other.flags {
+            continue
+        }
+        else if .MOVEABLE in other.flags {
+            pushed := move_entity(other, direction_to_new_position)
+            if !pushed {
+                return
+            }
+        } 
+        else {
+            return
+        }
+    }
+
+    entity.grid_position = new_position
+    entity.position = grid_position_to_world(entity.grid_position)
+    save_tick()
 }
 
 rotate_entity :: proc(entity: ^Entity) {
