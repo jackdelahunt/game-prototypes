@@ -1,5 +1,18 @@
 package src
 
+// TODO:
+// things that are not reverseable
+//      - picking up a key
+//      - opening a door
+//      - entities being created
+//      - entities being deleted
+//      - player death
+
+//      - one way movement, gravity, one way door, water stream
+
+// ways to use undo mechanic
+//      - some entities dont undo
+//      - things operate differently when undone
 import "core:fmt"
 import "core:log"
 import "base:runtime"
@@ -106,6 +119,9 @@ Entity :: struct {
     // flag: watching
     watching: sa.Small_Array(5, EntityId),
 
+    // flag: jump pad
+    jump_pad_target: Vector2i,
+
     // flag: lamp
     lamp_type: LampType,
 }
@@ -114,6 +130,8 @@ EntityId :: uint
 
 EntityFlag :: enum {
     NONE = 0,
+
+    // entity types
     PLAYER,
     BUTTON,
     KEY,
@@ -122,12 +140,15 @@ EntityFlag :: enum {
     LAMP,
     LIGHT_DETECTOR,
     MIRROR,
+    JUMP_PAD,
+
+    // state flags
+    DELETED,
     ACTIVATED,
-    PUSHABLE,
+    MOVEABLE,
     ROTATABLE,
     WATCHING,
     NON_BLOCKING,
-    DELETED,
     NO_UNDO,
     IN_PLAYER_HAND,
     KEY_USED
@@ -156,12 +177,6 @@ Level :: struct {
 LevelId :: enum {
     TEST,
     ONE,
-    TWO,
-    THREE,
-    FOUR,
-    FIVE,
-    SIX,
-    SEVEN
 }
 
 EntityConfig :: struct {
@@ -169,6 +184,7 @@ EntityConfig :: struct {
     watching: []Vector2i,
     direction: Direction,
     no_undo: bool,
+    jump_pad_target: Vector2i,
 }
 
 TileLayout :: enum {
@@ -187,18 +203,13 @@ TileLayout :: enum {
     MIRROR              = 12,
     KEY                 = 13,
     KEY_DOOR            = 14,
+    JUMP_PAD            = 15,
 }
 
 level_name :: proc(level: LevelId) -> string {
     switch level {
         case .TEST:     return "Test_Level"
         case .ONE:      return "A_New_Hope"
-        case .TWO:      return "Push_It" 
-        case .THREE:    return "The_Gap" 
-        case .FOUR:     return "Hold_It!" 
-        case .FIVE:     return "High_Beam" 
-        case .SIX:      return "Two_Point_O"
-        case .SEVEN:    return "Enlightend"
     }
 
     unreachable()
@@ -494,13 +505,10 @@ create_entity :: proc(entity: Entity) -> ^Entity {
     id_counter += 1
 
     { // sanity checking some values
-        if .NON_BLOCKING in entity.flags {
-            assert(!(.PUSHABLE in entity.flags))
-        }
-
-        if .PUSHABLE in entity.flags {
-            assert(!(.NON_BLOCKING in entity.flags))
-        }
+        assert(
+            !(.NON_BLOCKING in entity.flags &&
+            .MOVEABLE in entity.flags)
+        )
 
         if .LAMP in entity.flags {
             assert(entity.direction != .NONE)
@@ -804,6 +812,8 @@ load_level :: proc(id: LevelId) -> bool {
                     case .MIRROR:               create_mirror(grid_position)
                     case .KEY:                  create_key(grid_position)
                     case .KEY_DOOR:             create_key_door(grid_position)
+                    case .JUMP_PAD:             create_jump_pad(grid_position)
+
                 }
     
                 level.tiles[y][x] = is_floor
@@ -837,6 +847,7 @@ load_level :: proc(id: LevelId) -> bool {
             }
 
             entity.direction = entity_config.direction
+            entity.jump_pad_target = entity_config.jump_pad_target
 
             if entity_config.no_undo {
                 entity.flags += {.NO_UNDO}

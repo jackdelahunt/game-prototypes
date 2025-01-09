@@ -118,7 +118,7 @@ update :: proc() {
 
                     looking_position := entity.grid_position + direction_grid_offset(looking_direction)
 
-                    grabbed_entity := get_entity_at_position_with_flags(looking_position, {.PUSHABLE})
+                    grabbed_entity := get_entity_at_position_with_flags(looking_position, {.MOVEABLE})
                     if grabbed_entity == nil {
                         break player_grab 
                     }
@@ -139,7 +139,7 @@ update :: proc() {
                 if movement_direction != entity.direction {
                     moving_to_position := entity.grid_position + direction_grid_offset(movement_direction)
 
-                    other := get_entity_at_position_with_flags(moving_to_position, {.ROTATABLE, .PUSHABLE})
+                    other := get_entity_at_position_with_flags(moving_to_position, {.ROTATABLE, .MOVEABLE})
                     if other != nil {
                         move = false 
                     }
@@ -323,7 +323,11 @@ update :: proc() {
             }
         }
 
-        if .LIGHT_DETECTOR in entity.flags {
+        light_detector_update: {
+            if !(.LIGHT_DETECTOR in entity.flags) {
+                break light_detector_update
+            }
+
             found_light := false
 
             for direction in Direction {
@@ -342,6 +346,30 @@ update :: proc() {
             }
             else {
                 entity.flags -= {.ACTIVATED}
+            }
+        }
+
+        jump_pad_update: {
+            if !(.JUMP_PAD in entity.flags) {
+                break jump_pad_update
+            }
+
+            iter := new_grid_position_iterator(entity.grid_position)
+            for {
+                other := next(&iter)
+                if other == nil {
+                    break
+                }
+
+                if other == entity {
+                    continue
+                }
+
+                if !(.MOVEABLE in other.flags) {
+                    continue
+                }
+
+                launch_entity(other, entity.jump_pad_target)
             }
         }
     }
@@ -611,7 +639,7 @@ draw :: proc(delta_time: f32) {
 
 create_player :: proc(grid_position: Vector2i) -> ^Entity {
     return create_entity(Entity{
-        flags = {.PLAYER},
+        flags = {.PLAYER, .MOVEABLE},
         position = grid_position_to_world(grid_position),
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.7,
         colour = brightness(BLUE, 0.75),
@@ -654,7 +682,7 @@ create_key_door :: proc(grid_position: Vector2i) -> ^Entity {
 
 create_rock :: proc(grid_position: Vector2i) -> ^Entity {
     return create_entity(Entity{
-        flags = {.PUSHABLE},
+        flags = {.MOVEABLE},
         position = grid_position_to_world(grid_position),
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.85,
         colour = BROWN,
@@ -686,7 +714,7 @@ create_door :: proc(grid_position: Vector2i) -> ^Entity {
 create_lamp :: proc(grid_position: Vector2i, type: LampType) -> ^Entity {
     if type == .LIGHT {
         return create_entity(Entity{
-            flags = {.LAMP, .PUSHABLE, .ROTATABLE},
+            flags = {.LAMP, .MOVEABLE, .ROTATABLE},
             position = grid_position_to_world(grid_position),
             size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5,
             colour = lamp_colour(type),
@@ -698,7 +726,7 @@ create_lamp :: proc(grid_position: Vector2i, type: LampType) -> ^Entity {
 
     if type == .DEATH {
         return create_entity(Entity{
-            flags = {.LAMP, .PUSHABLE, .ROTATABLE, .NO_UNDO},
+            flags = {.LAMP, .MOVEABLE, .ROTATABLE, .NO_UNDO},
             position = grid_position_to_world(grid_position),
             size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5,
             colour = lamp_colour(type),
@@ -726,12 +754,23 @@ create_light_detector :: proc(grid_position: Vector2i, type: LampType) -> ^Entit
 
 create_mirror :: proc(grid_position: Vector2i) -> ^Entity {
     return create_entity(Entity{
-        flags = {.MIRROR, .PUSHABLE, .ROTATABLE},
+        flags = {.MIRROR, .MOVEABLE, .ROTATABLE},
         position = grid_position_to_world(grid_position),
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE},
         colour = SKY_BLUE,
         grid_position = grid_position,
         direction = .RIGHT,
+    })  
+}
+
+create_jump_pad :: proc(grid_position: Vector2i) -> ^Entity {
+    return create_entity(Entity{
+        flags = {.JUMP_PAD, .NON_BLOCKING},
+        position = grid_position_to_world(grid_position),
+        size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.8,
+        colour = GREEN,
+        grid_position = grid_position,
+        layer = .ON_FLOOR
     })  
 }
 
@@ -758,7 +797,7 @@ move_entity :: proc(entity: ^Entity, direction: Direction) -> bool {
         if .NON_BLOCKING in other.flags {
             continue
         }
-        else if .PUSHABLE in other.flags {
+        else if .MOVEABLE in other.flags {
             pushed := move_entity(other, direction)
             if !pushed {
                 return false
@@ -774,6 +813,11 @@ move_entity :: proc(entity: ^Entity, direction: Direction) -> bool {
     save_tick()
 
     return true
+}
+
+launch_entity :: proc(entity: ^Entity, grid_position: Vector2i) {
+    entity.grid_position = grid_position
+    entity.position = grid_position_to_world(grid_position)
 }
 
 rotate_entity :: proc(entity: ^Entity) {
