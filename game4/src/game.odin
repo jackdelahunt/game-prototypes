@@ -40,9 +40,18 @@ update :: proc() {
             sapp.quit()
             return
         }
-    
-        if state.key_inputs[.T] == .DOWN {
-            restart()
+
+        // once the level is comlete nothing gets updated and most of the global controls
+        // get disabled here aswell
+        if state.level.complete {
+            if state.key_inputs[.SPACE] == .DOWN {
+                if REPEAT_LEVEL {
+                    restart()
+                } else {
+                    next_level()
+                } 
+            }
+
             return
         }
 
@@ -56,7 +65,7 @@ update :: proc() {
             return
         }
 
-        if state.key_inputs[.U] == .DOWN {
+        if state.key_inputs[.U] == .DOWN || state.key_inputs[.U] == .PRESSING {
             load_save_point()
             return
         }
@@ -68,7 +77,15 @@ update :: proc() {
         if state.key_inputs[.DOWN] == .PRESSING {
             zoom_out()
         }
-    }
+
+        if state.key_inputs[.RIGHT] == .DOWN {
+            change_player(true)
+        }
+
+        if state.key_inputs[.LEFT] == .DOWN {
+            change_player(false)
+        } 
+    } 
 
     // update pass
     for entity_index in 0..<state.entity_count {
@@ -80,6 +97,12 @@ update :: proc() {
 
         player_update: {
             if !(.PLAYER in entity.flags) {
+                break player_update
+            }
+
+            state.camera_position = entity.position
+
+            if !(.ACTIVE_PLAYER in entity.flags) {
                 break player_update
             }
 
@@ -149,16 +172,7 @@ update :: proc() {
  
                 if move {
                     move_entity(entity, movement_direction)
-                }
- 
-                if entity.grid_position == state.level.end {
-                    if REPEAT_LEVEL {
-                        restart()
-                    } else {
-                        next_level()
-                    }
-                    return
-                }
+                } 
             }
 
             player_rotate: {
@@ -192,6 +206,16 @@ update :: proc() {
                         entity.flags += {.DELETED}
                         break
                     }
+                }
+            }
+
+            player_win: {
+                if entity.player_type != .PRIMARY {
+                    break player_win
+                }
+
+                if entity.grid_position == state.level.end {
+                    state.level.complete = true
                 }
             }
         }
@@ -410,7 +434,7 @@ draw :: proc(delta_time: f32) {
         dot_drawing_offset = 0
     }
 
-    { // draw grid
+    if false { // draw grid
         for y in 0..<state.level.height {
             for x in 0..<state.level.width {
                 grid_position := Vector2i{x, y}
@@ -444,6 +468,10 @@ draw :: proc(delta_time: f32) {
         draw_player: {
             if !(.PLAYER in entity.flags) {
                 break draw_player
+            }
+
+            if !(.ACTIVE_PLAYER in entity.flags) {
+                draw_colour = greyscale(draw_colour)
             }
 
             eyes_centre_position: Vector2
@@ -657,6 +685,14 @@ draw :: proc(delta_time: f32) {
 
     in_screen_space = true
 
+    level_complete: {
+        if !state.level.complete {
+            break level_complete
+        }
+
+        draw_rectangle({state.screen_width * 0.5, state.screen_height * 0.5}, {state.screen_width, 100}, BLACK, .UI)
+    }
+
     { // level name
         text, _ := strings.replace_all(level_name(state.current_level), "_", "  ", context.temp_allocator)
         draw_text(text, {state.screen_width * 0.5, state.screen_height - 20}, BLACK, 30)
@@ -678,26 +714,32 @@ draw :: proc(delta_time: f32) {
     }
 
     { // controls
-        text := "move: WASD   undo: U   restart: T   rotate: R   next: N   previous: P zoom in: Up   zoom out: Down"
+        text := "move: WASD   undo: U   grab: Shift   rotate: R   next player: Right   previous player: Left   next level: N   previous leve: P zoom in: Up   zoom out: Down"
         draw_text(text, {state.screen_width * 0.5, 50}, BLACK, 15)
     }
 }
 
-create_player :: proc(grid_position: Vector2i, type: PlayerType) -> ^Entity {
-    colour := BLUE
+create_player :: proc(grid_position: Vector2i) -> ^Entity {
+    return create_entity(Entity{
+        flags = {.PLAYER, .ACTIVE_PLAYER, .MOVEABLE},
+        position = grid_position_to_world(grid_position),
+        size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.7,
+        colour = brightness(BLUE, 0.75),
+        grid_position = grid_position,
+        direction = .UP,
+        player_type = .PRIMARY,
+    })
+}
 
-    if type == .SECONDARY {
-        colour = GREEN
-    }
-    
+create_secondary_player :: proc(grid_position: Vector2i) -> ^Entity {
     return create_entity(Entity{
         flags = {.PLAYER, .MOVEABLE},
         position = grid_position_to_world(grid_position),
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.7,
-        colour = brightness(colour, 0.75),
+        colour = brightness(GREEN, 0.75),
         grid_position = grid_position,
         direction = .UP,
-        player_type = type,
+        player_type = .SECONDARY,
     })
 }
 
@@ -825,6 +867,81 @@ create_launch_pad :: proc(grid_position: Vector2i) -> ^Entity {
         grid_position = grid_position,
         layer = .ON_FLOOR
     })  
+}
+
+change_player :: proc(look_right: bool) {
+    // change player works by first looking for the current player that has the
+    // active flag. It then finds the first entity that has a player flag starting
+    // one index to the next of the active player (-1 if looking left, 1 for right)
+    // once another player is found then the flags are switched. When the searching
+    // index reaches the end or begining of the entity array it is not ensured to have
+    // checked every entity so the search index wraps around based on the direction. 
+    // Because of the wrapping we know if the search index is eventually eqaul to the
+    // active player index then no other player is in the game and the search is canceled
+    // with no changes - 10/01/25
+    active_player: ^Entity
+    active_player_index: int
+
+    for &entity, i in state.entities[0 : state.entity_count] {
+        if .ACTIVE_PLAYER in entity.flags {
+            active_player = &entity
+            active_player_index = i
+
+            assert(.PLAYER in entity.flags)
+
+            break
+        }
+    }
+
+    assert(active_player != nil, "no active players found in game ??")
+
+    search_index: int
+
+    if look_right {
+        search_index = active_player_index + 1
+    } else {
+        search_index = active_player_index - 1
+    }
+
+    if search_index >= state.entity_count {
+            search_index = 0
+    } else if search_index < 0 {
+            search_index = state.entity_count - 1
+    }
+
+    for {
+        if search_index == active_player_index {
+            log.info("tried to change player but not other players found.. doing nothing")
+            return
+        }
+
+        entity := &state.entities[search_index]
+
+        if .PLAYER in entity.flags {
+            entity.flags += {.ACTIVE_PLAYER}
+            active_player.flags -= {.ACTIVE_PLAYER}
+
+            log.info("updated active player")
+            return
+        }
+
+        // update search index based on direction and wrap if needed
+        if look_right {
+            if search_index == state.entity_count - 1 {
+                search_index = 0
+            }
+            else {
+                search_index += 1
+            }
+        } else {
+            if search_index == 0 {
+                search_index = state.entity_count - 1
+            }
+            else {
+                search_index -= 1
+            }
+        }
+    }
 }
 
 move_entity :: proc(entity: ^Entity, direction: Direction) -> bool {

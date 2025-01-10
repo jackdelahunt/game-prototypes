@@ -151,6 +151,7 @@ EntityFlag :: enum {
 
     // state flags
     DELETED,
+    ACTIVE_PLAYER,
     ACTIVATED,
     MOVEABLE,
     ROTATABLE,
@@ -179,6 +180,7 @@ Level :: struct {
     width:          int,
     height:         int,
     end:            Vector2i,
+    complete:       bool,
     save_points:    [dynamic][]Entity,
  
     // defined in level file
@@ -513,6 +515,17 @@ brightness :: proc(colour: Colour, level: f32) -> Colour {
     }
 }
 
+greyscale :: proc(colour: Colour) -> Colour {
+    length := length(colour.rgb) / 3.0
+
+    return Colour {
+        length,
+        length,
+        length,
+        colour.a,
+    }
+}
+
 // @lamp
 LampType :: enum {
     LIGHT,
@@ -836,8 +849,8 @@ load_level :: proc(id: LevelId) -> bool {
                     case .EMPTY:                is_floor = false
                     case .FLOOR:
                     case .END:                  level.end = grid_position
-                    case .PLAYER:               create_player(grid_position, .PRIMARY)
-                    case .ALT_PLAYER:           create_player(grid_position, .SECONDARY)
+                    case .PLAYER:               create_player(grid_position)
+                    case .ALT_PLAYER:           create_secondary_player(grid_position)
                     case .ROCK:                 create_rock(grid_position)
                     case .BUTTON:               create_button(grid_position)
                     case .WALL:                 create_wall(grid_position)

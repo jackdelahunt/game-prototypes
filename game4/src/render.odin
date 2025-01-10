@@ -42,13 +42,15 @@ Layer :: enum {
     UNDER_TOP,
     ON_FLOOR,
     FLOOR,
+    UI,
 }
 
 z_value :: proc(layer: Layer) -> f32 {
     switch layer {
-        case .TOP:          return 1
-        case .UNDER_TOP:    return 0.66
-        case .ON_FLOOR:     return 0.33
+        case .UI:           return 0.7
+        case .TOP:          return 0.75
+        case .UNDER_TOP:    return 0.5
+        case .ON_FLOOR:     return 0.25
         case .FLOOR:        return 0
     }
 
@@ -209,7 +211,8 @@ draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colou
     if !in_screen_space {
         transformation_matrix = translate_matrix(position) * rotate_matrix(-linalg.to_radians(rotation)) * scale_matrix(size)
         transformation_matrix = get_view_matrix() * transformation_matrix
-        transformation_matrix = scale_matrix({state.zoom, state.zoom}) * transformation_matrix
+        // transformation_matrix = scale_matrix({state.zoom, state.zoom}) * transformation_matrix
+
         transformation_matrix = get_projection_matrix() * transformation_matrix
     }
     else {
@@ -229,11 +232,17 @@ draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colou
     state.quad_count += 1
 
     z := z_value(layer)
+    z = 0
 
     quad[0].position = (transformation_matrix * Vector4{-0.5,  0.5,  z, 1}).xyz
     quad[1].position = (transformation_matrix * Vector4{0.5,   0.5,  z, 1}).xyz
     quad[2].position = (transformation_matrix * Vector4{0.5,  -0.5,  z, 1}).xyz
     quad[3].position = (transformation_matrix * Vector4{-0.5, -0.5,  z, 1}).xyz
+
+    // quad[0].position.z = 0.1
+    // quad[1].position.z = 0.1
+    // quad[2].position.z = 0.1
+    // quad[3].position.z = 0.1
  
     quad[0].colour = cast(Vector4) colour
     quad[1].colour = cast(Vector4) colour
@@ -458,7 +467,19 @@ get_view_matrix :: proc() -> Mat4 {
 }
 
 get_projection_matrix :: proc() -> Mat4 {
-    return linalg.matrix_ortho3d_f32(state.screen_width * -0.5, state.screen_width * 0.5, state.screen_height * -0.5, state.screen_height * 0.5, -1, 1)
+    if false {
+        return linalg.matrix_ortho3d_f32(state.screen_width * -0.5, state.screen_width * 0.5, state.screen_height * -0.5, state.screen_height * 0.5, -1, 1)
+    }
+
+    orthographic_size : f32 = 100
+    aspect_ratio := state.screen_width / state.screen_height
+
+    return linalg.matrix_ortho3d_f32(
+        -orthographic_size * aspect_ratio, 
+        orthographic_size * aspect_ratio, 
+        -orthographic_size, orthographic_size,
+        0.01, 100, true
+    )
 }
 
 range :: proc(buffer: []$T) -> sg.Range {
