@@ -683,14 +683,21 @@ draw :: proc(delta_time: f32) {
     }
 }
 
-create_player :: proc(grid_position: Vector2i) -> ^Entity {
+create_player :: proc(grid_position: Vector2i, type: PlayerType) -> ^Entity {
+    colour := BLUE
+
+    if type == .SECONDARY {
+        colour = GREEN
+    }
+    
     return create_entity(Entity{
         flags = {.PLAYER, .MOVEABLE},
         position = grid_position_to_world(grid_position),
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.7,
-        colour = brightness(BLUE, 0.75),
+        colour = brightness(colour, 0.75),
         grid_position = grid_position,
         direction = .UP,
+        player_type = type,
     })
 }
 

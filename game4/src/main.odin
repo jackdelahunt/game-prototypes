@@ -13,6 +13,10 @@ package src
 // ways to use undo mechanic
 //      - some entities dont undo
 //      - things operate differently when undone
+
+// Ideas
+// - pause time on everything besides the player, maybe only certain things can update when paused??
+
 import "core:fmt"
 import "core:log"
 import "base:runtime"
@@ -59,7 +63,7 @@ ZOOM_RATE       :: 0.25
 
 START_MAXIMISED :: true
 
-START_LEVEL :: LevelId.TWO
+START_LEVEL :: LevelId.TEST
 REPEAT_LEVEL :: true
 
 // @state
@@ -116,6 +120,9 @@ Entity :: struct {
     colour: Colour,
     layer: Layer,
 
+    // flag: player
+    player_type: PlayerType,
+
     // flag: watching
     watching: sa.Small_Array(5, EntityId),
 
@@ -159,6 +166,11 @@ EntityShape :: enum {
     CIRCLE
 }
 
+PlayerType :: enum {
+    PRIMARY,
+    SECONDARY
+}
+
 // @level
 Level :: struct {
     // computed
@@ -193,18 +205,19 @@ TileLayout :: enum {
     FLOOR               = 1,
     END                 = 2,
     PLAYER              = 3,
-    ROCK                = 4,
-    BUTTON              = 5,
-    WALL                = 6,
-    DOOR                = 7,
-    LAMP_LIGHT          = 8,
-    LAMP_DEATH          = 9,
-    LIGHT_DETECTOR_LIGHT= 10,
-    LIGHT_DETECTOR_DEATH= 11,
-    MIRROR              = 12,
-    KEY                 = 13,
-    KEY_DOOR            = 14,
-    LAUNCH_PAD          = 15,
+    ALT_PLAYER          = 4,
+    ROCK                = 5,
+    BUTTON              = 6,
+    WALL                = 7,
+    DOOR                = 8,
+    LAMP_LIGHT          = 9,
+    LAMP_DEATH          = 10,
+    LIGHT_DETECTOR_LIGHT= 11,
+    LIGHT_DETECTOR_DEATH= 12,
+    MIRROR              = 13,
+    KEY                 = 14,
+    KEY_DOOR            = 15,
+    LAUNCH_PAD          = 16,
 }
 
 level_name :: proc(level: LevelId) -> string {
@@ -823,7 +836,8 @@ load_level :: proc(id: LevelId) -> bool {
                     case .EMPTY:                is_floor = false
                     case .FLOOR:
                     case .END:                  level.end = grid_position
-                    case .PLAYER:               create_player(grid_position)
+                    case .PLAYER:               create_player(grid_position, .PRIMARY)
+                    case .ALT_PLAYER:           create_player(grid_position, .SECONDARY)
                     case .ROCK:                 create_rock(grid_position)
                     case .BUTTON:               create_button(grid_position)
                     case .WALL:                 create_wall(grid_position)
