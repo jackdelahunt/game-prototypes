@@ -43,17 +43,20 @@ Layer :: enum {
     TWO,
     THREE,
 
-    VERY_TOP,
+    UI_ZERO,
+    UI_ONE,
 }
 
 z_value :: proc(layer: Layer) -> f32 {
     // values must be within camera near and far planes
     switch layer {
-        case .VERY_TOP:     return 10
-        case .ZERO:         return 20
-        case .ONE:          return 20
-        case .TWO:          return 40
-        case .THREE:        return 50
+        case .ZERO:         return 50
+        case .ONE:          return 60
+        case .TWO:          return 70
+        case .THREE:        return 80
+
+        case .UI_ZERO:      return 10
+        case .UI_ONE:       return 20
     }
 
     unreachable()

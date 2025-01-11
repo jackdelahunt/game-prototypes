@@ -43,8 +43,8 @@ import sglue "sokol/glue"
 
 import shaders "shaders"
 
-DEFAULT_SCREEN_WIDTH	:: 1600
-DEFAULT_SCREEN_HEIGHT	:: 900
+DEFAULT_SCREEN_WIDTH	:: 1200
+DEFAULT_SCREEN_HEIGHT	:: 650
 
 TICKS_PER_SECOND    :: 30.0
 TICK_RATE           :: 1.0 / TICKS_PER_SECOND
@@ -58,13 +58,10 @@ GRID_WIDTH      :: 5
 GRID_HEIGHT     :: 5
 GRID_TILE_SIZE  :: 50
 
-DEFAULT_ORTHO_SIZE  :: 200
-ZOOM_RATE           :: 10
-
 START_MAXIMISED :: false
 
 START_LEVEL :: LevelId.TEST
-REPEAT_LEVEL :: true
+REPEAT_LEVEL :: false
 
 // @state
 State :: struct {
@@ -93,7 +90,9 @@ State :: struct {
     // renderer state
     camera: struct {
         position: Vector2,
-        orthographic_size: f32, // size in world units from centre of screen to side edges
+        // length in world units from camera centre to top edge of camera view
+        // length of camera centre to side edge is this * aspect ratio
+        orthographic_size: f32,
         near_plane: f32,
         far_plane: f32
     },
@@ -311,38 +310,23 @@ load_save_point :: proc() {
     log.debugf("loaded save point with %v entities", len(saved_entities))
 }
 
-centre_camera :: proc() {
+fit_and_centre_camera :: proc() {
     total_width := f32(GRID_TILE_SIZE * state.level.width)
     total_height := f32(GRID_TILE_SIZE * state.level.height)
 
     state.camera.position = {total_width, total_height} * 0.5
-    state.camera.position -= {GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5
-}
+    state.camera.position -= {GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5 // centre camera on tile
 
-zoom_in :: proc() {
-    MIN_SIZE :: GRID_TILE_SIZE
+    // orthographic size is found by getting what it would be to fit the width/height of the
+    // level on level and using the largest of those so they are always going to fit
+    // plus some padding - 11/01/25
+    height_to_width_ratio := state.screen_height / state.screen_width 
+    orthographic_size_w := (total_width * height_to_width_ratio * 0.5)
+    orthographic_size_h := (total_height * 0.5)
 
-    player := get_entity_with_flag(.PLAYER)
-    if player == nil {
-        return
-    }
+    CAMERA_PADDING :: GRID_TILE_SIZE
 
-    state.camera.position = player.position
-
-    state.camera.orthographic_size -= ZOOM_RATE
-
-    if state.camera.orthographic_size < MIN_SIZE {
-        state.camera.orthographic_size = MIN_SIZE
-    }
-}
-
-zoom_out :: proc() {
-    state.camera.orthographic_size += ZOOM_RATE
-
-    if state.camera.orthographic_size > DEFAULT_ORTHO_SIZE {
-        state.camera.orthographic_size = DEFAULT_ORTHO_SIZE
-        centre_camera()
-    }
+    state.camera.orthographic_size = max(orthographic_size_w, orthographic_size_h) + CAMERA_PADDING
 }
 
 // @grid
@@ -703,11 +687,7 @@ main :: proc() {
     }
 
     state = State {
-        screen_width = state.screen_width,
-        screen_height = state.screen_height,
         camera = {
-            position = {0, 0},
-            orthographic_size = DEFAULT_ORTHO_SIZE,
             near_plane = 0.1,
             far_plane = 100
         },

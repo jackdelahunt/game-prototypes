@@ -18,8 +18,6 @@ setup_game :: proc() {
         return
     }
 
-    centre_camera()
-
     // when a new level is loaded, a new save point is created
     // this ensure the state of the level at the start is saved
     // and that it can be reverted to
@@ -68,14 +66,6 @@ update :: proc() {
         if state.key_inputs[.U] == .DOWN || state.key_inputs[.U] == .PRESSING {
             load_save_point()
             return
-        }
-
-        if state.key_inputs[.UP] == .PRESSING {
-            zoom_in()
-        }
-
-        if state.key_inputs[.DOWN] == .PRESSING {
-            zoom_out()
         }
 
         if state.key_inputs[.RIGHT] == .DOWN {
@@ -427,6 +417,8 @@ dot_drawing_offset : f32 = 0
 
 // @draw
 draw :: proc(delta_time: f32) {
+    fit_and_centre_camera()
+
     dot_drawing_offset += delta_time
 
     if dot_drawing_offset > 1 {
@@ -684,37 +676,36 @@ draw :: proc(delta_time: f32) {
 
     in_screen_space = true
 
-    level_complete: {
-        if !state.level.complete {
-            break level_complete
+    { // UI
+        if state.level.complete {
+            draw_rectangle({state.screen_width * 0.5, state.screen_height * 0.5}, {state.screen_width, 100}, BLACK, .UI_ONE)
+            draw_text("Complete - Press Space", {state.screen_width * 0.5, state.screen_height * 0.5}, YELLOW, 30, .UI_ZERO)
         }
 
-        draw_rectangle({state.screen_width * 0.5, state.screen_height * 0.5}, {state.screen_width, 100}, BLACK, .VERY_TOP)
-    }
-
-    { // level name
-        text, _ := strings.replace_all(level_name(state.current_level), "_", "  ", context.temp_allocator)
-        draw_text(text, {state.screen_width * 0.5, state.screen_height - 20}, BLACK, 30, .VERY_TOP)
-    }
-
-    { // fps counter
-        text := fmt.tprintf("FPS: %v", int(1 / delta_time))
-        draw_text(text, {50, 25}, RED, 15, .VERY_TOP)
-    }
-
-    { // entity counter
-        text := fmt.tprintf("E: %v/%v", state.entity_count, MAX_ENTITIES)
-        draw_text(text, {175, 25}, GREEN, 15, .VERY_TOP)
-    }
-
-    { // quad counter
-        text := fmt.tprintf("Q: %v/%v", state.quad_count, MAX_QUADS)
-        draw_text(text, {300, 25}, BLUE, 15, .VERY_TOP)
-    }
-
-    { // controls
-        text := "move: WASD   undo: U   grab: Shift   rotate: R   next player: Right   previous player: Left   next level: N   previous leve: P zoom in: Up   zoom out: Down"
-        draw_text(text, {state.screen_width * 0.5, 50}, BLACK, 15, .VERY_TOP)
+        { // level name
+            text, _ := strings.replace_all(level_name(state.current_level), "_", "  ", context.temp_allocator)
+            draw_text(text, {state.screen_width * 0.5, state.screen_height - 20}, BLACK, 30, .UI_ZERO)
+        }
+    
+        { // fps counter
+            text := fmt.tprintf("FPS: %v", int(1 / delta_time))
+            draw_text(text, {50, 25}, RED, 15, .UI_ZERO)
+        }
+    
+        { // entity counter
+            text := fmt.tprintf("E: %v/%v", state.entity_count, MAX_ENTITIES)
+            draw_text(text, {175, 25}, GREEN, 15, .UI_ZERO)
+        }
+    
+        { // quad counter
+            text := fmt.tprintf("Q: %v/%v", state.quad_count, MAX_QUADS)
+            draw_text(text, {300, 25}, BLUE, 15, .UI_ZERO)
+        }
+    
+        { // controls
+            text := "move: WASD   undo: U   grab: Shift   rotate: R   next player: Right   previous player: Left   next level: N   previous leve: P zoom in: Up   zoom out: Down"
+            draw_text(text, {state.screen_width * 0.5, 50}, BLACK, 15, .UI_ZERO)
+        }
     }
 }
 
