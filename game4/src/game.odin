@@ -63,9 +63,21 @@ update :: proc() {
             return
         }
 
-        if state.key_inputs[.U] == .DOWN || state.key_inputs[.U] == .PRESSING {
+        if state.key_inputs[.U] == .DOWN {
             load_save_point()
             return
+        }
+
+        if state.key_inputs[.U] == .PRESSING {
+            @static tick_counter := 0
+
+            if tick_counter == TICKS_PER_UNDO {
+                tick_counter = 0
+                load_save_point()
+                return
+            }
+
+            tick_counter += 1
         }
 
         if state.key_inputs[.RIGHT] == .DOWN {

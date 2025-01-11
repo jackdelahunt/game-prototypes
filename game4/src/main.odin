@@ -1,21 +1,14 @@
 package src
 
 // TODO:
-// things that are not reverseable
-//      - picking up a key
-//      - opening a door
-//      - entities being created
-//      - entities being deleted
-//      - player death
+// make levels
+//  - phase 1: basic pushing with buttons    : 0/3
+//  - phase 2: key and doors                 : 0/3
+//  - phase 3: no undo                       : 0/3
+//  - phase 4: lamps and mirrors             : 0/3
+//  - phase 5: everything                    : 0/3
 
-//      - one way movement, gravity, one way door, water stream
-
-// ways to use undo mechanic
-//      - some entities dont undo
-//      - things operate differently when undone
-
-// Ideas
-// - pause time on everything besides the player, maybe only certain things can update when paused??
+// hint for each level
 
 import "core:fmt"
 import "core:log"
@@ -43,11 +36,12 @@ import sglue "sokol/glue"
 
 import shaders "shaders"
 
-DEFAULT_SCREEN_WIDTH	:: 1200
-DEFAULT_SCREEN_HEIGHT	:: 650
+DEFAULT_SCREEN_WIDTH	:: 1080
+DEFAULT_SCREEN_HEIGHT	:: 720
 
 TICKS_PER_SECOND    :: 30.0
 TICK_RATE           :: 1.0 / TICKS_PER_SECOND
+TICKS_PER_UNDO      :: 2 // TODO: this is not actually happening this fast
 
 MAX_ENTITIES	:: 1_000
 MAX_QUADS	:: 10_000
