@@ -100,8 +100,6 @@ update :: proc() {
                 break player_update
             }
 
-            state.camera_position = entity.position
-
             if !(.ACTIVE_PLAYER in entity.flags) {
                 break player_update
             }
@@ -434,7 +432,7 @@ draw :: proc(delta_time: f32) {
         dot_drawing_offset = 0
     }
 
-    if false { // draw grid
+    { // draw grid
         for y in 0..<state.level.height {
             for x in 0..<state.level.width {
                 grid_position := Vector2i{x, y}
@@ -452,8 +450,8 @@ draw :: proc(delta_time: f32) {
                     tile_colour = YELLOW
                 }
 
-                draw_rectangle(position, {GRID_TILE_SIZE, GRID_TILE_SIZE}, brightness(tile_colour, 0.9), .FLOOR)
-                draw_rectangle(position, {inner_rect_size, inner_rect_size}, tile_colour, .FLOOR)
+                draw_rectangle(position, {GRID_TILE_SIZE, GRID_TILE_SIZE}, brightness(tile_colour, 0.9), .THREE)
+                draw_rectangle(position, {inner_rect_size, inner_rect_size}, tile_colour, .THREE)
             }
         }
     }
@@ -509,8 +507,8 @@ draw :: proc(delta_time: f32) {
                 }
             }
 
-            draw_circle(entity.position + right_eye_position, 5, BLACK, .UNDER_TOP)
-            draw_circle(entity.position + left_eye_position, 5, BLACK, .UNDER_TOP)
+            draw_circle(entity.position + right_eye_position, 5, BLACK, .ONE)
+            draw_circle(entity.position + left_eye_position, 5, BLACK, .ONE)
         }
 
         draw_button: {
@@ -560,7 +558,7 @@ draw :: proc(delta_time: f32) {
 
             if .ACTIVATED in entity.flags {
                 draw_colour = brightness(draw_colour, 2)
-                draw_circle(entity.position, GRID_TILE_SIZE * 0.5, alpha(draw_colour, 0.2), .UNDER_TOP)
+                draw_circle(entity.position, GRID_TILE_SIZE * 0.5, alpha(draw_colour, 0.2), .ONE)
             }
         }
 
@@ -570,7 +568,7 @@ draw :: proc(delta_time: f32) {
             }
 
             light_colour := alpha(entity.colour, 0.2)
-            draw_circle(entity.position, GRID_TILE_SIZE * 0.5, light_colour, .UNDER_TOP)
+            draw_circle(entity.position, GRID_TILE_SIZE * 0.5, light_colour, .ONE)
             draw_beam_from_position(entity.grid_position, entity.direction, light_colour) 
         } 
 
@@ -617,7 +615,7 @@ draw :: proc(delta_time: f32) {
                     dot_count,
                     2,
                     alpha(BLUE, 0.2),
-                    .UNDER_TOP,
+                    .ONE,
                     dot_drawing_offset
                 )
             }
@@ -644,7 +642,7 @@ draw :: proc(delta_time: f32) {
                 dot_count,
                 2,
                 alpha(RED, 0.3),
-                .UNDER_TOP,
+                .ONE,
                 dot_drawing_offset
             )
         }
@@ -664,11 +662,11 @@ draw :: proc(delta_time: f32) {
                     scaled_size := entity.size * 0.20
                     highlight_size := entity.size + max(scaled_size.x, scaled_size.y) 
 
-                    draw_rectangle(entity.position, highlight_size, highlight_colour, .UNDER_TOP, rotation = entity.rotation)	
+                    draw_rectangle(entity.position, highlight_size, highlight_colour, .ONE, rotation = entity.rotation)	
                 }
                 case .CIRCLE: {
                     highlight_radius := (entity.size.x * 0.5) * 1.15
-                    draw_circle(entity.position, highlight_radius, highlight_colour, .UNDER_TOP)
+                    draw_circle(entity.position, highlight_radius, highlight_colour, .ONE)
                 }
         }   
         }
@@ -683,39 +681,44 @@ draw :: proc(delta_time: f32) {
         }
     } 
 
-    in_screen_space = true
-
     level_complete: {
         if !state.level.complete {
             break level_complete
         }
 
-        draw_rectangle({state.screen_width * 0.5, state.screen_height * 0.5}, {state.screen_width, 100}, BLACK, .UI)
+        // draw_rectangle({state.screen_width * 0.5, state.screen_height * 0.5}, {state.screen_width, 100}, BLACK, .VERY_TOP)
+        draw_rectangle(state.camera.position, {500, 50}, BLACK, .VERY_TOP)
     }
+
+    in_screen_space = true
+
+    draw_circle({0, 0}, 10, RED, .VERY_TOP)
+    draw_circle({state.screen_width * 0.5, state.screen_height * 0.5}, 10, BLUE, .VERY_TOP)
+    draw_text("Hello sailor", {300, 200}, BLACK, 30, .VERY_TOP)
 
     { // level name
         text, _ := strings.replace_all(level_name(state.current_level), "_", "  ", context.temp_allocator)
-        draw_text(text, {state.screen_width * 0.5, state.screen_height - 20}, BLACK, 30)
+        draw_text(text, {state.screen_width * 0.5, state.screen_height - 20}, BLACK, 30, .VERY_TOP)
     }
 
     { // fps counter
         text := fmt.tprintf("FPS: %v", int(1 / delta_time))
-        draw_text(text, {50, 25}, RED, 15)
+        draw_text(text, {50, 25}, RED, 15, .VERY_TOP)
     }
 
     { // entity counter
         text := fmt.tprintf("E: %v/%v", state.entity_count, MAX_ENTITIES)
-        draw_text(text, {175, 25}, GREEN, 15)
+        draw_text(text, {175, 25}, GREEN, 15, .VERY_TOP)
     }
 
     { // quad counter
         text := fmt.tprintf("Q: %v/%v", state.quad_count, MAX_QUADS)
-        draw_text(text, {300, 25}, BLUE, 15)
+        draw_text(text, {300, 25}, BLUE, 15, .VERY_TOP)
     }
 
     { // controls
         text := "move: WASD   undo: U   grab: Shift   rotate: R   next player: Right   previous player: Left   next level: N   previous leve: P zoom in: Up   zoom out: Down"
-        draw_text(text, {state.screen_width * 0.5, 50}, BLACK, 15)
+        draw_text(text, {state.screen_width * 0.5, 50}, BLACK, 15, .VERY_TOP)
     }
 }
 
@@ -751,7 +754,7 @@ create_button :: proc(grid_position: Vector2i) -> ^Entity {
         colour = SKY_BLUE,
         grid_position = grid_position,
         shape = .CIRCLE,
-        layer = .ON_FLOOR
+        layer = .TWO
     })  
 }
 
@@ -843,7 +846,7 @@ create_light_detector :: proc(grid_position: Vector2i, type: LampType) -> ^Entit
         grid_position = grid_position,
         shape = .CIRCLE,
         lamp_type = type,
-        layer = .UNDER_TOP
+        layer = .ONE
     })  
 }
 
@@ -865,7 +868,7 @@ create_launch_pad :: proc(grid_position: Vector2i) -> ^Entity {
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.8,
         colour = GREEN,
         grid_position = grid_position,
-        layer = .ON_FLOOR
+        layer = .TWO
     })  
 }
 
@@ -1123,7 +1126,7 @@ draw_beam_from_position :: proc(position: Vector2i, direction: Direction, colour
             if .MIRROR in other.flags {
                 { // draw mirror highlight
                     world_position := grid_position_to_world(current_position)
-                    draw_circle(world_position, GRID_TILE_SIZE * 0.5, colour, .UNDER_TOP)
+                    draw_circle(world_position, GRID_TILE_SIZE * 0.5, colour, .ONE)
                 }
 
                 { // reflect beam direction
@@ -1147,7 +1150,7 @@ draw_beam_from_position :: proc(position: Vector2i, direction: Direction, colour
         }
          
         world_position := grid_position_to_world(current_position)
-        draw_rectangle(world_position, size, colour, .UNDER_TOP)
+        draw_rectangle(world_position, size, colour, .ONE)
         current_position += direction_grid_offset(current_direction)
     }
 }

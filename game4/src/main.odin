@@ -58,10 +58,10 @@ GRID_WIDTH      :: 5
 GRID_HEIGHT     :: 5
 GRID_TILE_SIZE  :: 50
 
-DEFAULT_ZOOM    :: 1.25
-ZOOM_RATE       :: 0.25
+DEFAULT_ORTHO_SIZE  :: 200
+ZOOM_RATE           :: 10
 
-START_MAXIMISED :: true
+START_MAXIMISED :: false
 
 START_LEVEL :: LevelId.TEST
 REPEAT_LEVEL :: true
@@ -91,8 +91,12 @@ State :: struct {
     save_this_tick: bool,
 
     // renderer state
-    camera_position: Vector2,
-    zoom: f32,
+    camera: struct {
+        position: Vector2,
+        orthographic_size: f32,
+        near_plane: f32,
+        far_plane: f32
+    },
     quads: []Quad,
     quad_count: int,
     render_pipeline: sg.Pipeline,
@@ -204,7 +208,7 @@ EntityConfig :: struct {
 
 TileLayout :: enum {
     EMPTY               = 0,
-    FLOOR               = 1,
+    THREE               = 1,
     END                 = 2,
     PLAYER              = 3,
     ALT_PLAYER          = 4,
@@ -311,32 +315,32 @@ centre_camera :: proc() {
     total_width := f32(GRID_TILE_SIZE * state.level.width)
     total_height := f32(GRID_TILE_SIZE * state.level.height)
 
-    state.camera_position = {total_width, total_height} * 0.5
-    state.camera_position -= {GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5
+    state.camera.position = {total_width, total_height} * 0.5
+    state.camera.position -= {GRID_TILE_SIZE, GRID_TILE_SIZE} * 0.5
 }
 
 zoom_in :: proc() {
-    MAX_ZOOM :: 5
+    MIN_SIZE :: GRID_TILE_SIZE
 
     player := get_entity_with_flag(.PLAYER)
     if player == nil {
         return
     }
 
-    state.camera_position = player.position
+    state.camera.position = player.position
 
-    state.zoom += ZOOM_RATE
+    state.camera.orthographic_size -= ZOOM_RATE
 
-    if state.zoom > MAX_ZOOM {
-        state.zoom = MAX_ZOOM
+    if state.camera.orthographic_size < MIN_SIZE {
+        state.camera.orthographic_size = MIN_SIZE
     }
 }
 
 zoom_out :: proc() {
-    state.zoom -= ZOOM_RATE
+    state.camera.orthographic_size += ZOOM_RATE
 
-    if state.zoom < DEFAULT_ZOOM {
-        state.zoom = DEFAULT_ZOOM
+    if state.camera.orthographic_size > DEFAULT_ORTHO_SIZE {
+        state.camera.orthographic_size = DEFAULT_ORTHO_SIZE
         centre_camera()
     }
 }
@@ -704,8 +708,12 @@ main :: proc() {
     state = State {
         screen_width = state.screen_width,
         screen_height = state.screen_height,
-        camera_position = {0, 0},
-        zoom = DEFAULT_ZOOM,
+        camera = {
+            position = {0, 0},
+            orthographic_size = DEFAULT_ORTHO_SIZE,
+            near_plane = 0.1,
+            far_plane = 100
+        },
         current_level = START_LEVEL,
         entities = make([]Entity, MAX_ENTITIES, eternal_allocator),
         quads = make([]Quad, MAX_QUADS, eternal_allocator)
@@ -847,7 +855,7 @@ load_level :: proc(id: LevelId) -> bool {
     
                 switch tile {
                     case .EMPTY:                is_floor = false
-                    case .FLOOR:
+                    case .THREE:
                     case .END:                  level.end = grid_position
                     case .PLAYER:               create_player(grid_position)
                     case .ALT_PLAYER:           create_secondary_player(grid_position)

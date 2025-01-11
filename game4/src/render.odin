@@ -38,26 +38,26 @@ DrawType :: enum {
 }
 
 Layer :: enum {
-    TOP,
-    UNDER_TOP,
-    ON_FLOOR,
-    FLOOR,
-    UI,
+    ZERO,
+    ONE,
+    TWO,
+    THREE,
+
+    VERY_TOP,
 }
 
 z_value :: proc(layer: Layer) -> f32 {
+    // values must be within camera near and far planes
     switch layer {
-        case .UI:           return 0.7
-        case .TOP:          return 0.75
-        case .UNDER_TOP:    return 0.5
-        case .ON_FLOOR:     return 0.25
-        case .FLOOR:        return 0
+        case .VERY_TOP:     return 1
+        case .ZERO:         return 2
+        case .ONE:          return 3
+        case .TWO:          return 4
+        case .THREE:        return 5
     }
 
     unreachable()
 }
-
-DEFAULT_LAYER :: Layer.TOP
 
 DEFAULT_UVS :: [4]Vector2{
     {0, 1},
@@ -105,7 +105,7 @@ draw_dotted_line :: proc(start: Vector2, end: Vector2, dot_count: i64, radius: f
     }
 }
 
-draw_text :: proc(text: string, position: Vector2, colour: Colour, font_size: f32, layer := Layer.TOP) {
+draw_text :: proc(text: string, position: Vector2, colour: Colour, font_size: f32, layer : Layer) {
     if len(text) == 0 {
         return
     }
@@ -207,43 +207,43 @@ draw_text :: proc(text: string, position: Vector2, colour: Colour, font_size: f3
 
 draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colour, uvs: [4]Vector2, draw_type: DrawType, layer: Layer) {
     transformation_matrix : Mat4
+    position_3d : Vector3 = {position.x, position.y, z_value(layer)}
 
     if !in_screen_space {
-        transformation_matrix = translate_matrix(position) * rotate_matrix(-linalg.to_radians(rotation)) * scale_matrix(size)
+        transformation_matrix = translate_matrix(position_3d) * rotate_matrix(-linalg.to_radians(rotation)) * scale_matrix(size)
         transformation_matrix = get_view_matrix() * transformation_matrix
-        // transformation_matrix = scale_matrix({state.zoom, state.zoom}) * transformation_matrix
-
         transformation_matrix = get_projection_matrix() * transformation_matrix
     }
     else {
-        ndc_position := screen_position_to_ndc(position)		    // turn pixel position into ndc
+        ndc_position := screen_position_to_ndc(position_3d)
         ndc_size := size / (Vector2{state.screen_width, state.screen_height} * 0.5) // scale size based on proportion of the screen it occupies
-                                                // 0.5 because ndc is -1 to 1
-    
-        model_matrix := translate_matrix(ndc_position) * scale_matrix(ndc_size) * rotate_matrix(linalg.to_radians(rotation))
+
+        model_matrix := translate_matrix({ndc_position.x, ndc_position.y, 0}) * scale_matrix(ndc_size) * rotate_matrix(linalg.to_radians(rotation))
         transformation_matrix = model_matrix
     }
 
     // the order that the vertices are drawen and that the 
     // index buffer is assuming is:
     //	    top left, top right, bottom right, bottom left
-
     quad := &state.quads[state.quad_count]
     state.quad_count += 1
 
-    z := z_value(layer)
-    z = 0
+    quad[0].position = (transformation_matrix * Vector4{-0.5,  0.5,  0, 1}).xyz
+    quad[1].position = (transformation_matrix * Vector4{0.5,   0.5,  0, 1}).xyz
+    quad[2].position = (transformation_matrix * Vector4{0.5,  -0.5,  0, 1}).xyz
+    quad[3].position = (transformation_matrix * Vector4{-0.5, -0.5,  0, 1}).xyz
 
-    quad[0].position = (transformation_matrix * Vector4{-0.5,  0.5,  z, 1}).xyz
-    quad[1].position = (transformation_matrix * Vector4{0.5,   0.5,  z, 1}).xyz
-    quad[2].position = (transformation_matrix * Vector4{0.5,  -0.5,  z, 1}).xyz
-    quad[3].position = (transformation_matrix * Vector4{-0.5, -0.5,  z, 1}).xyz
+    // only should normalise z when using d3d 
+    // if targeting opengl then the value given back from
+    // this is correct, z == -1 -> 1
+    // d3d ndc == [-1 -> 1, -1 -> 1, 0 -> 1]
+    // gl ndc == [-1 -> 1, -1 -> 1, -1 -> 1]
+    // - 11/01/25
+    quad[0].position.z = (quad[0].position.z + 1) * 0.5
+    quad[1].position.z = (quad[1].position.z + 1) * 0.5
+    quad[2].position.z = (quad[2].position.z + 1) * 0.5
+    quad[3].position.z = (quad[3].position.z + 1) * 0.5
 
-    // quad[0].position.z = 0.1
-    // quad[1].position.z = 0.1
-    // quad[2].position.z = 0.1
-    // quad[3].position.z = 0.1
- 
     quad[0].colour = cast(Vector4) colour
     quad[1].colour = cast(Vector4) colour
     quad[2].colour = cast(Vector4) colour
@@ -272,18 +272,26 @@ draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colou
     quad[3].texture_index = texture_index
 }
 
-screen_position_to_ndc :: proc(position: Vector2) -> Vector2 {
+screen_position_to_ndc :: proc(position: Vector3) -> Vector3 {
+    // the z co-ordinate is not the same in every graphics api
+    // this is currently assuming d3d so the z value is normalised
+    // between 0 -> 1 based on its distance in the camera near and
+    // far planes. For open gl this would need to be -1 -> 1
+    // for others e.g. metal I do not know
+    // - 11/01/25
     return {
         ((position.x / state.screen_width) * 2) - 1,
-        ((position.y / state.screen_height) * 2) - 1 
+        ((position.y / state.screen_height) * 2) - 1,
+        position.z / state.camera.far_plane - state.camera.near_plane
     }
 }
 
 screen_position_to_world_position :: proc(position: Vector2) -> Vector2 {
-    ndc_vec_2 := screen_position_to_ndc(position)
-    ndc_position := Vector4{ndc_vec_2.x, ndc_vec_2.y, -1, 1} // -1 here for near plane
+    ndc_vec_3 := screen_position_to_ndc({position.x, position.y, state.camera.near_plane})
+    ndc_position := Vector4{ndc_vec_3.x, ndc_vec_3.y, ndc_vec_3.z, 1} // -1 here for near plane
+    aspect_ratio := state.screen_width / state.screen_height
 
-    inverse_vp := linalg.inverse(get_projection_matrix() * (scale_matrix(state.zoom) * get_view_matrix()))
+    inverse_vp := linalg.inverse(get_projection_matrix() *  get_view_matrix())
     world_position := inverse_vp * ndc_position
     world_position /= world_position.w
 
@@ -457,29 +465,29 @@ renderer_cleanup :: proc "c" () {
 }
 
 get_view_matrix :: proc() -> Mat4 {
+    // the comments descibing what these are is what the internet says but for some reason it acts the 
+    // oppisite so the values for eye and centre are flipped
     view := linalg.matrix4_look_at_f32(
-        {state.camera_position.x, state.camera_position.y, 1},  // where it is looking at
-        {state.camera_position.x, state.camera_position.y, 0},  // the position
-        {0, 1, 0}						// what is considered "up"
+        {state.camera.position.x, state.camera.position.y, 1},      // camera position
+        {state.camera.position.x, state.camera.position.y, 0},      // what it is looking at
+        {0, 1, 0}						    // what is considered "up"
     )
 
     return view
 }
 
 get_projection_matrix :: proc() -> Mat4 {
-    if false {
-        return linalg.matrix_ortho3d_f32(state.screen_width * -0.5, state.screen_width * 0.5, state.screen_height * -0.5, state.screen_height * 0.5, -1, 1)
-    }
-
-    orthographic_size : f32 = 100
     aspect_ratio := state.screen_width / state.screen_height
+    size := state.camera.orthographic_size
 
-    return linalg.matrix_ortho3d_f32(
-        -orthographic_size * aspect_ratio, 
-        orthographic_size * aspect_ratio, 
-        -orthographic_size, orthographic_size,
-        0.01, 100, true
+    projection := linalg.matrix_ortho3d_f32(
+        -size * aspect_ratio, 
+        size * aspect_ratio, 
+        -size, size,
+        state.camera.near_plane, state.camera.far_plane, false
     )
+
+    return projection
 }
 
 range :: proc(buffer: []$T) -> sg.Range {
@@ -489,8 +497,8 @@ range :: proc(buffer: []$T) -> sg.Range {
     }
 }
 
-translate_matrix :: proc(position: Vector2) -> Mat4 {
-    return linalg.matrix4_translate_f32({position.x, position.y, 0})
+translate_matrix :: proc(position: Vector3) -> Mat4 {
+    return linalg.matrix4_translate_f32(position)
 }
 
 scale_matrix :: proc(scale: Vector2) -> Mat4 {
