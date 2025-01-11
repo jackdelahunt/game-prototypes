@@ -87,7 +87,7 @@ update :: proc() {
         } 
     } 
 
-    // update pass
+    // entity pass
     for entity_index in 0..<state.entity_count {
         entity := &state.entities[entity_index]
 
@@ -428,6 +428,7 @@ dot_drawing_offset : f32 = 0
 // @draw
 draw :: proc(delta_time: f32) {
     dot_drawing_offset += delta_time
+
     if dot_drawing_offset > 1 {
         dot_drawing_offset = 0
     }
@@ -679,22 +680,17 @@ draw :: proc(delta_time: f32) {
                 draw_circle(entity.position, entity.size.x * 0.5, draw_colour, entity.layer)
             }
         }
-    } 
+    }
+
+    in_screen_space = true
 
     level_complete: {
         if !state.level.complete {
             break level_complete
         }
 
-        // draw_rectangle({state.screen_width * 0.5, state.screen_height * 0.5}, {state.screen_width, 100}, BLACK, .VERY_TOP)
-        draw_rectangle(state.camera.position, {500, 50}, BLACK, .VERY_TOP)
+        draw_rectangle({state.screen_width * 0.5, state.screen_height * 0.5}, {state.screen_width, 100}, BLACK, .VERY_TOP)
     }
-
-    in_screen_space = true
-
-    draw_circle({0, 0}, 10, RED, .VERY_TOP)
-    draw_circle({state.screen_width * 0.5, state.screen_height * 0.5}, 10, BLUE, .VERY_TOP)
-    draw_text("Hello sailor", {300, 200}, BLACK, 30, .VERY_TOP)
 
     { // level name
         text, _ := strings.replace_all(level_name(state.current_level), "_", "  ", context.temp_allocator)

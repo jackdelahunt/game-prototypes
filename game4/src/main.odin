@@ -43,7 +43,7 @@ import sglue "sokol/glue"
 
 import shaders "shaders"
 
-DEFAULT_SCREEN_WIDTH	:: 1200
+DEFAULT_SCREEN_WIDTH	:: 1600
 DEFAULT_SCREEN_HEIGHT	:: 900
 
 TICKS_PER_SECOND    :: 30.0
@@ -93,7 +93,7 @@ State :: struct {
     // renderer state
     camera: struct {
         position: Vector2,
-        orthographic_size: f32,
+        orthographic_size: f32, // size in world units from centre of screen to side edges
         near_plane: f32,
         far_plane: f32
     },
@@ -686,9 +686,6 @@ alagard: Font
 main :: proc() {
     context = custom_context()
 
-    _ = make([]u8, 1024 * 1024, level_allocator)
-    free_all(level_allocator)
-
     { // load resources
         loading_ok := true
     
@@ -751,6 +748,7 @@ frame :: proc() {
     }
 
     draw(auto_cast delta_time) 
+    // test_draw()
 }
 
 // @apply_inputs

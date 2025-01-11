@@ -49,11 +49,11 @@ Layer :: enum {
 z_value :: proc(layer: Layer) -> f32 {
     // values must be within camera near and far planes
     switch layer {
-        case .VERY_TOP:     return 1
-        case .ZERO:         return 2
-        case .ONE:          return 3
-        case .TWO:          return 4
-        case .THREE:        return 5
+        case .VERY_TOP:     return 10
+        case .ZERO:         return 20
+        case .ONE:          return 20
+        case .TWO:          return 40
+        case .THREE:        return 50
     }
 
     unreachable()
@@ -218,11 +218,10 @@ draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colou
         ndc_position := screen_position_to_ndc(position_3d)
         ndc_size := size / (Vector2{state.screen_width, state.screen_height} * 0.5) // scale size based on proportion of the screen it occupies
 
-        model_matrix := translate_matrix({ndc_position.x, ndc_position.y, 0}) * scale_matrix(ndc_size) * rotate_matrix(linalg.to_radians(rotation))
-        transformation_matrix = model_matrix
+        transformation_matrix = translate_matrix(ndc_position) * scale_matrix(ndc_size) * rotate_matrix(linalg.to_radians(rotation))
     }
 
-    // the order that the vertices are drawen and that the 
+    // the order that the vertices are drawn and that the 
     // index buffer is assuming is:
     //	    top left, top right, bottom right, bottom left
     quad := &state.quads[state.quad_count]
@@ -233,16 +232,22 @@ draw_quad :: proc(position: Vector2, size: Vector2, rotation: f32, colour: Colou
     quad[2].position = (transformation_matrix * Vector4{0.5,  -0.5,  0, 1}).xyz
     quad[3].position = (transformation_matrix * Vector4{-0.5, -0.5,  0, 1}).xyz
 
-    // only should normalise z when using d3d 
-    // if targeting opengl then the value given back from
-    // this is correct, z == -1 -> 1
-    // d3d ndc == [-1 -> 1, -1 -> 1, 0 -> 1]
-    // gl ndc == [-1 -> 1, -1 -> 1, -1 -> 1]
-    // - 11/01/25
-    quad[0].position.z = (quad[0].position.z + 1) * 0.5
-    quad[1].position.z = (quad[1].position.z + 1) * 0.5
-    quad[2].position.z = (quad[2].position.z + 1) * 0.5
-    quad[3].position.z = (quad[3].position.z + 1) * 0.5
+    // matrix transformations based on view/model/projection matrices result in a position
+    // that has a z coord normalised to -1 -> 1, like how opengl works, The transformations
+    // to render a quad in screen space do not do this and the z values will be correctlly
+    // mapped to 0 -> 1 so only need to do this in screen space - 11/01/25
+    if !in_screen_space {
+        // only should normalise z when using d3d 
+        // if targeting opengl then the value given back from
+        // this is correct, z == -1 -> 1
+        // d3d ndc == [-1 -> 1, -1 -> 1, 0 -> 1]
+        // gl ndc == [-1 -> 1, -1 -> 1, -1 -> 1]
+        // - 10/01/25
+        quad[0].position.z = (quad[0].position.z + 1) * 0.5
+        quad[1].position.z = (quad[1].position.z + 1) * 0.5
+        quad[2].position.z = (quad[2].position.z + 1) * 0.5
+        quad[3].position.z = (quad[3].position.z + 1) * 0.5
+    }
 
     quad[0].colour = cast(Vector4) colour
     quad[1].colour = cast(Vector4) colour
@@ -279,10 +284,17 @@ screen_position_to_ndc :: proc(position: Vector3) -> Vector3 {
     // far planes. For open gl this would need to be -1 -> 1
     // for others e.g. metal I do not know
     // - 11/01/25
-    return {
+
+    assert(state.camera.near_plane < state.camera.far_plane)
+
+    distance_from_near_plane := position.z - state.camera.near_plane
+    distance_between_planes := state.camera.far_plane - state.camera.near_plane
+    z_in_ndc := distance_from_near_plane / distance_between_planes
+
+        return {
         ((position.x / state.screen_width) * 2) - 1,
         ((position.y / state.screen_height) * 2) - 1,
-        position.z / state.camera.far_plane - state.camera.near_plane
+        z_in_ndc 
     }
 }
 
@@ -385,11 +397,11 @@ renderer_init :: proc "c" () {
         label = "basic-pipeline",
 
         // depth buffer options
+        cull_mode = .BACK,
         depth = {
             compare = .LESS_EQUAL,
             write_enabled = true,
         },
-        cull_mode = .BACK,
 
         // vertex buffer layout
         layout = {
