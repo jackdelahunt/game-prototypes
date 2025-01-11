@@ -2,8 +2,8 @@ package src
 
 // TODO:
 // make levels
-//  - phase 1: basic pushing with buttons    : 0/3
-//  - phase 2: key and doors                 : 0/3
+//  - phase 1: basic pushing with buttons    : 4/4
+//  - phase 2: key and doors                 : 2/3
 //  - phase 3: no undo                       : 0/3
 //  - phase 4: lamps and mirrors             : 0/3
 //  - phase 5: everything                    : 0/3
@@ -41,7 +41,7 @@ DEFAULT_SCREEN_HEIGHT	:: 720
 
 TICKS_PER_SECOND    :: 30.0
 TICK_RATE           :: 1.0 / TICKS_PER_SECOND
-TICKS_PER_UNDO      :: 2 // TODO: this is not actually happening this fast
+TICKS_PER_UNDO      :: 1 // TODO: this is not actually happening this fast
 
 MAX_ENTITIES	:: 1_000
 MAX_QUADS	:: 10_000
@@ -54,8 +54,8 @@ GRID_TILE_SIZE  :: 50
 
 START_MAXIMISED :: false
 
-START_LEVEL :: LevelId.TEST
-REPEAT_LEVEL :: false
+START_LEVEL :: LevelId.SIX
+REPEAT_LEVEL :: true
 
 // @state
 State :: struct {
@@ -185,12 +185,6 @@ Level :: struct {
     entities:       []EntityConfig,
 }
 
-LevelId :: enum {
-    TEST,
-    ONE,
-    TWO,
-}
-
 EntityConfig :: struct {
     position: Vector2i,
     watching: []Vector2i,
@@ -198,6 +192,7 @@ EntityConfig :: struct {
     no_undo: bool,
     jump_pad_target: Vector2i,
 }
+
 
 TileLayout :: enum {
     EMPTY               = 0,
@@ -219,11 +214,30 @@ TileLayout :: enum {
     LAUNCH_PAD          = 16,
 }
 
+LevelId :: enum {
+    TEST,
+    ONE,
+    TWO,
+    THREE,
+    FOUR,
+    FIVE,
+    SIX,
+}
+
 level_name :: proc(level: LevelId) -> string {
     switch level {
         case .TEST:     return "Test_Level"
-        case .ONE:      return "A_New_Hope"
-        case .TWO:      return "Islands"
+
+        case .ONE:      return "phase1/A_New_Hope"
+        case .TWO:      return "phase1/Push_It"
+        case .THREE:    return "phase1/Pull_It"
+        case .FOUR:     return "phase1/Rock_Heavy"
+
+        case .FIVE:     return "phase2/The_Keys"
+        case .SIX:      return "phase2/Hold_It"
+
+        // case .TWO:      return "Two_In_One"
+        // case .THREE:    return "Islands"
     }
 
     unreachable()

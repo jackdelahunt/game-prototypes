@@ -695,8 +695,22 @@ draw :: proc(delta_time: f32) {
         }
 
         { // level name
-            text, _ := strings.replace_all(level_name(state.current_level), "_", "  ", context.temp_allocator)
-            draw_text(text, {state.screen_width * 0.5, state.screen_height - 20}, BLACK, 30, .UI_ZERO)
+            level_display_name: string
+
+            {
+                name := level_name(state.current_level)
+                seperated := strings.split(name, "/", context.temp_allocator)
+                
+                if len(seperated) == 1 {
+                    name = seperated[0]
+                } else {
+                    name = seperated[1]
+                }
+
+                level_display_name, _ = strings.replace_all(name, "_", "  ", context.temp_allocator)
+            }
+
+            draw_text(level_display_name, {state.screen_width * 0.5, state.screen_height - 20}, BLACK, 30, .UI_ZERO)
         }
     
         { // fps counter
