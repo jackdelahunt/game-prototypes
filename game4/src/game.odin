@@ -657,7 +657,7 @@ draw :: proc(delta_time: f32) {
                 break draw_no_undo
             }
 
-            highlight_alpha := 0.3 * draw_colour.a
+            highlight_alpha := 0.5 * draw_colour.a
             highlight_colour := alpha(RED, highlight_alpha)
 
             switch entity.shape {

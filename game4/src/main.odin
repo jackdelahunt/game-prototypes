@@ -2,13 +2,15 @@ package src
 
 // TODO:
 // make levels
-//  - phase 1: basic pushing with buttons    : 4/4
-//  - phase 2: key and doors                 : 2/3
-//  - phase 3: no undo                       : 0/3
+//  - phase 1: basic mechanic with buttons   : 4/4
+//  - phase 2: key and doors                 : 2/2
+//  - phase 3: no undo                       : 4/4
 //  - phase 4: lamps and mirrors             : 0/3
 //  - phase 5: everything                    : 0/3
 
 // hint for each level
+// remove hold it level, it is not good, replace with level that shows jump pads
+// add back restart button
 
 import "core:fmt"
 import "core:log"
@@ -54,7 +56,7 @@ GRID_TILE_SIZE  :: 50
 
 START_MAXIMISED :: false
 
-START_LEVEL :: LevelId.SIX
+START_LEVEL :: LevelId.ELEVEN
 REPEAT_LEVEL :: true
 
 // @state
@@ -222,6 +224,11 @@ LevelId :: enum {
     FOUR,
     FIVE,
     SIX,
+    SEVEN,
+    EIGHT,
+    NINE,
+    TEN,
+    ELEVEN,
 }
 
 level_name :: proc(level: LevelId) -> string {
@@ -235,6 +242,13 @@ level_name :: proc(level: LevelId) -> string {
 
         case .FIVE:     return "phase2/The_Keys"
         case .SIX:      return "phase2/Hold_It"
+
+        case .SEVEN:    return "phase3/There_And_Back"
+        case .EIGHT:    return "phase3/Two_In_One"
+        case .NINE:     return "phase3/Islands"
+        case .TEN:      return "phase3/Not_Me"
+
+        case .ELEVEN:   return "phase4/High_Beam"
 
         // case .TWO:      return "Two_In_One"
         // case .THREE:    return "Islands"

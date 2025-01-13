@@ -1,0 +1,29 @@
+Game4 design:
+
+Pitch:
+- Game4 is a 2D puzzle solving game about controlling time.
+  Control objects and time to solve puzzles.
+
+Scope:
+- pros:
+	* Everything interacts with everything else
+	* Expereince is tight and focused
+- cons:
+	* Things are not made cheaply
+
+Appeal:
+- pros:
+	* controlling time fantasy
+	* different
+- cons:
+	* hard to understand from a screenshot
+
+Fun:
+- pros:
+	* Challenges few skills, puzzle solving
+	* Clear feedback
+	* Can learn from mistakes
+	* Difficulty curve is highly controlled
+
+Monitisation:
+N/A
