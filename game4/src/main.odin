@@ -129,6 +129,9 @@ Entity :: struct {
 
     // flag: lamp
     lamp_type: LampType,
+
+    // flag: key
+    attached_player: EntityId,
 }
 
 EntityId :: uint

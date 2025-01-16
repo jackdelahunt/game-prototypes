@@ -240,62 +240,7 @@ update :: proc() {
             else {
                 entity.flags -= {.ACTIVATED}
             }
-        }
-
-        key_update: {
-            if !(.KEY in entity.flags) {
-                break key_update
-            }
-
-            if .KEY_USED in entity.flags {
-                break key_update
-            }
-
-            player := get_entity_with_flag(.PLAYER)
-            if player == nil {
-                break key_update 
-            }
-
-            pickup_check: {
-                if .IN_PLAYER_HAND in entity.flags {
-                    break pickup_check
-                }
-    
-                if entity.grid_position == player.grid_position {
-                    entity.flags += {.IN_PLAYER_HAND}
-                }
-            }
-
-            in_hand: {
-                if !(.IN_PLAYER_HAND in entity.flags) {
-                    break in_hand
-                }
-
-                entity.position = player.position
-
-                // check all adjacent tiles and check if there is a door
-                // if it is then activated it
-                for direction in Direction {
-                    if direction == .NONE {
-                        continue
-                    }
-                    
-                    checking_position := player.grid_position + direction_grid_offset(direction)
-
-                    other := get_entity_at_position_with_flags(checking_position, {.KEY_DOOR})
-                    if other == nil {
-                        continue
-                    }
-
-                    if !(.ACTIVATED in other.flags) {
-                        other.flags += {.ACTIVATED}
-
-                        entity.flags += {.KEY_USED}
-                        entity.flags -= {.IN_PLAYER_HAND}
-                    }
-                }
-            }
-        }
+        } 
 
         key_door_update: {
             if !(.KEY_DOOR in entity.flags) {
@@ -381,6 +326,10 @@ update :: proc() {
     // with that entity on the jump pad meaning it will forever go back and forth
     // on it - 09/01/25
 
+    // HACK: same thing needs to be done for keys because they need to be alligned with
+    // the player by the end of the update or else they will weirdly teleport every
+    // time the player moves with the key in hand
+
     // there are two ways to fix this
     // - have different entity types, each in their own buffer so the order at which
     //   they are updated is not related to when they are created, but how we choose
@@ -417,7 +366,76 @@ update :: proc() {
         }
     }
 
+    for entity_index in 0..<state.entity_count {
+        entity := &state.entities[entity_index]
 
+        if !(.KEY in entity.flags) {
+            continue
+        }
+
+        if .KEY_USED in entity.flags {
+            continue
+        }
+
+        pickup_check: {
+            if .IN_PLAYER_HAND in entity.flags {
+                break pickup_check
+            }
+
+            iter := new_grid_position_iterator(entity.grid_position)
+            for {
+                other := next(&iter)
+                if other == nil {
+                    break pickup_check
+                }
+                    
+                if !(.PLAYER in other.flags) {
+                    continue 
+                }
+
+                if other.grid_position == entity.grid_position {
+                    entity.attached_player = other.id
+                    entity.flags += {.IN_PLAYER_HAND}
+                    break pickup_check
+                }
+            }
+        }
+
+        in_hand: {
+            if !(.IN_PLAYER_HAND in entity.flags) {
+                break in_hand
+            }
+
+            player := get_entity_with_id(entity.attached_player)
+            assert(player != nil)
+
+            entity.position = player.position - Vector2{GRID_TILE_SIZE * 0.3, GRID_TILE_SIZE * 0.3}
+            entity.grid_position = player.grid_position
+
+            // check all adjacent tiles and check if there is a door
+            // if it is then activated it
+            for direction in Direction {
+                if direction == .NONE {
+                    continue
+                }
+                    
+                checking_position := entity.grid_position + direction_grid_offset(direction)
+
+                other := get_entity_at_position_with_flags(checking_position, {.KEY_DOOR})
+                if other == nil {
+                    continue
+                }
+
+                if !(.ACTIVATED in other.flags) {
+                    other.flags += {.ACTIVATED}
+
+                    entity.flags += {.KEY_USED}
+                    entity.flags -= {.IN_PLAYER_HAND}
+                }
+            }
+        }
+    }
+    
     if state.save_this_tick {
         create_save_point()
         state.save_this_tick = false
@@ -667,11 +685,11 @@ draw :: proc(delta_time: f32) {
                     scaled_size := entity.size * 0.20
                     highlight_size := entity.size + max(scaled_size.x, scaled_size.y) 
 
-                    draw_rectangle(entity.position, highlight_size, highlight_colour, .ONE, rotation = entity.rotation)	
+                    draw_rectangle(entity.position, highlight_size, highlight_colour, .ZERO, rotation = entity.rotation)	
                 }
                 case .CIRCLE: {
                     highlight_radius := (entity.size.x * 0.5) * 1.15
-                    draw_circle(entity.position, highlight_radius, highlight_colour, .ONE)
+                    draw_circle(entity.position, highlight_radius, highlight_colour, .ZERO)
                 }
         }   
         }
