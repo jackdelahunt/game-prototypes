@@ -685,11 +685,11 @@ draw :: proc(delta_time: f32) {
                     scaled_size := entity.size * 0.20
                     highlight_size := entity.size + max(scaled_size.x, scaled_size.y) 
 
-                    draw_rectangle(entity.position, highlight_size, highlight_colour, .ZERO, rotation = entity.rotation)	
+                    draw_rectangle(entity.position, highlight_size, highlight_colour, .TWO, rotation = entity.rotation)	
                 }
                 case .CIRCLE: {
                     highlight_radius := (entity.size.x * 0.5) * 1.15
-                    draw_circle(entity.position, highlight_radius, highlight_colour, .ZERO)
+                    draw_circle(entity.position, highlight_radius, highlight_colour, .TWO)
                 }
         }   
         }

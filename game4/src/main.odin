@@ -6,7 +6,7 @@ package src
 //  - phase 2: key and doors                 : 1/2
 //  - phase 3: no undo                       : 4/4
 //  - phase 4: lamps and mirrors             : 3/3
-//  - phase 5: two players                   : 0/3
+//  - phase 5: two players                   : 2/3
 
 // hint for each level
 // add back restart button
@@ -232,7 +232,8 @@ LevelId :: enum {
     TEN,
     ELEVEN,
     TWELVE,
-    THIRTEEN
+    THIRTEEN,
+    FOURTEEN,
 }
 
 level_name :: proc(level: LevelId) -> string {
@@ -255,7 +256,8 @@ level_name :: proc(level: LevelId) -> string {
         case .ELEVEN:   return "phase4/Warped"
         case .TWELVE:   return "phase4/Round_And_Round"
 
-        case .THIRTEEN: return "phase5/Two_Of_Us"
+        case .THIRTEEN: return "phase5/Teamwork"
+        case .FOURTEEN: return "phase5/Two_Of_Us"
     }
 
     unreachable()
