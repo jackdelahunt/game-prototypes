@@ -42,6 +42,8 @@ update :: proc() {
         // once the level is comlete nothing gets updated and most of the global controls
         // get disabled here aswell
         if state.level.complete {
+            state.display_controls = false
+
             if state.key_inputs[.SPACE] == .DOWN {
                 if REPEAT_LEVEL {
                     restart()
@@ -50,6 +52,15 @@ update :: proc() {
                 } 
             }
 
+            return
+        }
+
+        if state.key_inputs[.TAB] == .DOWN {
+            state.display_controls = !state.display_controls
+        }
+
+        if state.key_inputs[.T] == .DOWN {
+            restart()
             return
         }
 
@@ -712,6 +723,23 @@ draw :: proc(delta_time: f32) {
             draw_text("Complete - Press Space", {state.screen_width * 0.5, state.screen_height * 0.5}, YELLOW, 30, .UI_ZERO)
         }
 
+        if state.display_controls {
+            centre := Vector2{state.screen_width * 0.5, state.screen_height * 0.5}
+    
+            draw_rectangle(centre, {800, 500}, BLACK, .UI_ONE)
+            draw_text("move: WASD", centre + {0, 230}, YELLOW, 20, .UI_ZERO)
+            draw_text("rotate: R", centre + {0, 190}, YELLOW, 20, .UI_ZERO)
+            draw_text("grab: shift", centre + {0, 150}, YELLOW, 20, .UI_ZERO)
+    
+            draw_text("undo: U", centre + {0, 50}, YELLOW, 20, .UI_ZERO)
+            draw_text("restart: T", centre + {0, 10}, YELLOW, 20, .UI_ZERO)
+    
+            draw_text("next player: right", centre + {0, -90}, YELLOW, 20, .UI_ZERO)
+            draw_text("prev player: left", centre + {0, -130}, YELLOW, 20, .UI_ZERO)
+    
+            draw_text("controls: tab", centre + {0, -230}, YELLOW, 20, .UI_ZERO)
+        } 
+
         { // level name
             level_display_name: string
 
@@ -730,6 +758,18 @@ draw :: proc(delta_time: f32) {
 
             draw_text(level_display_name, {state.screen_width * 0.5, state.screen_height - 20}, BLACK, 30, .UI_ZERO)
         }
+
+        { // note
+            if len(state.level.note) > 0 {
+                position := Vector2{state.screen_width * 0.5, 25}
+                background_width := f32(len(state.level.note) * 25)
+
+                draw_rectangle(position, {background_width, 50}, BLACK, .UI_ONE)
+                draw_text(state.level.note, position , YELLOW, 30, .UI_ZERO)
+            }
+
+
+        }
     
         { // fps counter
             text := fmt.tprintf("FPS: %v", int(1 / delta_time))
@@ -745,12 +785,7 @@ draw :: proc(delta_time: f32) {
             text := fmt.tprintf("Q: %v/%v", state.quad_count, MAX_QUADS)
             draw_text(text, {300, 25}, BLUE, 15, .UI_ZERO)
         }
-    
-        { // controls
-            text := "move: WASD   undo: U   grab: Shift   rotate: R   next player: Right   previous player: Left   next level: N   previous leve: P zoom in: Up   zoom out: Down"
-            draw_text(text, {state.screen_width * 0.5, 50}, BLACK, 15, .UI_ZERO)
-        }
-    }
+    } 
 }
 
 create_player :: proc(grid_position: Vector2i) -> ^Entity {

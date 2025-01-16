@@ -55,7 +55,7 @@ GRID_TILE_SIZE  :: 50
 
 START_MAXIMISED :: true
 
-START_LEVEL :: LevelId.THIRTEEN
+START_LEVEL :: LevelId.ONE
 REPEAT_LEVEL :: false
 
 // @state
@@ -74,6 +74,7 @@ State :: struct {
     mouse_screen_position: Vector2,
     mouse_world_position: Vector2, // only calculated at the start of every frame
     character_input: u32,
+    display_controls: bool,
 
     // game state
     entities: []Entity,
@@ -187,6 +188,7 @@ Level :: struct {
     // defined in level file
     layout:         [][]TileLayout,
     entities:       []EntityConfig,
+    note:           string
 }
 
 EntityConfig :: struct {
@@ -811,7 +813,7 @@ load_level :: proc(id: LevelId) -> bool {
             return false
         } 
     
-        err := json.unmarshal_any(bytes, &level, spec = .JSON5, allocator = context.temp_allocator)
+        err := json.unmarshal_any(bytes, &level, spec = .JSON5, allocator = level_allocator)
         if err != nil {
             log.errorf("error unmarshalling level file %v with error %v", path, err)
             return false
