@@ -3,13 +3,12 @@ package src
 // TODO:
 // make levels
 //  - phase 1: basic mechanic with buttons   : 4/4
-//  - phase 2: key and doors                 : 2/2
+//  - phase 2: key and doors                 : 1/2
 //  - phase 3: no undo                       : 4/4
-//  - phase 4: lamps and mirrors             : 0/3
-//  - phase 5: everything                    : 0/3
+//  - phase 4: lamps and mirrors             : 3/3
+//  - phase 5: two players                   : 0/3
 
 // hint for each level
-// remove hold it level, it is not good, replace with level that shows jump pads
 // add back restart button
 
 import "core:fmt"
@@ -43,7 +42,7 @@ DEFAULT_SCREEN_HEIGHT	:: 720
 
 TICKS_PER_SECOND    :: 30.0
 TICK_RATE           :: 1.0 / TICKS_PER_SECOND
-TICKS_PER_UNDO      :: 1 // TODO: this is not actually happening this fast
+TICKS_PER_UNDO      :: 5 // TODO: this is not actually happening this fast
 
 MAX_ENTITIES	:: 1_000
 MAX_QUADS	:: 10_000
@@ -54,10 +53,10 @@ GRID_WIDTH      :: 5
 GRID_HEIGHT     :: 5
 GRID_TILE_SIZE  :: 50
 
-START_MAXIMISED :: false
+START_MAXIMISED :: true
 
-START_LEVEL :: LevelId.ELEVEN
-REPEAT_LEVEL :: true
+START_LEVEL :: LevelId.THIRTEEN
+REPEAT_LEVEL :: false
 
 // @state
 State :: struct {
@@ -229,6 +228,8 @@ LevelId :: enum {
     NINE,
     TEN,
     ELEVEN,
+    TWELVE,
+    THIRTEEN
 }
 
 level_name :: proc(level: LevelId) -> string {
@@ -241,17 +242,17 @@ level_name :: proc(level: LevelId) -> string {
         case .FOUR:     return "phase1/Rock_Heavy"
 
         case .FIVE:     return "phase2/The_Keys"
-        case .SIX:      return "phase2/Hold_It"
 
-        case .SEVEN:    return "phase3/There_And_Back"
-        case .EIGHT:    return "phase3/Two_In_One"
-        case .NINE:     return "phase3/Islands"
-        case .TEN:      return "phase3/Not_Me"
+        case .SIX:      return "phase3/There_And_Back"
+        case .SEVEN:    return "phase3/Two_In_One"
+        case .EIGHT:    return "phase3/Islands"
+        case .NINE:     return "phase3/Not_Me"
 
-        case .ELEVEN:   return "phase4/High_Beam"
+        case .TEN:      return "phase4/High_Beam"
+        case .ELEVEN:   return "phase4/Warped"
+        case .TWELVE:   return "phase4/Round_And_Round"
 
-        // case .TWO:      return "Two_In_One"
-        // case .THREE:    return "Islands"
+        case .THIRTEEN: return "phase5/Two_Of_Us"
     }
 
     unreachable()

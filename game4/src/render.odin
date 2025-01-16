@@ -42,6 +42,7 @@ Layer :: enum {
     ONE,
     TWO,
     THREE,
+    FOUR,
 
     UI_ZERO,
     UI_ONE,
@@ -54,6 +55,7 @@ z_value :: proc(layer: Layer) -> f32 {
         case .ONE:          return 60
         case .TWO:          return 70
         case .THREE:        return 80
+        case .FOUR:         return 90
 
         case .UI_ZERO:      return 10
         case .UI_ONE:       return 20

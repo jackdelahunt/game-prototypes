@@ -68,7 +68,7 @@ update :: proc() {
             return
         }
 
-        if state.key_inputs[.U] == .PRESSING {
+        if false && state.key_inputs[.U] == .PRESSING {
             @static tick_counter := 0
 
             if tick_counter == TICKS_PER_UNDO {
@@ -620,7 +620,7 @@ draw :: proc(delta_time: f32) {
                     dot_count,
                     2,
                     alpha(BLUE, 0.2),
-                    .ONE,
+                    .ZERO,
                     dot_drawing_offset
                 )
             }
@@ -744,6 +744,7 @@ create_player :: proc(grid_position: Vector2i) -> ^Entity {
         grid_position = grid_position,
         direction = .UP,
         player_type = .PRIMARY,
+        layer = .ONE,
     })
 }
 
@@ -756,6 +757,7 @@ create_secondary_player :: proc(grid_position: Vector2i) -> ^Entity {
         grid_position = grid_position,
         direction = .UP,
         player_type = .SECONDARY,
+        layer = .ONE,
     })
 }
 
@@ -778,6 +780,7 @@ create_key :: proc(grid_position: Vector2i) -> ^Entity {
         size = Vector2{GRID_TILE_SIZE * 0.5, GRID_TILE_SIZE * 0.18},
         colour = YELLOW,
         grid_position = grid_position,
+        layer = .ZERO,
     })  
 }
 
@@ -788,6 +791,7 @@ create_key_door :: proc(grid_position: Vector2i) -> ^Entity {
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE},
         colour = brightness(YELLOW, 0.6),
         grid_position = grid_position,
+        layer = .ONE,
     })  
 }
 
@@ -799,6 +803,7 @@ create_rock :: proc(grid_position: Vector2i) -> ^Entity {
         colour = BROWN,
         grid_position = grid_position,
         shape = .CIRCLE,
+        layer = .ONE,
     })  
 }
 
@@ -808,7 +813,8 @@ create_wall :: proc(grid_position: Vector2i) -> ^Entity {
         position = grid_position_to_world(grid_position),
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE},
         colour = BLACK,
-        grid_position = grid_position
+        grid_position = grid_position,
+        layer = .ONE,
     })  
 }
 
@@ -818,7 +824,8 @@ create_door :: proc(grid_position: Vector2i) -> ^Entity {
         position = grid_position_to_world(grid_position),
         size = Vector2{GRID_TILE_SIZE, GRID_TILE_SIZE},
         colour = DARK_GRAY,
-        grid_position = grid_position
+        grid_position = grid_position,
+        layer = .ONE,
     })  
 }
 
@@ -832,6 +839,7 @@ create_lamp :: proc(grid_position: Vector2i, type: LampType) -> ^Entity {
             grid_position = grid_position,
             direction = .UP,
             lamp_type = type,
+            layer = .ONE,
         })
     }
 
@@ -871,6 +879,7 @@ create_mirror :: proc(grid_position: Vector2i) -> ^Entity {
         colour = SKY_BLUE,
         grid_position = grid_position,
         direction = .RIGHT,
+        layer = .ONE,
     })  
 }
 
