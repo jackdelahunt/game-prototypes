@@ -2849,6 +2849,10 @@ pub fn main() !void {
 //                          @todo 
 /////////////////////////////////////////////////////////////////////////
 
+// RELEASE
+// zig build -Doptimize=ReleaseFast
+// only executable is needed for distrobution
+
 // PITCH
 // This is a top down horde shooter about survivaing continuosly
 // more difficult waves of enemies
