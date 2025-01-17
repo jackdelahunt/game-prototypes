@@ -2,7 +2,6 @@ const std = @import("std");
 const log = std.log.scoped(.game);
 
 const raylib = @cImport(@cInclude("raylib.h"));
-const microui = @cImport(@cInclude("microui.h"));
 
 const render = @import("base_layer/render.zig");
 const encode = @import("base_layer/encode.zig");
@@ -28,8 +27,8 @@ const ROOM_HEIGHT = 800;
 const WALLTHICKNESS = 20;
 const DOOR_WIDTH = 350;
 
-const AMMO_CRATE_COST = 750;
-const RANDOM_BOX_COST = 1250;
+const AMMO_CRATE_COST = 1000;
+const RANDOM_BOX_COST = 1750;
 
 const MAX_SPAWN_DISTANCE = ROOM_WIDTH * 0.8;
 const MIN_SPAWN_DISTANCE = 100;
@@ -58,8 +57,6 @@ const DEBUG_GOD_MODE                    = if(DEBUG_DISABLE_ALL) false else true;
 const DEBUG_GIVE_MONEY                  = if(DEBUG_DISABLE_ALL) false else true;
 const DEBUG_START_ROUND                 = if(DEBUG_DISABLE_ALL) 0     else 0;
 const DEBUG_GIVE_BUFFS                  = if(DEBUG_DISABLE_ALL) false else true;
-
-const MICROUI_FONT_SIZE = 10;
 
 /////////////////////////////////////////////////////////////////////////
 ///                         @state
@@ -98,7 +95,6 @@ const State = struct {
         money: u64,
     },
     rng: std.rand.DefaultPrng,
-    microui_context: *microui.mu_Context,
     allocator: std.mem.Allocator,
     frame_allocator: std.heap.FixedBufferAllocator
 };
@@ -137,16 +133,12 @@ fn new_state(allocator: std.mem.Allocator) State {
             .money = 0,
         },
         .rng = std.rand.DefaultPrng.init(123456),
-        .microui_context = microui.init_context(),
         .allocator = allocator,
         .frame_allocator = undefined,
     };
 
     const frmae_allocator_buffer = state.allocator.alloc(u8, 1024 * 100) catch unreachable; 
     state.frame_allocator = std.heap.FixedBufferAllocator.init(frmae_allocator_buffer);
-
-    state.microui_context.text_width = microui_text_width_callback;
-    state.microui_context.text_height = microui_text_height_callback;
 
     // zero init all entities
     for(state.entities.slice()) |*entity| {
@@ -299,56 +291,6 @@ fn input(state: *State) void {
     state.mouse_world_position = V2f{mouse_world_position.x, mouse_world_position.y};
     state.mouse_delta_movement = V2f{delta.x, delta.y};
     state.mouse_wheel = raylib.GetMouseWheelMoveV().y;
-
-    { // micro ui input events
-        switch (mouse(state, raylib.MOUSE_BUTTON_LEFT)) {
-            .down => microui.mu_input_mousedown(
-                state.microui_context, 
-                @intFromFloat(state.mouse_screen_position[0]), 
-                @intFromFloat(state.mouse_screen_position[1]), 
-                microui.MU_MOUSE_LEFT
-            ),
-            .released => microui.mu_input_mouseup(
-                state.microui_context, 
-                @intFromFloat(state.mouse_screen_position[0]), 
-                @intFromFloat(state.mouse_screen_position[1]), 
-                microui.MU_MOUSE_LEFT
-            ),
-            else => {}
-        }
-
-        switch (mouse(state, raylib.MOUSE_BUTTON_RIGHT)) {
-            .down => microui.mu_input_mousedown(
-                state.microui_context, 
-                @intFromFloat(state.mouse_screen_position[0]), 
-                @intFromFloat(state.mouse_screen_position[1]), 
-                microui.MU_MOUSE_RIGHT
-            ),
-            .released => microui.mu_input_mouseup(
-                state.microui_context, 
-                @intFromFloat(state.mouse_screen_position[0]), 
-                @intFromFloat(state.mouse_screen_position[1]), 
-                microui.MU_MOUSE_RIGHT
-            ),
-            else => {}
-        }
-
-        if(state.mouse_delta_movement[0] != 0 or state.mouse_delta_movement[1] != 0) {
-            microui.mu_input_mousemove(
-                state.microui_context, 
-                @intFromFloat(state.mouse_delta_movement[0]), 
-                @intFromFloat(state.mouse_delta_movement[1]), 
-            );
-        }
-
-        if(state.mouse_wheel != 0) {
-            microui.mu_input_scroll(
-                state.microui_context, 
-                0,
-                @intFromFloat(state.mouse_wheel), 
-            );
-        }
-    }
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -1323,50 +1265,6 @@ fn draw(state: *State, delta_time: f32) void {
         } 
     } 
 
-    if(false) { // micro ui rendering
-        microui.mu_begin(state.microui_context);
-
-        { // entity window
-            const Static = struct {
-                    var selected_entity: ?usize = null;
-            };
-
-            if (microui.mu_begin_window_ex(state.microui_context, "Entities", microui.mu_rect(30, 30, 250, 400), microui.MU_OPT_AUTOSIZE) != 0) {
-                for(0..state.entities.len) |i| {
-                    const entity: *Entity = &state.entities.slice()[i];
-                    const string = std.fmt.allocPrintZ(
-                        state.frame_allocator.allocator(), 
-                        "entity: {d}", 
-                        .{entity.id}
-                    ) catch unreachable;
-     
-                    microui.mu_push_id(state.microui_context, &i, @sizeOf(usize));
-                    if (microui.mu_button(state.microui_context, string) != 0) {
-                        Static.selected_entity = i;
-                    }
-                    microui.mu_pop_id(state.microui_context);
-                } 
-
-                microui.mu_end_window(state.microui_context);
-            }
-
-            if(Static.selected_entity) |selected_entity| {
-                if (microui.mu_begin_window_ex(state.microui_context, "entity", microui.mu_rect(300, 300, 100, 100), microui.MU_OPT_AUTOSIZE) != 0) {
-                    if (microui.mu_button(state.microui_context, "close") != 0) {
-                        Static.selected_entity = null;
-                    } else {
-                        draw_value_microui(state, state.entities.slice()[selected_entity]);
-                    }
-
-                    microui.mu_end_window(state.microui_context);
-                }
-            }
-        }
-
-        microui.mu_end(state.microui_context);
-    } 
-
-    draw_microui_command_list(state);
     raylib.EndDrawing();
 }
 
@@ -2189,9 +2087,9 @@ const Buff = enum {
     fn base_cost(self: Self) u16 {
         return @as(u16, switch (self) {
             .none => 0,
-            .health => 3000,
-            .speed => 2500,
-            .reload => 2000
+            .health => 4000,
+            .speed => 3250,
+            .reload => 2750
         });
     }
 
@@ -2668,82 +2566,6 @@ const DualTileGrid = struct {
     }
 };
 
-fn draw_value_microui(state: *State, args: anytype) void {
-    const ArgsType = @TypeOf(args);
-    const args_type_info = @typeInfo(ArgsType);
-    if (args_type_info != .Struct) {
-        @compileError("expected tuple or struct argument, found " ++ @typeName(ArgsType));
-    }
-
-    const fields_info = args_type_info.Struct.fields;
-    inline for(fields_info) |field_info| {
-        const string = std.fmt.allocPrintZ(state.frame_allocator.allocator(), "{s}:{any}", .{field_info.name, @field(args, field_info.name)}) catch unreachable;
-        const raylib_font = raylib.GetFontDefault();
-        const dimensions = raylib.MeasureTextEx(raylib_font, string, MICROUI_FONT_SIZE, render.FONT_LINE_SPACING);
-
-        const width: c_int = @intFromFloat(dimensions.x);
-        const height: c_int = @intFromFloat(dimensions.y);
-
-        microui.mu_layout_row(state.microui_context, 1, &width, height);
-        microui.mu_text(state.microui_context, string);
-    }
-}
-
-fn draw_microui_command_list(state: *State) void {
-    var command: [*c]microui.mu_Command = 0;
-    while(microui.mu_next_command(state.microui_context, &command) != 0) { // **mu_command here
-        switch (command.*.type) {
-            microui.MU_COMMAND_RECT => {
-                const rect = &command.*.rect.rect;
-                raylib.DrawRectangle(
-                    rect.x, rect.y, 
-                    rect.w, rect.h, 
-                    microui_color_to_raylib(command.*.rect.color)
-                );
-            },
-            microui.MU_COMMAND_TEXT => {
-                const text_as_ptr: [*]u8 = @ptrCast(&command.*.text.str);
-                raylib.DrawText(text_as_ptr, command.*.text.pos.x, command.*.text.pos.y, MICROUI_FONT_SIZE, microui_color_to_raylib(command.*.text.color));
-            },
-            microui.MU_COMMAND_CLIP => {
-                const rect = &command.*.clip.rect;
-                raylib.BeginScissorMode(rect.x, rect.y, rect.w, rect.h);
-            },
-            microui.MU_COMMAND_ICON => {
-                // not supported :[
-            },
-            else => {},
-        }
-    }
-    
-    raylib.EndScissorMode();
-}
-
-fn microui_text_width_callback(font: microui.mu_Font, text: [*c]const u8, length: c_int) callconv(.C) c_int {
-    _ = font; // autofix
-    _ = length; // autofix
-
-    const raylib_font = raylib.GetFontDefault();
-    const dimensions = raylib.MeasureTextEx(raylib_font, text, MICROUI_FONT_SIZE, render.FONT_LINE_SPACING);
-    return @intFromFloat(dimensions.x);
-}
-
-fn microui_text_height_callback(font: microui.mu_Font) callconv(.C) c_int {
-    _ = font; // autofix
-    const raylib_font = raylib.GetFontDefault();
-    const dimensions = raylib.MeasureTextEx(raylib_font, "random text", MICROUI_FONT_SIZE, render.FONT_LINE_SPACING);
-    return @intFromFloat(dimensions.y);
-}
-
-fn microui_color_to_raylib(color: microui.mu_Color) raylib.Color {
-    return raylib.Color{
-        .r = color.r,
-        .g = color.g,
-        .b = color.b,
-        .a = color.a,
-    };
-}
-
 /////////////////////////////////////////////////////////////////////////
 //                         @level creation
 /////////////////////////////////////////////////////////////////////////
@@ -2834,7 +2656,7 @@ fn create_scene(state: *State) void {
     {
         const centre = vscaler(0);
 
-        _ = create_player(state, centre + room_object_offset);
+        _ = create_player(state, centre + V2f{0, 20});
     }
 
     { // spawn room
@@ -2959,19 +2781,6 @@ fn create_scene(state: *State) void {
 pub fn main() !void {
     init_raylib();
 
-    log.info("{} {}", .{@sizeOf(Entity), @sizeOf(Entity) * MAX_ENTITIES});
-
-    for(1..30) |round| {
-        log.info(
-            "round: {:<3}, healthX: {d:<4}, spawnDelay: {d:<4}, enemy#: {:<5}, speedX: {d:<5}", .{
-            round,
-            get_enemy_health_multiplier_for_round(round), 
-            get_spawner_cooldown_for_round(round),
-            get_enemy_count_for_round(round),
-            get_enemy_speed_multiplier_for_round(round)
-        });
-    }
-    
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
