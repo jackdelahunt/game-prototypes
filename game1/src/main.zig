@@ -6,7 +6,7 @@ const raylib = @cImport(@cInclude("raylib.h"));
 const render = @import("base_layer/render.zig");
 const encode = @import("base_layer/encode.zig");
 
-const MAX_ENTITIES = 1024;
+const MAX_ENTITIES = 2048;
 
 const PLAYER_SPEED  = 200;
 const PLAYER_DASH_MULTIPLIER = 4;
@@ -22,8 +22,8 @@ const PLAYER_HEALTH  = 100;
 const WINDOW_WIDTH  = 1500;
 const WINDOW_HEIGHT = 1000;
 
-const ROOM_WIDTH = 900;
-const ROOM_HEIGHT = 800;
+const ROOM_WIDTH = 800;
+const ROOM_HEIGHT = 700;
 const WALLTHICKNESS = 20;
 const DOOR_WIDTH = 350;
 
@@ -71,7 +71,11 @@ const State = struct {
         released,
     };
 
+    quit: bool,
     paused: bool,
+    display_pause_menu: bool,
+    display_controls: bool,
+    start_of_game: bool,
     keyboard: [348]InputState,
     mouse: [7]InputState,
     mouse_screen_position: V2f,
@@ -101,7 +105,11 @@ const State = struct {
 
 fn new_state(allocator: std.mem.Allocator) State {
     var state = State{
+        .quit = false,
         .paused = false,
+        .display_pause_menu = false,
+        .display_controls = false,
+        .start_of_game = true,
         .keyboard = [_]State.InputState{.up} ** 348,
         .mouse = [_]State.InputState{.up} ** 7,
         .mouse_screen_position = vscaler(0),
@@ -190,7 +198,7 @@ fn load_state(state: *State) !void {
 }
 
 fn run(state: *State) void {
-    while (!raylib.WindowShouldClose()) {
+    while (!raylib.WindowShouldClose() and !state.quit) {
         const delta_time = raylib.GetFrameTime();
         state.tick_timer += delta_time; 
         state.time_since_start += delta_time;
@@ -199,8 +207,54 @@ fn run(state: *State) void {
             if(state.tick_timer >= TICK_RATE) {
                 input(state);
 
-                if(key(state, raylib.KEY_P) == .down) {
-                    state.paused = !state.paused;
+                if (state.start_of_game) {
+                    const Static = struct {
+                        var pressing_timer: f32 = 15;
+                    };
+
+                    state.paused = true;
+                    state.display_controls = true;
+
+                    if(key(state, raylib.KEY_ESCAPE) == .pressing) {
+                        Static.pressing_timer -= TICK_RATE;
+
+                        if (Static.pressing_timer <= 0) {
+                            state.paused = false;
+                            state.display_controls = false;
+                            state.display_pause_menu = false;
+                            state.start_of_game = false;
+                        }
+                    }
+
+                    break :tick;
+                }
+
+                if(key(state, raylib.KEY_ESCAPE) == .down) {
+                    if (state.display_pause_menu) {
+                        state.display_pause_menu = false;
+                        state.display_controls = false;
+                        state.paused = false;
+                    } else {
+                        state.display_pause_menu = true;
+                        state.display_controls = false;
+                        state.paused = true;
+                    }
+                }
+
+                if (state.display_pause_menu) {
+                    if(key(state, raylib.KEY_Q) == .down) {
+                        state.quit = true;
+                    }
+                }
+
+                if(key(state, raylib.KEY_TAB) == .down and !state.display_pause_menu) {
+                    if (state.display_controls) {
+                        state.display_controls = false;
+                        state.paused = false;
+                    } else {
+                        state.display_controls = true;
+                        state.paused = true;
+                    }
                 }
 
                 if(state.paused) break :tick;
@@ -400,7 +454,7 @@ fn update_entites(state: *State) void {
                 entity.velocity = input_vector * speed_vector * dash_vector;
             }
 
-            if(key(state, raylib.KEY_U) == .down) {
+            if(key(state, raylib.KEY_U) == .down and !DEBUG_DISABLE_ALL) {
                 if(entity.item != .none and entity.item_level < MAX_ITEM_LEVEL) {
                     entity.item_level += 1; 
                 }
@@ -413,12 +467,22 @@ fn update_entites(state: *State) void {
                 }
             }
 
-            if(
-                key(state, raylib.KEY_SPACE) == .pressing and 
-                entity.attacking_cooldown == 0 and
-                entity.magazine_ammo > 0 and
-                !entiity_has_flag(entity, flag_is_reloading)
-            ) {
+            shooting: {
+                if (
+                    key(state, raylib.KEY_SPACE) != .pressing and
+                    mouse(state, raylib.MOUSE_BUTTON_LEFT) != .pressing
+                ) {
+                    break :shooting; 
+                }
+
+                if (
+                    entity.attacking_cooldown != 0 or
+                    entity.magazine_ammo == 0 or
+                    entiity_has_flag(entity, flag_is_reloading)
+                ) {
+                    break :shooting; 
+                }
+
                 entity.attacking_cooldown = entity.weapon.firing_cooldown();
                 entity.magazine_ammo -= 1;
 
@@ -1232,9 +1296,10 @@ fn draw(state: *State, delta_time: f32) void {
         }
 
         { // pause text
-            if(state.paused) {
+            if(state.display_pause_menu) {
                 render.text("PAUSED", V2f{WINDOW_WIDTH * 0.5, WINDOW_HEIGHT * 0.5}, 80, raylib.BLACK);
-                render.text("esc to quit", V2f{WINDOW_WIDTH * 0.5, (WINDOW_HEIGHT * 0.5) + 60}, 30, raylib.BLACK);
+                render.text("esc to unpause", V2f{WINDOW_WIDTH * 0.5, (WINDOW_HEIGHT * 0.5) + 60}, 30, raylib.BLACK);
+                render.text("q to quit", V2f{WINDOW_WIDTH * 0.5, (WINDOW_HEIGHT * 0.5) + 100}, 30, raylib.BLACK);
             }
         }
 
@@ -1262,7 +1327,28 @@ fn draw(state: *State, delta_time: f32) void {
             ) catch unreachable;
 
             render.text(string, V2f{WINDOW_WIDTH * 0.5, 50}, 16, raylib.WHITE);
-        } 
+        }
+
+        { // open controls info text 
+            render.text("Tab for controls", V2f{WINDOW_WIDTH * 0.5, WINDOW_HEIGHT - 15}, 20, raylib.BLACK);
+        }
+
+        // control display
+        if (state.display_controls) {
+            const start_position = V2f{WINDOW_WIDTH * 0.5, (WINDOW_HEIGHT * 0.5) - 300};
+            render.text("move: WASD", start_position, 30, raylib.DARKGRAY);
+            render.text("dash: Shift", start_position + V2f{0, 30}, 30, raylib.DARKGRAY);
+            render.text("shoot: Left Mouse / Space", start_position + V2f{0, 60}, 30, raylib.DARKGRAY);
+            render.text("reload: R", start_position + V2f{0, 90}, 30, raylib.DARKGRAY);
+            render.text("interact / buy: E", start_position + V2f{0, 120}, 30, raylib.DARKGRAY);
+            render.text("pause: Esc", start_position + V2f{0, 180}, 30, raylib.DARKGRAY);
+            render.text("controls: Tab", start_position + V2f{0, 210}, 30, raylib.DARKGRAY);
+
+            if (state.start_of_game) {
+                render.text("Survive the horde as long as you can", start_position + V2f{0, 400}, 50, raylib.RED);
+                render.text("Press Esc for 5 seconds to start", start_position + V2f{0, 500}, 40, raylib.RED);
+            }
+        }
     } 
 
     raylib.EndDrawing();
@@ -2317,9 +2403,10 @@ fn lines_intersect(
 ///                         @random
 /////////////////////////////////////////////////////////////////////////
 fn init_raylib() void {
-    raylib.InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "shoot shoot game");
-    raylib.SetTargetFPS(240);
+    raylib.InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "game1");
+    raylib.SetTargetFPS(120);
     raylib.SetTextLineSpacing(render.FONT_LINE_SPACING);
+    raylib.SetExitKey(raylib.KEY_NULL);
 }
 
 pub fn key(state: *const State, k: c_int) State.InputState {
@@ -2335,30 +2422,10 @@ fn get_enemy_count_for_round(round: u64) u64 {
         return 1;
     }
 
-    // growing but capped
-    if(false) {
-        return 6 + @as(u64, switch (round) {
-            1...5 => round * 2,
-            6 => 24,
-            7 => 30,
-            8 => 38,
-            9 => 48,
-            10 => 60,
-            11 => 75,
-            12 => 95,
-            13 => 120,
-            15 => 150,
-            else => 175,
-        });
-    }
-
-    // exponetial 
-    if(true) {
-        return 6 + @as(u64, switch (round) {
-            1...6 => round * 2,
-            else => @intFromFloat(std.math.pow(f32, @floatFromInt(round), 1.8)),
-        });
-    }
+    return 6 + @as(u64, switch (round) {
+        1...6 => round * 2,
+        else => @intFromFloat(std.math.pow(f32, @floatFromInt(round), 1.8)),
+    });
 }
 
 fn get_enemy_speed_multiplier_for_round(round: u64) f32 {
@@ -2374,29 +2441,15 @@ fn get_enemy_speed_multiplier_for_round(round: u64) f32 {
 fn get_enemy_health_multiplier_for_round(round: u64) f32 {
     std.debug.assert(round > 0);
 
-    // exponential health
-    if(false) {
-        const r = @as(f32, @floatFromInt(round - 1)) * 0.25;
-        return 1 + (std.math.pow(f32, r, 1.6));
-    } 
-
-    // growing but capped health
-    if(true) {
-        return 1.0 + @as(f32, switch (round) {
-            1...3 => 0,
-            4...5 => 0.5,
-            6...8 => 1,
-            9...13 => 1.5,
-            14...20 => 2,
-            21...29 => 2.5,
-            else => 3
-        });
-    }
-
-    // same health
-    if(false) {
-        return 1;
-    }
+    return 1.0 + @as(f32, switch (round) {
+        1...3 => 0,
+        4...5 => 0.5,
+        6...8 => 1,
+        9...13 => 1.5,
+        14...20 => 2,
+        21...29 => 2.5,
+        else => 3
+    });
 }
 
 fn get_spawner_cooldown_for_round(round: u64) f32 {
