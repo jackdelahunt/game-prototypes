@@ -12,7 +12,7 @@ GL_MINOR :: 6
 create_window :: proc(width: int, height: int, title: cstring) -> (glfw.WindowHandle, bool) {
     ok := glfw.Init();
     if !ok {
-	    return nil, false
+        return nil, false
     }
 
     glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, GL_MAJOR)
@@ -22,8 +22,8 @@ create_window :: proc(width: int, height: int, title: cstring) -> (glfw.WindowHa
 
     window := glfw.CreateWindow(i32(width), i32(height), title, nil, nil)
     if window == nil {
-	glfw.Terminate()
-	return nil, false
+        glfw.Terminate()
+        return nil, false
     }
 
     glfw.MakeContextCurrent(window)
@@ -43,12 +43,12 @@ error_callback :: proc "c" (error: c.int, description: cstring) {
 
 key_callback :: proc "c" (window: glfw.WindowHandle, key: c.int, scancode: c.int, action: c.int, mods: c.int) {
     switch action {
-	case glfw.PRESS: fallthrough
-	case glfw.REPEAT:
-	    state.keys[key] = .down
-	case glfw.RELEASE: {
-	    state.keys[key] = .up
-	}
+        case glfw.PRESS: fallthrough
+        case glfw.REPEAT:
+            state.keys[key] = .down
+        case glfw.RELEASE: {
+            state.keys[key] = .up
+        }
     }
 }
 
