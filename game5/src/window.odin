@@ -54,6 +54,8 @@ key_callback :: proc "c" (window: glfw.WindowHandle, key: c.int, scancode: c.int
 
 size_callback :: proc "c" (window: glfw.WindowHandle, width: c.int, height: c.int) {
     gl.Viewport(0, 0, width, height)
+    state.width = int(width)
+    state.height = int(height)
 }
 
 

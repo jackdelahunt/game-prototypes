@@ -6,6 +6,7 @@ import "core:encoding/ansi"
 import "core:log"
 import "core:path/filepath"
 import "core:strings"
+import "core:math/linalg"
 
 import "vendor:glfw"
 import gl "vendor:OpenGL"
@@ -21,6 +22,14 @@ State :: struct {
     height: int,
     window: glfw.WindowHandle,
     keys: [348]InputState,
+    camera: struct {
+        position: v2,
+        // length in world units from camera centre to top edge of camera view
+        // length of camera centre to side edge is this * aspect ratio
+        orthographic_size: f32,
+        near_plane: f32,
+        far_plane: f32
+    },
     renderer: struct {
         quads: []Quad,
         quad_count: int,
@@ -39,8 +48,10 @@ InputState :: enum {
     down
 }
 
+v2 :: [2]f32
 v3 :: [3]f32
 v4 :: [4]f32
+Mat4 :: linalg.Matrix4f32
 
 Vertex :: struct {
     position: v3,
@@ -56,15 +67,24 @@ GREEN   :: v4{0, 1, 0, 1}
 BLUE    :: v4{0, 0, 1, 1}
 WHITE   :: v4{1, 1, 1, 1}
 
+// @main
 main :: proc() {
     context = custom_context()
 
     state = {
-        width = 720,
-        height = 480,
+        width = 1440,
+        height = 1080,
+        camera = {
+            position = {0, 0},
+            // length in world units from camera centre to top edge of camera view
+            // length of camera centre to side edge is this * aspect ratio
+            orthographic_size = 100,
+            near_plane = 0.01,
+            far_plane = 100
+        },
         renderer = {
             quads = make([]Quad, MAX_QUADS)
-        }
+        },
     }
 
     { // create window
@@ -85,11 +105,23 @@ main :: proc() {
             glfw.SetWindowShouldClose(state.window, true)
         }
 
+        update()
+        draw()
+
         gl.Clear(gl.COLOR_BUFFER_BIT)
 
-        gl.UseProgram(state.renderer.shader_program_id)
-        gl.BindVertexArray(state.renderer.vertex_array_id)
-        gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, nil)
+        // update vertex buffer with current quad data
+        gl.BindBuffer(gl.ARRAY_BUFFER, state.renderer.vertex_buffer_id)
+        gl.BufferSubData(gl.ARRAY_BUFFER, 0, size_of(Quad) * state.renderer.quad_count, &state.renderer.quads[0])
+
+        // draw quads
+        if state.renderer.quad_count > 0 {
+            gl.UseProgram(state.renderer.shader_program_id)
+            gl.BindVertexArray(state.renderer.vertex_array_id)
+            gl.DrawElements(gl.TRIANGLES, 6 * i32(state.renderer.quad_count), gl.UNSIGNED_INT, nil)
+
+            state.renderer.quad_count = 0
+        }
 
         glfw.SwapBuffers(state.window)
         glfw.PollEvents()
@@ -153,14 +185,6 @@ init_renderer :: proc() {
     }
 
     { // vertex buffer
-        quad := &state.renderer.quads[state.renderer.quad_count]
-        state.renderer.quad_count += 1
-
-        quad.vertices[0] = { position = {-0.5, 0.5, 0.0},    colour = RED}      // top left
-        quad.vertices[1] = { position = {0.5, 0.5, 0.0},   colour = GREEN}      // top right
-        quad.vertices[2] = { position = {0.5, -0.5, 0.0},  colour = BLUE}       // bottom right
-        quad.vertices[3] = { position = {-0.5, -0.5, 0.0},   colour = WHITE}    // bottom right
-   
         vertex_buffer: u32
         gl.GenBuffers(1, &vertex_buffer)
             
@@ -203,6 +227,79 @@ init_renderer :: proc() {
         gl.EnableVertexAttribArray(0)
         gl.EnableVertexAttribArray(1)
     }
+}
+
+update :: proc() {
+    SPEED :: 1
+
+    if state.keys[glfw.KEY_A] == .down {
+        state.camera.position.x -= SPEED
+    }
+
+    if state.keys[glfw.KEY_D] == .down {
+        state.camera.position.x += SPEED
+    }
+
+    if state.keys[glfw.KEY_W] == .down {
+        state.camera.position.y += SPEED
+    }
+
+    if state.keys[glfw.KEY_S] == .down {
+        state.camera.position.y -= SPEED
+    }
+}
+
+draw :: proc() {
+    draw_quad({10, 0}, {50, 50}, RED)
+    draw_quad({0, 0}, {20, 20}, GREEN)
+}
+
+draw_quad :: proc(position: v2, size: v2, colour: v4) {
+    transformation_matrix: Mat4
+
+    // model matrix
+    transformation_matrix = linalg.matrix4_translate(v3{position.x, position.y, 10}) * linalg.matrix4_scale(v3{size.x, size.y, 1})
+
+    // model view matrix
+    transformation_matrix = get_view_matrix() * transformation_matrix
+
+    // model view projection
+    transformation_matrix = get_projection_matrix() * transformation_matrix
+
+    quad := &state.renderer.quads[state.renderer.quad_count]
+    state.renderer.quad_count += 1
+
+    quad.vertices[0].position = (transformation_matrix * v4{-0.5,  0.5, 0, 1}).xyz  // top left
+    quad.vertices[1].position = (transformation_matrix * v4{ 0.5,  0.5, 0, 1}).xyz  // top right
+    quad.vertices[2].position = (transformation_matrix * v4{ 0.5, -0.5, 0, 1}).xyz  // bottom right
+    quad.vertices[3].position = (transformation_matrix * v4{-0.5, -0.5, 0, 1}).xyz  // bottomleft
+
+    quad.vertices[0].colour = colour
+    quad.vertices[1].colour = colour
+    quad.vertices[2].colour = colour
+    quad.vertices[3].colour = colour
+}
+
+get_view_matrix :: proc() -> Mat4 {
+    // the comments descibing what these are is what the internet says but for some reason it acts the 
+    // oppisite so the values for eye and centre are flipped
+    return linalg.matrix4_look_at_f32(
+        {state.camera.position.x, state.camera.position.y, 1},      // camera position
+        {state.camera.position.x, state.camera.position.y, 0},      // what it is looking at
+        {0, 1, 0}						    // what is considered "up"
+    )
+}
+
+get_projection_matrix :: proc() -> Mat4 {
+    aspect_ratio := f32(state.width) / f32(state.height)
+    size := state.camera.orthographic_size
+
+    return linalg.matrix_ortho3d_f32(
+        -size * aspect_ratio, 
+        size * aspect_ratio, 
+        -size, size,
+        state.camera.near_plane, state.camera.far_plane, false
+    )
 }
 
 custom_context :: proc() -> runtime.Context {
