@@ -8,8 +8,9 @@ package src
 //  - phase 4: lamps and mirrors             : 3/3
 //  - phase 5: two players                   : 2/3
 
-// hint for each level
-// add back restart button
+// RELEASE:
+// odin build src -show-timings -o:speed -out:build\game4.exe
+// needs to be shipped with resources directory as a folder in the same directory
 
 import "core:fmt"
 import "core:log"
@@ -55,8 +56,8 @@ GRID_TILE_SIZE  :: 50
 
 START_MAXIMISED :: true
 
-START_LEVEL :: LevelId.ONE
-REPEAT_LEVEL :: false
+START_LEVEL     :: LevelId.ONE
+REPEAT_LEVEL    :: false
 
 // @state
 State :: struct {
@@ -221,7 +222,6 @@ TileLayout :: enum {
 }
 
 LevelId :: enum {
-    TEST,
     ONE,
     TWO,
     THREE,
@@ -240,8 +240,6 @@ LevelId :: enum {
 
 level_name :: proc(level: LevelId) -> string {
     switch level {
-        case .TEST:     return "Test_Level"
-
         case .ONE:      return "phase1/A_New_Hope"
         case .TWO:      return "phase1/Push_It"
         case .THREE:    return "phase1/Pull_It"
@@ -702,7 +700,7 @@ main :: proc() {
 
     { // load resources
         loading_ok := true
-    
+   
         loading_ok = load_textures()
         if !loading_ok {
             log.fatal("error loading textures.. exiting")
@@ -990,11 +988,13 @@ load_fonts :: proc() -> bool {
         return false
     }
 
-    output_path :: "build/alagard.png"
-    write_result := stbi.write_png(output_path, auto_cast font_bitmap_w, auto_cast font_bitmap_h, 1, auto_cast &alagard.bitmap, auto_cast font_bitmap_w)	
-    if write_result == 0 {
-        // dont return false here because this is not needed for runtime
-        log.error("could not write font \"%v\" to output image \"%v\"", path, output_path)
+    when ODIN_DEBUG {
+        output_path :: "build/alagard.png"
+        write_result := stbi.write_png(output_path, auto_cast font_bitmap_w, auto_cast font_bitmap_h, 1, auto_cast &alagard.bitmap, auto_cast font_bitmap_w)	
+        if write_result == 0 {
+            // dont return false here because this is not needed for runtime
+            log.error("could not write font \"%v\" to output image \"%v\"", path, output_path)
+        }
     }
 
     log.infof("loaded font \"%v\" [%v bytes]", path, len(ttf_data))

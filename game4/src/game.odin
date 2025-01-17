@@ -62,33 +62,11 @@ update :: proc() {
         if state.key_inputs[.T] == .DOWN {
             restart()
             return
-        }
-
-        if state.key_inputs[.N] == .DOWN {
-            next_level()
-            return
-        }
-
-        if state.key_inputs[.P] == .DOWN {
-            previous_level()
-            return
-        }
+        } 
 
         if state.key_inputs[.U] == .DOWN {
             load_save_point()
             return
-        }
-
-        if false && state.key_inputs[.U] == .PRESSING {
-            @static tick_counter := 0
-
-            if tick_counter == TICKS_PER_UNDO {
-                tick_counter = 0
-                load_save_point()
-                return
-            }
-
-            tick_counter += 1
         }
 
         if state.key_inputs[.RIGHT] == .DOWN {
@@ -97,7 +75,19 @@ update :: proc() {
 
         if state.key_inputs[.LEFT] == .DOWN {
             change_player(false)
-        } 
+        }
+
+        when ODIN_DEBUG {
+            if state.key_inputs[.N] == .DOWN {
+                next_level()
+                return
+            }
+    
+            if state.key_inputs[.P] == .DOWN {
+                previous_level()
+                return
+            }
+        }
     } 
 
     // entity pass
@@ -1058,7 +1048,10 @@ move_entity :: proc(entity: ^Entity, direction: Direction) -> bool {
 
     entity.grid_position = new_position
     entity.position = grid_position_to_world(entity.grid_position)
-    save_tick()
+
+    if !(.NO_UNDO in entity.flags) {
+        save_tick()
+    }
 
     return true
 }
@@ -1104,14 +1097,20 @@ launch_entity :: proc(entity: ^Entity, new_position: Vector2i) {
 
     entity.grid_position = new_position
     entity.position = grid_position_to_world(entity.grid_position)
-    save_tick()
+    
+    if !(.NO_UNDO in entity.flags) {
+        save_tick()
+    }
 }
 
 rotate_entity :: proc(entity: ^Entity) {
     assert(.ROTATABLE in entity.flags)
 
     entity.direction = clockwise(entity.direction)
-    save_tick()
+
+    if !(.NO_UNDO in entity.flags) {
+        save_tick()
+    }
 }
 
 // takes into account reflections from mirrors, start position
