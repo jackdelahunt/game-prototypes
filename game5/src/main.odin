@@ -55,7 +55,8 @@ Mat4 :: linalg.Matrix4f32
 
 Vertex :: struct {
     position: v3,
-    colour: v4
+    colour: v4,
+    uv: v2
 }
 
 Quad :: struct {
@@ -221,11 +222,14 @@ init_renderer :: proc() {
     }
 
     { // attributes
-        gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, size_of(Vertex), 0) // position
-        gl.VertexAttribPointer(1, 4, gl.FLOAT, gl.FALSE, size_of(Vertex), 3 * size_of(f32)) // colour
+        // attribute index, component count, component type, normalised, object size, attribute offset in object
+        gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, size_of(Vertex), 0)                                    // position
+        gl.VertexAttribPointer(1, 4, gl.FLOAT, gl.FALSE, size_of(Vertex), 3 * size_of(f32))                     // colour
+        gl.VertexAttribPointer(2, 2, gl.FLOAT, gl.FALSE, size_of(Vertex), (3 + 4) * size_of(f32))               // uv
 
         gl.EnableVertexAttribArray(0)
         gl.EnableVertexAttribArray(1)
+        gl.EnableVertexAttribArray(2)
     }
 }
 
@@ -250,8 +254,7 @@ update :: proc() {
 }
 
 draw :: proc() {
-    draw_quad({10, 0}, {50, 50}, RED)
-    draw_quad({0, 0}, {20, 20}, GREEN)
+    draw_quad({0, 0}, {20, 20}, RED)
 }
 
 draw_quad :: proc(position: v2, size: v2, colour: v4) {
@@ -278,6 +281,11 @@ draw_quad :: proc(position: v2, size: v2, colour: v4) {
     quad.vertices[1].colour = colour
     quad.vertices[2].colour = colour
     quad.vertices[3].colour = colour
+
+    quad.vertices[0].uv = {0, 1}
+    quad.vertices[1].uv = {1, 1}
+    quad.vertices[2].uv = {1, 0}
+    quad.vertices[3].uv = {0, 0}
 }
 
 get_view_matrix :: proc() -> Mat4 {
