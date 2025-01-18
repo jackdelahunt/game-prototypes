@@ -6,6 +6,8 @@ flat in int draw_type;
 
 out vec4 frag_colour;
 
+uniform sampler2D face_texture;
+
 void main()
 {
     // rectangle 
@@ -26,5 +28,10 @@ void main()
         }
 
         frag_colour = colour;
+    }
+
+    // texture
+    if (draw_type == 2) {
+        frag_colour = texture(face_texture, uv) * colour;
     }
 } 

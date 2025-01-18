@@ -7,9 +7,13 @@ import "core:log"
 import "core:path/filepath"
 import "core:strings"
 import "core:math/linalg"
+import "core:os"
 
 import "vendor:glfw"
 import gl "vendor:OpenGL"
+import stbi "vendor:stb/image"
+import stbtt "vendor:stb/truetype"
+
 
 vertex_shader_source := #load("./shaders/vertex.shader", cstring)
 fragment_shader_source := #load("./shaders/fragment.shader", cstring)
@@ -37,7 +41,8 @@ State :: struct {
         vertex_array_id: u32,
         vertex_buffer_id: u32,
         index_buffer_id: u32,
-        shader_program_id: u32
+        shader_program_id: u32,
+        face_texture_id: u32,
     }
 }
 
@@ -66,8 +71,17 @@ Quad :: struct {
 
 DrawType :: enum {
     rectangle,
-    circle
+    circle,
+    texture
 }
+
+Texture :: struct {
+    width: i32,
+    height: i32,
+    data: [^]byte
+}
+
+face_texture: Texture
 
 RED     :: v4{1, 0, 0, 1}
 GREEN   :: v4{0, 1, 0, 1}
@@ -104,8 +118,15 @@ main :: proc() {
         state.window = window
     }
 
+    ok := load_textures()
+    if !ok {
+        log.fatal("error when loading textures")
+        return
+    }
+
     init_gl()
-    ok := init_renderer()
+
+    ok = init_renderer()
     if !ok {
         log.fatal("error when initialising the renderer")
         return
@@ -128,6 +149,8 @@ main :: proc() {
         // draw quads
         if state.renderer.quad_count > 0 {
             gl.UseProgram(state.renderer.shader_program_id)
+            gl.ActiveTexture(gl.TEXTURE0)
+            gl.BindTexture(gl.TEXTURE_2D, state.renderer.face_texture_id)
             gl.BindVertexArray(state.renderer.vertex_array_id)
 
             gl.DrawElements(gl.TRIANGLES, 6 * i32(state.renderer.quad_count), gl.UNSIGNED_INT, nil)
@@ -164,8 +187,9 @@ update :: proc() {
 }
 
 draw :: proc() {
-    draw_rectangle({0, 0}, {50, 50}, RED)
-    draw_rectangle({25, 0}, {20, 20}, alpha(BLUE, 0.5))
+    draw_texture({0, 0}, {50, 50}, WHITE)
+    draw_texture({100, 0}, {50, 50}, WHITE)
+    draw_rectangle({30, 10}, {40, 80}, alpha(BLUE, 0.5))
     draw_circle({-10, 0}, 50, alpha(GREEN, 0.3))
 }
 
@@ -213,6 +237,9 @@ init_renderer :: proc() -> bool {
             log.errorf("failed to link shader program: %v", strings.string_from_ptr(&error_buffer[0], 512))
             return false
         }
+
+        gl.UseProgram(shader_program)
+        gl.Uniform1i(gl.GetUniformLocation(shader_program, "face_texture"), 0)
 
         state.renderer.shader_program_id = shader_program
     }
@@ -273,12 +300,32 @@ init_renderer :: proc() -> bool {
         gl.EnableVertexAttribArray(2)
         gl.EnableVertexAttribArray(3)
     }
+    
+    { // textures
+        texture: u32
+        gl.GenTextures(1, &texture)
+
+        gl.BindTexture(gl.TEXTURE_2D, texture)
+
+        gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT) // s is x wrap
+        gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT) // t is y wrap
+        gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+        gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+
+        gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, face_texture.width, face_texture.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, face_texture.data)
+
+        state.renderer.face_texture_id = texture
+    }
 
     return true
 }
 
 draw_rectangle :: proc(position: v2, size: v2, colour: v4) {
     draw_quad(position, size, colour, .rectangle)
+}
+
+draw_texture :: proc(position: v2, size: v2, colour: v4) {
+    draw_quad(position, size, colour, .texture)
 }
 
 draw_circle :: proc(position: v2, radius: f32, colour: v4) {
@@ -321,6 +368,8 @@ draw_quad :: proc(position: v2, size: v2, colour: v4, draw_type: DrawType) {
             draw_type_value = 0
         case .circle:
             draw_type_value = 1
+        case .texture:
+            draw_type_value = 2
     }
 
     quad.vertices[0].draw_type = draw_type_value
@@ -349,6 +398,43 @@ get_projection_matrix :: proc() -> Mat4 {
         -size, size,
         state.camera.near_plane, state.camera.far_plane, false
     )
+}
+
+load_textures :: proc() -> bool {
+    RESOURCE_DIR :: "resources/textures/"
+    DESIRED_CHANNELS :: 4
+
+    path := fmt.tprint(RESOURCE_DIR, "face.png", sep="")
+    
+    png_data, ok := os.read_entire_file(path)
+    if !ok {
+        log.errorf("error loading texture file %v", path)
+        return false
+    }
+
+    stbi.set_flip_vertically_on_load(1)
+    width, height, channels: i32
+
+    data := stbi.load_from_memory(raw_data(png_data), auto_cast len(png_data), &width, &height, &channels, DESIRED_CHANNELS)
+    if data == nil {
+        log.errorf("error reading texture data with stbi: %v", path)
+        return false
+    }
+
+    if channels != DESIRED_CHANNELS {
+        log.errorf("error loading texture %v, expected %v channels got %v", path, DESIRED_CHANNELS, channels)
+        return false
+    }
+
+    log.infof("loaded texture \"%v\" [%v x %v : %v bytes]", path, width, height, len(png_data))
+
+    face_texture = Texture{
+        width = width,
+        height = height,
+        data = data
+    }
+
+    return true
 }
 
 alpha :: proc(colour: v4, alpha: f32) -> v4 {

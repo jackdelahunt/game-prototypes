@@ -70,10 +70,12 @@ init_gl :: proc() {
     
     gl.DebugMessageCallback(gl_message_callback, nil)
 
+    // blend settings
     gl.Enable(gl.BLEND)
     gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
 
-    gl.ClearColor(1, 1, 1, 1)
+    V :: 0.8
+    gl.ClearColor(V, V, V, 1)
 }
 
 gl_message_callback :: proc "c" (source: u32, type: u32, id: u32, severity: u32, length: i32, message: cstring, userParam: rawptr) {
