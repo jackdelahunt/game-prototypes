@@ -2,6 +2,8 @@ package src
 
 import "core:c"
 import "core:log"
+import "core:strings"
+import "core:fmt"
 
 import "vendor:glfw"
 import gl "vendor:OpenGL"
@@ -19,6 +21,11 @@ create_window :: proc(width: int, height: int, title: cstring) -> (glfw.WindowHa
     glfw.WindowHint(glfw.CONTEXT_VERSION_MINOR, GL_MINOR)
     glfw.WindowHint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
     // glfw.WindowHint(glfw.OPENGL_FORWARD_COMPAT, gl.TRUE) macos
+
+    when ODIN_DEBUG {
+        // enable opengl error callback
+        glfw.WindowHint(glfw.OPENGL_DEBUG_CONTEXT, gl.TRUE)
+    }
 
     window := glfw.CreateWindow(i32(width), i32(height), title, nil, nil)
     if window == nil {
@@ -58,8 +65,43 @@ size_callback :: proc "c" (window: glfw.WindowHandle, width: c.int, height: c.in
     state.height = int(height)
 }
 
-
 init_gl :: proc() {
     gl.load_up_to(GL_MAJOR, GL_MINOR, glfw.gl_set_proc_address)
-    gl.ClearColor(0.3, 0.6, 0.9, 1)
+    
+    gl.DebugMessageCallback(gl_message_callback, nil)
+
+    gl.Enable(gl.BLEND)
+    gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+
+    gl.ClearColor(1, 1, 1, 1)
+}
+
+gl_message_callback :: proc "c" (source: u32, type: u32, id: u32, severity: u32, length: i32, message: cstring, userParam: rawptr) {
+    context = custom_context()
+
+    message_string := strings.string_from_ptr(transmute([^]u8) message, int(length))
+    
+    log_string := fmt.tprintf(
+        "opengl message: %v %v %v %v %v", 
+        gl.GL_Enum(source), 
+        gl.GL_Enum(type), 
+        id, 
+        gl.GL_Enum(severity), 
+        message_string
+    )
+
+    #partial switch gl.GL_Enum(severity) {
+        case gl.GL_Enum.DEBUG_SEVERITY_LOW: {
+            log.debug(log_string)
+        }
+        case gl.GL_Enum.DEBUG_SEVERITY_MEDIUM: {
+            log.error(log_string)
+        }
+        case gl.GL_Enum.DEBUG_SEVERITY_HIGH: {
+            log.fatal(log_string)
+        }
+        case gl.GL_Enum.DEBUG_SEVERITY_NOTIFICATION: {
+            log.warn(log_string)
+        }
+    }
 }

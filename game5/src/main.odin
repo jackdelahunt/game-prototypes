@@ -56,11 +56,17 @@ Mat4 :: linalg.Matrix4f32
 Vertex :: struct {
     position: v3,
     colour: v4,
-    uv: v2
+    uv: v2,
+    draw_type: i32,
 }
 
 Quad :: struct {
     vertices: [4]Vertex
+}
+
+DrawType :: enum {
+    rectangle,
+    circle
 }
 
 RED     :: v4{1, 0, 0, 1}
@@ -99,7 +105,11 @@ main :: proc() {
     }
 
     init_gl()
-    init_renderer()
+    ok := init_renderer()
+    if !ok {
+        log.fatal("error when initialising the renderer")
+        return
+    }
 
     for !glfw.WindowShouldClose(state.window) {
         if state.keys[glfw.KEY_ESCAPE] == .down {
@@ -119,10 +129,11 @@ main :: proc() {
         if state.renderer.quad_count > 0 {
             gl.UseProgram(state.renderer.shader_program_id)
             gl.BindVertexArray(state.renderer.vertex_array_id)
-            gl.DrawElements(gl.TRIANGLES, 6 * i32(state.renderer.quad_count), gl.UNSIGNED_INT, nil)
 
-            state.renderer.quad_count = 0
+            gl.DrawElements(gl.TRIANGLES, 6 * i32(state.renderer.quad_count), gl.UNSIGNED_INT, nil)
         }
+
+        state.renderer.quad_count = 0
 
         glfw.SwapBuffers(state.window)
         glfw.PollEvents()
@@ -132,10 +143,37 @@ main :: proc() {
     glfw.Terminate()
 }
 
-init_renderer :: proc() {
+update :: proc() {
+    SPEED :: 1
+
+    if state.keys[glfw.KEY_A] == .down {
+        state.camera.position.x -= SPEED
+    }
+
+    if state.keys[glfw.KEY_D] == .down {
+        state.camera.position.x += SPEED
+    }
+
+    if state.keys[glfw.KEY_W] == .down {
+        state.camera.position.y += SPEED
+    }
+
+    if state.keys[glfw.KEY_S] == .down {
+        state.camera.position.y -= SPEED
+    }
+}
+
+draw :: proc() {
+    draw_rectangle({0, 0}, {50, 50}, RED)
+    draw_rectangle({25, 0}, {20, 20}, alpha(BLUE, 0.5))
+    draw_circle({-10, 0}, 50, alpha(GREEN, 0.3))
+}
+
+init_renderer :: proc() -> bool {
     { // shaders 
         BUFFER_SIZE :: 512
         compile_status: i32
+        link_status: i32
         error_buffer: [BUFFER_SIZE]u8
 
         vertex_shader := gl.CreateShader(gl.VERTEX_SHADER)
@@ -147,7 +185,8 @@ init_renderer :: proc() {
         gl.GetShaderiv(vertex_shader, gl.COMPILE_STATUS, &compile_status)
         if compile_status == 0 {
             gl.GetShaderInfoLog(vertex_shader, BUFFER_SIZE, nil, &error_buffer[0])
-            log.fatalf("failed to compile vertex shader: %v", strings.string_from_ptr(&error_buffer[0], 512))
+            log.errorf("failed to compile vertex shader: %v", strings.string_from_ptr(&error_buffer[0], 512))
+            return false
         }
 
         fragment_shader := gl.CreateShader(gl.FRAGMENT_SHADER)
@@ -159,7 +198,8 @@ init_renderer :: proc() {
         gl.GetShaderiv(fragment_shader, gl.COMPILE_STATUS, &compile_status)
         if compile_status == 0 {
             gl.GetShaderInfoLog(fragment_shader, BUFFER_SIZE, nil, &error_buffer[0])
-            log.fatalf("failed to compile fragment shader: %v", strings.string_from_ptr(&error_buffer[0], 512))
+            log.errorf("failed to compile fragment shader: %v", strings.string_from_ptr(&error_buffer[0], 512))
+            return false
         }
 
         shader_program := gl.CreateProgram()
@@ -167,12 +207,12 @@ init_renderer :: proc() {
         gl.AttachShader(shader_program, fragment_shader)
         gl.LinkProgram(shader_program)
             
-        gl.GetProgramiv(shader_program, gl.LINK_STATUS, &compile_status);
-        if compile_status == 0 {
+        gl.GetProgramiv(shader_program, gl.LINK_STATUS, &link_status);
+        if link_status == 0 {
             gl.GetProgramInfoLog(shader_program, BUFFER_SIZE, nil, &error_buffer[0]);
+            log.errorf("failed to link shader program: %v", strings.string_from_ptr(&error_buffer[0], 512))
+            return false
         }
-
-        gl.UseProgram(shader_program)
 
         state.renderer.shader_program_id = shader_program
     }
@@ -226,38 +266,26 @@ init_renderer :: proc() {
         gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, size_of(Vertex), 0)                                    // position
         gl.VertexAttribPointer(1, 4, gl.FLOAT, gl.FALSE, size_of(Vertex), 3 * size_of(f32))                     // colour
         gl.VertexAttribPointer(2, 2, gl.FLOAT, gl.FALSE, size_of(Vertex), (3 + 4) * size_of(f32))               // uv
+        gl.VertexAttribIPointer(3, 1, gl.INT, size_of(Vertex), (3 + 4 + 2) * size_of(f32))                      // draw type
 
         gl.EnableVertexAttribArray(0)
         gl.EnableVertexAttribArray(1)
         gl.EnableVertexAttribArray(2)
+        gl.EnableVertexAttribArray(3)
     }
+
+    return true
 }
 
-update :: proc() {
-    SPEED :: 1
-
-    if state.keys[glfw.KEY_A] == .down {
-        state.camera.position.x -= SPEED
-    }
-
-    if state.keys[glfw.KEY_D] == .down {
-        state.camera.position.x += SPEED
-    }
-
-    if state.keys[glfw.KEY_W] == .down {
-        state.camera.position.y += SPEED
-    }
-
-    if state.keys[glfw.KEY_S] == .down {
-        state.camera.position.y -= SPEED
-    }
+draw_rectangle :: proc(position: v2, size: v2, colour: v4) {
+    draw_quad(position, size, colour, .rectangle)
 }
 
-draw :: proc() {
-    draw_quad({0, 0}, {20, 20}, RED)
+draw_circle :: proc(position: v2, radius: f32, colour: v4) {
+    draw_quad(position, {radius * 2, radius * 2}, colour, .circle)
 }
 
-draw_quad :: proc(position: v2, size: v2, colour: v4) {
+draw_quad :: proc(position: v2, size: v2, colour: v4, draw_type: DrawType) {
     transformation_matrix: Mat4
 
     // model matrix
@@ -286,6 +314,19 @@ draw_quad :: proc(position: v2, size: v2, colour: v4) {
     quad.vertices[1].uv = {1, 1}
     quad.vertices[2].uv = {1, 0}
     quad.vertices[3].uv = {0, 0}
+
+    draw_type_value: i32
+    switch draw_type {
+        case .rectangle:
+            draw_type_value = 0
+        case .circle:
+            draw_type_value = 1
+    }
+
+    quad.vertices[0].draw_type = draw_type_value
+    quad.vertices[1].draw_type = draw_type_value
+    quad.vertices[2].draw_type = draw_type_value
+    quad.vertices[3].draw_type = draw_type_value
 }
 
 get_view_matrix :: proc() -> Mat4 {
@@ -308,6 +349,10 @@ get_projection_matrix :: proc() -> Mat4 {
         -size, size,
         state.camera.near_plane, state.camera.far_plane, false
     )
+}
+
+alpha :: proc(colour: v4, alpha: f32) -> v4 {
+    return {colour.r, colour.g, colour.b, alpha}
 }
 
 custom_context :: proc() -> runtime.Context {
