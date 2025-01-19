@@ -74,7 +74,7 @@ init_gl :: proc() {
     gl.Enable(gl.BLEND)
     gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
 
-    V :: 0.8
+    V :: 0.6
     gl.ClearColor(V, V, V, 1)
 }
 

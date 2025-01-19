@@ -8,12 +8,15 @@ import "core:path/filepath"
 import "core:strings"
 import "core:math/linalg"
 import "core:os"
+import "core:slice"
+import "core:c"
+import "core:mem"
 
 import "vendor:glfw"
 import gl "vendor:OpenGL"
 import stbi "vendor:stb/image"
 import stbtt "vendor:stb/truetype"
-
+import stbrp "vendor:stb/rect_pack"
 
 vertex_shader_source := #load("./shaders/vertex.shader", cstring)
 fragment_shader_source := #load("./shaders/fragment.shader", cstring)
@@ -26,6 +29,8 @@ State :: struct {
     height: int,
     window: glfw.WindowHandle,
     keys: [348]InputState,
+    texture_atlas: Atlas,
+    textures: [Texture]TextureInfo,
     camera: struct {
         position: v2,
         // length in world units from camera centre to top edge of camera view
@@ -69,19 +74,38 @@ Quad :: struct {
     vertices: [4]Vertex
 }
 
+DEFAULT_UV :: [4]v2 {
+    {0, 1},
+    {1, 1},
+    {1, 0},
+    {0, 0}
+}
+
 DrawType :: enum {
     rectangle,
     circle,
     texture
 }
 
-Texture :: struct {
+Texture :: enum {
+    face,
+    sad_face,
+    blue_face,
+    wide_face
+}
+
+TextureInfo :: struct {
+    width: i32,
+    height: i32,
+    uv: [4]v2,
+    data: [^]byte
+}
+
+Atlas :: struct {
     width: i32,
     height: i32,
     data: [^]byte
 }
-
-face_texture: Texture
 
 RED     :: v4{1, 0, 0, 1}
 GREEN   :: v4{0, 1, 0, 1}
@@ -121,6 +145,12 @@ main :: proc() {
     ok := load_textures()
     if !ok {
         log.fatal("error when loading textures")
+        return
+    }
+
+    ok = build_texture_atlas()
+    if !ok {
+        log.fatal("error when building texture atlas")
         return
     }
 
@@ -187,10 +217,10 @@ update :: proc() {
 }
 
 draw :: proc() {
-    draw_texture({0, 0}, {50, 50}, WHITE)
-    draw_texture({100, 0}, {50, 50}, WHITE)
-    draw_rectangle({30, 10}, {40, 80}, alpha(BLUE, 0.5))
-    draw_circle({-10, 0}, 50, alpha(GREEN, 0.3))
+    draw_texture(.face, {0, 0}, {50, 50}, WHITE)
+    draw_texture(.sad_face, {50, 50}, {50, 50}, WHITE)
+    draw_texture(.blue_face, {-50, -50}, {50, 50}, WHITE)
+    draw_texture(.wide_face, {-25, 50}, {100, 50}, WHITE)
 }
 
 init_renderer :: proc() -> bool {
@@ -312,7 +342,10 @@ init_renderer :: proc() -> bool {
         gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
         gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
 
-        gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, face_texture.width, face_texture.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, face_texture.data)
+        // texture_info := &state.textures[Texture(0)]
+        texture_info := &state.texture_atlas
+
+        gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, texture_info.width, texture_info.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, texture_info.data)
 
         state.renderer.face_texture_id = texture
     }
@@ -324,15 +357,15 @@ draw_rectangle :: proc(position: v2, size: v2, colour: v4) {
     draw_quad(position, size, colour, .rectangle)
 }
 
-draw_texture :: proc(position: v2, size: v2, colour: v4) {
-    draw_quad(position, size, colour, .texture)
+draw_texture :: proc(texture: Texture, position: v2, size: v2, colour: v4) {
+    draw_quad(position, size, colour, .texture, state.textures[texture].uv)
 }
 
 draw_circle :: proc(position: v2, radius: f32, colour: v4) {
     draw_quad(position, {radius * 2, radius * 2}, colour, .circle)
 }
 
-draw_quad :: proc(position: v2, size: v2, colour: v4, draw_type: DrawType) {
+draw_quad :: proc(position: v2, size: v2, colour: v4, draw_type: DrawType, uv := DEFAULT_UV) {
     transformation_matrix: Mat4
 
     // model matrix
@@ -357,10 +390,10 @@ draw_quad :: proc(position: v2, size: v2, colour: v4, draw_type: DrawType) {
     quad.vertices[2].colour = colour
     quad.vertices[3].colour = colour
 
-    quad.vertices[0].uv = {0, 1}
-    quad.vertices[1].uv = {1, 1}
-    quad.vertices[2].uv = {1, 0}
-    quad.vertices[3].uv = {0, 0}
+    quad.vertices[0].uv = uv[0]
+    quad.vertices[1].uv = uv[1]
+    quad.vertices[2].uv = uv[2]
+    quad.vertices[3].uv = uv[3]
 
     draw_type_value: i32
     switch draw_type {
@@ -404,37 +437,149 @@ load_textures :: proc() -> bool {
     RESOURCE_DIR :: "resources/textures/"
     DESIRED_CHANNELS :: 4
 
-    path := fmt.tprint(RESOURCE_DIR, "face.png", sep="")
+    for texture in Texture {
+        name := get_texture_name(texture)
+        
+        path := fmt.tprint(RESOURCE_DIR, name, sep="")
+        
+        png_data, ok := os.read_entire_file(path)
+        if !ok {
+            log.errorf("error loading texture file %v", path)
+            return false
+        }
     
-    png_data, ok := os.read_entire_file(path)
-    if !ok {
-        log.errorf("error loading texture file %v", path)
-        return false
-    }
+        stbi.set_flip_vertically_on_load(1)
+        width, height, channels: i32
+    
+        data := stbi.load_from_memory(raw_data(png_data), auto_cast len(png_data), &width, &height, &channels, DESIRED_CHANNELS)
+        if data == nil {
+            log.errorf("error reading texture data with stbi: %v", path)
+            return false
+        }
+    
+        if channels != DESIRED_CHANNELS {
+            log.errorf("error loading texture %v, expected %v channels got %v", path, DESIRED_CHANNELS, channels)
+            return false
+        }
+    
+        log.infof("loaded texture \"%v\" [%v x %v : %v bytes]", path, width, height, len(png_data))
 
-    stbi.set_flip_vertically_on_load(1)
-    width, height, channels: i32
-
-    data := stbi.load_from_memory(raw_data(png_data), auto_cast len(png_data), &width, &height, &channels, DESIRED_CHANNELS)
-    if data == nil {
-        log.errorf("error reading texture data with stbi: %v", path)
-        return false
-    }
-
-    if channels != DESIRED_CHANNELS {
-        log.errorf("error loading texture %v, expected %v channels got %v", path, DESIRED_CHANNELS, channels)
-        return false
-    }
-
-    log.infof("loaded texture \"%v\" [%v x %v : %v bytes]", path, width, height, len(png_data))
-
-    face_texture = Texture{
-        width = width,
-        height = height,
-        data = data
+        state.textures[texture] = {
+            width = width,
+            height = height,
+            data = data
+        }
     }
 
     return true
+}
+
+build_texture_atlas :: proc() -> bool {
+    ATLAS_WIDTH     :: 32
+    ATLAS_HEIGHT    :: 32
+    BYTES_PER_PIXEL :: 4
+    CHANNELS        :: 4
+    ATLAS_BYTE_SIZE :: ATLAS_WIDTH * ATLAS_HEIGHT * BYTES_PER_PIXEL
+    ATLAS_PATH      :: "build/atlas.png"
+
+    atlas_data := make([^]byte, ATLAS_BYTE_SIZE)
+
+    { // fill in default atlas data 
+        i: int
+        for i < ATLAS_BYTE_SIZE {
+            atlas_data[i]       = 255 // r
+            atlas_data[i + 1]   = 0   // g
+            atlas_data[i + 2]   = 255 // b
+            atlas_data[i + 3]   = 255 // a
+    
+            i += 4
+        }
+    }
+
+    { // copy textures into atlas with rect pack
+        RECT_COUNT :: len(Texture)
+        
+        rp_context: stbrp.Context
+        nodes:      [ATLAS_WIDTH]stbrp.Node
+        rects:      [RECT_COUNT]stbrp.Rect
+
+        stbrp.init_target(&rp_context, ATLAS_HEIGHT, ATLAS_HEIGHT, &nodes[0], ATLAS_WIDTH)
+
+        for texture, i in Texture {
+            info := &state.textures[texture]
+
+            rects[i] = {
+                id = c.int(texture),
+                w = stbrp.Coord(info.width),
+                h = stbrp.Coord(info.height),
+            }
+        }
+
+        status := stbrp.pack_rects(&rp_context, &rects[0], RECT_COUNT)
+        if status == 0 {
+            log.error("error packing textures into atlas")
+            return false
+        }
+
+        for i in 0..< len(rects) {
+            rect := &rects[i] 
+            texture_info := &state.textures[Texture(rect.id)]
+
+            bottom_y_uv := f32(rect.y) / f32(ATLAS_HEIGHT)
+            top_y_uv    := f32(rect.y + rect.h) / f32(ATLAS_HEIGHT)
+            left_x_uv   := f32(rect.x) / f32(ATLAS_HEIGHT)
+            right_x_uv    := f32(rect.x + rect.w) / f32(ATLAS_HEIGHT)
+
+            texture_info.uv = {
+                {left_x_uv, top_y_uv},      // top left
+                {right_x_uv, top_y_uv},     // top right
+                {right_x_uv, bottom_y_uv},  // bottom right
+                {left_x_uv, bottom_y_uv},   // bottom left
+            }
+
+            for row in 0..< rect.h {
+                source_row := mem.ptr_offset(texture_info.data, row * rect.w * BYTES_PER_PIXEL)
+                dest_row   := mem.ptr_offset(atlas_data, ((rect.y + row) * ATLAS_WIDTH + rect.x) * BYTES_PER_PIXEL) // flipped textures in atlas
+
+                mem.copy(dest_row, source_row, int(rect.w) * BYTES_PER_PIXEL)
+            }
+        }
+    } 
+
+    { // write atlas image
+
+        stbi.flip_vertically_on_write(true)
+        status := stbi.write_png(ATLAS_PATH, ATLAS_WIDTH, ATLAS_HEIGHT, CHANNELS, atlas_data, ATLAS_WIDTH * BYTES_PER_PIXEL)
+        if status == 0 {
+            log.error("error writing atlas png")
+            return false
+        }
+    }
+
+    state.texture_atlas = Atlas {
+        width = ATLAS_WIDTH,
+        height = ATLAS_HEIGHT,
+        data = atlas_data
+    }
+
+    log.infof("built texture atlas and wrote png to \"%v\" [%v x %v %v bytes raw]", ATLAS_PATH, ATLAS_WIDTH, ATLAS_HEIGHT, ATLAS_BYTE_SIZE)
+
+    return true
+}
+
+get_texture_name :: proc(texture: Texture) -> string {
+    switch texture {
+        case .face:
+            return "face.png"
+        case .sad_face:
+            return "sad_face.png"
+        case .blue_face:
+            return "blue_face.png"
+        case .wide_face:
+            return "wide_face.png"
+    }
+
+    unreachable()
 }
 
 alpha :: proc(colour: v4, alpha: f32) -> v4 {
