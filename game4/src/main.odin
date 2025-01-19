@@ -733,8 +733,8 @@ main :: proc() {
         event_cb = window_event_callback,
         width = DEFAULT_SCREEN_WIDTH,
         height = DEFAULT_SCREEN_HEIGHT,
-        window_title = "sokol window",
-        icon = { sokol_default = true },
+        window_title = "game4",
+        icon = { sokol_default = false },
         logger = { func = slog.func },
     })
 }
