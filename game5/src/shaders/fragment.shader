@@ -7,14 +7,13 @@ flat in int draw_type;
 out vec4 frag_colour;
 
 uniform sampler2D face_texture;
+uniform sampler2D font_texture;
 
 void main()
 {
     // rectangle 
     if (draw_type == 0) {
         frag_colour = colour;
-
-        // frag_colour = vec4(uv.x, uv.y, 0, 1); // texture uvs
     }
 
     // circle
@@ -34,4 +33,12 @@ void main()
     if (draw_type == 2) {
         frag_colour = texture(face_texture, uv) * colour;
     }
+
+    // font
+    if (draw_type == 3) {
+        frag_colour = texture(font_texture, uv).r * colour;
+    }
+
+
+    // frag_colour = vec4(uv.x, uv.y, 0, 1); // texture uvs
 } 

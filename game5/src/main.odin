@@ -19,7 +19,6 @@ import stbtt "vendor:stb/truetype"
 import stbrp "vendor:stb/rect_pack"
 
 // TODO: render tech todo
-// - render on a pivot
 // - port same text rendering method
 // - better font and fix issues
 // - port screen space rendering
@@ -27,8 +26,9 @@ import stbrp "vendor:stb/rect_pack"
 // - animated textures ?? maybe
 
 // dev settings
-LOG_COLOURS     :: false
-OPENGL_MESSAGES :: false
+LOG_COLOURS         :: false
+OPENGL_MESSAGES     :: false
+WRITE_DEBUG_IMAGES  :: true
 
 // -------------------------- @game ---------------------------
 state: State
@@ -40,6 +40,7 @@ State :: struct {
     keys: [348]InputState,
     texture_atlas: Atlas,
     textures: [Texture]TextureInfo,
+    font: Font,
     camera: struct {
         position: v2,
         // length in world units from camera centre to top edge of camera view
@@ -56,7 +57,8 @@ State :: struct {
         vertex_buffer_id: u32,
         index_buffer_id: u32,
         shader_program_id: u32,
-        face_texture_id: u32,
+        atlas_texture_id: u32,
+        font_texture_id: u32,
     }
 }
 
@@ -99,6 +101,12 @@ main :: proc() {
             return
         }
 
+        ok = load_fonts()
+        if !ok {
+            log.fatal("error when loading fonts")
+            return
+        }
+
         state.window, ok = create_window(state.width, state.height, "game5")
         if !ok {
             log.fatal("error trying to init window")
@@ -129,8 +137,12 @@ main :: proc() {
         // draw quads
         if state.renderer.quad_count > 0 {
             gl.UseProgram(state.renderer.shader_program_id)
+
             gl.ActiveTexture(gl.TEXTURE0)
-            gl.BindTexture(gl.TEXTURE_2D, state.renderer.face_texture_id)
+            gl.BindTexture(gl.TEXTURE_2D, state.renderer.atlas_texture_id)
+            gl.ActiveTexture(gl.TEXTURE1)
+            gl.BindTexture(gl.TEXTURE_2D, state.renderer.font_texture_id)
+
             gl.BindVertexArray(state.renderer.vertex_array_id)
 
             gl.DrawElements(gl.TRIANGLES, 6 * i32(state.renderer.quad_count), gl.UNSIGNED_INT, nil)
@@ -167,10 +179,13 @@ update :: proc() {
 }
 
 draw :: proc() {
-    draw_texture(.face, {0, 0}, {50, 50}, WHITE)
-    draw_texture(.sad_face, {50, 50}, {50, 50}, WHITE)
-    draw_texture(.blue_face, {-50, -50}, {50, 50}, WHITE)
-    draw_texture(.wide_face, {-25, 50}, {100, 50}, WHITE)
+    // draw_texture(.face, {0, 0}, {50, 50}, WHITE)
+    // draw_texture(.sad_face, {50, 50}, {50, 50}, WHITE)
+    // draw_texture(.blue_face, {-50, -50}, {50, 50}, WHITE)
+    // draw_texture(.wide_face, {-25, 50}, {100, 50}, WHITE)
+
+    draw_rectangle({0, 0}, {110, 20}, BLACK)
+    draw_text("jj aa jj aa", {0, 0}, 20, WHITE)
 }
 
 // -------------------------- @renderer -----------------------
@@ -204,7 +219,8 @@ DEFAULT_UV :: [4]v2 {
 DrawType :: enum {
     rectangle,
     circle,
-    texture
+    texture,
+    font
 }
 
 Texture :: enum {
@@ -227,10 +243,22 @@ Atlas :: struct {
     data: [^]byte
 }
 
+
+FONT_BITMAP_WIDTH   :: 256 
+FONT_BITMAP_HEIGHT  :: 256
+FONT_HEIGHT         :: 15
+FONT_CHAR_COUNT     :: 96
+
+Font :: struct {
+    characters: [FONT_CHAR_COUNT]stbtt.bakedchar,
+    bitmap: [FONT_BITMAP_WIDTH * FONT_BITMAP_HEIGHT]byte
+}
+
 RED     :: v4{1, 0, 0, 1}
 GREEN   :: v4{0, 1, 0, 1}
 BLUE    :: v4{0, 0, 1, 1}
 WHITE   :: v4{1, 1, 1, 1}
+BLACK   :: v4{0, 0, 0, 1}
 
 init_renderer :: proc() -> bool {
     { // initialise opengl
@@ -295,8 +323,10 @@ init_renderer :: proc() -> bool {
             return false
         }
 
+        // sets which uniform is asigned to which texture slot in the fragment shader
         gl.UseProgram(shader_program)
         gl.Uniform1i(gl.GetUniformLocation(shader_program, "face_texture"), 0)
+        gl.Uniform1i(gl.GetUniformLocation(shader_program, "font_texture"), 1)
 
         state.renderer.shader_program_id = shader_program
     }
@@ -359,40 +389,151 @@ init_renderer :: proc() -> bool {
     }
     
     { // textures
-        texture: u32
-        gl.GenTextures(1, &texture)
+        { // upload atlas texture
+            atlas_texture: u32
+            gl.GenTextures(1, &atlas_texture)
+    
+            gl.BindTexture(gl.TEXTURE_2D, atlas_texture)
+    
+            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT) // s is x wrap
+            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT) // t is y wrap
+            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+    
+            atlas := &state.texture_atlas
+    
+            gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, atlas.width, atlas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, atlas.data)
+    
+            state.renderer.atlas_texture_id = atlas_texture
+        }
 
-        gl.BindTexture(gl.TEXTURE_2D, texture)
-
-        gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT) // s is x wrap
-        gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT) // t is y wrap
-        gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
-        gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
-
-        // texture_info := &state.textures[Texture(0)]
-        texture_info := &state.texture_atlas
-
-        gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, texture_info.width, texture_info.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, texture_info.data)
-
-        state.renderer.face_texture_id = texture
+        { // upload font txture
+            font_texture: u32
+            gl.GenTextures(1, &font_texture)
+    
+            gl.BindTexture(gl.TEXTURE_2D, font_texture)
+    
+            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT) // s is x wrap
+            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT) // t is y wrap
+            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+    
+            font := &state.font
+   
+            // font data is monochrome with a single channel so need to load as just red and store it as that - 19/01/25
+            gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RED, FONT_BITMAP_WIDTH, FONT_BITMAP_HEIGHT, 0, gl.RED, gl.UNSIGNED_BYTE, &font.bitmap)
+    
+            state.renderer.font_texture_id = font_texture
+        }
     }
 
     return true
 }
 
 draw_rectangle :: proc(position: v2, size: v2, colour: v4) {
-    draw_quad(position, size, colour, .rectangle)
+    draw_quad(position, size, colour, DEFAULT_UV, .rectangle)
 }
 
 draw_texture :: proc(texture: Texture, position: v2, size: v2, colour: v4) {
-    draw_quad(position, size, colour, .texture, state.textures[texture].uv)
+    draw_quad(position, size, colour, state.textures[texture].uv, .texture)
 }
 
 draw_circle :: proc(position: v2, radius: f32, colour: v4) {
-    draw_quad(position, {radius * 2, radius * 2}, colour, .circle)
+    draw_quad(position, {radius * 2, radius * 2}, colour, DEFAULT_UV, .circle)
 }
 
-draw_quad :: proc(position: v2, size: v2, colour: v4, draw_type: DrawType, uv := DEFAULT_UV) {
+draw_text :: proc(text: string, position: v2, font_size: f32, colour: v4) {
+    if len(text) == 0 {
+        return
+    }
+
+    GlyphRenderInfo :: struct {
+        relative_x: f32,
+        relative_y: f32,
+        width: f32,
+        height: f32,
+        uvs: [4]v2,
+    }
+
+    glyphs := make([]GlyphRenderInfo, len(text), context.temp_allocator)
+
+    total_x:    f32
+    total_y:    f32
+    max_height: f32
+
+    for i in 0..<len(text) {
+        c := text[i]
+
+        advanced_x: f32
+        advanced_y: f32
+    
+        alligned_quad: stbtt.aligned_quad
+
+        // this is the the data for the aligned_quad we're given, with y+ going down
+        //	   x0, y0       x1, y0
+        //     s0, t0       s1, t0
+        //	    o tl        o tr
+        
+        
+        //     x0, y1      x1, y1
+        //     s0, t1      s1, t1
+        //	    o bl        o br
+        // 
+        // x, and y and expected vertex positions
+        // s and t are texture uv position
+        stbtt.GetBakedQuad(&state.font.characters[0], FONT_BITMAP_WIDTH, FONT_BITMAP_HEIGHT, (cast(i32)c) - 32, &advanced_x, &advanced_y, &alligned_quad, false)
+
+        width := alligned_quad.x1 - alligned_quad.x0
+        height := alligned_quad.y1 - alligned_quad.y0
+
+        if height > max_height {
+            max_height = height
+        }
+
+        top_left_uv     := v2{alligned_quad.s0, alligned_quad.t0}
+        top_right_uv    := v2{alligned_quad.s1, alligned_quad.t0}
+        bottom_right_uv := v2{alligned_quad.s1, alligned_quad.t1}
+        bottom_left_uv  := v2{alligned_quad.s0, alligned_quad.t1}
+
+        glyphs[i] = {
+            relative_x = total_x,
+            relative_y = total_y,
+            width = width,
+            height = height,
+            uvs = {
+                top_left_uv,
+                top_right_uv,
+                bottom_right_uv,
+                bottom_left_uv
+            }
+        }
+            
+        total_x += advanced_x
+        total_y += advanced_y
+    }
+
+    
+    scale_factor := 1.0 / max_height
+    height_scale_factor := scale_factor * font_size // font size is in world units
+    total_scaled_width := total_x * scale_factor * font_size
+
+    for &info in glyphs {
+        width_proportion := info.width / total_x
+        x_proportion := info.relative_x / total_x
+
+        width := width_proportion * total_scaled_width
+        x := x_proportion * total_scaled_width
+
+        // TODO: right now the text is just centred, could add an origin
+        // vec2 which dictates where the centre of the text should be
+        size := v2{width, info.height * height_scale_factor}
+        offset_position := v2{x - (total_scaled_width * 0.5), info.relative_y}
+
+        draw_quad(position + offset_position, size, colour, info.uvs, .font);
+    }
+}
+
+draw_quad :: proc(position: v2, size: v2, colour: v4, uv: [4]v2, draw_type: DrawType) {
     transformation_matrix: Mat4
 
     // model matrix
@@ -430,6 +571,8 @@ draw_quad :: proc(position: v2, size: v2, colour: v4, draw_type: DrawType, uv :=
             draw_type_value = 1
         case .texture:
             draw_type_value = 2
+        case .font:
+            draw_type_value = 3
     }
 
     quad.vertices[0].draw_type = draw_type_value
@@ -573,14 +716,16 @@ build_texture_atlas :: proc() -> bool {
         }
     } 
 
-    { // write atlas image
-
+    when WRITE_DEBUG_IMAGES {
         stbi.flip_vertically_on_write(true)
+
         status := stbi.write_png(ATLAS_PATH, ATLAS_WIDTH, ATLAS_HEIGHT, CHANNELS, atlas_data, ATLAS_WIDTH * BYTES_PER_PIXEL)
         if status == 0 {
             log.error("error writing atlas png")
             return false
         }
+
+        log.infof("wrote texture atlas to \"%v\" [%v x %v]", ATLAS_PATH, ATLAS_WIDTH, ATLAS_HEIGHT)
     }
 
     state.texture_atlas = Atlas {
@@ -589,7 +734,7 @@ build_texture_atlas :: proc() -> bool {
         data = atlas_data
     }
 
-    log.infof("built texture atlas and wrote png to \"%v\" [%v x %v %v bytes raw]", ATLAS_PATH, ATLAS_WIDTH, ATLAS_HEIGHT, ATLAS_BYTE_SIZE)
+    log.infof("built texture atlas [%v x %v %v bytes uncompressed]", ATLAS_WIDTH, ATLAS_HEIGHT, ATLAS_BYTE_SIZE)
 
     return true
 }
@@ -607,6 +752,53 @@ get_texture_name :: proc(texture: Texture) -> string {
     }
 
     unreachable()
+}
+
+load_fonts :: proc() -> bool {
+    RESOURCE_DIR :: "resources/fonts/"
+
+    path := fmt.tprint(RESOURCE_DIR, "alagard.ttf", sep="")
+
+    font_data, ok := os.read_entire_file(path)
+    if !ok {
+        log.errorf("error loading font file \"%v\"", path)
+        return false
+    }
+
+    bake_result := stbtt.BakeFontBitmap(
+        raw_data(font_data), 
+        0, 
+        FONT_HEIGHT, 
+        auto_cast &state.font.bitmap,
+        FONT_BITMAP_WIDTH, 
+        FONT_BITMAP_HEIGHT, 
+        32, 
+        FONT_CHAR_COUNT, 
+        auto_cast &state.font.characters
+    )
+
+    if !(bake_result > 0) {
+        log.errorf("not enough space in bitmap buffer for font %v", path)
+        return false
+    }
+
+    when WRITE_DEBUG_IMAGES {
+        output_path :: "build/alagard.png"
+
+        stbi.flip_vertically_on_write(false)
+
+        write_result := stbi.write_png(output_path, FONT_BITMAP_WIDTH, FONT_BITMAP_HEIGHT, 1, &state.font.bitmap[0], FONT_BITMAP_WIDTH)	
+        if write_result == 0 {
+            log.error("could not write font \"%v\" to output image \"%v\"", path, output_path)
+            return false
+        }
+
+        log.infof("wrote font image to \"%v\" [%v x %v]", output_path, FONT_BITMAP_WIDTH, FONT_BITMAP_HEIGHT)
+    }
+
+    log.infof("loaded font \"%v\" [%v x %v %v bytes uncompressed]", path, FONT_BITMAP_WIDTH, FONT_BITMAP_HEIGHT, len(font_data))
+   
+    return true
 }
 
 alpha :: proc(colour: v4, alpha: f32) -> v4 {
