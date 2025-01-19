@@ -1,0 +1,12 @@
+Dos:
+- record gameplay
+- record mic
+
+Don'ts:
+- enforce a play time
+- give ideas or hints to what the game is before hand
+- step in and give info, unless it is REALLY REALLY needed
+- get information back with leading questions
+	- ask things like what did you think about the game
+	- not, what did you think about this mechanic
+	- if they don't talk about it, it wasn't good/bad enough to care
