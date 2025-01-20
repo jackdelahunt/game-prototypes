@@ -40,7 +40,7 @@ State :: struct {
     keys: [348]InputState,
     texture_atlas: Atlas,
     textures: [Texture]TextureInfo,
-    font: Font,
+    font: FontInfo,
     camera: struct {
         position: v2,
         // length in world units from camera centre to top edge of camera view
@@ -69,7 +69,7 @@ InputState :: enum {
 
 main :: proc() {
     context = custom_context()
-
+    
     state = {
         width = 1440,
         height = 1080,
@@ -101,11 +101,17 @@ main :: proc() {
             return
         }
 
-        ok = load_font()
+        ok = load_font(.baskerville, 2000, 2000, 320, .linear)
         if !ok {
             log.fatal("error when loading fonts")
             return
         }
+
+        // ok = load_font(.alagard, 128, 128, 15, .nearest)
+        // if !ok {
+            // log.fatal("error when loading fonts")
+            // return
+        // }
 
         state.window, ok = create_window(state.width, state.height, "game5")
         if !ok {
@@ -184,8 +190,7 @@ draw :: proc() {
     // draw_texture(.blue_face, {-50, -50}, {50, 50}, WHITE)
     // draw_texture(.wide_face, {-25, 50}, {100, 50}, WHITE)
 
-    draw_rectangle({0, 0}, {150, 15}, WHITE)
-    draw_text("Hello sailor", {0, 0}, 15, alpha(BLACK, 0.7))
+    draw_text("Hello Sailor", {0, 0}, 25, BLACK)
 }
 
 // -------------------------- @renderer -----------------------
@@ -196,7 +201,7 @@ Mat4 :: linalg.Matrix4f32
 
 GL_MAJOR :: 4
 GL_MINOR :: 6
-MAX_QUADS :: 32
+MAX_QUADS :: 1024
 
 Vertex :: struct {
     position: v3,
@@ -243,12 +248,22 @@ Atlas :: struct {
     data: [^]byte
 }
 
+Font :: enum {
+    alagard,
+    baskerville
+}
 
-Font :: struct {
+FontInfo :: struct {
     characters: []stbtt.bakedchar,
+    bitmap: []byte,
     bitmap_width: int,
     bitmap_height: int,
-    bitmap: []byte
+    filter: FontFilter,
+}
+
+FontFilter :: enum {
+    nearest,
+    linear
 }
 
 RED     :: v4{1, 0, 0, 1}
@@ -412,8 +427,18 @@ init_renderer :: proc() -> bool {
     
             gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT) // s is x wrap
             gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT) // t is y wrap
-            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+
+            filter: i32
+
+            switch state.font.filter {
+                case .nearest:
+                    filter = gl.NEAREST
+                case .linear:
+                    filter = gl.LINEAR
+            }
+
+            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter)
+            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter)
     
             font := &state.font
    
@@ -444,23 +469,20 @@ draw_text :: proc(text: string, position: v2, font_size: f32, colour: v4) {
         return
     }
 
-    GlyphRenderInfo :: struct {
-        relative_x: f32,
-        relative_y: f32,
+    Glyph :: struct {
+        x: f32,
+        y: f32,
         width: f32,
         height: f32,
         uvs: [4]v2,
     }
 
-    glyphs := make([]GlyphRenderInfo, len(text), context.temp_allocator)
+    glyphs := make([]Glyph, len(text), context.temp_allocator)
 
-    total_x:    f32
-    total_y:    f32
-    max_height: f32
+    total_text_width: f32
+    text_height: f32
 
-    for i in 0..<len(text) {
-        c := text[i]
-
+    for c, i in text {
         advanced_x: f32
         advanced_y: f32
     
@@ -478,13 +500,17 @@ draw_text :: proc(text: string, position: v2, font_size: f32, colour: v4) {
         // 
         // x, and y and expected vertex positions
         // s and t are texture uv position
-        stbtt.GetBakedQuad(&state.font.characters[0], i32(state.font.bitmap_width), i32(state.font.bitmap_height), (cast(i32)c) - 32, &advanced_x, &advanced_y, &alligned_quad, false)
+        stbtt.GetBakedQuad(&state.font.characters[0], i32(state.font.bitmap_width), i32(state.font.bitmap_height), i32(c) - 32, &advanced_x, &advanced_y, &alligned_quad, false)
+
 
         width := alligned_quad.x1 - alligned_quad.x0
-        height := alligned_quad.y1 - alligned_quad.y0
 
-        if height > max_height {
-            max_height = height
+        bottom_y := -alligned_quad.y1
+        top_y := -alligned_quad.y0
+        height := top_y - bottom_y
+
+        if height > text_height {
+            text_height = height
         }
 
         top_left_uv     := v2{alligned_quad.s0, alligned_quad.t0}
@@ -493,8 +519,8 @@ draw_text :: proc(text: string, position: v2, font_size: f32, colour: v4) {
         bottom_left_uv  := v2{alligned_quad.s0, alligned_quad.t1}
 
         glyphs[i] = {
-            relative_x = total_x,
-            relative_y = total_y,
+            x = total_text_width,
+            y = bottom_y,
             width = width,
             height = height,
             uvs = {
@@ -504,30 +530,33 @@ draw_text :: proc(text: string, position: v2, font_size: f32, colour: v4) {
                 bottom_left_uv
             }
         }
-            
-        total_x += advanced_x
-        total_y += advanced_y
+          
+        // if the character is not the last then add the advanced x to the total width
+        // because this includes the with of the character and also the kerning gap added
+        // for the next character, if it is the last one then just take the width and have
+        // no extra gap at the end - 20/01/25
+        if i < len(text) - 1 {
+            total_text_width += advanced_x
+        } else {
+            total_text_width += width
+        }
     }
 
-    
-    scale_factor := 1.0 / max_height
-    height_scale_factor := scale_factor * font_size // font size is in world units
-    total_scaled_width := total_x * scale_factor * font_size
+    bounding_box := v2{total_text_width, text_height}
+    scale := font_size / text_height
 
-    for &info in glyphs {
-        width_proportion := info.width / total_x
-        x_proportion := info.relative_x / total_x
+    pivot_point_translation := (-bounding_box * 0.5) * scale
+    position_translation := position
 
-        width := width_proportion * total_scaled_width
-        x := x_proportion * total_scaled_width
+    for &glyph in glyphs {
+        glyph_position := v2{glyph.x, glyph.y} * scale // needs to be scaled because gaps between characters need to scale also
+        glyph_size := v2{glyph.width, glyph.height}
 
-        // TODO: right now the text is just centred, could add an origin
-        // vec2 which dictates where the centre of the text should be
-        size := v2{width, info.height * height_scale_factor}
-        offset_position := v2{x - (total_scaled_width * 0.5), info.relative_y}
+        translated_position := glyph_position + pivot_point_translation + position_translation
+        scaled_size := glyph_size * scale
 
-        draw_quad(position + offset_position, size, colour, info.uvs, .font);
-    }
+        draw_quad(translated_position + (scaled_size * 0.5), scaled_size, colour, glyph.uvs, .font);
+    } 
 }
 
 draw_quad :: proc(position: v2, size: v2, colour: v4, uv: [4]v2, draw_type: DrawType) {
@@ -751,21 +780,19 @@ get_texture_name :: proc(texture: Texture) -> string {
     unreachable()
 }
 
-load_font :: proc() -> bool {
+load_font :: proc(font: Font, bitmap_width: int, bitmap_height: int, font_height: f32, filter: FontFilter) -> bool {
     RESOURCE_DIR :: "resources/fonts/"
-    FONT_BITMAP_WIDTH   :: 1900 
-    FONT_BITMAP_HEIGHT  :: 1900
-    FONT_HEIGHT         :: 310
-    FONT_CHAR_COUNT     :: 96
+    CHAR_COUNT     :: 96
 
-    font := Font {
-        characters = make([]stbtt.bakedchar, FONT_CHAR_COUNT),
-        bitmap_width = FONT_BITMAP_HEIGHT,
-        bitmap_height = FONT_BITMAP_HEIGHT,
-        bitmap = make([]byte, FONT_BITMAP_WIDTH * FONT_BITMAP_HEIGHT)
+    font_info := FontInfo {
+        characters = make([]stbtt.bakedchar, CHAR_COUNT),
+        bitmap = make([]byte, bitmap_width * bitmap_height),
+        bitmap_width = bitmap_width,
+        bitmap_height = bitmap_height,
+        filter = filter
     }
 
-    path := fmt.tprint(RESOURCE_DIR, "LibreBaskerville.ttf", sep="")
+    path := fmt.tprint(RESOURCE_DIR, font_file_name(font), sep="")
 
     font_data, ok := os.read_entire_file(path)
     if !ok {
@@ -776,13 +803,13 @@ load_font :: proc() -> bool {
     bake_result := stbtt.BakeFontBitmap(
         raw_data(font_data), 
         0, 
-        FONT_HEIGHT, 
-        slice.as_ptr(font.bitmap),
-        FONT_BITMAP_WIDTH, 
-        FONT_BITMAP_HEIGHT, 
+        font_height, 
+        slice.as_ptr(font_info.bitmap),
+        i32(bitmap_width), 
+        i32(bitmap_height), 
         32, 
-        FONT_CHAR_COUNT, 
-        slice.as_ptr(font.characters)
+        CHAR_COUNT, 
+        slice.as_ptr(font_info.characters)
     )
 
     if bake_result <= 0 {
@@ -795,20 +822,31 @@ load_font :: proc() -> bool {
 
         stbi.flip_vertically_on_write(false)
 
-        write_result := stbi.write_png(output_path, FONT_BITMAP_WIDTH, FONT_BITMAP_HEIGHT, 1, &font.bitmap[0], FONT_BITMAP_WIDTH)	
+        write_result := stbi.write_png(output_path,i32(bitmap_width), i32(bitmap_height), 1, &font_info.bitmap[0], i32(bitmap_width))	
         if write_result == 0 {
             log.error("could not write font \"%v\" to output image \"%v\"", path, output_path)
             return false
         }
 
-        log.infof("wrote font image to \"%v\" [%v x %v %v bytes uncompressed]", output_path, FONT_BITMAP_WIDTH, FONT_BITMAP_HEIGHT, len(font.bitmap))
+        log.infof("wrote font image to \"%v\" [%v x %v %v bytes uncompressed]", output_path, bitmap_width, bitmap_height, len(font_info.bitmap))
     }
 
     log.infof("loaded font \"%v\"", path)
 
-    state.font = font
+    state.font = font_info
    
     return true
+}
+
+font_file_name :: proc(font: Font) -> string {
+    switch font {
+        case .alagard:
+            return "alagard.ttf"
+        case .baskerville:
+            return "LibreBaskerville.ttf"
+    }
+
+    unreachable()
 }
 
 alpha :: proc(colour: v4, alpha: f32) -> v4 {
