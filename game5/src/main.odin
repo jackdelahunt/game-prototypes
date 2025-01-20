@@ -19,9 +19,6 @@ import stbtt "vendor:stb/truetype"
 import stbrp "vendor:stb/rect_pack"
 
 // TODO: render tech todo
-// - port same text rendering method
-// - better font and fix issues
-// - port screen space rendering
 // - screen independent screen space rendering
 // - animated textures ?? maybe
 
@@ -34,8 +31,8 @@ WRITE_DEBUG_IMAGES  :: true
 state: State
 
 State :: struct {
-    width: int,
-    height: int,
+    width: f32,
+    height: f32,
     window: glfw.WindowHandle,
     keys: [348]InputState,
     texture_atlas: Atlas,
@@ -139,6 +136,8 @@ main :: proc() {
         update(delta_time)
         draw(delta_time)
 
+        in_screen_space = false
+
         gl.Clear(gl.COLOR_BUFFER_BIT)
 
         // update vertex buffer with current quad data
@@ -197,7 +196,11 @@ draw :: proc(delta_time: f32) {
 
     fps_string := fmt.tprintf("fps: %v", 1 / delta_time)
 
-    draw_text(fps_string, {-130, 0}, 15, BLACK, .bottom_left)
+    draw_text(fps_string, {0, 0}, 15, BLACK, .bottom_left)
+
+    in_screen_space = true
+
+    draw_text(fps_string, {0, 0}, 100, BLACK, .bottom_left)
 }
 
 // -------------------------- @renderer -----------------------
@@ -283,6 +286,8 @@ GREEN   :: v4{0, 1, 0, 1}
 BLUE    :: v4{0, 0, 1, 1}
 WHITE   :: v4{1, 1, 1, 1}
 BLACK   :: v4{0, 0, 0, 1}
+
+in_screen_space := false
 
 init_renderer :: proc() -> bool {
     { // initialise opengl
@@ -581,14 +586,20 @@ draw_text :: proc(text: string, position: v2, font_size: f32, colour: v4, allign
 draw_quad :: proc(position: v2, size: v2, colour: v4, uv: [4]v2, draw_type: DrawType) {
     transformation_matrix: Mat4
 
-    // model matrix
-    transformation_matrix = linalg.matrix4_translate(v3{position.x, position.y, 10}) * linalg.matrix4_scale(v3{size.x, size.y, 1})
-
-    // model view matrix
-    transformation_matrix = get_view_matrix() * transformation_matrix
-
-    // model view projection
-    transformation_matrix = get_projection_matrix() * transformation_matrix
+    if in_screen_space {
+        ndc_position := screen_position_to_ndc({position.x, position.y, 0})
+        ndc_size := size / (v2{state.width, state.height} * 0.5)         
+        transformation_matrix = linalg.matrix4_translate(ndc_position) * linalg.matrix4_scale(v3{ndc_size.x, ndc_size.y, 1})
+    } else {
+        // model matrix
+        transformation_matrix = linalg.matrix4_translate(v3{position.x, position.y, 10}) * linalg.matrix4_scale(v3{size.x, size.y, 1})
+    
+        // model view matrix
+        transformation_matrix = get_view_matrix() * transformation_matrix
+    
+        // model view projection
+        transformation_matrix = get_projection_matrix() * transformation_matrix
+    }
 
     quad := &state.renderer.quads[state.renderer.quad_count]
     state.renderer.quad_count += 1
@@ -624,6 +635,29 @@ draw_quad :: proc(position: v2, size: v2, colour: v4, uv: [4]v2, draw_type: Draw
     quad.vertices[1].draw_type = draw_type_value
     quad.vertices[2].draw_type = draw_type_value
     quad.vertices[3].draw_type = draw_type_value
+}
+
+screen_position_to_ndc :: proc(position: v3) -> v3 {
+    // the z co-ordinate is not the same in every graphics api
+    // this is currently assuming d3d so the z value is normalised
+    // between 0 -> 1 based on its distance in the camera near and
+    // far planes. For open gl this would need to be -1 -> 1
+    // for others e.g. metal I do not know
+    // - 11/01/25
+
+    // just using -1 for z for near plane until layers are setup again
+
+    assert(state.camera.near_plane < state.camera.far_plane)
+
+    distance_from_near_plane := position.z - state.camera.near_plane
+    distance_between_planes := state.camera.far_plane - state.camera.near_plane
+    z_in_ndc := distance_from_near_plane / distance_between_planes
+
+    return {
+        ((position.x / state.width) * 2) - 1,
+        ((position.y / state.height) * 2) - 1,
+        -1 
+    }
 }
 
 get_view_matrix :: proc() -> Mat4 {
@@ -903,7 +937,7 @@ opengl_message_callback :: proc "c" (source: u32, type: u32, id: u32, severity: 
 }
 
 // -------------------------- @window -------------------------
-create_window :: proc(width: int, height: int, title: cstring) -> (glfw.WindowHandle, bool) {
+create_window :: proc(width: f32, height: f32, title: cstring) -> (glfw.WindowHandle, bool) {
     ok := glfw.Init();
     if !ok {
         return nil, false
@@ -953,8 +987,8 @@ glfw_key_callback :: proc "c" (window: glfw.WindowHandle, key: c.int, scancode: 
 
 glfw_size_callback :: proc "c" (window: glfw.WindowHandle, width: c.int, height: c.int) {
     gl.Viewport(0, 0, width, height)
-    state.width = int(width)
-    state.height = int(height)
+    state.width = f32(width)
+    state.height = f32(height)
 }
 
 // -------------------------- @random -------------------------
