@@ -10,3 +10,7 @@ Don'ts:
 	- ask things like what did you think about the game
 	- not, what did you think about this mechanic
 	- if they don't talk about it, it wasn't good/bad enough to care
+
+game4:
+- second last level was hard because pushing a rock with nother one wasnt introduced yet
+- didnt notice no undo in islands level

@@ -101,7 +101,7 @@ main :: proc() {
             return
         }
 
-        ok = load_fonts()
+        ok = load_font()
         if !ok {
             log.fatal("error when loading fonts")
             return
@@ -132,7 +132,7 @@ main :: proc() {
 
         // update vertex buffer with current quad data
         gl.BindBuffer(gl.ARRAY_BUFFER, state.renderer.vertex_buffer_id)
-        gl.BufferSubData(gl.ARRAY_BUFFER, 0, size_of(Quad) * state.renderer.quad_count, &state.renderer.quads[0])
+        gl.BufferSubData(gl.ARRAY_BUFFER, 0, size_of(Quad) * state.renderer.quad_count, slice.as_ptr(state.renderer.quads))
 
         // draw quads
         if state.renderer.quad_count > 0 {
@@ -184,8 +184,8 @@ draw :: proc() {
     // draw_texture(.blue_face, {-50, -50}, {50, 50}, WHITE)
     // draw_texture(.wide_face, {-25, 50}, {100, 50}, WHITE)
 
-    draw_rectangle({0, 0}, {110, 20}, BLACK)
-    draw_text("jj aa jj aa", {0, 0}, 20, WHITE)
+    draw_rectangle({0, 0}, {150, 15}, WHITE)
+    draw_text("Hello sailor", {0, 0}, 15, alpha(BLACK, 0.7))
 }
 
 // -------------------------- @renderer -----------------------
@@ -244,14 +244,11 @@ Atlas :: struct {
 }
 
 
-FONT_BITMAP_WIDTH   :: 256 
-FONT_BITMAP_HEIGHT  :: 256
-FONT_HEIGHT         :: 15
-FONT_CHAR_COUNT     :: 96
-
 Font :: struct {
-    characters: [FONT_CHAR_COUNT]stbtt.bakedchar,
-    bitmap: [FONT_BITMAP_WIDTH * FONT_BITMAP_HEIGHT]byte
+    characters: []stbtt.bakedchar,
+    bitmap_width: int,
+    bitmap_height: int,
+    bitmap: []byte
 }
 
 RED     :: v4{1, 0, 0, 1}
@@ -415,13 +412,13 @@ init_renderer :: proc() -> bool {
     
             gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT) // s is x wrap
             gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT) // t is y wrap
-            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
-            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
     
             font := &state.font
    
             // font data is monochrome with a single channel so need to load as just red and store it as that - 19/01/25
-            gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RED, FONT_BITMAP_WIDTH, FONT_BITMAP_HEIGHT, 0, gl.RED, gl.UNSIGNED_BYTE, &font.bitmap)
+            gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RED, i32(font.bitmap_width), i32(font.bitmap_height), 0, gl.RED, gl.UNSIGNED_BYTE, slice.as_ptr(font.bitmap))
     
             state.renderer.font_texture_id = font_texture
         }
@@ -481,7 +478,7 @@ draw_text :: proc(text: string, position: v2, font_size: f32, colour: v4) {
         // 
         // x, and y and expected vertex positions
         // s and t are texture uv position
-        stbtt.GetBakedQuad(&state.font.characters[0], FONT_BITMAP_WIDTH, FONT_BITMAP_HEIGHT, (cast(i32)c) - 32, &advanced_x, &advanced_y, &alligned_quad, false)
+        stbtt.GetBakedQuad(&state.font.characters[0], i32(state.font.bitmap_width), i32(state.font.bitmap_height), (cast(i32)c) - 32, &advanced_x, &advanced_y, &alligned_quad, false)
 
         width := alligned_quad.x1 - alligned_quad.x0
         height := alligned_quad.y1 - alligned_quad.y0
@@ -754,10 +751,21 @@ get_texture_name :: proc(texture: Texture) -> string {
     unreachable()
 }
 
-load_fonts :: proc() -> bool {
+load_font :: proc() -> bool {
     RESOURCE_DIR :: "resources/fonts/"
+    FONT_BITMAP_WIDTH   :: 1900 
+    FONT_BITMAP_HEIGHT  :: 1900
+    FONT_HEIGHT         :: 310
+    FONT_CHAR_COUNT     :: 96
 
-    path := fmt.tprint(RESOURCE_DIR, "alagard.ttf", sep="")
+    font := Font {
+        characters = make([]stbtt.bakedchar, FONT_CHAR_COUNT),
+        bitmap_width = FONT_BITMAP_HEIGHT,
+        bitmap_height = FONT_BITMAP_HEIGHT,
+        bitmap = make([]byte, FONT_BITMAP_WIDTH * FONT_BITMAP_HEIGHT)
+    }
+
+    path := fmt.tprint(RESOURCE_DIR, "LibreBaskerville.ttf", sep="")
 
     font_data, ok := os.read_entire_file(path)
     if !ok {
@@ -769,34 +777,36 @@ load_fonts :: proc() -> bool {
         raw_data(font_data), 
         0, 
         FONT_HEIGHT, 
-        auto_cast &state.font.bitmap,
+        slice.as_ptr(font.bitmap),
         FONT_BITMAP_WIDTH, 
         FONT_BITMAP_HEIGHT, 
         32, 
         FONT_CHAR_COUNT, 
-        auto_cast &state.font.characters
+        slice.as_ptr(font.characters)
     )
 
-    if !(bake_result > 0) {
-        log.errorf("not enough space in bitmap buffer for font %v", path)
+    if bake_result <= 0 {
+        log.errorf("error baking bitmap for font %v", path)
         return false
     }
 
     when WRITE_DEBUG_IMAGES {
-        output_path :: "build/alagard.png"
+        output_path :: "build/font.png"
 
         stbi.flip_vertically_on_write(false)
 
-        write_result := stbi.write_png(output_path, FONT_BITMAP_WIDTH, FONT_BITMAP_HEIGHT, 1, &state.font.bitmap[0], FONT_BITMAP_WIDTH)	
+        write_result := stbi.write_png(output_path, FONT_BITMAP_WIDTH, FONT_BITMAP_HEIGHT, 1, &font.bitmap[0], FONT_BITMAP_WIDTH)	
         if write_result == 0 {
             log.error("could not write font \"%v\" to output image \"%v\"", path, output_path)
             return false
         }
 
-        log.infof("wrote font image to \"%v\" [%v x %v]", output_path, FONT_BITMAP_WIDTH, FONT_BITMAP_HEIGHT)
+        log.infof("wrote font image to \"%v\" [%v x %v %v bytes uncompressed]", output_path, FONT_BITMAP_WIDTH, FONT_BITMAP_HEIGHT, len(font.bitmap))
     }
 
-    log.infof("loaded font \"%v\" [%v x %v %v bytes uncompressed]", path, FONT_BITMAP_WIDTH, FONT_BITMAP_HEIGHT, len(font_data))
+    log.infof("loaded font \"%v\"", path)
+
+    state.font = font
    
     return true
 }
