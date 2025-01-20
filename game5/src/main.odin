@@ -41,6 +41,7 @@ State :: struct {
     texture_atlas: Atlas,
     textures: [Texture]TextureInfo,
     font: FontInfo,
+    time: f64,
     camera: struct {
         position: v2,
         // length in world units from camera centre to top edge of camera view
@@ -131,8 +132,12 @@ main :: proc() {
             glfw.SetWindowShouldClose(state.window, true)
         }
 
-        update()
-        draw()
+        now := glfw.GetTime()
+        delta_time := f32(now - state.time)
+        state.time = now
+
+        update(delta_time)
+        draw(delta_time)
 
         gl.Clear(gl.COLOR_BUFFER_BIT)
 
@@ -164,7 +169,7 @@ main :: proc() {
     glfw.Terminate()
 }
 
-update :: proc() {
+update :: proc(delta_time: f32) {
     SPEED :: 1
 
     if state.keys[glfw.KEY_A] == .down {
@@ -184,13 +189,15 @@ update :: proc() {
     }
 }
 
-draw :: proc() {
+draw :: proc(delta_time: f32) {
     // draw_texture(.face, {0, 0}, {50, 50}, WHITE)
     // draw_texture(.sad_face, {50, 50}, {50, 50}, WHITE)
     // draw_texture(.blue_face, {-50, -50}, {50, 50}, WHITE)
     // draw_texture(.wide_face, {-25, 50}, {100, 50}, WHITE)
 
-    draw_text("Hello Sailor", {0, 0}, 25, BLACK)
+    fps_string := fmt.tprintf("fps: %v", 1 / delta_time)
+
+    draw_text(fps_string, {-130, 0}, 15, BLACK, .bottom_left)
 }
 
 // -------------------------- @renderer -----------------------
@@ -264,6 +271,11 @@ FontInfo :: struct {
 FontFilter :: enum {
     nearest,
     linear
+}
+
+TextAllignment :: enum {
+    center,
+    bottom_left
 }
 
 RED     :: v4{1, 0, 0, 1}
@@ -464,16 +476,14 @@ draw_circle :: proc(position: v2, radius: f32, colour: v4) {
     draw_quad(position, {radius * 2, radius * 2}, colour, DEFAULT_UV, .circle)
 }
 
-draw_text :: proc(text: string, position: v2, font_size: f32, colour: v4) {
+draw_text :: proc(text: string, position: v2, font_size: f32, colour: v4, allignment: TextAllignment) {
     if len(text) == 0 {
         return
     }
 
     Glyph :: struct {
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
+        position: v2,
+        size: v2,
         uvs: [4]v2,
     }
 
@@ -502,13 +512,12 @@ draw_text :: proc(text: string, position: v2, font_size: f32, colour: v4) {
         // s and t are texture uv position
         stbtt.GetBakedQuad(&state.font.characters[0], i32(state.font.bitmap_width), i32(state.font.bitmap_height), i32(c) - 32, &advanced_x, &advanced_y, &alligned_quad, false)
 
-
-        width := alligned_quad.x1 - alligned_quad.x0
-
         bottom_y := -alligned_quad.y1
         top_y := -alligned_quad.y0
-        height := top_y - bottom_y
 
+        height := top_y - bottom_y
+        width := alligned_quad.x1 - alligned_quad.x0
+        
         if height > text_height {
             text_height = height
         }
@@ -519,10 +528,14 @@ draw_text :: proc(text: string, position: v2, font_size: f32, colour: v4) {
         bottom_left_uv  := v2{alligned_quad.s0, alligned_quad.t1}
 
         glyphs[i] = {
-            x = total_text_width,
-            y = bottom_y,
-            width = width,
-            height = height,
+            position = {
+                total_text_width,
+                bottom_y,
+            },
+            size = {
+                width,
+                height,
+            },
             uvs = {
                 top_left_uv,
                 top_right_uv,
@@ -542,19 +555,25 @@ draw_text :: proc(text: string, position: v2, font_size: f32, colour: v4) {
         }
     }
 
-    bounding_box := v2{total_text_width, text_height}
+
+    pivot_point_translation: v2
     scale := font_size / text_height
 
-    pivot_point_translation := (-bounding_box * 0.5) * scale
-    position_translation := position
+    switch allignment {
+        case .center: {
+            bounding_box := v2{total_text_width, text_height}
+            pivot_point_translation = (-bounding_box * 0.5) * scale
+        }
+        case .bottom_left:
+            // characters are aligned by default so do nothing...
+    }
 
     for &glyph in glyphs {
-        glyph_position := v2{glyph.x, glyph.y} * scale // needs to be scaled because gaps between characters need to scale also
-        glyph_size := v2{glyph.width, glyph.height}
+        scaled_position     := glyph.position * scale // needs to be scaled because gaps between characters need to scale also
+        scaled_size         := glyph.size * scale
+        translated_position := scaled_position + pivot_point_translation + position
 
-        translated_position := glyph_position + pivot_point_translation + position_translation
-        scaled_size := glyph_size * scale
-
+        // draw quad needs position to be centre of quad so just convert that here
         draw_quad(translated_position + (scaled_size * 0.5), scaled_size, colour, glyph.uvs, .font);
     } 
 }
