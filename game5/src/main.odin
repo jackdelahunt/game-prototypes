@@ -27,7 +27,9 @@ LOG_COLOURS         :: false
 OPENGL_MESSAGES     :: false
 WRITE_DEBUG_IMAGES  :: true
 
-// -------------------------- @game ---------------------------
+MAX_ENTITIES :: 32
+
+// -------------------------- @global ---------------------------
 state: State
 
 State :: struct {
@@ -39,6 +41,8 @@ State :: struct {
     textures: [Texture]TextureInfo,
     font: FontInfo,
     time: f64,
+    entities: [32]BaseEntity,
+    entity_count: int,
     camera: struct {
         position: v2,
         // length in world units from camera centre to top edge of camera view
@@ -75,7 +79,7 @@ main :: proc() {
             position = {0, 0},
             // length in world units from camera centre to top edge of camera view
             // length of camera centre to side edge is this * aspect ratio
-            orthographic_size = 100,
+            orthographic_size = 200,
             near_plane = 0.01,
             far_plane = 100
         },
@@ -124,6 +128,8 @@ main :: proc() {
         }
     }
 
+    start()
+
     for !glfw.WindowShouldClose(state.window) {
         if state.keys[glfw.KEY_ESCAPE] == .down {
             glfw.SetWindowShouldClose(state.window, true)
@@ -168,6 +174,82 @@ main :: proc() {
     glfw.Terminate()
 }
 
+// -------------------------- @game -----------------------
+
+BaseEntity :: struct {
+    id: int,
+    position: v2,
+    size: v2,
+    texture: Texture,
+
+    instance: union {
+        Player,
+        Enemy
+    }
+}
+
+Entity :: struct($T: typeid) {
+    using base      : ^BaseEntity,
+    using instance  : ^T
+}
+
+Player :: struct {
+    health: int 
+}
+
+Enemy :: struct {
+
+}
+
+create_entity :: proc(base: BaseEntity) {
+    @static id := 0
+
+    ptr := &state.entities[state.entity_count]
+    ptr^ = base
+    ptr.id = id
+
+    state.entity_count += 1
+}
+
+get_entity :: proc(id: int, instance_type: $T) -> Entity(T) {
+    for &base_entity in state.entities[0:state.entity_count] {
+        if base_entity.id == id {
+            return {base = &base_entity, instance = &base_entity.instance.(T)}
+        } 
+    }
+
+    unreachable()
+}
+
+get_entity_type :: proc(instance_type: $T) -> Entity(T) {
+    for &base_entity in state.entities[0:state.entity_count] {
+        switch instance in base_entity.instance {
+            case T:
+                return {base = &base_entity, instance = &base_entity.instance.(T)}
+        }
+    }
+
+    unreachable()
+}
+
+start :: proc() {
+    create_entity(BaseEntity {
+        position = {-50, -150},
+        size = {50, 50},
+        texture = .face,
+        instance = Player {
+            health = 100
+        } 
+    })
+
+    create_entity(BaseEntity {
+        position = {100, 100},
+        size = {50, 50},
+        texture = .sad_face,
+        instance = Enemy {} 
+    })
+}
+
 update :: proc(delta_time: f32) {
     SPEED :: 1
 
@@ -189,18 +271,9 @@ update :: proc(delta_time: f32) {
 }
 
 draw :: proc(delta_time: f32) {
-    // draw_texture(.face, {0, 0}, {50, 50}, WHITE)
-    // draw_texture(.sad_face, {50, 50}, {50, 50}, WHITE)
-    // draw_texture(.blue_face, {-50, -50}, {50, 50}, WHITE)
-    // draw_texture(.wide_face, {-25, 50}, {100, 50}, WHITE)
-
-    fps_string := fmt.tprintf("fps: %v", 1 / delta_time)
-
-    draw_text(fps_string, {0, 0}, 15, BLACK, .bottom_left)
-
-    in_screen_space = true
-
-    draw_text(fps_string, {0, 0}, 100, BLACK, .bottom_left)
+    for &base_entity in state.entities[0:state.entity_count] {
+        draw_texture(base_entity.texture, base_entity.position, base_entity.size, WHITE)
+    }
 }
 
 // -------------------------- @renderer -----------------------
