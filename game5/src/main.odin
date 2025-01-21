@@ -37,12 +37,7 @@ State :: struct {
     height: f32,
     window: glfw.WindowHandle,
     keys: [348]InputState,
-    texture_atlas: Atlas,
-    textures: [Texture]TextureInfo,
-    font: FontInfo,
     time: f64,
-    entities: [32]BaseEntity,
-    entity_count: int,
     camera: struct {
         position: v2,
         // length in world units from camera centre to top edge of camera view
@@ -51,17 +46,7 @@ State :: struct {
         near_plane: f32,
         far_plane: f32
     },
-    renderer: struct {
-        quads: []Quad,
-        quad_count: int,
-       
-        vertex_array_id: u32,
-        vertex_buffer_id: u32,
-        index_buffer_id: u32,
-        shader_program_id: u32,
-        atlas_texture_id: u32,
-        font_texture_id: u32,
-    }
+    renderer: Renderer
 }
 
 InputState :: enum {
@@ -91,19 +76,19 @@ main :: proc() {
     { // initialise everything
         ok: bool
 
-        ok = load_textures()
+        ok = load_textures(&state.renderer)
         if !ok {
             log.fatal("error when loading textures")
             return
         }
     
-        ok = build_texture_atlas()
+        ok = build_texture_atlas(&state.renderer)
         if !ok {
             log.fatal("error when building texture atlas")
             return
         }
 
-        ok = load_font(.baskerville, 2000, 2000, 320, .linear)
+        ok = load_font(&state.renderer, .baskerville, 2000, 2000, 320, .linear)
         if !ok {
             log.fatal("error when loading fonts")
             return
@@ -121,7 +106,7 @@ main :: proc() {
             return
         }
      
-        ok = init_renderer()
+        ok = init_renderer(&state.renderer)
         if !ok {
             log.fatal("error when initialising the renderer")
             return
@@ -175,79 +160,8 @@ main :: proc() {
 }
 
 // -------------------------- @game -----------------------
-
-BaseEntity :: struct {
-    id: int,
-    position: v2,
-    size: v2,
-    texture: Texture,
-
-    instance: union {
-        Player,
-        Enemy
-    }
-}
-
-Entity :: struct($T: typeid) {
-    using base      : ^BaseEntity,
-    using instance  : ^T
-}
-
-Player :: struct {
-    health: int 
-}
-
-Enemy :: struct {
-
-}
-
-create_entity :: proc(base: BaseEntity) {
-    @static id := 0
-
-    ptr := &state.entities[state.entity_count]
-    ptr^ = base
-    ptr.id = id
-
-    state.entity_count += 1
-}
-
-get_entity :: proc(id: int, instance_type: $T) -> Entity(T) {
-    for &base_entity in state.entities[0:state.entity_count] {
-        if base_entity.id == id {
-            return {base = &base_entity, instance = &base_entity.instance.(T)}
-        } 
-    }
-
-    unreachable()
-}
-
-get_entity_type :: proc(instance_type: $T) -> Entity(T) {
-    for &base_entity in state.entities[0:state.entity_count] {
-        switch instance in base_entity.instance {
-            case T:
-                return {base = &base_entity, instance = &base_entity.instance.(T)}
-        }
-    }
-
-    unreachable()
-}
-
 start :: proc() {
-    create_entity(BaseEntity {
-        position = {-50, -150},
-        size = {50, 50},
-        texture = .face,
-        instance = Player {
-            health = 100
-        } 
-    })
-
-    create_entity(BaseEntity {
-        position = {100, 100},
-        size = {50, 50},
-        texture = .sad_face,
-        instance = Enemy {} 
-    })
+    
 }
 
 update :: proc(delta_time: f32) {
@@ -271,9 +185,7 @@ update :: proc(delta_time: f32) {
 }
 
 draw :: proc(delta_time: f32) {
-    for &base_entity in state.entities[0:state.entity_count] {
-        draw_texture(base_entity.texture, base_entity.position, base_entity.size, WHITE)
-    }
+    draw_text("Hello sailor", {0, 0}, 20, BLACK, .center)
 }
 
 // -------------------------- @renderer -----------------------
@@ -360,9 +272,25 @@ BLUE    :: v4{0, 0, 1, 1}
 WHITE   :: v4{1, 1, 1, 1}
 BLACK   :: v4{0, 0, 0, 1}
 
+Renderer :: struct {
+    quads: []Quad,
+    quad_count: int,
+
+    texture_atlas: Atlas,
+    textures: [Texture]TextureInfo,
+    font: FontInfo,
+     
+    vertex_array_id: u32,
+    vertex_buffer_id: u32,
+    index_buffer_id: u32,
+    shader_program_id: u32,
+    atlas_texture_id: u32,
+    font_texture_id: u32,
+}
+
 in_screen_space := false
 
-init_renderer :: proc() -> bool {
+init_renderer :: proc(renderer: ^Renderer) -> bool {
     { // initialise opengl
         gl.load_up_to(GL_MAJOR, GL_MINOR, glfw.gl_set_proc_address)
 
@@ -430,7 +358,7 @@ init_renderer :: proc() -> bool {
         gl.Uniform1i(gl.GetUniformLocation(shader_program, "face_texture"), 0)
         gl.Uniform1i(gl.GetUniformLocation(shader_program, "font_texture"), 1)
 
-        state.renderer.shader_program_id = shader_program
+        renderer.shader_program_id = shader_program
     }
 
     { // vertex array
@@ -438,7 +366,7 @@ init_renderer :: proc() -> bool {
         gl.GenVertexArrays(1, &vertex_array)
         gl.BindVertexArray(vertex_array)
 
-        state.renderer.vertex_array_id = vertex_array
+        renderer.vertex_array_id = vertex_array
     }
 
     { // vertex buffer
@@ -446,9 +374,9 @@ init_renderer :: proc() -> bool {
         gl.GenBuffers(1, &vertex_buffer)
             
         gl.BindBuffer(gl.ARRAY_BUFFER, vertex_buffer)
-        gl.BufferData(gl.ARRAY_BUFFER, size_of(Quad) * len(state.renderer.quads), &state.renderer.quads[0], gl.DYNAMIC_DRAW)
+        gl.BufferData(gl.ARRAY_BUFFER, size_of(Quad) * len(renderer.quads), &renderer.quads[0], gl.DYNAMIC_DRAW)
 
-        state.renderer.vertex_buffer_id = vertex_buffer
+        renderer.vertex_buffer_id = vertex_buffer
     }
 
     { // index buffer
@@ -474,7 +402,7 @@ init_renderer :: proc() -> bool {
         gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, index_buffer)
         gl.BufferData(gl.ELEMENT_ARRAY_BUFFER, size_of(u32) * len(indices), &indices[0], gl.STATIC_DRAW)
 
-        state.renderer.index_buffer_id = index_buffer
+        renderer.index_buffer_id = index_buffer
     }
 
     { // attributes
@@ -502,11 +430,11 @@ init_renderer :: proc() -> bool {
             gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
             gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
     
-            atlas := &state.texture_atlas
+            atlas := &renderer.texture_atlas
     
             gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, atlas.width, atlas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, atlas.data)
     
-            state.renderer.atlas_texture_id = atlas_texture
+            renderer.atlas_texture_id = atlas_texture
         }
 
         { // upload font txture
@@ -520,7 +448,7 @@ init_renderer :: proc() -> bool {
 
             filter: i32
 
-            switch state.font.filter {
+            switch renderer.font.filter {
                 case .nearest:
                     filter = gl.NEAREST
                 case .linear:
@@ -530,12 +458,12 @@ init_renderer :: proc() -> bool {
             gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter)
             gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter)
     
-            font := &state.font
+            font := &renderer.font
    
             // font data is monochrome with a single channel so need to load as just red and store it as that - 19/01/25
             gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RED, i32(font.bitmap_width), i32(font.bitmap_height), 0, gl.RED, gl.UNSIGNED_BYTE, slice.as_ptr(font.bitmap))
     
-            state.renderer.font_texture_id = font_texture
+            renderer.font_texture_id = font_texture
         }
     }
 
@@ -547,7 +475,7 @@ draw_rectangle :: proc(position: v2, size: v2, colour: v4) {
 }
 
 draw_texture :: proc(texture: Texture, position: v2, size: v2, colour: v4) {
-    draw_quad(position, size, colour, state.textures[texture].uv, .texture)
+    draw_quad(position, size, colour, state.renderer.textures[texture].uv, .texture)
 }
 
 draw_circle :: proc(position: v2, radius: f32, colour: v4) {
@@ -588,7 +516,7 @@ draw_text :: proc(text: string, position: v2, font_size: f32, colour: v4, allign
         // 
         // x, and y and expected vertex positions
         // s and t are texture uv position
-        stbtt.GetBakedQuad(&state.font.characters[0], i32(state.font.bitmap_width), i32(state.font.bitmap_height), i32(c) - 32, &advanced_x, &advanced_y, &alligned_quad, false)
+        stbtt.GetBakedQuad(&state.renderer.font.characters[0], i32(state.renderer.font.bitmap_width), i32(state.renderer.font.bitmap_height), i32(c) - 32, &advanced_x, &advanced_y, &alligned_quad, false)
 
         bottom_y := -alligned_quad.y1
         top_y := -alligned_quad.y0
@@ -755,7 +683,7 @@ get_projection_matrix :: proc() -> Mat4 {
     )
 }
 
-load_textures :: proc() -> bool {
+load_textures :: proc(renderer: ^Renderer) -> bool {
     RESOURCE_DIR :: "resources/textures/"
     DESIRED_CHANNELS :: 4
 
@@ -786,7 +714,7 @@ load_textures :: proc() -> bool {
     
         log.infof("loaded texture \"%v\" [%v x %v : %v bytes]", path, width, height, len(png_data))
 
-        state.textures[texture] = {
+        renderer.textures[texture] = {
             width = width,
             height = height,
             data = data
@@ -796,7 +724,7 @@ load_textures :: proc() -> bool {
     return true
 }
 
-build_texture_atlas :: proc() -> bool {
+build_texture_atlas :: proc(renderer: ^Renderer) -> bool {
     ATLAS_WIDTH     :: 32
     ATLAS_HEIGHT    :: 32
     BYTES_PER_PIXEL :: 4
@@ -828,7 +756,7 @@ build_texture_atlas :: proc() -> bool {
         stbrp.init_target(&rp_context, ATLAS_HEIGHT, ATLAS_HEIGHT, &nodes[0], ATLAS_WIDTH)
 
         for texture, i in Texture {
-            info := &state.textures[texture]
+            info := &renderer.textures[texture]
 
             rects[i] = {
                 id = c.int(texture),
@@ -845,7 +773,7 @@ build_texture_atlas :: proc() -> bool {
 
         for i in 0..< len(rects) {
             rect := &rects[i] 
-            texture_info := &state.textures[Texture(rect.id)]
+            texture_info := &renderer.textures[Texture(rect.id)]
 
             bottom_y_uv := f32(rect.y) / f32(ATLAS_HEIGHT)
             top_y_uv    := f32(rect.y + rect.h) / f32(ATLAS_HEIGHT)
@@ -880,7 +808,7 @@ build_texture_atlas :: proc() -> bool {
         log.infof("wrote texture atlas to \"%v\" [%v x %v]", ATLAS_PATH, ATLAS_WIDTH, ATLAS_HEIGHT)
     }
 
-    state.texture_atlas = Atlas {
+    renderer.texture_atlas = Atlas {
         width = ATLAS_WIDTH,
         height = ATLAS_HEIGHT,
         data = atlas_data
@@ -906,7 +834,7 @@ get_texture_name :: proc(texture: Texture) -> string {
     unreachable()
 }
 
-load_font :: proc(font: Font, bitmap_width: int, bitmap_height: int, font_height: f32, filter: FontFilter) -> bool {
+load_font :: proc(renderer: ^Renderer, font: Font, bitmap_width: int, bitmap_height: int, font_height: f32, filter: FontFilter) -> bool {
     RESOURCE_DIR :: "resources/fonts/"
     CHAR_COUNT     :: 96
 
@@ -959,7 +887,7 @@ load_font :: proc(font: Font, bitmap_width: int, bitmap_height: int, font_height
 
     log.infof("loaded font \"%v\"", path)
 
-    state.font = font_info
+    renderer.font = font_info
    
     return true
 }
