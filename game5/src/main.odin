@@ -30,17 +30,17 @@ WRITE_DEBUG_IMAGES  :: true
 V_SYNC              :: true
 
 // internal settings
-MAX_ENTITIES :: 128
+MAX_ENTITIES :: 50_000
 
 // gameplay settings
 PLAYER_SPEED            :: 400
-PLAYER_SHOOT_COOLDOWN   :: 0.05
-BULLET_SPEED            :: 800
+PLAYER_SHOOT_COOLDOWN   :: 0.03
+BULLET_SPEED            :: 1000
 AI_SPEED                :: 200
 
 // player settings
 GAMEPAD_STICK_DEADZONE      :: 0.15
-GAMEPAD_TRIGGER_DEADZONE    :: 0.2
+GAMEPAD_TRIGGER_DEADZONE    :: -0.6 // -1 is no input
 
 // -------------------------- @global ---------------------------
 state: State
@@ -80,7 +80,7 @@ main :: proc() {
             position = {0, 0},
             // length in world units from camera centre to top edge of camera view
             // length of camera centre to side edge is this * aspect ratio
-            orthographic_size = 500,
+            orthographic_size = 1000,
             near_plane = 0.01,
             far_plane = 100
         },
@@ -191,13 +191,20 @@ Entity :: struct {
 
     // player
     shooting_cooldown: f32,
-    aim_direction: v2
+    aim_direction: v2,
+
+    // has_health
+    health: int,
 }
 
 EntityFlag :: enum {
     player,
     ai,
     projectile,
+    solid_hitbox,
+    static_hitbox,
+    trigger_hitbox,
+    has_health,
     to_be_deleted
 }
 
@@ -214,7 +221,7 @@ create_entity :: proc(entity: Entity) -> ^Entity {
 
 create_player :: proc(position: v2) -> ^Entity {
     return create_entity({
-        flags = {.player},
+        flags = {.player, .solid_hitbox},
         position = position,
         size = {50, 50},
         texture = .face,
@@ -224,16 +231,17 @@ create_player :: proc(position: v2) -> ^Entity {
 
 create_ai :: proc(position: v2) -> ^Entity {
     return create_entity({
-        flags = {.ai},
+        flags = {.ai, .solid_hitbox, .has_health},
         position = position,
         size = {30, 30},
         texture = .sad_face,
+        health = 100
     })
 }
 
 create_bullet :: proc(position: v2, velocity: v2) -> ^Entity {
     return create_entity({
-        flags = {.projectile},
+        flags = {.projectile, .trigger_hitbox},
         position = position,
         velocity = velocity,
         size = {5, 5},
@@ -253,7 +261,6 @@ get_entity_with_flag :: proc(flag: EntityFlag) -> ^Entity {
 
 start :: proc() {
     create_player({0, 0})
-    create_ai({-100, 150})
 }
 
 input :: proc() {
@@ -266,6 +273,11 @@ input :: proc() {
 }
 
 update :: proc(delta_time: f32) {
+    axis := state.gamepad.axes[glfw.GAMEPAD_AXIS_LEFT_TRIGGER]
+    if state.gamepad.axes[glfw.GAMEPAD_AXIS_LEFT_TRIGGER] > GAMEPAD_TRIGGER_DEADZONE {
+        create_ai({0, 0})
+    }
+
     for &entity in state.entities[0:state.entity_count] {
         { // reduce cooldowns
             entity.shooting_cooldown -= delta_time
@@ -341,8 +353,6 @@ update :: proc(delta_time: f32) {
             entity.velocity = direction * AI_SPEED    
         }
 
-
-
         projectile_update: {
             if !(.projectile in entity.flags) {
                 break projectile_update
@@ -350,6 +360,18 @@ update :: proc(delta_time: f32) {
 
             if state.time - entity.created_time > 3 {
                 entity.flags += {.to_be_deleted} 
+            }
+        }
+
+        health_update: {
+            if !(.has_health in entity.flags) {
+                break health_update
+            }
+
+            log.infof("health: %v", entity.health)
+
+            if entity.health == 0 {
+                entity.flags += {.to_be_deleted}
             }
         }
 
@@ -379,19 +401,157 @@ update :: proc(delta_time: f32) {
 
 physics :: proc(delta_time: f32) {
     for &entity in state.entities[0:state.entity_count] {
+        // used to check if a collision occurs after
+        // a velocity is applied
+        start_position := entity.position
+    
         entity.position += entity.velocity * delta_time
+
+        solid_hitbox: {
+            // this means if we are ever doing a collision the 
+            // soldin one is always the entity, and if one is 
+            // static then it is the other entity
+            if !(.solid_hitbox in entity.flags) {
+                break solid_hitbox
+            }
+    
+            for &other in state.entities[0:state.entity_count] {
+                if entity == other {
+                    continue
+                }
+        
+                if !(.solid_hitbox in other.flags) && !(.static_hitbox in other.flags) {
+                    continue
+                }
+        
+                distance := other.position - entity.position
+                distance_abs := v2{abs(distance.x), abs(distance.y)}
+                distance_for_collision := (entity.size + other.size) * v2{0.5, 0.5}
+        
+                // basic AABB collision detection, everything is a square
+                if !(distance_for_collision[0] >= distance_abs[0] && distance_for_collision[1] >= distance_abs[1]) {
+                    continue;
+                }
+        
+                overlap_amount := distance_for_collision - distance_abs
+                other_static := .static_hitbox in other.flags
+        
+                // if there is an overlap then measure on which axis has less 
+                // overlap and equally move both entities by that amount away
+                // from each other
+                //
+                // if other is static only move entity
+                // by the full overlap instead of sharing it
+                if overlap_amount[0] < overlap_amount[1] {
+                    if other_static { 
+                        x_push_amount := overlap_amount[0]
+                        entity.position[0] -= math.sign(distance[0]) * x_push_amount
+                    } 
+                    else  {
+                        x_push_amount := overlap_amount[0] * 0.5;
+                        entity.position.x -= math.sign(distance[0]) * x_push_amount
+                        other.position.x += math.sign(distance[0]) * x_push_amount;
+                    }
+                } 
+                else {
+                    if other_static { 
+                        y_push_amount := overlap_amount[1]
+                        entity.position.y -= math.sign(distance[1]) * y_push_amount
+                    } 
+                    else  {
+                        y_push_amount := overlap_amount[1] * 0.5;
+                        entity.position.y -= math.sign(distance[1]) * y_push_amount
+                        other.position.y += math.sign(distance[1]) * y_push_amount;
+                    }
+                }
+            } 
+        }
+
+        trigger_hitbox: {
+            if !(.trigger_hitbox in entity.flags) {
+                break trigger_hitbox
+            }
+    
+            for &other in state.entities[0:state.entity_count] {
+                if entity == other {
+                    continue
+                }
+        
+                if  !(.solid_hitbox in other.flags) && 
+                    !(.static_hitbox in other.flags) &&
+                    !(.trigger_hitbox in other.flags)
+                {
+                    continue
+                }
+        
+                // collision for each other entiity is checked twice for trigger
+                // hitboxes, trigger collision events are only when a new collision
+                // starts so if there was a collision last frame then dont do anything
+        
+                { // collision last frame
+                    distance := other.position - start_position
+                    distance_abs := v2{abs(distance.x), abs(distance.y)}
+                    distance_for_collision := (entity.size + other.size) * v2{0.5, 0.5}
+           
+                    // if there was a collision then don't check for this frame
+                    if (distance_for_collision.x >= distance_abs.x && distance_for_collision.y >= distance_abs.y)
+                    {
+                        continue;
+                    }
+                }
+        
+                { // collision this frame
+                    distance := other.position - entity.position
+                    distance_abs := v2{abs(distance.x), abs(distance.y)}
+                    distance_for_collision := (entity.size + other.size) * v2{0.5, 0.5}
+            
+                    // basic AABB collision detection, everything is a square
+                    if !(distance_for_collision.x >= distance_abs.x && distance_for_collision.x >= distance_abs.y)
+                    {
+                        continue;
+                    }
+                }
+        
+                on_trigger_collision(&entity, &other)
+            }
+        }
     }
 }
 
+entity_take_damage :: proc(entity: ^Entity, damage: int) {
+    assert(.has_health in entity.flags)
+
+    entity.health -= damage
+    if entity.health < 0 {
+        entity.health = 0
+    }
+}
+
+on_trigger_collision :: proc(trigger: ^Entity, other: ^Entity) {
+    if .has_health in other.flags {
+        entity_take_damage(other, 10) 
+    }
+}
+
+
 draw :: proc(delta_time: f32) {
     for &entity in state.entities[0:state.entity_count] {
-        draw_texture(entity.texture, entity.position, entity.size, WHITE)
+        draw_colour := WHITE
+
+        if .has_health in entity.flags {
+            percentage_health_left := f32(entity.health) / f32(100)
+
+            draw_colour.g = percentage_health_left
+            draw_colour.b = percentage_health_left
+        }
+
+        draw_texture(entity.texture, entity.position, entity.size, draw_colour)
     }
 
     in_screen_space = true
 
-    { // entity count
-        text := fmt.tprintf("E: %v", state.entity_count)
+    { // game info 
+        text := fmt.tprintf("E: %v/%v       Q: %v/%v", state.entity_count, MAX_ENTITIES, state.renderer.quad_count, MAX_QUADS)
         draw_text(text, {10, 10}, 30, BLACK, .bottom_left)
     }
 
@@ -410,7 +570,7 @@ Mat4 :: linalg.Matrix4f32
 
 GL_MAJOR :: 4
 GL_MINOR :: 6
-MAX_QUADS :: 1024
+MAX_QUADS :: 70_000
 
 Vertex :: struct {
     position: v3,
