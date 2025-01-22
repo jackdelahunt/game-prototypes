@@ -11,6 +11,7 @@ import "core:os"
 import "core:slice"
 import "core:c"
 import "core:mem"
+import "core:math"
 
 import "vendor:glfw"
 import gl "vendor:OpenGL"
@@ -22,12 +23,24 @@ import stbrp "vendor:stb/rect_pack"
 // - screen independent screen space rendering
 // - animated textures ?? maybe
 
-// dev settings
+// indev settings
 LOG_COLOURS         :: false
 OPENGL_MESSAGES     :: false
 WRITE_DEBUG_IMAGES  :: true
+V_SYNC              :: true
 
-MAX_ENTITIES :: 32
+// internal settings
+MAX_ENTITIES :: 128
+
+// gameplay settings
+PLAYER_SPEED            :: 400
+PLAYER_SHOOT_COOLDOWN   :: 0.05
+BULLET_SPEED            :: 800
+AI_SPEED                :: 200
+
+// player settings
+GAMEPAD_STICK_DEADZONE      :: 0.15
+GAMEPAD_TRIGGER_DEADZONE    :: 0.2
 
 // -------------------------- @global ---------------------------
 state: State
@@ -37,6 +50,7 @@ State :: struct {
     height: f32,
     window: glfw.WindowHandle,
     keys: [348]InputState,
+    gamepad: glfw.GamepadState,
     time: f64,
     camera: struct {
         position: v2,
@@ -46,7 +60,9 @@ State :: struct {
         near_plane: f32,
         far_plane: f32
     },
-    renderer: Renderer
+    renderer: Renderer,
+    entities: []Entity,
+    entity_count: int,
 }
 
 InputState :: enum {
@@ -64,13 +80,14 @@ main :: proc() {
             position = {0, 0},
             // length in world units from camera centre to top edge of camera view
             // length of camera centre to side edge is this * aspect ratio
-            orthographic_size = 200,
+            orthographic_size = 500,
             near_plane = 0.01,
             far_plane = 100
         },
         renderer = {
             quads = make([]Quad, MAX_QUADS)
         },
+        entities = make([]Entity, MAX_ENTITIES)
     }
 
     { // initialise everything
@@ -118,13 +135,15 @@ main :: proc() {
     for !glfw.WindowShouldClose(state.window) {
         if state.keys[glfw.KEY_ESCAPE] == .down {
             glfw.SetWindowShouldClose(state.window, true)
-        }
+        } 
 
         now := glfw.GetTime()
         delta_time := f32(now - state.time)
-        state.time = now
+        state.time = now 
 
+        input()
         update(delta_time)
+        physics(delta_time)
         draw(delta_time)
 
         in_screen_space = false
@@ -152,7 +171,6 @@ main :: proc() {
         state.renderer.quad_count = 0
 
         glfw.SwapBuffers(state.window)
-        glfw.PollEvents()
     }
 
     glfw.DestroyWindow(state.window)
@@ -160,32 +178,228 @@ main :: proc() {
 }
 
 // -------------------------- @game -----------------------
+Entity :: struct {
+    // meta
+    flags: bit_set[EntityFlag],
+    created_time: f64,
+
+    // global
+    position: v2,
+    size: v2,
+    velocity: v2,
+    texture: TextureHandle,
+
+    // player
+    shooting_cooldown: f32,
+    aim_direction: v2
+}
+
+EntityFlag :: enum {
+    player,
+    ai,
+    projectile,
+    to_be_deleted
+}
+
+create_entity :: proc(entity: Entity) -> ^Entity {
+    ptr := &state.entities[state.entity_count]
+    state.entity_count += 1
+
+    ptr^ = entity
+
+    ptr.created_time = state.time
+
+    return ptr
+}
+
+create_player :: proc(position: v2) -> ^Entity {
+    return create_entity({
+        flags = {.player},
+        position = position,
+        size = {50, 50},
+        texture = .face,
+        aim_direction = {0, 1}
+    })
+}
+
+create_ai :: proc(position: v2) -> ^Entity {
+    return create_entity({
+        flags = {.ai},
+        position = position,
+        size = {30, 30},
+        texture = .sad_face,
+    })
+}
+
+create_bullet :: proc(position: v2, velocity: v2) -> ^Entity {
+    return create_entity({
+        flags = {.projectile},
+        position = position,
+        velocity = velocity,
+        size = {5, 5},
+        texture = .face
+    })
+}
+
+get_entity_with_flag :: proc(flag: EntityFlag) -> ^Entity {
+    for &entity in state.entities[0:state.entity_count] {
+        if flag in entity.flags {
+            return &entity
+        }
+    }
+
+    return nil
+}
+
 start :: proc() {
-    
+    create_player({0, 0})
+    create_ai({-100, 150})
+}
+
+input :: proc() {
+    glfw.PollEvents()
+
+    // TODO: handle disconnect ??
+    if glfw.GetGamepadState(glfw.JOYSTICK_1, &state.gamepad) == 0 {
+        log.error("no gamepad detected")
+    }
 }
 
 update :: proc(delta_time: f32) {
-    SPEED :: 1
+    for &entity in state.entities[0:state.entity_count] {
+        { // reduce cooldowns
+            entity.shooting_cooldown -= delta_time
+            if entity.shooting_cooldown < 0 {
+                entity.shooting_cooldown = 0
+            }
+        }
 
-    if state.keys[glfw.KEY_A] == .down {
-        state.camera.position.x -= SPEED
+        player_update: {
+            if !(.player in entity.flags) {
+                break player_update
+            }
+
+            { // set aim
+                aim_vector := v2 {
+                    state.gamepad.axes[glfw.GAMEPAD_AXIS_RIGHT_X],
+                    -state.gamepad.axes[glfw.GAMEPAD_AXIS_RIGHT_Y]
+                }
+
+                input_length := linalg.length(aim_vector)
+    
+                if input_length > GAMEPAD_STICK_DEADZONE {
+                    entity.aim_direction = linalg.normalize(aim_vector)
+                }
+            }
+
+            { // movement
+                entity.velocity = 0
+    
+                input_vector := v2 {
+                    state.gamepad.axes[glfw.GAMEPAD_AXIS_LEFT_X],
+                    -state.gamepad.axes[glfw.GAMEPAD_AXIS_LEFT_Y] // inverted for some reason ??
+                }
+    
+                input_length := linalg.length(input_vector)
+    
+                if input_length > GAMEPAD_STICK_DEADZONE {
+                    if input_length > 1 {
+                        input_vector = linalg.normalize(input_vector)
+                    }
+    
+                    entity.velocity = input_vector * PLAYER_SPEED
+                }
+            }
+
+            shooting: { 
+                if state.gamepad.axes[glfw.GAMEPAD_AXIS_RIGHT_TRIGGER] < GAMEPAD_TRIGGER_DEADZONE {
+                    break shooting
+                }
+
+                if entity.shooting_cooldown != 0 {
+                    break shooting
+                }
+                   
+                entity.shooting_cooldown = PLAYER_SHOOT_COOLDOWN
+                create_bullet(entity.position, entity.aim_direction * BULLET_SPEED)
+            }
+        }
+
+        ai_update: {
+            if !(.ai in entity.flags) {
+                break ai_update
+            }
+
+            entity.velocity = 0
+
+            player := get_entity_with_flag(.player)
+            if player == nil {
+                break ai_update
+            }
+           
+            direction := linalg.normalize(player.position - entity.position)
+            entity.velocity = direction * AI_SPEED    
+        }
+
+
+
+        projectile_update: {
+            if !(.projectile in entity.flags) {
+                break projectile_update
+            }
+
+            if state.time - entity.created_time > 3 {
+                entity.flags += {.to_be_deleted} 
+            }
+        }
+
     }
 
-    if state.keys[glfw.KEY_D] == .down {
-        state.camera.position.x += SPEED
+    i := 0
+    for i < state.entity_count {
+        entity := &state.entities[i]
+    
+        if .to_be_deleted in entity.flags {
+            // last value just decrement count
+            if i == state.entity_count - 1 {
+                state.entity_count -= 1
+                break
+            }
+    
+            // swap remove with last entity
+            state.entities[i] = state.entities[state.entity_count - 1]
+            state.entity_count -= 1
+        } else {
+            // if we did remove then we want to re-check the current
+            // entity we swapped with so dont go to next index
+            i += 1
+        }
     }
+}
 
-    if state.keys[glfw.KEY_W] == .down {
-        state.camera.position.y += SPEED
-    }
-
-    if state.keys[glfw.KEY_S] == .down {
-        state.camera.position.y -= SPEED
+physics :: proc(delta_time: f32) {
+    for &entity in state.entities[0:state.entity_count] {
+        entity.position += entity.velocity * delta_time
     }
 }
 
 draw :: proc(delta_time: f32) {
-    draw_text("Hello sailor", {0, 0}, 20, BLACK, .center)
+    for &entity in state.entities[0:state.entity_count] {
+        draw_texture(entity.texture, entity.position, entity.size, WHITE)
+    }
+
+    in_screen_space = true
+
+    { // entity count
+        text := fmt.tprintf("E: %v", state.entity_count)
+        draw_text(text, {10, 10}, 30, BLACK, .bottom_left)
+    }
+
+    { // fps
+        fps := math.trunc(1 / delta_time)
+        text := fmt.tprintf("%v", fps)
+        draw_text(text, {10, state.height - 35}, 30, BLACK, .bottom_left)
+    }
 }
 
 // -------------------------- @renderer -----------------------
@@ -223,14 +437,14 @@ DrawType :: enum {
     font
 }
 
-Texture :: enum {
+TextureHandle :: enum {
     face,
     sad_face,
     blue_face,
     wide_face
 }
 
-TextureInfo :: struct {
+Texture :: struct {
     width: i32,
     height: i32,
     uv: [4]v2,
@@ -243,12 +457,12 @@ Atlas :: struct {
     data: [^]byte
 }
 
-Font :: enum {
+FontHandle :: enum {
     alagard,
     baskerville
 }
 
-FontInfo :: struct {
+Font :: struct {
     characters: []stbtt.bakedchar,
     bitmap: []byte,
     bitmap_width: int,
@@ -277,8 +491,8 @@ Renderer :: struct {
     quad_count: int,
 
     texture_atlas: Atlas,
-    textures: [Texture]TextureInfo,
-    font: FontInfo,
+    textures: [TextureHandle]Texture,
+    font: Font,
      
     vertex_array_id: u32,
     vertex_buffer_id: u32,
@@ -474,7 +688,7 @@ draw_rectangle :: proc(position: v2, size: v2, colour: v4) {
     draw_quad(position, size, colour, DEFAULT_UV, .rectangle)
 }
 
-draw_texture :: proc(texture: Texture, position: v2, size: v2, colour: v4) {
+draw_texture :: proc(texture: TextureHandle, position: v2, size: v2, colour: v4) {
     draw_quad(position, size, colour, state.renderer.textures[texture].uv, .texture)
 }
 
@@ -687,7 +901,7 @@ load_textures :: proc(renderer: ^Renderer) -> bool {
     RESOURCE_DIR :: "resources/textures/"
     DESIRED_CHANNELS :: 4
 
-    for texture in Texture {
+    for texture in TextureHandle {
         name := get_texture_name(texture)
         
         path := fmt.tprint(RESOURCE_DIR, name, sep="")
@@ -747,7 +961,7 @@ build_texture_atlas :: proc(renderer: ^Renderer) -> bool {
     }
 
     { // copy textures into atlas with rect pack
-        RECT_COUNT :: len(Texture)
+        RECT_COUNT :: len(TextureHandle)
         
         rp_context: stbrp.Context
         nodes:      [ATLAS_WIDTH]stbrp.Node
@@ -755,7 +969,7 @@ build_texture_atlas :: proc(renderer: ^Renderer) -> bool {
 
         stbrp.init_target(&rp_context, ATLAS_HEIGHT, ATLAS_HEIGHT, &nodes[0], ATLAS_WIDTH)
 
-        for texture, i in Texture {
+        for texture, i in TextureHandle {
             info := &renderer.textures[texture]
 
             rects[i] = {
@@ -773,7 +987,7 @@ build_texture_atlas :: proc(renderer: ^Renderer) -> bool {
 
         for i in 0..< len(rects) {
             rect := &rects[i] 
-            texture_info := &renderer.textures[Texture(rect.id)]
+            texture_info := &renderer.textures[TextureHandle(rect.id)]
 
             bottom_y_uv := f32(rect.y) / f32(ATLAS_HEIGHT)
             top_y_uv    := f32(rect.y + rect.h) / f32(ATLAS_HEIGHT)
@@ -819,7 +1033,7 @@ build_texture_atlas :: proc(renderer: ^Renderer) -> bool {
     return true
 }
 
-get_texture_name :: proc(texture: Texture) -> string {
+get_texture_name :: proc(texture: TextureHandle) -> string {
     switch texture {
         case .face:
             return "face.png"
@@ -834,11 +1048,11 @@ get_texture_name :: proc(texture: Texture) -> string {
     unreachable()
 }
 
-load_font :: proc(renderer: ^Renderer, font: Font, bitmap_width: int, bitmap_height: int, font_height: f32, filter: FontFilter) -> bool {
+load_font :: proc(renderer: ^Renderer, font: FontHandle, bitmap_width: int, bitmap_height: int, font_height: f32, filter: FontFilter) -> bool {
     RESOURCE_DIR :: "resources/fonts/"
     CHAR_COUNT     :: 96
 
-    font_info := FontInfo {
+    font_info := Font {
         characters = make([]stbtt.bakedchar, CHAR_COUNT),
         bitmap = make([]byte, bitmap_width * bitmap_height),
         bitmap_width = bitmap_width,
@@ -892,7 +1106,7 @@ load_font :: proc(renderer: ^Renderer, font: Font, bitmap_width: int, bitmap_hei
     return true
 }
 
-font_file_name :: proc(font: Font) -> string {
+font_file_name :: proc(font: FontHandle) -> string {
     switch font {
         case .alagard:
             return "alagard.ttf"
@@ -962,7 +1176,7 @@ create_window :: proc(width: f32, height: f32, title: cstring) -> (glfw.WindowHa
 
     glfw.MakeContextCurrent(window)
 
-    glfw.SwapInterval(1)
+    glfw.SwapInterval(1 if V_SYNC else 0)
     glfw.SetErrorCallback(glfw_error_callback)
     glfw.SetKeyCallback(window, glfw_key_callback)
     glfw.SetFramebufferSizeCallback(window, glfw_size_callback)
