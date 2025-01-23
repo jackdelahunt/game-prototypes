@@ -51,6 +51,7 @@ OPENGL_MESSAGES     :: false
 WRITE_DEBUG_IMAGES  :: true
 V_SYNC              :: true
 DRAW_ARMOUR_BUBBLE  :: true
+NO_ENEMY_ATTACK     :: false
 
 // internal settings
 MAX_ENTITIES :: 50_000
@@ -60,7 +61,7 @@ MAX_PLAYER_HEALTH       :: 100
 PLAYER_SPEED            :: 400
 PLAYER_SHOOT_COOLDOWN   :: 0.03
 
-MAX_AI_HEALTH           :: 50
+MAX_AI_HEALTH           :: 80
 AI_SPEED                :: 200
 AI_ATTACK_COOLDOWN      :: 0.5
 AI_ATTACK_DISTANCE      :: 10
@@ -113,7 +114,7 @@ main :: proc() {
             position = {0, 0},
             // length in world units from camera centre to top edge of camera view
             // length of camera centre to side edge is this * aspect ratio
-            orthographic_size = 400,
+            orthographic_size = 800,
             near_plane = 0.01,
             far_plane = 100
         },
@@ -220,6 +221,7 @@ Entity :: struct {
     position: v2,
     size: v2,
     velocity: v2,
+    mass: f32,
     texture: TextureHandle,
     attack_cooldown: f32,
 
@@ -266,6 +268,10 @@ input :: proc() {
 }
 
 update :: proc(delta_time: f32) {
+    if state.gamepad.axes[glfw.GAMEPAD_AXIS_LEFT_TRIGGER] > GAMEPAD_TRIGGER_DEADZONE {
+        create_ai({0, 0}) 
+    }
+
     for &entity in state.entities[0:state.entity_count] {
         { // reduce cooldowns
             entity.attack_cooldown -= delta_time
@@ -347,16 +353,22 @@ update :: proc(delta_time: f32) {
                 entity.velocity = direction * AI_SPEED    
             }
 
-            { // attack
-                if entity.attack_cooldown == 0 {
-                    distance := distance_between_entity_edges(&entity, player)
-                    if linalg.max(distance) < AI_ATTACK_DISTANCE {
-                        hit_player := aabb_collided(entity.position, entity.size + AI_ATTACK_DISTANCE * 2, player.position, player.size)
-                        if hit_player {
-                            log.info("hit")
-                            entity_take_damage(player, 10)
-                            entity.attack_cooldown = AI_ATTACK_COOLDOWN
-                        }
+            attack: { // attack
+                if entity.attack_cooldown > 0 {
+                    break attack
+                }
+
+                when NO_ENEMY_ATTACK {
+                    break attack
+                }
+
+                distance := distance_between_entity_edges(&entity, player)
+                if linalg.max(distance) < AI_ATTACK_DISTANCE {
+                    hit_player := aabb_collided(entity.position, entity.size + AI_ATTACK_DISTANCE * 2, player.position, player.size)
+                    if hit_player {
+                        log.info("hit")
+                        entity_take_damage(player, 10)
+                        entity.attack_cooldown = AI_ATTACK_COOLDOWN
                     }
                 }
             }
@@ -381,7 +393,7 @@ update :: proc(delta_time: f32) {
                 entity.flags += {.to_be_deleted}
 
                 if .ai in entity.flags {
-                    create_ai({0, 0})
+                    // create_ai({0, 0})
                 }
             }
         }
@@ -456,31 +468,36 @@ physics :: proc(delta_time: f32) {
                 other_static := .static_hitbox in other.flags
         
                 // if there is an overlap then measure on which axis has less 
-                // overlap and equally move both entities by that amount away
-                // from each other
-                //
+                // overlap and move both entities by that amount away
+                // from each other, the proprtion to move each entity is
+                // based on their mass to each other
+                // m1 == m2 -> 0.5 of total overlap each
+                // m1 = 9, m2 = 1 -> e1 moves 0.1 of overlap and e2 moves 0.9
+                // - 23/01/25
+
                 // if other is static only move entity
                 // by the full overlap instead of sharing it
-                if overlap_amount[0] < overlap_amount[1] {
-                    if other_static { 
-                        x_push_amount := overlap_amount[0]
-                        entity.position[0] -= math.sign(distance[0]) * x_push_amount
-                    } 
-                    else  {
-                        x_push_amount := overlap_amount[0] * 0.5;
-                        entity.position.x -= math.sign(distance[0]) * x_push_amount
-                        other.position.x += math.sign(distance[0]) * x_push_amount;
+                if other_static {
+                    if overlap_amount.x < overlap_amount.y {
+                        entity.position.x -= math.sign(distance.x) * overlap_amount.x
+
+                    } else {
+                        entity.position.y -= math.sign(distance.y) * overlap_amount.y
                     }
-                } 
-                else {
-                    if other_static { 
-                        y_push_amount := overlap_amount[1]
-                        entity.position.y -= math.sign(distance[1]) * y_push_amount
+                } else {
+                    total_mass              := entity.mass + other.mass
+                    entity_push_proportion  := 1 - (entity.mass / total_mass)
+                    other_push_proportion   := 1 - (other.mass / total_mass)
+
+                    if overlap_amount.x < overlap_amount.y {
+                        x_push_amount       := overlap_amount.x
+                        entity.position.x   -= math.sign(distance.x) * x_push_amount * entity_push_proportion
+                        other.position.x    += math.sign(distance.x) * x_push_amount * other_push_proportion
                     } 
-                    else  {
-                        y_push_amount := overlap_amount[1] * 0.5;
-                        entity.position.y -= math.sign(distance[1]) * y_push_amount
-                        other.position.y += math.sign(distance[1]) * y_push_amount;
+                    else {
+                        y_push_amount       := overlap_amount.y
+                        entity.position.y   -= math.sign(distance.y) * y_push_amount * entity_push_proportion
+                        other.position.y    += math.sign(distance.y) * y_push_amount * other_push_proportion
                     }
                 }
             } 
@@ -523,15 +540,14 @@ physics :: proc(delta_time: f32) {
 
 draw :: proc(delta_time: f32) {
     for &entity in state.entities[0:state.entity_count] {
-        draw_texture(entity.texture, entity.position, entity.size, WHITE)
+        base_colour         := WHITE
+        highlight_colour    := WHITE
 
-        if .has_health in entity.flags && !(.player in entity.flags) {
+        if .has_health in entity.flags {
             health_bar_width := entity.size.x * 2
-            percentage_health_left := entity.health / MAX_AI_HEALTH 
+            percentage_health_left := entity.health / max_health(&entity)
 
-            health_bar_position := v2{entity.position.x, entity.position.y + (entity.size.y + 5)} 
-
-            draw_rectangle(health_bar_position, {health_bar_width * percentage_health_left, 5}, RED)
+            highlight_colour = mix(RED, SKY_BLUE, percentage_health_left)
         }
 
         if .armour_ability in entity.flags && DRAW_ARMOUR_BUBBLE {
@@ -546,6 +562,8 @@ draw :: proc(delta_time: f32) {
 
             draw_rectangle(entity.position, entity.size * 1.3, armour_bubble_colour)
         }
+
+        draw_texture(entity.texture, entity.position, entity.size, base_colour, highlight_colour)
     } 
 
     in_screen_space = true
@@ -616,6 +634,7 @@ create_player :: proc(position: v2) -> ^Entity {
         flags = {.player, .armour_ability, .has_health, .solid_hitbox},
         position = position,
         size = {50, 50},
+        mass = 200,
         texture = .face,
         aim_direction = {0, 1},
         health = MAX_PLAYER_HEALTH,
@@ -628,7 +647,8 @@ create_ai :: proc(position: v2) -> ^Entity {
         flags = {.ai, .armour_ability, .solid_hitbox, .has_health},
         position = position,
         size = {30, 30},
-        texture = .sad_face,
+        mass = 1,
+        texture = .alien,
         health = MAX_AI_HEALTH,
         armour = MAX_ARMOUR
     })
@@ -652,6 +672,19 @@ get_entity_with_flag :: proc(flag: EntityFlag) -> ^Entity {
     }
 
     return nil
+}
+
+// TODO: this sucks
+max_health :: proc(entity: ^Entity) -> f32 {
+    if .player in entity.flags {
+        return MAX_PLAYER_HEALTH
+    }
+
+    if .ai in entity.flags {
+        return MAX_AI_HEALTH
+    }
+
+    unreachable()
 }
 
 entity_take_damage :: proc(entity: ^Entity, damage: f32) {
@@ -753,6 +786,7 @@ MAX_QUADS :: 70_000
 Vertex :: struct {
     position: v3,
     colour: v4,
+    highlight_colour: v4,
     uv: v2,
     draw_type: i32,
 }
@@ -776,6 +810,7 @@ DrawType :: enum {
 }
 
 TextureHandle :: enum {
+    alien,
     face,
     sad_face,
     blue_face,
@@ -858,7 +893,7 @@ init_renderer :: proc(renderer: ^Renderer) -> bool {
         gl.Enable(gl.BLEND)
         gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
     
-        V :: 0.6
+        V :: 0.2
         gl.ClearColor(V, V, V, 1)
     }
 
@@ -963,15 +998,17 @@ init_renderer :: proc(renderer: ^Renderer) -> bool {
 
     { // attributes
         // attribute index, component count, component type, normalised, object size, attribute offset in object
-        gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, size_of(Vertex), 0)                                    // position
-        gl.VertexAttribPointer(1, 4, gl.FLOAT, gl.FALSE, size_of(Vertex), 3 * size_of(f32))                     // colour
-        gl.VertexAttribPointer(2, 2, gl.FLOAT, gl.FALSE, size_of(Vertex), (3 + 4) * size_of(f32))               // uv
-        gl.VertexAttribIPointer(3, 1, gl.INT, size_of(Vertex), (3 + 4 + 2) * size_of(f32))                      // draw type
+        gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, size_of(Vertex), 0)                            // position
+        gl.VertexAttribPointer(1, 4, gl.FLOAT, gl.FALSE, size_of(Vertex), 3 * size_of(f32))             // colour
+        gl.VertexAttribPointer(2, 4, gl.FLOAT, gl.FALSE, size_of(Vertex), (3 + 4) * size_of(f32))       // highlight colour
+        gl.VertexAttribPointer(3, 2, gl.FLOAT, gl.FALSE, size_of(Vertex), (3 + 4 + 4) * size_of(f32))   // uv
+        gl.VertexAttribIPointer(4, 1, gl.INT, size_of(Vertex), (3 + 4 + 4 + 2) * size_of(f32))          // draw type
 
         gl.EnableVertexAttribArray(0)
         gl.EnableVertexAttribArray(1)
         gl.EnableVertexAttribArray(2)
         gl.EnableVertexAttribArray(3)
+        gl.EnableVertexAttribArray(4)
     }
     
     { // textures
@@ -1027,15 +1064,15 @@ init_renderer :: proc(renderer: ^Renderer) -> bool {
 }
 
 draw_rectangle :: proc(position: v2, size: v2, colour: v4) {
-    draw_quad(position, size, colour, DEFAULT_UV, .rectangle)
+    draw_quad(position, size, colour, {}, DEFAULT_UV, .rectangle)
 }
 
-draw_texture :: proc(texture: TextureHandle, position: v2, size: v2, colour: v4) {
-    draw_quad(position, size, colour, state.renderer.textures[texture].uv, .texture)
+draw_texture :: proc(texture: TextureHandle, position: v2, size: v2, colour: v4, highlight_colour: v4) {
+    draw_quad(position, size, colour, highlight_colour, state.renderer.textures[texture].uv, .texture)
 }
 
 draw_circle :: proc(position: v2, radius: f32, colour: v4) {
-    draw_quad(position, {radius * 2, radius * 2}, colour, DEFAULT_UV, .circle)
+    draw_quad(position, {radius * 2, radius * 2}, colour, {}, DEFAULT_UV, .circle)
 }
 
 draw_text :: proc(text: string, position: v2, font_size: f32, colour: v4, allignment: TextAllignment) {
@@ -1136,11 +1173,11 @@ draw_text :: proc(text: string, position: v2, font_size: f32, colour: v4, allign
         translated_position := scaled_position + pivot_point_translation + position
 
         // draw quad needs position to be centre of quad so just convert that here
-        draw_quad(translated_position + (scaled_size * 0.5), scaled_size, colour, glyph.uvs, .font);
+        draw_quad(translated_position + (scaled_size * 0.5), scaled_size, colour, {}, glyph.uvs, .font);
     } 
 }
 
-draw_quad :: proc(position: v2, size: v2, colour: v4, uv: [4]v2, draw_type: DrawType) {
+draw_quad :: proc(position: v2, size: v2, colour: v4, highlight_colour: v4, uv: [4]v2, draw_type: DrawType) {
     transformation_matrix: Mat4
 
     if in_screen_space {
@@ -1170,6 +1207,11 @@ draw_quad :: proc(position: v2, size: v2, colour: v4, uv: [4]v2, draw_type: Draw
     quad.vertices[1].colour = colour
     quad.vertices[2].colour = colour
     quad.vertices[3].colour = colour
+
+    quad.vertices[0].highlight_colour = highlight_colour
+    quad.vertices[1].highlight_colour = highlight_colour
+    quad.vertices[2].highlight_colour = highlight_colour
+    quad.vertices[3].highlight_colour = highlight_colour
 
     quad.vertices[0].uv = uv[0]
     quad.vertices[1].uv = uv[1]
@@ -1377,6 +1419,8 @@ build_texture_atlas :: proc(renderer: ^Renderer) -> bool {
 
 get_texture_name :: proc(texture: TextureHandle) -> string {
     switch texture {
+        case .alien:
+            return "alien.png"
         case .face:
             return "face.png"
         case .sad_face:
@@ -1467,6 +1511,11 @@ brightness :: proc(colour: v4, brightness: f32) -> v4 {
 
 alpha :: proc(colour: v4, alpha: f32) -> v4 {
     return {colour.r, colour.g, colour.b, alpha}
+}
+
+// mox colour gets applied to base based t from 0 -> 1
+mix :: proc(base_colour: v4, mix_colour: v4, t: f32) -> v4 {
+    return base_colour + (mix_colour - base_colour) * t
 }
 
 opengl_message_callback :: proc "c" (source: u32, type: u32, id: u32, severity: u32, length: i32, message: cstring, userParam: rawptr) {

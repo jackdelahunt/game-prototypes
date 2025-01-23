@@ -1,6 +1,7 @@
 #version 460 core
 
 in vec4 colour;
+in vec4 highlight_colour;
 in vec2 uv;
 flat in int draw_type;
 
@@ -31,7 +32,12 @@ void main()
 
     // texture
     if (draw_type == 2) {
-        frag_colour = texture(face_texture, uv) * colour;
+        vec4 texture_colour = texture(face_texture, uv);
+        if (texture_colour == vec4(1, 0, 1, 1)) {
+            texture_colour = highlight_colour;
+        }
+
+        frag_colour = texture_colour * colour;
     }
 
     // font

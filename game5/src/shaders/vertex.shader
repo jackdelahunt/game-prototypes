@@ -2,16 +2,19 @@
 
 layout (location = 0) in vec3 a_position;
 layout (location = 1) in vec4 a_colour;
-layout (location = 2) in vec2 a_uv;
-layout (location = 3) in int a_draw_type;
+layout (location = 2) in vec4 a_highlight_colour;
+layout (location = 3) in vec2 a_uv;
+layout (location = 4) in int a_draw_type;
 
 out vec4 colour;
+out vec4 highlight_colour;
 out vec2 uv;
 out int draw_type;
 
 void main()
 {
     colour = a_colour;
+    highlight_colour = a_highlight_colour;
     uv = a_uv;
     draw_type = a_draw_type;
 
