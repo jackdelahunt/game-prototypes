@@ -20,8 +20,6 @@ import stbtt "vendor:stb/truetype"
 import stbrp "vendor:stb/rect_pack"
 
 // TODO:
-// the idea of an ability
-// player and enemies can use abilties
 // player getting abilities from enemimes
 // differant enemies with different abilties
 // nest to spawn enemies
@@ -41,7 +39,7 @@ import stbrp "vendor:stb/rect_pack"
 
 // record:
 // start: 21/01/2025
-// total time: 7:40 hrs
+// total time: 9:10 hrs
 
 // indev settings
 LOG_COLOURS         :: false
@@ -58,6 +56,7 @@ MAX_ENTITIES :: 50_000
 MAX_PLAYER_HEALTH       :: 100
 PLAYER_SPEED            :: 400
 PLAYER_SHOOT_COOLDOWN   :: 0.03
+PLAYER_REACH_SIZE       :: 100
 
 MAX_AI_HEALTH           :: 80
 AI_SPEED                :: 200
@@ -112,7 +111,7 @@ main :: proc() {
             position = {0, 0},
             // length in world units from camera centre to top edge of camera view
             // length of camera centre to side edge is this * aspect ratio
-            orthographic_size = 800,
+            orthographic_size = 450,
             near_plane = 0.01,
             far_plane = 100
         },
@@ -226,18 +225,22 @@ Entity :: struct {
     // flag: player
     aim_direction: v2,
 
-    // flag: has_health
-    health: f32,
+    // flag: ability pickup
+    pickup_type: PickupType,
 
     // ability: armour
     armour: f32,
-    armour_regen_cooldown: f32
+    armour_regen_cooldown: f32,
+
+    // flag: has_health
+    health: f32,
 }
 
 EntityFlag :: enum {
     player,
     ai,
     projectile,
+    ability_pickup,
 
     armour_ability,
     speed_ability,
@@ -245,15 +248,22 @@ EntityFlag :: enum {
     solid_hitbox,
     static_hitbox,
     trigger_hitbox,
+    interactable,
 
     has_health,
 
     to_be_deleted
 }
 
+PickupType :: enum {
+    armour,
+    speed
+}
+
 start :: proc() {
     create_player({100, 100})
     create_ai({-300, -300})
+    create_ability_pickup({0, 0}, .armour)
 }
 
 input :: proc() {
@@ -331,6 +341,27 @@ update :: proc(delta_time: f32) {
                    
                 entity.attack_cooldown = PLAYER_SHOOT_COOLDOWN
                 create_bullet(entity.position, entity.aim_direction * BULLET_SPEED)
+            }
+
+            interact: {
+                if state.gamepad.buttons[glfw.GAMEPAD_BUTTON_X] != glfw.PRESS {
+                    break interact
+                }
+
+                for &other in state.entities[0:state.entity_count] {
+                    if !(.interactable in other.flags) {
+                        continue 
+                    }
+
+                    assert(.ability_pickup in other.flags, "only interactables are pickups right now")
+
+                    if linalg.distance(entity.position, other.position) < PLAYER_REACH_SIZE {
+                        pickups_ability := ability_from_pickup_type(other.pickup_type)
+
+                        entity.flags += {pickups_ability}
+                        other.flags += {.to_be_deleted}
+                    }
+                }
             }
         }
 
@@ -561,6 +592,22 @@ draw :: proc(delta_time: f32) {
             draw_rectangle(entity.position, entity.size * 1.3, armour_bubble_colour)
         }
 
+        if .player in entity.flags {
+            for &other in state.entities[0:state.entity_count] {
+                if !(.interactable in other.flags) {
+                    continue 
+                }
+
+                if linalg.distance(entity.position, other.position) < PLAYER_REACH_SIZE {
+                    ICON_SIZE :: 25
+
+                    icon_position := other.position + {0, (other.size.y * 0.5) + ICON_SIZE}
+
+                    draw_texture(.x_button, icon_position, {ICON_SIZE, ICON_SIZE}, WHITE, WHITE)
+                }
+            }
+        }
+
         draw_texture(entity.texture, entity.position, entity.size, base_colour, highlight_colour)
     } 
 
@@ -629,7 +676,7 @@ create_entity :: proc(entity: Entity) -> ^Entity {
 
 create_player :: proc(position: v2) -> ^Entity {
     return create_entity({
-        flags = {.player, .armour_ability, .has_health, .solid_hitbox},
+        flags = {.player, .has_health, .solid_hitbox},
         position = position,
         size = {50, 50},
         mass = 200,
@@ -649,6 +696,16 @@ create_ai :: proc(position: v2) -> ^Entity {
         texture = .alien,
         health = MAX_AI_HEALTH,
         armour = MAX_ARMOUR
+    })
+}
+
+create_ability_pickup :: proc(position: v2, type: PickupType) -> ^Entity {
+    return create_entity({
+        flags = {.interactable, .ability_pickup},
+        position = position,
+        size = {20, 20},
+        texture = .chip,
+        pickup_type = type,
     })
 }
 
@@ -743,6 +800,15 @@ on_trigger_collision :: proc(trigger: ^Entity, other: ^Entity) {
     }
 }
 
+ability_from_pickup_type :: proc(type: PickupType) -> EntityFlag {
+    switch type {
+        case .armour:   return .armour_ability
+        case .speed:    return .speed_ability
+    }
+
+    unreachable()
+}
+
 BoxColliderIterator :: struct {
     index: int,
     position: v2,
@@ -812,7 +878,9 @@ TextureHandle :: enum {
     face,
     sad_face,
     blue_face,
-    wide_face
+    wide_face,
+    chip,
+    x_button,
 }
 
 Texture :: struct {
@@ -1321,8 +1389,8 @@ load_textures :: proc(renderer: ^Renderer) -> bool {
 }
 
 build_texture_atlas :: proc(renderer: ^Renderer) -> bool {
-    ATLAS_WIDTH     :: 32
-    ATLAS_HEIGHT    :: 32
+    ATLAS_WIDTH     :: 256
+    ATLAS_HEIGHT    :: 256
     BYTES_PER_PIXEL :: 4
     CHANNELS        :: 4
     ATLAS_BYTE_SIZE :: ATLAS_WIDTH * ATLAS_HEIGHT * BYTES_PER_PIXEL
@@ -1427,6 +1495,10 @@ get_texture_name :: proc(texture: TextureHandle) -> string {
             return "blue_face.png"
         case .wide_face:
             return "wide_face.png"
+        case .chip:
+            return "chip.png"
+        case .x_button:
+            return "x_button.png"
     }
 
     unreachable()
