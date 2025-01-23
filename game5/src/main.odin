@@ -19,24 +19,57 @@ import stbi "vendor:stb/image"
 import stbtt "vendor:stb/truetype"
 import stbrp "vendor:stb/rect_pack"
 
-// TODO: render tech todo
-// - screen independent screen space rendering
-// - animated textures ?? maybe
+// TODO:
+// the idea of an ability
+// player and enemies can use abilties
+// player getting abilities from enemimes
+// differant enemies with different abilties
+// nest to spawn enemies
+// player can destroy nests
+
+// TODO, abilities:
+// level 1:
+//  - armour I
+//  - speed
+// level 2:
+//  - power dash (tank enemy that dashes at player, player can dash at emeies)
+// level 3:
+//  - multi spawn (on death enemy spawn 4 smaller versions of itself, player can spawn smaller versions to attack enemies)
+// level 4:
+//  - armour 2?? same as armour just more
+//  - lava pit (enemies shoots projectiles to cover floor in lava, player does the same)
+
+// record:
+// start: 21/01/2025
+// total time: 3.5 hrs
+// 10 - 11:30
+// 12:30
 
 // indev settings
 LOG_COLOURS         :: false
 OPENGL_MESSAGES     :: false
 WRITE_DEBUG_IMAGES  :: true
 V_SYNC              :: true
+DRAW_ARMOUR_BUBBLE  :: true
 
 // internal settings
 MAX_ENTITIES :: 50_000
 
 // gameplay settings
+MAX_PLAYER_HEALTH       :: 100
 PLAYER_SPEED            :: 400
 PLAYER_SHOOT_COOLDOWN   :: 0.03
-BULLET_SPEED            :: 1000
+
+MAX_AI_HEALTH           :: 50
 AI_SPEED                :: 200
+AI_ATTACK_COOLDOWN      :: 0.5
+AI_ATTACK_DISTANCE      :: 10
+
+BULLET_SPEED            :: 1000
+
+MAX_ARMOUR              :: 100
+ARMOUR_REGEN_RATE       :: 25
+ARMOUR_REGEN_COOLDOWN   :: 5
 
 // player settings
 GAMEPAD_STICK_DEADZONE      :: 0.15
@@ -80,7 +113,7 @@ main :: proc() {
             position = {0, 0},
             // length in world units from camera centre to top edge of camera view
             // length of camera centre to side edge is this * aspect ratio
-            orthographic_size = 1000,
+            orthographic_size = 400,
             near_plane = 0.01,
             far_plane = 100
         },
@@ -135,7 +168,7 @@ main :: proc() {
     for !glfw.WindowShouldClose(state.window) {
         if state.keys[glfw.KEY_ESCAPE] == .down {
             glfw.SetWindowShouldClose(state.window, true)
-        } 
+        }
 
         now := glfw.GetTime()
         delta_time := f32(now - state.time)
@@ -188,79 +221,39 @@ Entity :: struct {
     size: v2,
     velocity: v2,
     texture: TextureHandle,
+    attack_cooldown: f32,
 
-    // player
-    shooting_cooldown: f32,
+    // flag: player
     aim_direction: v2,
 
-    // has_health
-    health: int,
+    // flag: has_health
+    health: f32,
+
+    // ability: armour
+    armour: f32,
+    armour_regen_cooldown: f32
 }
 
 EntityFlag :: enum {
     player,
     ai,
     projectile,
+
+    armour_ability,
+    speed_ability,
+
     solid_hitbox,
     static_hitbox,
     trigger_hitbox,
+
     has_health,
+
     to_be_deleted
 }
 
-create_entity :: proc(entity: Entity) -> ^Entity {
-    ptr := &state.entities[state.entity_count]
-    state.entity_count += 1
-
-    ptr^ = entity
-
-    ptr.created_time = state.time
-
-    return ptr
-}
-
-create_player :: proc(position: v2) -> ^Entity {
-    return create_entity({
-        flags = {.player, .solid_hitbox},
-        position = position,
-        size = {50, 50},
-        texture = .face,
-        aim_direction = {0, 1}
-    })
-}
-
-create_ai :: proc(position: v2) -> ^Entity {
-    return create_entity({
-        flags = {.ai, .solid_hitbox, .has_health},
-        position = position,
-        size = {30, 30},
-        texture = .sad_face,
-        health = 100
-    })
-}
-
-create_bullet :: proc(position: v2, velocity: v2) -> ^Entity {
-    return create_entity({
-        flags = {.projectile, .trigger_hitbox},
-        position = position,
-        velocity = velocity,
-        size = {5, 5},
-        texture = .face
-    })
-}
-
-get_entity_with_flag :: proc(flag: EntityFlag) -> ^Entity {
-    for &entity in state.entities[0:state.entity_count] {
-        if flag in entity.flags {
-            return &entity
-        }
-    }
-
-    return nil
-}
-
 start :: proc() {
-    create_player({0, 0})
+    create_player({100, 100})
+    create_ai({-300, -300})
 }
 
 input :: proc() {
@@ -273,16 +266,16 @@ input :: proc() {
 }
 
 update :: proc(delta_time: f32) {
-    axis := state.gamepad.axes[glfw.GAMEPAD_AXIS_LEFT_TRIGGER]
-    if state.gamepad.axes[glfw.GAMEPAD_AXIS_LEFT_TRIGGER] > GAMEPAD_TRIGGER_DEADZONE {
-        create_ai({0, 0})
-    }
-
     for &entity in state.entities[0:state.entity_count] {
         { // reduce cooldowns
-            entity.shooting_cooldown -= delta_time
-            if entity.shooting_cooldown < 0 {
-                entity.shooting_cooldown = 0
+            entity.attack_cooldown -= delta_time
+            if entity.attack_cooldown < 0 {
+                entity.attack_cooldown = 0
+            }
+
+            entity.armour_regen_cooldown -= delta_time
+            if entity.armour_regen_cooldown < 0 {
+                entity.armour_regen_cooldown = 0
             }
         }
 
@@ -328,11 +321,11 @@ update :: proc(delta_time: f32) {
                     break shooting
                 }
 
-                if entity.shooting_cooldown != 0 {
+                if entity.attack_cooldown != 0 {
                     break shooting
                 }
                    
-                entity.shooting_cooldown = PLAYER_SHOOT_COOLDOWN
+                entity.attack_cooldown = PLAYER_SHOOT_COOLDOWN
                 create_bullet(entity.position, entity.aim_direction * BULLET_SPEED)
             }
         }
@@ -348,9 +341,25 @@ update :: proc(delta_time: f32) {
             if player == nil {
                 break ai_update
             }
-           
-            direction := linalg.normalize(player.position - entity.position)
-            entity.velocity = direction * AI_SPEED    
+
+            { // move
+                direction := linalg.normalize(player.position - entity.position)
+                entity.velocity = direction * AI_SPEED    
+            }
+
+            { // attack
+                if entity.attack_cooldown == 0 {
+                    distance := distance_between_entity_edges(&entity, player)
+                    if linalg.max(distance) < AI_ATTACK_DISTANCE {
+                        hit_player := aabb_collided(entity.position, entity.size + AI_ATTACK_DISTANCE * 2, player.position, player.size)
+                        if hit_player {
+                            log.info("hit")
+                            entity_take_damage(player, 10)
+                            entity.attack_cooldown = AI_ATTACK_COOLDOWN
+                        }
+                    }
+                }
+            }
         }
 
         projectile_update: {
@@ -368,13 +377,28 @@ update :: proc(delta_time: f32) {
                 break health_update
             }
 
-            log.infof("health: %v", entity.health)
-
             if entity.health == 0 {
                 entity.flags += {.to_be_deleted}
+
+                if .ai in entity.flags {
+                    create_ai({0, 0})
+                }
             }
         }
 
+        armour_update: {
+            if !(.armour_ability in entity.flags) {
+                break armour_update
+            }
+            
+            if entity.armour != MAX_ARMOUR && entity.armour_regen_cooldown == 0 {
+                entity.armour += ARMOUR_REGEN_RATE * delta_time
+
+                if entity.armour > MAX_ARMOUR {
+                    entity.armour = MAX_ARMOUR
+                }
+            }
+        }
     }
 
     i := 0
@@ -423,17 +447,12 @@ physics :: proc(delta_time: f32) {
                 if !(.solid_hitbox in other.flags) && !(.static_hitbox in other.flags) {
                     continue
                 }
-        
-                distance := other.position - entity.position
-                distance_abs := v2{abs(distance.x), abs(distance.y)}
-                distance_for_collision := (entity.size + other.size) * v2{0.5, 0.5}
-        
-                // basic AABB collision detection, everything is a square
-                if !(distance_for_collision[0] >= distance_abs[0] && distance_for_collision[1] >= distance_abs[1]) {
+
+                overlap_amount, distance, collision := aabb(entity.position, entity.size, other.position, other.size)
+                if !collision {
                     continue;
                 }
         
-                overlap_amount := distance_for_collision - distance_abs
                 other_static := .static_hitbox in other.flags
         
                 // if there is an overlap then measure on which axis has less 
@@ -487,68 +506,87 @@ physics :: proc(delta_time: f32) {
                 // collision for each other entiity is checked twice for trigger
                 // hitboxes, trigger collision events are only when a new collision
                 // starts so if there was a collision last frame then dont do anything
-        
-                { // collision last frame
-                    distance := other.position - start_position
-                    distance_abs := v2{abs(distance.x), abs(distance.y)}
-                    distance_for_collision := (entity.size + other.size) * v2{0.5, 0.5}
-           
-                    // if there was a collision then don't check for this frame
-                    if (distance_for_collision.x >= distance_abs.x && distance_for_collision.y >= distance_abs.y)
-                    {
-                        continue;
-                    }
+
+                collision_last_frame := aabb_collided(start_position, entity.size, other.position, other.size)
+                if collision_last_frame {
+                    continue;
                 }
-        
-                { // collision this frame
-                    distance := other.position - entity.position
-                    distance_abs := v2{abs(distance.x), abs(distance.y)}
-                    distance_for_collision := (entity.size + other.size) * v2{0.5, 0.5}
-            
-                    // basic AABB collision detection, everything is a square
-                    if !(distance_for_collision.x >= distance_abs.x && distance_for_collision.x >= distance_abs.y)
-                    {
-                        continue;
-                    }
+
+                collision_this_frame := aabb_collided(entity.position, entity.size, other.position, other.size)
+                if collision_this_frame {
+                    on_trigger_collision(&entity, &other)
                 }
-        
-                on_trigger_collision(&entity, &other)
             }
         }
     }
 }
 
-entity_take_damage :: proc(entity: ^Entity, damage: int) {
-    assert(.has_health in entity.flags)
-
-    entity.health -= damage
-    if entity.health < 0 {
-        entity.health = 0
-    }
-}
-
-on_trigger_collision :: proc(trigger: ^Entity, other: ^Entity) {
-    if .has_health in other.flags {
-        entity_take_damage(other, 10) 
-    }
-}
-
-
 draw :: proc(delta_time: f32) {
     for &entity in state.entities[0:state.entity_count] {
-        draw_colour := WHITE
+        draw_texture(entity.texture, entity.position, entity.size, WHITE)
 
-        if .has_health in entity.flags {
-            percentage_health_left := f32(entity.health) / f32(100)
+        if .has_health in entity.flags && !(.player in entity.flags) {
+            health_bar_width := entity.size.x * 2
+            percentage_health_left := entity.health / MAX_AI_HEALTH 
 
-            draw_colour.g = percentage_health_left
-            draw_colour.b = percentage_health_left
+            health_bar_position := v2{entity.position.x, entity.position.y + (entity.size.y + 5)} 
+
+            draw_rectangle(health_bar_position, {health_bar_width * percentage_health_left, 5}, RED)
         }
 
-        draw_texture(entity.texture, entity.position, entity.size, draw_colour)
-    }
+        if .armour_ability in entity.flags && DRAW_ARMOUR_BUBBLE {
+            armour_bubble_colour := alpha(WHITE, 0.2)
+
+            if entity.armour == MAX_ARMOUR {
+                armour_bubble_colour *= YELLOW
+            } else {
+                percentage_armour_left := entity.armour / MAX_ARMOUR
+                armour_bubble_colour *= alpha(BLUE, percentage_armour_left)
+            }
+
+            draw_rectangle(entity.position, entity.size * 1.3, armour_bubble_colour)
+        }
+    } 
 
     in_screen_space = true
+
+    player_hud: { // player info
+        player := get_entity_with_flag(.player)
+        if player == nil {
+            break player_hud
+        }
+
+        { // armour
+            armour_bar_width    : f32 = state.width * 0.3
+            armour_bar_height   : f32 = 50
+            bar_position := v2{state.width * 0.5, state.height - (armour_bar_height * 0.5)}
+
+            bar_colour := SKY_BLUE
+            background_bar_colour := brightness(bar_colour, 0.4)
+
+            percentage_of_armour := player.armour / MAX_ARMOUR
+
+            if percentage_of_armour == 1 {
+                draw_rectangle(bar_position, v2{armour_bar_width, armour_bar_height} + 10, YELLOW)
+            }
+
+            draw_rectangle(bar_position, {armour_bar_width, armour_bar_height}, background_bar_colour)
+            draw_rectangle(bar_position, {armour_bar_width * percentage_of_armour, armour_bar_height}, bar_colour)
+        }
+
+        { // health
+            health_bar_width    : f32 = state.width * 0.2
+            health_bar_height   : f32 = 20
+
+            bar_colour := RED
+            background_bar_colour := brightness(bar_colour, 0.4)
+
+            percentage_of_health := player.health / MAX_PLAYER_HEALTH
+           
+            draw_rectangle({state.width * 0.5, state.height - (health_bar_height * 0.5)}, {health_bar_width, health_bar_height}, background_bar_colour)
+            draw_rectangle({state.width * 0.5, state.height - (health_bar_height * 0.5)}, {health_bar_width * percentage_of_health, health_bar_height}, bar_colour)
+        }
+    }
 
     { // game info 
         text := fmt.tprintf("E: %v/%v       Q: %v/%v", state.entity_count, MAX_ENTITIES, state.renderer.quad_count, MAX_QUADS)
@@ -560,6 +598,146 @@ draw :: proc(delta_time: f32) {
         text := fmt.tprintf("%v", fps)
         draw_text(text, {10, state.height - 35}, 30, BLACK, .bottom_left)
     }
+}
+
+create_entity :: proc(entity: Entity) -> ^Entity {
+    ptr := &state.entities[state.entity_count]
+    state.entity_count += 1
+
+    ptr^ = entity
+
+    ptr.created_time = state.time
+
+    return ptr
+}
+
+create_player :: proc(position: v2) -> ^Entity {
+    return create_entity({
+        flags = {.player, .armour_ability, .has_health, .solid_hitbox},
+        position = position,
+        size = {50, 50},
+        texture = .face,
+        aim_direction = {0, 1},
+        health = MAX_PLAYER_HEALTH,
+        armour = MAX_ARMOUR
+    })
+}
+
+create_ai :: proc(position: v2) -> ^Entity {
+    return create_entity({
+        flags = {.ai, .armour_ability, .solid_hitbox, .has_health},
+        position = position,
+        size = {30, 30},
+        texture = .sad_face,
+        health = MAX_AI_HEALTH,
+        armour = MAX_ARMOUR
+    })
+}
+
+create_bullet :: proc(position: v2, velocity: v2) -> ^Entity {
+    return create_entity({
+        flags = {.projectile, .trigger_hitbox},
+        position = position,
+        velocity = velocity,
+        size = {5, 5},
+        texture = .face
+    })
+}
+
+get_entity_with_flag :: proc(flag: EntityFlag) -> ^Entity {
+    for &entity in state.entities[0:state.entity_count] {
+        if flag in entity.flags {
+            return &entity
+        }
+    }
+
+    return nil
+}
+
+entity_take_damage :: proc(entity: ^Entity, damage: f32) {
+    assert(.has_health in entity.flags)
+
+    // if entity has armour take from that first
+    // if damage is more then armour left take remainder
+    // from the health
+
+    damage_to_health: f32
+
+    if .armour_ability in entity.flags && entity.armour > 0 {
+        entity.armour -= damage
+        entity.armour_regen_cooldown = ARMOUR_REGEN_COOLDOWN
+
+        remainder := -entity.armour
+        if remainder > 0 {
+            damage_to_health = remainder
+            entity.armour = 0
+        }
+    } else {
+        damage_to_health = damage
+    }
+
+    entity.health -= damage_to_health
+    if entity.health < 0 {
+        entity.health = 0
+    }
+}
+
+// returns overlap, distance and if collided 
+aabb :: proc(position_a: v2, size_a: v2, position_b: v2, size_b: v2) -> (v2, v2, bool) {
+    distance := position_b - position_a
+    distance_abs := v2{abs(distance.x), abs(distance.y)}
+    distance_for_collision := (size_a + size_b) * v2{0.5, 0.5}
+
+    collision := distance_for_collision[0] >= distance_abs[0] && distance_for_collision[1] >= distance_abs[1]
+    overlap_amount := distance_for_collision - distance_abs
+
+    return overlap_amount, distance, collision
+}
+
+aabb_collided :: proc(position_a: v2, size_a: v2, position_b: v2, size_b: v2) -> bool {
+    _, _, collided := aabb(position_a, size_a, position_b, size_b)
+    return collided 
+}
+
+distance_between_entity_edges :: proc(entity_a: ^Entity, entity_b: ^Entity) -> v2 {
+    center_distance := linalg.abs(entity_a.position - entity_b.position)
+    edge_distance := center_distance - ((entity_a.size + entity_b.size) * 0.5)
+
+    return edge_distance
+}
+
+on_trigger_collision :: proc(trigger: ^Entity, other: ^Entity) {
+    if .has_health in other.flags {
+        entity_take_damage(other, 10) 
+    }
+}
+
+BoxColliderIterator :: struct {
+    index: int,
+    position: v2,
+    size: v2
+}
+
+new_box_collider_iterator :: proc(position: v2, size: v2) -> BoxColliderIterator {
+    return BoxColliderIterator {
+        index = 0,
+        position = position,
+        size = size,
+    }
+}
+
+next :: proc(iterator: ^BoxColliderIterator) -> ^Entity {
+    for iterator.index < state.entity_count {
+        other := &state.entities[iterator.index]
+        iterator.index += 1
+        
+        collision := aabb_collided(iterator.position, iterator.size, other.position, other.size)
+        if collision {
+            return other
+        }
+    }
+
+    return nil
 }
 
 // -------------------------- @renderer -----------------------
@@ -640,11 +818,15 @@ TextAllignment :: enum {
     bottom_left
 }
 
-RED     :: v4{1, 0, 0, 1}
-GREEN   :: v4{0, 1, 0, 1}
-BLUE    :: v4{0, 0, 1, 1}
-WHITE   :: v4{1, 1, 1, 1}
-BLACK   :: v4{0, 0, 0, 1}
+RED         :: v4{1, 0, 0, 1}
+GREEN       :: v4{0, 1, 0, 1}
+BLUE        :: v4{0, 0, 1, 1}
+
+WHITE       :: v4{1, 1, 1, 1}
+BLACK       :: v4{0, 0, 0, 1}
+
+YELLOW      :: v4{0.95, 0.97, 0, 1}
+SKY_BLUE    :: v4{0.45, 0.8, 0.75, 1}
 
 Renderer :: struct {
     quads: []Quad,
@@ -1275,6 +1457,12 @@ font_file_name :: proc(font: FontHandle) -> string {
     }
 
     unreachable()
+}
+
+brightness :: proc(colour: v4, brightness: f32) -> v4 {
+    new_colour := colour
+    new_colour.rgb *= brightness
+    return new_colour
 }
 
 alpha :: proc(colour: v4, alpha: f32) -> v4 {
