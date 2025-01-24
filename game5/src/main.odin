@@ -598,6 +598,22 @@ draw :: proc(delta_time: f32) {
         base_colour         := WHITE
         highlight_colour    := WHITE
 
+        if .player in entity.flags {
+            for &other in state.entities[0:state.entity_count] {
+                if !(.interactable in other.flags) {
+                    continue 
+                }
+
+                if linalg.distance(entity.position, other.position) < PLAYER_REACH_SIZE {
+                    ICON_SIZE :: 25
+
+                    icon_position := other.position + {0, (other.size.y * 0.5) + ICON_SIZE}
+
+                    draw_texture(.x_button, icon_position, {ICON_SIZE, ICON_SIZE}, WHITE, WHITE)
+                }
+            }
+        }
+
         if .has_health in entity.flags {
             health_bar_width := entity.size.x * 2
             percentage_health_left := entity.health / max_health(&entity)
@@ -619,18 +635,13 @@ draw :: proc(delta_time: f32) {
             draw_texture(.armour, entity.position, entity.size * 2.5, alpha(WHITE, armour_alpha), alpha(armour_colour, armour_alpha))
         }
 
-        if .player in entity.flags {
-            for &other in state.entities[0:state.entity_count] {
-                if !(.interactable in other.flags) {
-                    continue 
+        if .ability_pickup in entity.flags {
+            switch entity.pickup_type {
+                case .armour: {
+                    highlight_colour = SKY_BLUE
                 }
-
-                if linalg.distance(entity.position, other.position) < PLAYER_REACH_SIZE {
-                    ICON_SIZE :: 25
-
-                    icon_position := other.position + {0, (other.size.y * 0.5) + ICON_SIZE}
-
-                    draw_texture(.x_button, icon_position, {ICON_SIZE, ICON_SIZE}, WHITE, WHITE)
+                case .speed: {
+                    highlight_colour = RED
                 }
             }
         }
@@ -680,7 +691,7 @@ draw :: proc(delta_time: f32) {
 
     { // game info 
         text := fmt.tprintf("E: %v/%v       Q: %v/%v", state.entity_count, MAX_ENTITIES, state.renderer.quad_count, MAX_QUADS)
-        draw_text(text, {10, 10}, 30, BLACK, .bottom_left)
+        draw_text(text, {10, 10}, 30, WHITE, .bottom_left)
     }
 
     { // fps
@@ -716,7 +727,7 @@ create_player :: proc(position: v2) -> ^Entity {
 
 create_ai :: proc(position: v2) -> ^Entity {
     return create_entity({
-        flags = {.ai, .armour_ability, .solid_hitbox, .has_health},
+        flags = {.ai, .solid_hitbox, .has_health},
         position = position,
         size = {20, 20},
         mass = 1,
