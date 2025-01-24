@@ -40,6 +40,7 @@ import stbrp "vendor:stb/rect_pack"
 // record:
 // start: 21/01/2025
 // total time: 9:10 hrs
+// start: 23:30
 
 // indev settings
 LOG_COLOURS         :: false
@@ -262,7 +263,7 @@ PickupType :: enum {
 
 start :: proc() {
     create_player({100, 100})
-    create_ai({-300, -300})
+    // create_ai({-300, -300})
     create_ability_pickup({0, 0}, .armour)
 }
 
@@ -278,6 +279,13 @@ input :: proc() {
 update :: proc(delta_time: f32) {
     if state.gamepad.axes[glfw.GAMEPAD_AXIS_LEFT_TRIGGER] > GAMEPAD_TRIGGER_DEADZONE {
         create_ai({0, 0}) 
+    }
+
+    if state.keys[glfw.KEY_R] == .down {
+        ok := reload_textures(&state.renderer)
+        if !ok {
+            log.error("tried to reload textures but failed...")
+        }
     }
 
     for &entity in state.entities[0:state.entity_count] {
@@ -678,9 +686,9 @@ create_player :: proc(position: v2) -> ^Entity {
     return create_entity({
         flags = {.player, .has_health, .solid_hitbox},
         position = position,
-        size = {50, 50},
+        size = {40, 40},
         mass = 200,
-        texture = .face,
+        texture = .player,
         aim_direction = {0, 1},
         health = MAX_PLAYER_HEALTH,
         armour = MAX_ARMOUR
@@ -715,7 +723,7 @@ create_bullet :: proc(position: v2, velocity: v2) -> ^Entity {
         position = position,
         velocity = velocity,
         size = {5, 5},
-        texture = .face
+        texture = .alien
     })
 }
 
@@ -875,24 +883,21 @@ DrawType :: enum {
 
 TextureHandle :: enum {
     alien,
-    face,
-    sad_face,
-    blue_face,
-    wide_face,
+    player,
     chip,
     x_button,
 }
 
 Texture :: struct {
-    width: i32,
-    height: i32,
+    width: int,
+    height: int,
     uv: [4]v2,
     data: [^]byte
 }
 
 Atlas :: struct {
-    width: i32,
-    height: i32,
+    width: int,
+    height: int,
     data: [^]byte
 }
 
@@ -903,13 +908,13 @@ FontHandle :: enum {
 
 Font :: struct {
     characters: []stbtt.bakedchar,
-    bitmap: []byte,
+    bitmap: [^]byte,
     bitmap_width: int,
     bitmap_height: int,
-    filter: FontFilter,
+    filter: TextureFilter,
 }
 
-FontFilter :: enum {
+TextureFilter :: enum {
     nearest,
     linear
 }
@@ -959,7 +964,7 @@ init_renderer :: proc(renderer: ^Renderer) -> bool {
         gl.Enable(gl.BLEND)
         gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
     
-        V :: 0.2
+        V :: 0
         gl.ClearColor(V, V, V, 1)
     }
 
@@ -1076,57 +1081,63 @@ init_renderer :: proc(renderer: ^Renderer) -> bool {
         gl.EnableVertexAttribArray(3)
         gl.EnableVertexAttribArray(4)
     }
-    
-    { // textures
-        { // upload atlas texture
-            atlas_texture: u32
-            gl.GenTextures(1, &atlas_texture)
-    
-            gl.BindTexture(gl.TEXTURE_2D, atlas_texture)
-    
-            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT) // s is x wrap
-            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT) // t is y wrap
-            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
-            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
-    
-            atlas := &renderer.texture_atlas
-    
-            gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, atlas.width, atlas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, atlas.data)
-    
-            renderer.atlas_texture_id = atlas_texture
-        }
 
-        { // upload font txture
-            font_texture: u32
-            gl.GenTextures(1, &font_texture)
+    renderer.atlas_texture_id = send_bitmap_to_gpu(renderer, renderer.texture_atlas.width, renderer.texture_atlas.height, renderer.texture_atlas.data, .nearest, .rgba)
+    renderer.font_texture_id = send_bitmap_to_gpu(renderer, renderer.font.bitmap_width, renderer.font.bitmap_height, renderer.font.bitmap, .linear, .r)
     
-            gl.BindTexture(gl.TEXTURE_2D, font_texture)
-    
-            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT) // s is x wrap
-            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT) // t is y wrap
+    return true
+}
 
-            filter: i32
+send_bitmap_to_gpu :: proc(renderer: ^Renderer, width: int, height: int, data: [^]byte, filter: TextureFilter, format: enum {r, rgba}) -> u32 {
+    gl_filter: i32 
+    gl_format: i32
 
-            switch renderer.font.filter {
-                case .nearest:
-                    filter = gl.NEAREST
-                case .linear:
-                    filter = gl.LINEAR
-            }
-
-            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter)
-            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter)
-    
-            font := &renderer.font
-   
-            // font data is monochrome with a single channel so need to load as just red and store it as that - 19/01/25
-            gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RED, i32(font.bitmap_width), i32(font.bitmap_height), 0, gl.RED, gl.UNSIGNED_BYTE, slice.as_ptr(font.bitmap))
-    
-            renderer.font_texture_id = font_texture
-        }
+    switch filter {
+        case .nearest:  gl_filter = gl.NEAREST
+        case .linear:   gl_filter = gl.LINEAR
     }
 
-    return true
+    switch format {
+        case .r:        gl_format = gl.RED
+        case .rgba:     gl_format = gl.RGBA
+    }
+
+    texture_id: u32
+
+    gl.GenTextures(1, &texture_id) 
+
+    gl.BindTexture(gl.TEXTURE_2D, texture_id) 
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT) // s is x wrap
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT) // t is y wrap
+
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl_filter)
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl_filter)
+
+    gl.TexImage2D(gl.TEXTURE_2D, 0, gl_format, i32(width), i32(height), 0, u32(gl_format), gl.UNSIGNED_BYTE, data)
+
+    return texture_id
+}
+
+unload_bitmap_on_gpu :: proc(renderer: ^Renderer, id: u32) {
+    _id := id
+    gl.DeleteTextures(1, &_id)
+}
+
+reload_textures :: proc(renderer: ^Renderer) -> bool {
+    ok: bool
+
+    log.info("reloading all textures")
+
+    load_textures(renderer) or_return
+    build_texture_atlas(renderer) or_return
+
+    unload_bitmap_on_gpu(renderer, renderer.atlas_texture_id)
+    unload_bitmap_on_gpu(renderer, renderer.font_texture_id)
+
+    renderer.atlas_texture_id = send_bitmap_to_gpu(renderer, renderer.texture_atlas.width, renderer.texture_atlas.height, renderer.texture_atlas.data, .nearest, .rgba)
+    renderer.font_texture_id = send_bitmap_to_gpu(renderer, renderer.font.bitmap_width, renderer.font.bitmap_height, renderer.font.bitmap, .linear, .r)
+
+    return true 
 }
 
 draw_rectangle :: proc(position: v2, size: v2, colour: v4) {
@@ -1379,8 +1390,8 @@ load_textures :: proc(renderer: ^Renderer) -> bool {
         log.infof("loaded texture \"%v\" [%v x %v : %v bytes]", path, width, height, len(png_data))
 
         renderer.textures[texture] = {
-            width = width,
-            height = height,
+            width = int(width),
+            height = int(height),
             data = data
         }
     }
@@ -1487,14 +1498,8 @@ get_texture_name :: proc(texture: TextureHandle) -> string {
     switch texture {
         case .alien:
             return "alien.png"
-        case .face:
-            return "face.png"
-        case .sad_face:
-            return "sad_face.png"
-        case .blue_face:
-            return "blue_face.png"
-        case .wide_face:
-            return "wide_face.png"
+       case .player:
+            return "player.png"
         case .chip:
             return "chip.png"
         case .x_button:
@@ -1504,13 +1509,13 @@ get_texture_name :: proc(texture: TextureHandle) -> string {
     unreachable()
 }
 
-load_font :: proc(renderer: ^Renderer, font: FontHandle, bitmap_width: int, bitmap_height: int, font_height: f32, filter: FontFilter) -> bool {
+load_font :: proc(renderer: ^Renderer, font: FontHandle, bitmap_width: int, bitmap_height: int, font_height: f32, filter: TextureFilter) -> bool {
     RESOURCE_DIR :: "resources/fonts/"
     CHAR_COUNT     :: 96
 
     font_info := Font {
         characters = make([]stbtt.bakedchar, CHAR_COUNT),
-        bitmap = make([]byte, bitmap_width * bitmap_height),
+        bitmap = make([^]byte, bitmap_width * bitmap_height),
         bitmap_width = bitmap_width,
         bitmap_height = bitmap_height,
         filter = filter
@@ -1528,7 +1533,7 @@ load_font :: proc(renderer: ^Renderer, font: FontHandle, bitmap_width: int, bitm
         raw_data(font_data), 
         0, 
         font_height, 
-        slice.as_ptr(font_info.bitmap),
+        font_info.bitmap,
         i32(bitmap_width), 
         i32(bitmap_height), 
         32, 
@@ -1552,7 +1557,7 @@ load_font :: proc(renderer: ^Renderer, font: FontHandle, bitmap_width: int, bitm
             return false
         }
 
-        log.infof("wrote font image to \"%v\" [%v x %v %v bytes uncompressed]", output_path, bitmap_width, bitmap_height, len(font_info.bitmap))
+        log.infof("wrote font image to \"%v\" [%v x %v %v bytes uncompressed]", output_path, bitmap_width, bitmap_height, font_info.bitmap_width * font_info.bitmap_height)
     }
 
     log.infof("loaded font \"%v\"", path)
