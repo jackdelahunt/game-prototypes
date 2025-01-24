@@ -49,6 +49,7 @@ WRITE_DEBUG_IMAGES  :: true
 V_SYNC              :: true
 DRAW_ARMOUR_BUBBLE  :: true
 NO_ENEMY_ATTACK     :: false
+CAN_RELOAD_TEXTURES :: true
 
 // internal settings
 MAX_ENTITIES :: 50_000
@@ -99,7 +100,8 @@ State :: struct {
 
 InputState :: enum {
     up,
-    down
+    down,
+    pressed,
 }
 
 main :: proc() {
@@ -268,6 +270,20 @@ start :: proc() {
 }
 
 input :: proc() {
+    // this will set the state of things to up or down
+    // to keep track of what is already down, we can go through
+    // every key before this and set it to pressed, if is still
+    // down we dont get and event and it stays pressed, if we get
+    // an event for that key it will be to set it to up so the
+    // pressed we accidentlly set is changed, this is not the best
+    // - 24/01/25
+
+    for &input in state.keys {
+        if input == .down {
+            input = .pressed
+        }
+    }
+
     glfw.PollEvents()
 
     // TODO: handle disconnect ??
@@ -281,10 +297,12 @@ update :: proc(delta_time: f32) {
         create_ai({0, 0}) 
     }
 
-    if state.keys[glfw.KEY_R] == .down {
-        ok := reload_textures(&state.renderer)
-        if !ok {
-            log.error("tried to reload textures but failed...")
+    when CAN_RELOAD_TEXTURES {
+        if state.keys[glfw.KEY_R] == .down {
+            ok := reload_textures(&state.renderer)
+            if !ok {
+                log.error("tried to reload textures but failed...")
+            }
         }
     }
 
@@ -588,16 +606,17 @@ draw :: proc(delta_time: f32) {
         }
 
         if .armour_ability in entity.flags && DRAW_ARMOUR_BUBBLE {
-            armour_bubble_colour := alpha(WHITE, 0.2)
+            armour_colour: v4
 
             if entity.armour == MAX_ARMOUR {
-                armour_bubble_colour *= YELLOW
+                armour_colour = YELLOW
             } else {
-                percentage_armour_left := entity.armour / MAX_ARMOUR
-                armour_bubble_colour *= alpha(BLUE, percentage_armour_left)
+                armour_colour = BLUE
             }
 
-            draw_rectangle(entity.position, entity.size * 1.3, armour_bubble_colour)
+            armour_alpha := entity.armour / MAX_ARMOUR
+
+            draw_texture(.armour, entity.position, entity.size * 2.5, alpha(WHITE, armour_alpha), alpha(armour_colour, armour_alpha))
         }
 
         if .player in entity.flags {
@@ -699,9 +718,9 @@ create_ai :: proc(position: v2) -> ^Entity {
     return create_entity({
         flags = {.ai, .armour_ability, .solid_hitbox, .has_health},
         position = position,
-        size = {30, 30},
+        size = {20, 20},
         mass = 1,
-        texture = .alien,
+        texture = .cuber,
         health = MAX_AI_HEALTH,
         armour = MAX_ARMOUR
     })
@@ -723,7 +742,7 @@ create_bullet :: proc(position: v2, velocity: v2) -> ^Entity {
         position = position,
         velocity = velocity,
         size = {5, 5},
-        texture = .alien
+        texture = .cuber
     })
 }
 
@@ -882,8 +901,9 @@ DrawType :: enum {
 }
 
 TextureHandle :: enum {
-    alien,
+    cuber,
     player,
+    armour,
     chip,
     x_button,
 }
@@ -1496,10 +1516,12 @@ build_texture_atlas :: proc(renderer: ^Renderer) -> bool {
 
 get_texture_name :: proc(texture: TextureHandle) -> string {
     switch texture {
-        case .alien:
-            return "alien.png"
+        case .cuber:
+            return "cuber.png"
        case .player:
             return "player.png"
+        case .armour:
+            return "armour.png"
         case .chip:
             return "chip.png"
         case .x_button:
@@ -1662,13 +1684,13 @@ glfw_error_callback :: proc "c" (error: c.int, description: cstring) {
 }
 
 glfw_key_callback :: proc "c" (window: glfw.WindowHandle, key: c.int, scancode: c.int, action: c.int, mods: c.int) {
+    // https://www.glfw.org/docs/latest/input_guide.html
+    current_key := &state.keys[key]
+
     switch action {
-        case glfw.PRESS: fallthrough
-        case glfw.REPEAT:
-            state.keys[key] = .down
-        case glfw.RELEASE: {
-            state.keys[key] = .up
-        }
+        case glfw.RELEASE:  current_key^ = .up
+        case glfw.PRESS:    current_key^ = .down
+        case glfw.REPEAT: 
     }
 }
 
