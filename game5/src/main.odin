@@ -20,8 +20,6 @@ import stbtt "vendor:stb/truetype"
 import stbrp "vendor:stb/rect_pack"
 
 // TODO:
-// player getting abilities from enemimes
-// differant enemies with different abilties
 // nest to spawn enemies
 // player can destroy nests
 
@@ -39,7 +37,7 @@ import stbrp "vendor:stb/rect_pack"
 
 // record:
 // start: 21/01/2025
-// total time: 11:40 hrs
+// total time: 17:00 hrs
 
 // indev settings
 LOG_COLOURS         :: false
@@ -47,11 +45,11 @@ OPENGL_MESSAGES     :: false
 WRITE_DEBUG_IMAGES  :: true
 V_SYNC              :: true
 DRAW_ARMOUR_BUBBLE  :: true
-NO_ENEMY_ATTACK     :: false
+NO_ENEMY_ATTACK     :: true
 CAN_RELOAD_TEXTURES :: true
 
 // internal settings
-MAX_ENTITIES :: 50_000
+MAX_ENTITIES :: 5_000
 
 // gameplay settings
 MAX_PLAYER_HEALTH       :: 100
@@ -84,6 +82,7 @@ State :: struct {
     keys: [348]InputState,
     gamepad: glfw.GamepadState,
     time: f64,
+    dropped_abilities: bit_set[Ability],
     camera: struct {
         position: v2,
         // length in world units from camera centre to top edge of camera view
@@ -166,6 +165,8 @@ main :: proc() {
     start()
 
     for !glfw.WindowShouldClose(state.window) {
+        free_all(context.temp_allocator)
+
         if state.keys[glfw.KEY_ESCAPE] == .down {
             glfw.SetWindowShouldClose(state.window, true)
         }
@@ -214,6 +215,7 @@ main :: proc() {
 Entity :: struct {
     // meta
     flags: bit_set[EntityFlag],
+    abilities: bit_set[Ability],
     created_time: f64,
 
     // global
@@ -226,6 +228,9 @@ Entity :: struct {
 
     // flag: player
     aim_direction: v2,
+
+    // flag: ai
+    ai_type: AiType,
 
     // flag: ability pickup
     pickup_type: PickupType,
@@ -244,9 +249,6 @@ EntityFlag :: enum {
     projectile,
     ability_pickup,
 
-    armour_ability,
-    speed_ability,
-
     solid_hitbox,
     static_hitbox,
     trigger_hitbox,
@@ -257,6 +259,16 @@ EntityFlag :: enum {
     to_be_deleted
 }
 
+AiType :: enum {
+    speeder,
+    drone
+}
+
+Ability :: enum {
+    armour,
+    speed,
+}
+
 PickupType :: enum {
     armour,
     speed
@@ -265,7 +277,8 @@ PickupType :: enum {
 start :: proc() {
     create_player({100, 100})
     // create_ai({-300, -300})
-    create_ability_pickup({0, 0}, .armour)
+    create_ability_pickup({50, 0}, .armour)
+    create_ability_pickup({-50, 0}, .speed)
 }
 
 input :: proc() {
@@ -293,7 +306,8 @@ input :: proc() {
 
 update :: proc(delta_time: f32) {
     if state.gamepad.axes[glfw.GAMEPAD_AXIS_LEFT_TRIGGER] > GAMEPAD_TRIGGER_DEADZONE {
-        create_ai({0, 0}) 
+        create_speeder({-20, 0}) 
+        create_drone({20, 0}) 
     }
 
     when CAN_RELOAD_TEXTURES {
@@ -381,9 +395,9 @@ update :: proc(delta_time: f32) {
                     assert(.ability_pickup in other.flags, "only interactables are pickups right now")
 
                     if linalg.distance(entity.position, other.position) < PLAYER_REACH_SIZE {
-                        pickups_ability := ability_from_pickup_type(other.pickup_type)
+                        ability := ability_from_pickup_type(other.pickup_type)
 
-                        entity.flags += {pickups_ability}
+                        entity.abilities += {ability}
                         other.flags += {.to_be_deleted}
                     }
                 }
@@ -404,7 +418,7 @@ update :: proc(delta_time: f32) {
 
             { // move
                 direction := linalg.normalize(player.position - entity.position)
-                entity.velocity = direction * AI_SPEED    
+                entity.velocity = direction * ai_speed(entity.ai_type)    
             }
 
             attack: { // attack
@@ -425,7 +439,7 @@ update :: proc(delta_time: f32) {
                         entity.attack_cooldown = AI_ATTACK_COOLDOWN
                     }
                 }
-            }
+            } 
         }
 
         projectile_update: {
@@ -445,15 +459,12 @@ update :: proc(delta_time: f32) {
 
             if entity.health == 0 {
                 entity.flags += {.to_be_deleted}
-
-                if .ai in entity.flags {
-                    // create_ai({0, 0})
-                }
+                on_entity_killed(&entity)
             }
         }
 
         armour_update: {
-            if !(.armour_ability in entity.flags) {
+            if !(.armour in entity.abilities) {
                 break armour_update
             }
             
@@ -464,6 +475,14 @@ update :: proc(delta_time: f32) {
                     entity.armour = MAX_ARMOUR
                 }
             }
+        }
+
+        speed_update: {
+            if !(.speed in entity.abilities) {
+                break speed_update
+            }
+            
+            entity.velocity *= 2 
         }
     }
 
@@ -620,7 +639,7 @@ draw :: proc(delta_time: f32) {
             highlight_colour = mix(RED, SKY_BLUE, percentage_health_left)
         }
 
-        if .armour_ability in entity.flags && DRAW_ARMOUR_BUBBLE {
+        if .armour in entity.abilities && DRAW_ARMOUR_BUBBLE {
             armour_colour: v4
 
             if entity.armour == MAX_ARMOUR {
@@ -631,7 +650,7 @@ draw :: proc(delta_time: f32) {
 
             armour_alpha := entity.armour / MAX_ARMOUR
 
-            draw_texture(.armour, entity.position, entity.size * 2.5, alpha(WHITE, armour_alpha), alpha(armour_colour, armour_alpha))
+            draw_texture(.armour, entity.position, entity.size * 2, alpha(WHITE, armour_alpha), alpha(armour_colour, armour_alpha))
         }
 
         if .ability_pickup in entity.flags {
@@ -650,44 +669,6 @@ draw :: proc(delta_time: f32) {
 
     in_screen_space = true
 
-    player_hud: { // player info
-        player := get_entity_with_flag(.player)
-        if player == nil {
-            break player_hud
-        }
-
-        { // armour
-            armour_bar_width    : f32 = state.width * 0.3
-            armour_bar_height   : f32 = 50
-            bar_position := v2{state.width * 0.5, state.height - (armour_bar_height * 0.5)}
-
-            bar_colour := SKY_BLUE
-            background_bar_colour := brightness(bar_colour, 0.4)
-
-            percentage_of_armour := player.armour / MAX_ARMOUR
-
-            if percentage_of_armour == 1 {
-                draw_rectangle(bar_position, v2{armour_bar_width, armour_bar_height} + 10, YELLOW)
-            }
-
-            draw_rectangle(bar_position, {armour_bar_width, armour_bar_height}, background_bar_colour)
-            draw_rectangle(bar_position, {armour_bar_width * percentage_of_armour, armour_bar_height}, bar_colour)
-        }
-
-        { // health
-            health_bar_width    : f32 = state.width * 0.2
-            health_bar_height   : f32 = 20
-
-            bar_colour := RED
-            background_bar_colour := brightness(bar_colour, 0.4)
-
-            percentage_of_health := player.health / MAX_PLAYER_HEALTH
-           
-            draw_rectangle({state.width * 0.5, state.height - (health_bar_height * 0.5)}, {health_bar_width, health_bar_height}, background_bar_colour)
-            draw_rectangle({state.width * 0.5, state.height - (health_bar_height * 0.5)}, {health_bar_width * percentage_of_health, health_bar_height}, bar_colour)
-        }
-    }
-
     { // game info 
         text := fmt.tprintf("E: %v/%v       Q: %v/%v", state.entity_count, MAX_ENTITIES, state.renderer.quad_count, MAX_QUADS)
         draw_text(text, {10, 10}, 30, WHITE, .bottom_left)
@@ -696,7 +677,19 @@ draw :: proc(delta_time: f32) {
     { // fps
         fps := math.trunc(1 / delta_time)
         text := fmt.tprintf("%v", fps)
-        draw_text(text, {10, state.height - 35}, 30, BLACK, .bottom_left)
+        draw_text(text, {10, state.height - 35}, 30, WHITE, .bottom_left)
+    }
+}
+
+on_entity_killed :: proc(entity: ^Entity) {
+    if .ai in entity.flags {
+        assert(card(entity.abilities) == 1, "only one ability per ai")
+    
+        if entity.abilities & state.dropped_abilities == {} {
+            pickup := pickup_type_from_ability(ai_ability(entity.ai_type))
+            create_ability_pickup(entity.position, pickup)
+            state.dropped_abilities += entity.abilities
+        }
     }
 }
 
@@ -724,13 +717,32 @@ create_player :: proc(position: v2) -> ^Entity {
     })
 }
 
-create_ai :: proc(position: v2) -> ^Entity {
+create_speeder :: proc(position: v2) -> ^Entity {
+    type := AiType.speeder
+
     return create_entity({
         flags = {.ai, .solid_hitbox, .has_health},
+        abilities = {ai_ability(type)},
         position = position,
         size = {20, 20},
         mass = 1,
         texture = .cuber,
+        ai_type = type,
+        health = MAX_AI_HEALTH,
+    })
+}
+
+create_drone :: proc(position: v2) -> ^Entity {
+    type := AiType.drone
+
+    return create_entity({
+        flags = {.ai, .solid_hitbox, .has_health},
+        abilities = {ai_ability(type)},
+        position = position,
+        size = {35, 35},
+        mass = 1,
+        texture = .drone,
+        ai_type = type,
         health = MAX_AI_HEALTH,
         armour = MAX_ARMOUR
     })
@@ -788,7 +800,7 @@ entity_take_damage :: proc(entity: ^Entity, damage: f32) {
 
     damage_to_health: f32
 
-    if .armour_ability in entity.flags && entity.armour > 0 {
+    if .armour in entity.abilities && entity.armour > 0 {
         entity.armour -= damage
         entity.armour_regen_cooldown = ARMOUR_REGEN_COOLDOWN
 
@@ -805,6 +817,24 @@ entity_take_damage :: proc(entity: ^Entity, damage: f32) {
     if entity.health < 0 {
         entity.health = 0
     }
+}
+
+ai_speed :: proc(type: AiType) -> f32 {
+    switch type {
+        case .speeder:  return 150 // multiplied by speed ability
+        case .drone:    return 150
+    }
+
+    unreachable()
+}
+
+ai_ability :: proc(type: AiType) -> Ability {
+    switch type {
+        case .speeder:  return .speed         
+        case .drone:    return .armour
+    }
+
+    unreachable()
 }
 
 // returns overlap, distance and if collided 
@@ -837,10 +867,19 @@ on_trigger_collision :: proc(trigger: ^Entity, other: ^Entity) {
     }
 }
 
-ability_from_pickup_type :: proc(type: PickupType) -> EntityFlag {
+ability_from_pickup_type :: proc(type: PickupType) -> Ability {
     switch type {
-        case .armour:   return .armour_ability
-        case .speed:    return .speed_ability
+        case .armour:   return .armour
+        case .speed:    return .speed
+    }
+
+    unreachable()
+}
+
+pickup_type_from_ability :: proc(ability: Ability) -> PickupType {
+    switch ability {
+        case .armour:   return .armour
+        case .speed:    return .speed
     }
 
     unreachable()
@@ -882,7 +921,7 @@ Mat4 :: linalg.Matrix4f32
 
 GL_MAJOR :: 4
 GL_MINOR :: 6
-MAX_QUADS :: 70_000
+MAX_QUADS :: 10_000
 
 Vertex :: struct {
     position: v3,
@@ -916,6 +955,7 @@ TextureHandle :: enum {
     armour,
     chip,
     x_button,
+    drone,
 }
 
 Texture :: struct {
@@ -1536,6 +1576,9 @@ get_texture_name :: proc(texture: TextureHandle) -> string {
             return "chip.png"
         case .x_button:
             return "x_button.png"
+        case .drone:
+            return "drone.png"
+
     }
 
     unreachable()
