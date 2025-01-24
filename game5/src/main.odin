@@ -39,8 +39,7 @@ import stbrp "vendor:stb/rect_pack"
 
 // record:
 // start: 21/01/2025
-// total time: 9:10 hrs
-// start: 23:30
+// total time: 11:40 hrs
 
 // indev settings
 LOG_COLOURS         :: false
