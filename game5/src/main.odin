@@ -37,7 +37,7 @@ import stbrp "vendor:stb/rect_pack"
 
 // record:
 // start: 21/01/2025
-// total time: 17:00 hrs
+// total time: 12:30 hrs
 
 // indev settings
 LOG_COLOURS         :: false
@@ -246,6 +246,7 @@ Entity :: struct {
 EntityFlag :: enum {
     player,
     ai,
+    nest,
     projectile,
     ability_pickup,
 
@@ -276,6 +277,7 @@ PickupType :: enum {
 
 start :: proc() {
     create_player({100, 100})
+    create_nest({-200, -200})
     // create_ai({-300, -300})
     create_ability_pickup({50, 0}, .armour)
     create_ability_pickup({-50, 0}, .speed)
@@ -748,6 +750,16 @@ create_drone :: proc(position: v2) -> ^Entity {
     })
 }
 
+create_nest :: proc(position: v2) -> ^Entity {
+    return create_entity({
+        flags = {.nest, .has_health},
+        position = position,
+        size = {150, 150},
+        texture = .nest,
+        health = MAX_AI_HEALTH,
+    })
+}
+
 create_ability_pickup :: proc(position: v2, type: PickupType) -> ^Entity {
     return create_entity({
         flags = {.interactable, .ability_pickup},
@@ -785,6 +797,10 @@ max_health :: proc(entity: ^Entity) -> f32 {
     }
 
     if .ai in entity.flags {
+        return MAX_AI_HEALTH
+    }
+
+    if .nest in entity.flags {
         return MAX_AI_HEALTH
     }
 
@@ -956,6 +972,7 @@ TextureHandle :: enum {
     chip,
     x_button,
     drone,
+    nest,
 }
 
 Texture :: struct {
@@ -1578,7 +1595,8 @@ get_texture_name :: proc(texture: TextureHandle) -> string {
             return "x_button.png"
         case .drone:
             return "drone.png"
-
+        case .nest:
+            return "nest.png"
     }
 
     unreachable()
