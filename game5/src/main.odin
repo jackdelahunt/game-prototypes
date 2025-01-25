@@ -12,6 +12,7 @@ import "core:slice"
 import "core:c"
 import "core:mem"
 import "core:math"
+import "core:math/rand"
 
 import "vendor:glfw"
 import gl "vendor:OpenGL"
@@ -38,6 +39,7 @@ import stbrp "vendor:stb/rect_pack"
 // record:
 // start: 21/01/2025
 // total time: 12:30 hrs
+// start : 23:30
 
 // indev settings
 LOG_COLOURS         :: false
@@ -232,6 +234,14 @@ Entity :: struct {
     // flag: ai
     ai_type: AiType,
 
+    // flag: nest
+    cluster_size: int,
+    spawn_rate: f32,
+    spawn_cooldown: f32,
+    speeders_to_spawn: int,
+    drones_to_spawn: int,
+    total_spawns: int,
+
     // flag: ability pickup
     pickup_type: PickupType,
 
@@ -277,10 +287,7 @@ PickupType :: enum {
 
 start :: proc() {
     create_player({100, 100})
-    create_nest({-200, -200})
-    // create_ai({-300, -300})
-    create_ability_pickup({50, 0}, .armour)
-    create_ability_pickup({-50, 0}, .speed)
+    create_nest({-200, -200}, 5, 0.05, 200, 20)
 }
 
 input :: proc() {
@@ -331,6 +338,11 @@ update :: proc(delta_time: f32) {
             entity.armour_regen_cooldown -= delta_time
             if entity.armour_regen_cooldown < 0 {
                 entity.armour_regen_cooldown = 0
+            }
+
+            entity.spawn_cooldown -= delta_time
+            if entity.spawn_cooldown < 0 {
+                entity.spawn_cooldown = 0
             }
         }
 
@@ -442,6 +454,32 @@ update :: proc(delta_time: f32) {
                     }
                 }
             } 
+        }
+
+        nest_update: {
+            if !(.nest in entity.flags) {
+                break nest_update
+            }
+
+            if entity.spawn_cooldown != 0 {
+                break nest_update
+            }
+
+            random := rand.float32()
+
+            for _ in 0..<entity.cluster_size {
+                if entity.speeders_to_spawn > 0 && random < ai_spawn_chance(.speeder) {
+                    create_speeder(entity.position)
+                    entity.speeders_to_spawn -= 1
+                    entity.spawn_cooldown += entity.spawn_rate
+                }
+    
+                if entity.drones_to_spawn > 0 && random < ai_spawn_chance(.drone) {
+                    create_drone(entity.position)    
+                    entity.drones_to_spawn -= 1
+                    entity.spawn_cooldown += entity.spawn_rate
+                }
+            }
         }
 
         projectile_update: {
@@ -634,6 +672,13 @@ draw :: proc(delta_time: f32) {
             }
         }
 
+        if .nest in entity.flags {
+            left_to_spawn := entity.speeders_to_spawn + entity.drones_to_spawn
+
+            percentage_left_to_spawn := f32(left_to_spawn) / f32(entity.total_spawns)
+            highlight_colour = mix(BLACK, RED, percentage_left_to_spawn)
+        }
+
         if .has_health in entity.flags {
             health_bar_width := entity.size.x * 2
             percentage_health_left := entity.health / max_health(&entity)
@@ -750,13 +795,20 @@ create_drone :: proc(position: v2) -> ^Entity {
     })
 }
 
-create_nest :: proc(position: v2) -> ^Entity {
+create_nest :: proc(position: v2, cluster_size: int, spawn_rate: f32, speeders_to_spawn: int, drones_to_spawn: int) -> ^Entity {
+    total_spawns := speeders_to_spawn + drones_to_spawn
+
     return create_entity({
-        flags = {.nest, .has_health},
+        flags = {.nest},
         position = position,
         size = {150, 150},
         texture = .nest,
         health = MAX_AI_HEALTH,
+        cluster_size = cluster_size,
+        spawn_rate = spawn_rate,
+        speeders_to_spawn = speeders_to_spawn,
+        drones_to_spawn = drones_to_spawn,
+        total_spawns = total_spawns
     })
 }
 
@@ -848,6 +900,15 @@ ai_ability :: proc(type: AiType) -> Ability {
     switch type {
         case .speeder:  return .speed         
         case .drone:    return .armour
+    }
+
+    unreachable()
+}
+
+ai_spawn_chance :: proc(type: AiType) -> f32 {
+    switch type {
+        case .speeder:  return  0.4         
+        case .drone:    return  0.1 
     }
 
     unreachable()
