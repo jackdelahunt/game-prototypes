@@ -19,7 +19,12 @@ import gl "vendor:OpenGL"
 import stbi "vendor:stb/image"
 import stbtt "vendor:stb/truetype"
 import stbrp "vendor:stb/rect_pack"
-import mui "vendor:microui"
+
+
+import "imgui"
+import "imgui/imgui_impl_glfw"
+import "imgui/imgui_impl_opengl3"
+
 
 // TODO:
 // nest to spawn enemies
@@ -39,7 +44,7 @@ import mui "vendor:microui"
 
 // record:
 // start: 21/01/2025
-// total time: 15:00 hrs
+// total time: 16:00 hrs
 
 // indev settings
 LOG_COLOURS         :: false
@@ -177,6 +182,12 @@ main :: proc() {
             log.fatal("error when initialising the renderer")
             return
         }
+
+        ok = init_imgui(&state.renderer)
+        if !ok {
+            log.fatal("error when initialising imgui")
+            return
+        }
     }
 
     start()
@@ -205,7 +216,7 @@ main :: proc() {
         switch state.mode {
             case .game:     tick_game(delta_time)
             case .editor:   tick_editor(delta_time)
-        }
+        } 
 
         in_screen_space = false
 
@@ -229,7 +240,17 @@ main :: proc() {
             gl.DrawElements(gl.TRIANGLES, 6 * i32(state.renderer.quad_count), gl.UNSIGNED_INT, nil)
         }
 
-        state.renderer.quad_count = 0
+        state.renderer.quad_count = 0 
+
+        if state.mode == .editor {
+            imgui.Render()
+		    imgui_impl_opengl3.RenderDrawData(imgui.GetDrawData())
+     
+		    backup_current_window := glfw.GetCurrentContext()
+		    imgui.UpdatePlatformWindows()
+		    imgui.RenderPlatformWindowsDefault()
+		    glfw.MakeContextCurrent(backup_current_window)
+        }
 
         glfw.SwapBuffers(state.window)
     }
@@ -253,7 +274,6 @@ tick_editor :: proc(delta_time: f32) {
     in_screen_space = false
 
     draw_editor()
-    draw_microui()
 }
 
 // -------------------------- @game -----------------------
@@ -852,30 +872,50 @@ update_editor :: proc() {
 }
 
 draw_editor :: proc() {
-    { // selected entity box
-        entity := get_entity_with_id(state.editor.selected_entity)
-        if entity != nil {
-            draw_rectangle(entity.position, entity.size * 1.5, alpha(GREEN, 0.2))
-        }
+    selected_entity := get_entity_with_id(state.editor.selected_entity)
+
+    if selected_entity != nil {
+        draw_rectangle(selected_entity.position, selected_entity.size * 1.5, alpha(GREEN, 0.2))
     }
 
     in_screen_space = true
 
-    { // micro ui stuff
-        mctx := &state.renderer.micro_ui_context
-
-        mui.begin(mctx)
-
-        if mui.begin_window(mctx, "Window", mui.Rect{400, 400, 300, 400}) {
-            mui.end_window(mctx)
-        }
-
-        mui.end(mctx)
-    }
-
     { // mode text
         size : f32 = 25
         draw_text("Editor", {state.width * 0.5, state.height - size}, size, WHITE, .center)
+    }
+
+    { // imgui stuff
+        imgui_impl_opengl3.NewFrame()
+	    imgui_impl_glfw.NewFrame()
+    
+	    imgui.NewFrame() 
+	    imgui.ShowDemoWindow() 
+   
+	    if selected_entity != nil && imgui.Begin("Selected Entity") {
+            imgui.Text("id: %d", c.int(selected_entity.id))
+            imgui.InputFloat2("position", &selected_entity.position)
+            imgui.InputFloat2("size", &selected_entity.size)
+
+            for flag in EntityFlag {
+                checked := flag in selected_entity.flags
+                before := checked
+                imgui.Checkbox("xxx", &checked)
+
+                if flag == .ai {
+                    log.info(before, checked)
+                }
+
+
+                if checked {
+                    selected_entity.flags += {flag}
+                } else {
+                    selected_entity.flags -= {flag}
+                }
+            }
+	    }
+    
+	    imgui.End()
     }
 }
 
@@ -1268,8 +1308,6 @@ Renderer :: struct {
     textures: [TextureHandle]Texture,
     font: Font,
 
-    micro_ui_context: mui.Context,
-
     vertex_array_id: u32,
     vertex_buffer_id: u32,
     index_buffer_id: u32,
@@ -1279,6 +1317,27 @@ Renderer :: struct {
 }
 
 in_screen_space := false
+
+init_imgui :: proc(renderer: ^Renderer) -> bool {
+    imgui.CHECKVERSION()
+	imgui.CreateContext()
+
+	io := imgui.GetIO()
+	io.ConfigFlags += {.NavEnableKeyboard, .NavEnableGamepad}
+
+	io.ConfigFlags += {.DockingEnable}
+	io.ConfigFlags += {.ViewportsEnable}
+
+	style := imgui.GetStyle()
+	style.WindowRounding = 1
+	style.Colors[imgui.Col.WindowBg].w = 1
+	imgui.StyleColorsDark()
+
+	imgui_impl_glfw.InitForOpenGL(state.window, true)
+	imgui_impl_opengl3.Init("#version 150")
+
+    return true
+}
 
 init_renderer :: proc(renderer: ^Renderer) -> bool {
     { // initialise opengl
@@ -1413,12 +1472,6 @@ init_renderer :: proc(renderer: ^Renderer) -> bool {
     renderer.atlas_texture_id = send_bitmap_to_gpu(renderer, renderer.texture_atlas.width, renderer.texture_atlas.height, renderer.texture_atlas.data, .nearest, .rgba)
     renderer.font_texture_id = send_bitmap_to_gpu(renderer, renderer.font.bitmap_width, renderer.font.bitmap_height, renderer.font.bitmap, .linear, .r)
 
-    { // micro ui
-        mui.init(&renderer.micro_ui_context)
-        renderer.micro_ui_context.text_width = mui.default_atlas_text_width
-        renderer.micro_ui_context.text_height = mui.default_atlas_text_height
-    }
-    
     return true
 }
 
@@ -1653,45 +1706,6 @@ draw_quad :: proc(position: v2, size: v2, colour: v4, highlight_colour: v4, uv: 
     quad.vertices[1].draw_type = draw_type_value
     quad.vertices[2].draw_type = draw_type_value
     quad.vertices[3].draw_type = draw_type_value
-}
-
-draw_microui :: proc() {
-    c: ^mui.Command
-
-    for mui.next_command(&state.renderer.micro_ui_context, &c) {
-        switch command in c.variant {
-        case ^mui.Command_Jump:
-        case ^mui.Command_Clip: {
-            gl.Enable(gl.SCISSOR_TEST)
-            gl.Scissor(command.rect.x, command.rect.y, command.rect.w, command.rect.h)
-        }
-        case ^mui.Command_Rect: {
-            draw_rectangle(convert_microui_rect(command.rect), convert_microui_colour(command.color))
-        }
-        case ^mui.Command_Text:
-        case ^mui.Command_Icon:
-        }
-    }
-}
-
-convert_microui_rect :: proc(rect: mui.Rect) -> (v2, v2) {
-    size        := v2{f32(rect.w), f32(rect.h)}
-    position    := v2{f32(rect.x), -(f32(rect.y) - state.height)} - size * 0.5
-
-    return position, size
-}
-
-convert_microui_colour :: proc(colour: mui.Color) -> v4 {
-    c := colour
-    if true {
-
-    }
-    return {
-        f32(colour.r) / 255,
-        f32(colour.g) / 255,
-        f32(colour.b) / 255,
-        f32(colour.a) / 255,
-    }
 }
 
 screen_position_to_world_position :: proc(screen_position: v2) -> v2 {
