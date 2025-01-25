@@ -45,6 +45,7 @@ import "imgui/imgui_impl_opengl3"
 // record:
 // start: 21/01/2025
 // total time: 16:00 hrs
+// start: 4pm
 
 // indev settings
 LOG_COLOURS         :: false
@@ -96,9 +97,7 @@ State :: struct {
     time: f64,
     dropped_abilities: bit_set[Ability],
     mode: Mode,
-    editor: struct {
-        selected_entity: int
-    },
+    editor: Editor,
     camera: struct {
         position: v2,
         // length in world units from camera centre to top edge of camera view
@@ -127,8 +126,8 @@ main :: proc() {
     context = custom_context()
     
     state = {
-        width = 1920,
-        height = 1280,
+        width = 1080,
+        height = 720,
         camera = {
             position = {0, 0},
             // length in world units from camera centre to top edge of camera view
@@ -201,7 +200,7 @@ main :: proc() {
 
 
         when ALLOW_EDITOR {
-            if state.keys[glfw.KEY_F1] == .down {
+            if state.keys[glfw.KEY_E] == .down {
                 switch state.mode {
                     case .game:     state.mode = .editor 
                     case .editor:   state.mode = .game 
@@ -295,6 +294,14 @@ Entity :: struct {
     // flag: player
     aim_direction: v2,
 
+    // flag: has_health
+    health: f32,
+    max_health: f32,
+
+    // ability: armour
+    armour: f32,
+    armour_regen_cooldown: f32,
+
     // flag: ai
     ai_type: AiType,
 
@@ -308,13 +315,6 @@ Entity :: struct {
 
     // flag: ability pickup
     pickup_type: PickupType,
-
-    // ability: armour
-    armour: f32,
-    armour_regen_cooldown: f32,
-
-    // flag: has_health
-    health: f32,
 }
 
 EntityFlag :: enum {
@@ -349,9 +349,14 @@ PickupType :: enum {
     speed
 }
 
+Prefab :: enum {
+    player,
+    nest,
+}
+
 start :: proc() {
     create_player({100, 100})
-    create_nest({-200, -200}, 5, 0.05, 200, 20)
+    create_nest({-200, -200}, 1, 1, 200, 20)
 }
 
 input :: proc() {
@@ -376,18 +381,13 @@ input :: proc() {
     }
 
     glfw.PollEvents()
-
-    // TODO: handle disconnect ??
-    if glfw.GetGamepadState(glfw.JOYSTICK_1, &state.gamepad) == 0 {
-        log.error("no gamepad detected")
-    }
 }
 
 update :: proc(delta_time: f32) {
-    if state.gamepad.axes[glfw.GAMEPAD_AXIS_LEFT_TRIGGER] > GAMEPAD_TRIGGER_DEADZONE {
-        create_speeder({-20, 0}) 
-        create_drone({20, 0}) 
-    }
+    // if state.gamepad.axes[glfw.GAMEPAD_AXIS_LEFT_TRIGGER] > GAMEPAD_TRIGGER_DEADZONE {
+        // create_speeder({-20, 0}) 
+        // create_drone({20, 0}) 
+    // }
 
     if state.mouse[glfw.MOUSE_BUTTON_LEFT] == .down {
         log.info(state.mouse_position)
@@ -602,26 +602,35 @@ update :: proc(delta_time: f32) {
         }
     }
 
-    i := 0
-    for i < state.entity_count {
-        entity := &state.entities[i]
+    // deleting work by doing a spaw remove on the entity buffer
+    // of any entity that has the to_be_deleted flag set 
+    // we only increment index of the entity we are checking 
+    // when the entity was not deleted
+    // if the entity was deleted then we want to recheck the
+    // new one at the current index - 25/01/25
+
+    index := 0
+    for index < state.entity_count {
+        entity := &state.entities[index]
     
         if .to_be_deleted in entity.flags {
-            // last value just decrement count
-            if i == state.entity_count - 1 {
-                state.entity_count -= 1
-                break
-            }
-    
-            // swap remove with last entity
-            state.entities[i] = state.entities[state.entity_count - 1]
-            state.entity_count -= 1
+            delete_entity_from_buffer(index) 
         } else {
-            // if we did remove then we want to re-check the current
-            // entity we swapped with so dont go to next index
-            i += 1
+            index += 1
         }
     }
+}
+
+delete_entity_from_buffer :: proc(index: int) {
+    // last value just decrement count
+    if index == state.entity_count - 1 {
+        state.entity_count -= 1
+        return
+    }
+    
+    // swap remove with last entity
+    state.entities[index] = state.entities[state.entity_count - 1]
+    state.entity_count -= 1
 }
 
 physics :: proc(delta_time: f32) {
@@ -757,7 +766,7 @@ draw :: proc(delta_time: f32) {
 
         if .has_health in entity.flags {
             health_bar_width := entity.size.x * 2
-            percentage_health_left := entity.health / max_health(&entity)
+            percentage_health_left := entity.health / entity.max_health 
 
             highlight_colour = mix(RED, SKY_BLUE, percentage_health_left)
         }
@@ -804,121 +813,6 @@ draw :: proc(delta_time: f32) {
     }
 }
 
-update_editor :: proc() {
-    { // camera contols
-        move_input: v2
-
-        if state.keys[glfw.KEY_A] == .pressed {
-            move_input.x -= 1
-        }
-
-        if state.keys[glfw.KEY_D] == .pressed {
-            move_input.x += 1
-        }
-
-        if state.keys[glfw.KEY_W] == .pressed {
-            move_input.y += 1
-        }
-
-        if state.keys[glfw.KEY_S] == .pressed {
-            move_input.y -= 1
-        }
-
-        if linalg.length(move_input) != 0 {
-            move_amount := move_input * EDITOR_CAMERA_MOVE_SPEED
-            state.camera.position += move_amount
-        }
-    }
-
-    { // clicking
-        if state.mouse[glfw.MOUSE_BUTTON_LEFT] == .down {
-            mouse_world_position := screen_position_to_world_position(state.mouse_position)
-            new_selected_entity := get_entity_on_position(mouse_world_position)
-            if new_selected_entity != nil {
-                state.editor.selected_entity = new_selected_entity.id
-            }
-        }
-    }
-
-    update_selected_entity: {
-        selected_entity := get_entity_with_id(state.editor.selected_entity)
-        if selected_entity == nil {
-            break update_selected_entity
-        }
-
-        move_input: v2
-
-        if state.keys[glfw.KEY_LEFT] == .pressed {
-            move_input.x -= 1
-        }
-
-        if state.keys[glfw.KEY_RIGHT] == .pressed {
-            move_input.x += 1
-        }
-
-        if state.keys[glfw.KEY_UP] == .pressed {
-            move_input.y += 1
-        }
-
-        if state.keys[glfw.KEY_DOWN] == .pressed {
-            move_input.y -= 1
-        }
-
-        if linalg.length(move_input) != 0 {
-            move_amount := move_input * EDITOR_ENTITY_MOVE_SPEED
-            selected_entity.position += move_amount
-        }
-    }
-}
-
-draw_editor :: proc() {
-    selected_entity := get_entity_with_id(state.editor.selected_entity)
-
-    if selected_entity != nil {
-        draw_rectangle(selected_entity.position, selected_entity.size * 1.5, alpha(GREEN, 0.2))
-    }
-
-    in_screen_space = true
-
-    { // mode text
-        size : f32 = 25
-        draw_text("Editor", {state.width * 0.5, state.height - size}, size, WHITE, .center)
-    }
-
-    { // imgui stuff
-        imgui_impl_opengl3.NewFrame()
-	    imgui_impl_glfw.NewFrame()
-    
-	    imgui.NewFrame() 
-	    imgui.ShowDemoWindow() 
-   
-	    if selected_entity != nil && imgui.Begin("Selected Entity") {
-            imgui.Text("id: %d", c.int(selected_entity.id))
-            imgui.InputFloat2("position", &selected_entity.position)
-            imgui.InputFloat2("size", &selected_entity.size)
-
-            for flag in EntityFlag {
-                checked := flag in selected_entity.flags
-                before := checked
-                imgui.Checkbox("xxx", &checked)
-
-                if flag == .ai {
-                    log.info(before, checked)
-                }
-
-
-                if checked {
-                    selected_entity.flags += {flag}
-                } else {
-                    selected_entity.flags -= {flag}
-                }
-            }
-	    }
-    
-	    imgui.End()
-    }
-}
-
 on_entity_killed :: proc(entity: ^Entity) {
     if .ai in entity.flags {
         assert(card(entity.abilities) == 1, "only one ability per ai")
@@ -948,16 +842,10 @@ create_entity :: proc(entity: Entity) -> ^Entity {
 }
 
 create_player :: proc(position: v2) -> ^Entity {
-    return create_entity({
-        flags = {.player, .has_health, .solid_hitbox},
-        position = position,
-        size = {40, 40},
-        mass = 200,
-        texture = .player,
-        aim_direction = {0, 1},
-        health = MAX_PLAYER_HEALTH,
-        armour = MAX_ARMOUR
-    })
+    prefab := create_entity_from_prefab(.player)
+    prefab.position = position
+
+    return create_entity(prefab)
 }
 
 create_speeder :: proc(position: v2) -> ^Entity {
@@ -972,6 +860,7 @@ create_speeder :: proc(position: v2) -> ^Entity {
         texture = .cuber,
         ai_type = type,
         health = MAX_AI_HEALTH,
+        max_health = MAX_AI_HEALTH,
     })
 }
 
@@ -987,6 +876,7 @@ create_drone :: proc(position: v2) -> ^Entity {
         texture = .drone,
         ai_type = type,
         health = MAX_AI_HEALTH,
+        max_health = MAX_AI_HEALTH,
         armour = MAX_ARMOUR
     })
 }
@@ -994,18 +884,16 @@ create_drone :: proc(position: v2) -> ^Entity {
 create_nest :: proc(position: v2, cluster_size: int, spawn_rate: f32, speeders_to_spawn: int, drones_to_spawn: int) -> ^Entity {
     total_spawns := speeders_to_spawn + drones_to_spawn
 
-    return create_entity({
-        flags = {.nest},
-        position = position,
-        size = {150, 150},
-        texture = .nest,
-        health = MAX_AI_HEALTH,
-        cluster_size = cluster_size,
-        spawn_rate = spawn_rate,
-        speeders_to_spawn = speeders_to_spawn,
-        drones_to_spawn = drones_to_spawn,
-        total_spawns = total_spawns
-    })
+    prefab := create_entity_from_prefab(.nest)
+
+    prefab.position = position
+    prefab.cluster_size = cluster_size
+    prefab.spawn_rate = spawn_rate
+    prefab.speeders_to_spawn = speeders_to_spawn
+    prefab.drones_to_spawn = drones_to_spawn
+    prefab.total_spawns = total_spawns
+
+    return create_entity(prefab)
 }
 
 create_ability_pickup :: proc(position: v2, type: PickupType) -> ^Entity {
@@ -1026,6 +914,32 @@ create_bullet :: proc(position: v2, velocity: v2) -> ^Entity {
         size = {5, 5},
         texture = .cuber
     })
+}
+
+create_entity_from_prefab :: proc(prefab: Prefab) -> Entity {
+    switch prefab {
+        case .player: {
+            return Entity {
+                flags = {.player, .has_health, .solid_hitbox},
+                size = {40, 40},
+                mass = 200,
+                texture = .player,
+                aim_direction = {0, 1},
+                health = MAX_PLAYER_HEALTH,
+                max_health = MAX_PLAYER_HEALTH,
+                armour = MAX_ARMOUR
+            }
+        }
+        case .nest: {
+            return Entity {
+                flags = {.nest},
+                size = {150, 150},
+                texture = .nest,
+            }
+        }
+    }
+
+    unreachable()
 }
 
 get_entity_with_flag :: proc(flag: EntityFlag) -> ^Entity {
@@ -1058,23 +972,6 @@ get_entity_on_position :: proc(position: v2) -> ^Entity {
     }
 
     return nil
-}
-
-// TODO: this sucks
-max_health :: proc(entity: ^Entity) -> f32 {
-    if .player in entity.flags {
-        return MAX_PLAYER_HEALTH
-    }
-
-    if .ai in entity.flags {
-        return MAX_AI_HEALTH
-    }
-
-    if .nest in entity.flags {
-        return MAX_AI_HEALTH
-    }
-
-    unreachable()
 }
 
 entity_take_damage :: proc(entity: ^Entity, damage: f32) {
@@ -1206,6 +1103,234 @@ next :: proc(iterator: ^BoxColliderIterator) -> ^Entity {
     }
 
     return nil
+}
+
+// -------------------------- @editor -----------------------
+Editor :: struct {
+    selected_entity_id: int,
+}
+
+update_editor :: proc() {
+    { // camera contols
+        move_input: v2
+
+        if state.keys[glfw.KEY_A] == .pressed {
+            move_input.x -= 1
+        }
+
+        if state.keys[glfw.KEY_D] == .pressed {
+            move_input.x += 1
+        }
+
+        if state.keys[glfw.KEY_W] == .pressed {
+            move_input.y += 1
+        }
+
+        if state.keys[glfw.KEY_S] == .pressed {
+            move_input.y -= 1
+        }
+
+        if linalg.length(move_input) != 0 {
+            move_amount := move_input * EDITOR_CAMERA_MOVE_SPEED
+            state.camera.position += move_amount
+        }
+    }
+
+    { // clicking
+        if state.mouse[glfw.MOUSE_BUTTON_LEFT] == .down {
+            mouse_world_position := screen_position_to_world_position(state.mouse_position)
+            new_selected_entity := get_entity_on_position(mouse_world_position)
+            if new_selected_entity != nil {
+                state.editor.selected_entity_id = new_selected_entity.id
+            }
+        }
+    }
+
+    update_selected_entity: {
+        selected_entity := get_entity_with_id(state.editor.selected_entity_id)
+        if selected_entity == nil {
+            break update_selected_entity
+        }
+
+        move_input: v2
+
+        if state.keys[glfw.KEY_LEFT] == .pressed {
+            move_input.x -= 1
+        }
+
+        if state.keys[glfw.KEY_RIGHT] == .pressed {
+            move_input.x += 1
+        }
+
+        if state.keys[glfw.KEY_UP] == .pressed {
+            move_input.y += 1
+        }
+
+        if state.keys[glfw.KEY_DOWN] == .pressed {
+            move_input.y -= 1
+        }
+
+        if linalg.length(move_input) != 0 {
+            move_amount := move_input * EDITOR_ENTITY_MOVE_SPEED
+            selected_entity.position += move_amount
+        }
+    }
+}
+
+draw_editor :: proc() {
+    selected_entity := get_entity_with_id(state.editor.selected_entity_id)
+    if selected_entity == nil {
+        state.editor.selected_entity_id = -1
+    }
+
+    if selected_entity != nil {
+        draw_rectangle(selected_entity.position, selected_entity.size * 1.5, alpha(GREEN, 0.2))
+    }
+
+    in_screen_space = true
+
+    { // mode text
+        size : f32 = 25
+        draw_text("Editor", {state.width * 0.5, state.height - size}, size, WHITE, .center)
+    } 
+
+    { // imgui stuff
+        imgui_impl_opengl3.NewFrame()
+	imgui_impl_glfw.NewFrame()
+    
+	imgui.NewFrame()
+        // imgui.ShowDemoWindow()
+
+	if imgui.Begin("Editor", flags = {.NoCollapse, .NoTitleBar}) {
+            if imgui.CollapsingHeader("Prefabs") {
+                for prefab in Prefab {
+                    label := fmt.tprintf("Create %v", prefab)
+                    c_label := strings.clone_to_cstring(label, context.temp_allocator)
+
+                    create_prefab := imgui.Button(c_label)
+
+                    if create_prefab {
+                        prefab_instance := create_entity_from_prefab(prefab)
+                        entity_instance := create_entity(prefab_instance)
+                        entity_instance.position = state.camera.position
+                        state.editor.selected_entity_id = entity_instance.id
+                    }
+                }
+            }
+
+            if imgui.CollapsingHeader("Entity Editor") {
+                if imgui.Button("Delete") {
+                    // do this to get an imediate deletion, setting the flag
+                    // means you need to wait for an update cycle in game
+                    for index in 0..<state.entity_count {
+                        if state.entities[index].id == selected_entity.id {
+                            delete_entity_from_buffer(index)
+                            break
+                        }
+                    }
+                }
+
+                imgui.Text("id: %d", c.int(selected_entity.id))
+                    
+                if imgui.CollapsingHeader("Flags") {
+                    for flag in EntityFlag {
+                        label := fmt.tprintf("%v", flag)
+                        c_label := strings.clone_to_cstring(label, context.temp_allocator)
+         
+                        checked := flag in selected_entity.flags
+                        imgui.Checkbox(c_label, &checked)
+         
+                        if checked {
+                            selected_entity.flags += {flag}
+                        } else {
+                            selected_entity.flags -= {flag}
+                        }
+                    }
+                }
+    
+                if imgui.CollapsingHeader("Abilities") {
+                    for ability in Ability {
+                        label := fmt.tprintf("%v", ability)
+                        c_label := strings.clone_to_cstring(label, context.temp_allocator)
+         
+                        checked := ability in selected_entity.abilities
+                        imgui.Checkbox(c_label, &checked)
+         
+                        if checked {
+                            selected_entity.abilities += {ability}
+                        } else {
+                            selected_entity.abilities -= {ability}
+                        }
+                    }
+                }
+    
+                imgui.Text("created time: %f", selected_entity.created_time)
+                imgui.InputFloat2("position", &selected_entity.position)
+                imgui.InputFloat2("size", &selected_entity.size)
+                imgui.InputFloat2("velocity", &selected_entity.velocity)
+                imgui.InputFloat("mass", &selected_entity.mass)
+                    
+                if imgui.CollapsingHeader("Texture") {
+                    current := i32(selected_entity.texture)
+                    for texture, i in TextureHandle {
+                        label := fmt.tprintf("%v", texture)
+                        c_label := strings.clone_to_cstring(label, context.temp_allocator)
+                        
+                        selected := imgui.RadioButton(c_label, i32(i) == current) 
+                        if selected {
+                            selected_entity.texture = texture
+                        }
+                    }
+                }
+    
+                imgui.InputFloat("attack cooldown", &selected_entity.attack_cooldown)
+                imgui.InputFloat2("aim direction", &selected_entity.aim_direction)
+    
+                imgui.InputFloat("health", &selected_entity.health)
+                imgui.InputFloat("max health", &selected_entity.max_health)
+    
+                imgui.InputFloat("armour", &selected_entity.armour)
+                imgui.InputFloat("armour regen cooldown", &selected_entity.armour_regen_cooldown) 
+                    
+                if imgui.CollapsingHeader("Ai type") {
+                    current := i32(selected_entity.ai_type)
+    
+                    for type, i in AiType {
+                        label := fmt.tprintf("%v", type)
+                        c_label := strings.clone_to_cstring(label, context.temp_allocator)
+    
+                        selected := imgui.RadioButton(c_label, i32(i) == current) 
+                        if selected {
+                            selected_entity.ai_type = type
+                        }
+                    }
+                }
+    
+                imgui.InputScalar("cluster size", .S64, &selected_entity.cluster_size, format = "%d")
+                imgui.InputFloat("spawn rate", &selected_entity.spawn_rate)
+                imgui.InputFloat("spawn cooldown", &selected_entity.spawn_cooldown)
+                imgui.InputScalar("speeders to spawn", .S64, &selected_entity.speeders_to_spawn, format = "%d")
+                imgui.InputScalar("drones to spawn", .S64, &selected_entity.drones_to_spawn, format = "%d")
+                imgui.InputScalar("total spawns", .S64, &selected_entity.total_spawns, format = "%d")
+    
+                if imgui.CollapsingHeader("pickup type") {
+                    current := i32(selected_entity.pickup_type)
+    
+                    for type, i in PickupType {
+                        label := fmt.tprintf("%v", type)
+                        c_label := strings.clone_to_cstring(label, context.temp_allocator)
+    
+                        selected := imgui.RadioButton(c_label, i32(i) == current) 
+                        if selected {
+                            selected_entity.pickup_type = type
+                        }
+                    }
+                }
+            }
+        }
+    
+	imgui.End()
+    }
 }
 
 // -------------------------- @renderer -----------------------
