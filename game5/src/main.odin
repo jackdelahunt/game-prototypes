@@ -820,13 +820,9 @@ draw :: proc(delta_time: f32) {
 
     { // game info 
         font_size : f32 = 15
-        text: string
-
-        text = fmt.tprintf("E: %v/%v       Q: %v/%v", state.entity_count, MAX_ENTITIES, state.renderer.quad_count, MAX_QUADS)
-        draw_text(text, {10, 10}, font_size, WHITE, .bottom_left)
 
         fps := math.trunc(1 / delta_time)
-        text = fmt.tprintf("%v", fps)
+        text := fmt.tprintf("%v", fps)
         draw_text(text, {10, state.height - font_size}, font_size, WHITE, .bottom_left)
     }
 
@@ -1321,7 +1317,32 @@ draw_editor :: proc() {
         // imgui.ShowDemoWindow()
 
 	if imgui.Begin("Inspector", &state.editor.active, flags = {.NoCollapse}) {
+            if imgui.CollapsingHeader("State") {
+                imgui.Indent()
+                defer imgui.Unindent()
+
+                imgui.Text("width: %f", state.width)
+                imgui.Text("height: %f", state.height)
+                imgui.Text("height: %f", state.height)
+                {
+                    label := fmt.tprintf("input mode: %v", state.input_mode)
+                    c_label := strings.clone_to_cstring(label, context.temp_allocator)
+                    imgui.Text(c_label)
+                }
+                imgui.Text("mouse position: %f, %f", state.mouse_position.x, state.mouse_position.y)
+                imgui.Text("time: %f", state.time)
+                imgui.InputFloat2("camera position", &state.camera.position)
+                imgui.InputFloat("orthographic size", &state.camera.orthographic_size)
+                imgui.InputFloat("near plane", &state.camera.near_plane)
+                imgui.InputFloat("far plane", &state.camera.far_plane)
+                imgui.Text("entity count: %d", state.entity_count)
+                imgui.Text("quad count: %d", state.renderer.quad_count)
+            }
+
             if imgui.CollapsingHeader("Prefabs") {
+                imgui.Indent()
+                defer imgui.Unindent()
+
                 for prefab in Prefab {
                     label := fmt.tprintf("Create %v", prefab)
                     c_label := strings.clone_to_cstring(label, context.temp_allocator)
@@ -1337,17 +1358,33 @@ draw_editor :: proc() {
                 }
             }
 
+            entity_editor:
             if imgui.CollapsingHeader("Entity Editor") {
+                imgui.Indent()
+                defer imgui.Unindent()
+
+                if selected_entity == nil {
+                    imgui.Text("No Entity selected")
+                    break entity_editor
+                }
+
+                if imgui.Button("Unselect") {
+                    state.editor.selected_entity_id = -1
+                    break entity_editor
+                }
+                imgui.SameLine()
                 if imgui.Button("Delete") {
                     // do this to get an imediate deletion, setting the flag
                     // means you need to wait for an update cycle in game
                     for index in 0..<state.entity_count {
                         if state.entities[index].id == selected_entity.id {
                             delete_entity_from_buffer(index)
-                            break
+                            break entity_editor
                         }
                     }
                 }
+
+                imgui.Separator()
 
                 imgui.Text("id: %d", c.int(selected_entity.id))
                     
@@ -1449,7 +1486,6 @@ draw_editor :: proc() {
 
 	    imgui.End()
         }
-    
     }
 }
 
