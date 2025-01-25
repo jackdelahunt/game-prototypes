@@ -224,6 +224,12 @@ main :: proc() {
         delta_time := f32(now - state.time)
         state.time = now 
 
+        when ALLOW_EDITOR {
+            imgui_impl_opengl3.NewFrame()
+	    imgui_impl_glfw.NewFrame()
+	    imgui.NewFrame()
+        }
+
         switch state.mode {
             case .game:     tick_game(delta_time)
             case .editor:   tick_editor(delta_time)
@@ -253,7 +259,8 @@ main :: proc() {
 
         state.renderer.quad_count = 0 
 
-        if state.mode == .editor {
+        when ALLOW_EDITOR {
+            imgui.EndFrame()
             imgui.Render()
 	    imgui_impl_opengl3.RenderDrawData(imgui.GetDrawData()) 
 	    backup_current_window := glfw.GetCurrentContext()
@@ -1310,12 +1317,8 @@ draw_editor :: proc() {
         draw_text("Editor", {state.width * 0.5, state.height - size}, size, WHITE, .center)
     } 
 
-    { // imgui stuff
-        imgui_impl_opengl3.NewFrame()
-	imgui_impl_glfw.NewFrame()
-	imgui.NewFrame()
-
-        imgui.ShowDemoWindow()
+    { // inspector imgui window
+        // imgui.ShowDemoWindow()
 
 	if imgui.Begin("Inspector", &state.editor.active, flags = {.NoCollapse}) {
             if imgui.CollapsingHeader("Prefabs") {
@@ -1443,10 +1446,10 @@ draw_editor :: proc() {
                     }
                 }
             }
+
+	    imgui.End()
         }
     
-	imgui.End()
-        imgui.EndFrame()
     }
 }
 
