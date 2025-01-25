@@ -19,6 +19,7 @@ import gl "vendor:OpenGL"
 import stbi "vendor:stb/image"
 import stbtt "vendor:stb/truetype"
 import stbrp "vendor:stb/rect_pack"
+import mui "vendor:microui"
 
 // TODO:
 // nest to spawn enemies
@@ -38,8 +39,7 @@ import stbrp "vendor:stb/rect_pack"
 
 // record:
 // start: 21/01/2025
-// total time: 12:30 hrs
-// start : 23:30
+// total time: 15:00 hrs
 
 // indev settings
 LOG_COLOURS         :: false
@@ -49,7 +49,7 @@ V_SYNC              :: true
 DRAW_ARMOUR_BUBBLE  :: true
 NO_ENEMY_ATTACK     :: true
 CAN_RELOAD_TEXTURES :: true
-
+ALLOW_EDITOR             :: true
 EDITOR_ENTITY_MOVE_SPEED :: 2
 EDITOR_CAMERA_MOVE_SPEED :: 2
 
@@ -188,10 +188,13 @@ main :: proc() {
             glfw.SetWindowShouldClose(state.window, true)
         }
 
-        if state.keys[glfw.KEY_F1] == .down {
-            switch state.mode {
-                case .game:     state.mode = .editor 
-                case .editor:   state.mode = .game 
+
+        when ALLOW_EDITOR {
+            if state.keys[glfw.KEY_F1] == .down {
+                switch state.mode {
+                    case .game:     state.mode = .editor 
+                    case .editor:   state.mode = .game 
+                }
             }
         }
 
@@ -250,6 +253,7 @@ tick_editor :: proc(delta_time: f32) {
     in_screen_space = false
 
     draw_editor()
+    draw_microui()
 }
 
 // -------------------------- @game -----------------------
@@ -857,6 +861,18 @@ draw_editor :: proc() {
 
     in_screen_space = true
 
+    { // micro ui stuff
+        mctx := &state.renderer.micro_ui_context
+
+        mui.begin(mctx)
+
+        if mui.begin_window(mctx, "Window", mui.Rect{400, 400, 300, 400}) {
+            mui.end_window(mctx)
+        }
+
+        mui.end(mctx)
+    }
+
     { // mode text
         size : f32 = 25
         draw_text("Editor", {state.width * 0.5, state.height - size}, size, WHITE, .center)
@@ -1251,7 +1267,9 @@ Renderer :: struct {
     texture_atlas: Atlas,
     textures: [TextureHandle]Texture,
     font: Font,
-     
+
+    micro_ui_context: mui.Context,
+
     vertex_array_id: u32,
     vertex_buffer_id: u32,
     index_buffer_id: u32,
@@ -1394,6 +1412,12 @@ init_renderer :: proc(renderer: ^Renderer) -> bool {
 
     renderer.atlas_texture_id = send_bitmap_to_gpu(renderer, renderer.texture_atlas.width, renderer.texture_atlas.height, renderer.texture_atlas.data, .nearest, .rgba)
     renderer.font_texture_id = send_bitmap_to_gpu(renderer, renderer.font.bitmap_width, renderer.font.bitmap_height, renderer.font.bitmap, .linear, .r)
+
+    { // micro ui
+        mui.init(&renderer.micro_ui_context)
+        renderer.micro_ui_context.text_width = mui.default_atlas_text_width
+        renderer.micro_ui_context.text_height = mui.default_atlas_text_height
+    }
     
     return true
 }
@@ -1449,6 +1473,14 @@ reload_textures :: proc(renderer: ^Renderer) -> bool {
 
     return true 
 }
+
+// microui_text_width_callback :: proc(font: mui.Font, str: string) -> i32 {
+    // return 100
+// }
+// 
+// microui_text_height_callback :: proc(font: mui.Font) -> i32 {
+    // return 10
+// }
 
 draw_rectangle :: proc(position: v2, size: v2, colour: v4) {
     draw_quad(position, size, colour, {}, DEFAULT_UV, .rectangle)
@@ -1621,6 +1653,45 @@ draw_quad :: proc(position: v2, size: v2, colour: v4, highlight_colour: v4, uv: 
     quad.vertices[1].draw_type = draw_type_value
     quad.vertices[2].draw_type = draw_type_value
     quad.vertices[3].draw_type = draw_type_value
+}
+
+draw_microui :: proc() {
+    c: ^mui.Command
+
+    for mui.next_command(&state.renderer.micro_ui_context, &c) {
+        switch command in c.variant {
+        case ^mui.Command_Jump:
+        case ^mui.Command_Clip: {
+            gl.Enable(gl.SCISSOR_TEST)
+            gl.Scissor(command.rect.x, command.rect.y, command.rect.w, command.rect.h)
+        }
+        case ^mui.Command_Rect: {
+            draw_rectangle(convert_microui_rect(command.rect), convert_microui_colour(command.color))
+        }
+        case ^mui.Command_Text:
+        case ^mui.Command_Icon:
+        }
+    }
+}
+
+convert_microui_rect :: proc(rect: mui.Rect) -> (v2, v2) {
+    size        := v2{f32(rect.w), f32(rect.h)}
+    position    := v2{f32(rect.x), -(f32(rect.y) - state.height)} - size * 0.5
+
+    return position, size
+}
+
+convert_microui_colour :: proc(colour: mui.Color) -> v4 {
+    c := colour
+    if true {
+
+    }
+    return {
+        f32(colour.r) / 255,
+        f32(colour.g) / 255,
+        f32(colour.b) / 255,
+        f32(colour.a) / 255,
+    }
 }
 
 screen_position_to_world_position :: proc(screen_position: v2) -> v2 {
@@ -1997,7 +2068,7 @@ glfw_key_callback :: proc "c" (window: glfw.WindowHandle, key: c.int, scancode: 
         case glfw.RELEASE:  state.keys[key] = .up
         case glfw.PRESS:    state.keys[key] = .down
         case glfw.REPEAT: 
-    }
+    } 
 }
 
 glfw_mouse_button_callback :: proc "c" (window: glfw.WindowHandle, button: c.int, action: c.int, mods: c.int) {
