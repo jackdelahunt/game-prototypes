@@ -13,6 +13,7 @@ import "core:c"
 import "core:mem"
 import "core:math"
 import "core:math/rand"
+import "base:intrinsics"
 
 import "vendor:glfw"
 import gl "vendor:OpenGL"
@@ -44,8 +45,8 @@ import "imgui/imgui_impl_opengl3"
 
 // record:
 // start: 21/01/2025
-// total time: 16:00 hrs
-// start: 4pm
+// total time: 18:00 hrs
+// start: 6:30pm
 
 // indev settings
 LOG_COLOURS         :: false
@@ -80,8 +81,9 @@ ARMOUR_REGEN_RATE       :: 25
 ARMOUR_REGEN_COOLDOWN   :: 5
 
 // player settings
-GAMEPAD_STICK_DEADZONE      :: 0.15
-GAMEPAD_TRIGGER_DEADZONE    :: -0.6 // -1 is no input
+AIM_DEADZONE        :: 0.15
+MOVEMENT_DEADZONE   :: 0.15
+SHOOTING_DEADZONE   :: 0.3
 
 // -------------------------- @global ---------------------------
 state: State
@@ -90,6 +92,7 @@ State :: struct {
     width: f32,
     height: f32,
     window: glfw.WindowHandle,
+    input_mode: InputMode,
     keys: [348]InputState,
     mouse: [8]InputState,
     mouse_position: v2,
@@ -116,6 +119,11 @@ Mode :: enum {
     editor
 }
 
+InputMode :: enum {
+    mouse_and_keyboard,
+    gamepad,
+}
+
 InputState :: enum {
     up,
     down,
@@ -126,8 +134,8 @@ main :: proc() {
     context = custom_context()
     
     state = {
-        width = 1080,
-        height = 720,
+        width = 1280,
+        height = 900,
         camera = {
             position = {0, 0},
             // length in world units from camera centre to top edge of camera view
@@ -200,12 +208,16 @@ main :: proc() {
 
 
         when ALLOW_EDITOR {
-            if state.keys[glfw.KEY_E] == .down {
+            if state.keys[glfw.KEY_F1] == .down {
                 switch state.mode {
                     case .game:     state.mode = .editor 
                     case .editor:   state.mode = .game 
                 }
             }
+        }
+
+        if state.keys[glfw.KEY_F2] == .down {
+            state.input_mode = next_enum_value(state.input_mode)
         }
 
         now := glfw.GetTime()
@@ -243,12 +255,11 @@ main :: proc() {
 
         if state.mode == .editor {
             imgui.Render()
-		    imgui_impl_opengl3.RenderDrawData(imgui.GetDrawData())
-     
-		    backup_current_window := glfw.GetCurrentContext()
-		    imgui.UpdatePlatformWindows()
-		    imgui.RenderPlatformWindowsDefault()
-		    glfw.MakeContextCurrent(backup_current_window)
+	    imgui_impl_opengl3.RenderDrawData(imgui.GetDrawData()) 
+	    backup_current_window := glfw.GetCurrentContext()
+	    imgui.UpdatePlatformWindows()
+	    imgui.RenderPlatformWindowsDefault()
+	    glfw.MakeContextCurrent(backup_current_window)
         }
 
         glfw.SwapBuffers(state.window)
@@ -259,6 +270,8 @@ main :: proc() {
 }
 
 tick_game :: proc(delta_time: f32) {
+    state.editor.active = false
+
     input()
     update(delta_time)
     physics(delta_time)
@@ -266,6 +279,8 @@ tick_game :: proc(delta_time: f32) {
 }
 
 tick_editor :: proc(delta_time: f32) {
+    state.editor.active = true
+
     input()
     update_editor()
     draw(delta_time)
@@ -381,19 +396,19 @@ input :: proc() {
     }
 
     glfw.PollEvents()
+
+    if glfw.GetGamepadState(glfw.JOYSTICK_1, &state.gamepad) == 0 {
+        if state.input_mode == .gamepad {
+            log.error("in gamepad mode but not gamepad detected")
+        }
+    }
 }
 
 update :: proc(delta_time: f32) {
     // if state.gamepad.axes[glfw.GAMEPAD_AXIS_LEFT_TRIGGER] > GAMEPAD_TRIGGER_DEADZONE {
         // create_speeder({-20, 0}) 
         // create_drone({20, 0}) 
-    // }
-
-    if state.mouse[glfw.MOUSE_BUTTON_LEFT] == .down {
-        log.info(state.mouse_position)
-        position := screen_position_to_world_position(state.mouse_position)
-        create_bullet(position, {})
-    }
+    // } 
 
     when CAN_RELOAD_TEXTURES {
         if state.keys[glfw.KEY_R] == .down {
@@ -428,14 +443,11 @@ update :: proc(delta_time: f32) {
             }
 
             { // set aim
-                aim_vector := v2 {
-                    state.gamepad.axes[glfw.GAMEPAD_AXIS_RIGHT_X],
-                    -state.gamepad.axes[glfw.GAMEPAD_AXIS_RIGHT_Y]
-                }
+                aim_vector := get_aim_input(entity.position)
 
                 input_length := linalg.length(aim_vector)
     
-                if input_length > GAMEPAD_STICK_DEADZONE {
+                if input_length > AIM_DEADZONE {
                     entity.aim_direction = linalg.normalize(aim_vector)
                 }
             }
@@ -443,14 +455,10 @@ update :: proc(delta_time: f32) {
             { // movement
                 entity.velocity = 0
     
-                input_vector := v2 {
-                    state.gamepad.axes[glfw.GAMEPAD_AXIS_LEFT_X],
-                    -state.gamepad.axes[glfw.GAMEPAD_AXIS_LEFT_Y] // inverted for some reason ??
-                }
-    
+                input_vector := get_movement_input()
                 input_length := linalg.length(input_vector)
     
-                if input_length > GAMEPAD_STICK_DEADZONE {
+                if input_length > MOVEMENT_DEADZONE {
                     if input_length > 1 {
                         input_vector = linalg.normalize(input_vector)
                     }
@@ -460,7 +468,9 @@ update :: proc(delta_time: f32) {
             }
 
             shooting: { 
-                if state.gamepad.axes[glfw.GAMEPAD_AXIS_RIGHT_TRIGGER] < GAMEPAD_TRIGGER_DEADZONE {
+                input := get_shooting_input()
+
+                if input < SHOOTING_DEADZONE {
                     break shooting
                 }
 
@@ -472,23 +482,23 @@ update :: proc(delta_time: f32) {
                 create_bullet(entity.position, entity.aim_direction * BULLET_SPEED)
             }
 
-            interact: {
-                if state.gamepad.buttons[glfw.GAMEPAD_BUTTON_X] != glfw.PRESS {
-                    break interact
-                }
+            { // interact
+                input := get_interact_input()
 
-                for &other in state.entities[0:state.entity_count] {
-                    if !(.interactable in other.flags) {
-                        continue 
-                    }
+                if input == .down {
+                    for &other in state.entities[0:state.entity_count] {
+                        if !(.interactable in other.flags) {
+                            continue 
+                        }
 
-                    assert(.ability_pickup in other.flags, "only interactables are pickups right now")
+                        assert(.ability_pickup in other.flags, "only interactables are pickups right now")
 
-                    if linalg.distance(entity.position, other.position) < PLAYER_REACH_SIZE {
-                        ability := ability_from_pickup_type(other.pickup_type)
-
-                        entity.abilities += {ability}
-                        other.flags += {.to_be_deleted}
+                        if linalg.distance(entity.position, other.position) < PLAYER_REACH_SIZE {
+                            ability := ability_from_pickup_type(other.pickup_type)
+    
+                            entity.abilities += {ability}
+                            other.flags += {.to_be_deleted}
+                        }
                     }
                 }
             }
@@ -802,14 +812,20 @@ draw :: proc(delta_time: f32) {
     in_screen_space = true 
 
     { // game info 
-        text := fmt.tprintf("E: %v/%v       Q: %v/%v", state.entity_count, MAX_ENTITIES, state.renderer.quad_count, MAX_QUADS)
-        draw_text(text, {10, 10}, 30, WHITE, .bottom_left)
+        font_size : f32 = 15
+        text: string
+
+        text = fmt.tprintf("E: %v/%v       Q: %v/%v", state.entity_count, MAX_ENTITIES, state.renderer.quad_count, MAX_QUADS)
+        draw_text(text, {10, 10}, font_size, WHITE, .bottom_left)
+
+        fps := math.trunc(1 / delta_time)
+        text = fmt.tprintf("%v", fps)
+        draw_text(text, {10, state.height - font_size}, font_size, WHITE, .bottom_left)
     }
 
-    { // fps
-        fps := math.trunc(1 / delta_time)
-        text := fmt.tprintf("%v", fps)
-        draw_text(text, {10, state.height - 35}, 30, WHITE, .bottom_left)
+    { // input mode
+        size : f32 = 20
+        draw_text(fmt.tprint(state.input_mode), {state.width * 0.5, size}, size, WHITE, .center)
     }
 }
 
@@ -1029,6 +1045,105 @@ ai_spawn_chance :: proc(type: AiType) -> f32 {
     unreachable()
 }
 
+get_aim_input :: proc(relative_position: v2) -> v2 {
+    switch state.input_mode {
+        case .gamepad: {
+            return {
+                state.gamepad.axes[glfw.GAMEPAD_AXIS_RIGHT_X],
+                -state.gamepad.axes[glfw.GAMEPAD_AXIS_RIGHT_Y]
+            }
+        }
+        case .mouse_and_keyboard: {
+            mouse_world_position := screen_position_to_world_position(state.mouse_position)
+            aim_vector := mouse_world_position - relative_position
+            
+            // get NaN if the length is 0
+            if linalg.length(aim_vector) != 0 {
+                return linalg.normalize(aim_vector)
+            } else {
+                return {}
+            }
+        }
+    }
+
+    unreachable()
+}
+
+get_movement_input :: proc() -> v2 {
+    switch state.input_mode {
+        case .gamepad: {
+            return {
+                state.gamepad.axes[glfw.GAMEPAD_AXIS_LEFT_X],
+                -state.gamepad.axes[glfw.GAMEPAD_AXIS_LEFT_Y] // inverted for some reason ??
+            }
+        }
+        case .mouse_and_keyboard: {
+            input: v2
+
+            if state.keys[glfw.KEY_A] == .pressed {
+                input.x -= 1
+            }
+            
+            if state.keys[glfw.KEY_D] == .pressed {
+                input.x += 1
+            }
+
+            if state.keys[glfw.KEY_W] == .pressed {
+                input.y += 1
+            }
+            
+            if state.keys[glfw.KEY_S] == .pressed {
+                input.y -= 1
+            }
+
+            return input
+        }
+    }
+
+    unreachable()
+}
+
+get_shooting_input :: proc() -> f32 {
+    switch state.input_mode {
+        case .gamepad: {
+            // trigger input is from -1 to -1, -1 being no input
+            // and 1 being fulling pressed, need to convert this to 0 -> 1
+            raw_trigger_input := state.gamepad.axes[glfw.GAMEPAD_AXIS_RIGHT_TRIGGER]
+            return (raw_trigger_input + 1) * 0.5
+        }
+        case .mouse_and_keyboard: {
+            if state.mouse[glfw.MOUSE_BUTTON_LEFT] == .pressed {
+                return 1
+            } else {
+                return 0 
+            }
+        }
+    }
+
+    unreachable()
+}
+
+get_interact_input :: proc() -> InputState {
+    switch state.input_mode {
+        case .gamepad: {
+            // returning "down" which normally means just pressing once
+            // but checking for press, need to track state of gamepad button
+            // presses the same way we do for keys but this is fine for now
+            // - 25/01/25
+            if state.gamepad.buttons[glfw.GAMEPAD_BUTTON_X] == glfw.PRESS {
+                return .down
+            }
+
+            return .up 
+        }
+        case .mouse_and_keyboard: {
+            return state.keys[glfw.KEY_E] 
+        }
+    }
+
+    unreachable()
+}
+
 // returns overlap, distance and if collided 
 aabb :: proc(position_a: v2, size_a: v2, position_b: v2, size_b: v2) -> (v2, v2, bool) {
     distance := position_b - position_a
@@ -1107,6 +1222,7 @@ next :: proc(iterator: ^BoxColliderIterator) -> ^Entity {
 
 // -------------------------- @editor -----------------------
 Editor :: struct {
+    active: bool,
     selected_entity_id: int,
 }
 
@@ -1197,11 +1313,11 @@ draw_editor :: proc() {
     { // imgui stuff
         imgui_impl_opengl3.NewFrame()
 	imgui_impl_glfw.NewFrame()
-    
 	imgui.NewFrame()
-        // imgui.ShowDemoWindow()
 
-	if imgui.Begin("Editor", flags = {.NoCollapse, .NoTitleBar}) {
+        imgui.ShowDemoWindow()
+
+	if imgui.Begin("Inspector", &state.editor.active, flags = {.NoCollapse}) {
             if imgui.CollapsingHeader("Prefabs") {
                 for prefab in Prefab {
                     label := fmt.tprintf("Create %v", prefab)
@@ -1330,6 +1446,7 @@ draw_editor :: proc() {
         }
     
 	imgui.End()
+        imgui.EndFrame()
     }
 }
 
@@ -1456,7 +1573,7 @@ init_imgui :: proc(renderer: ^Renderer) -> bool {
 	style := imgui.GetStyle()
 	style.WindowRounding = 1
 	style.Colors[imgui.Col.WindowBg].w = 1
-	imgui.StyleColorsDark()
+	imgui.StyleColorsLight()
 
 	imgui_impl_glfw.InitForOpenGL(state.window, true)
 	imgui_impl_opengl3.Init("#version 150")
@@ -2233,6 +2350,19 @@ glfw_size_callback :: proc "c" (window: glfw.WindowHandle, width: c.int, height:
 }
 
 // -------------------------- @random -------------------------
+// Warning: assumes enum values are not overwritten
+next_enum_value :: proc(t: $T) -> T 
+    where intrinsics.type_is_enum(T)
+{
+    next_index := int(t) + 1
+
+    if next_index >= len(T) {
+        next_index = 0
+    }
+
+    return T(next_index)
+}
+
 custom_context :: proc() -> runtime.Context {
     c := runtime.default_context()
 
