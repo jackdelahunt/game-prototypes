@@ -50,6 +50,9 @@ DRAW_ARMOUR_BUBBLE  :: true
 NO_ENEMY_ATTACK     :: true
 CAN_RELOAD_TEXTURES :: true
 
+EDITOR_ENTITY_MOVE_SPEED :: 2
+EDITOR_CAMERA_MOVE_SPEED :: 2
+
 // internal settings
 MAX_ENTITIES :: 5_000
 
@@ -82,9 +85,15 @@ State :: struct {
     height: f32,
     window: glfw.WindowHandle,
     keys: [348]InputState,
+    mouse: [8]InputState,
+    mouse_position: v2,
     gamepad: glfw.GamepadState,
     time: f64,
     dropped_abilities: bit_set[Ability],
+    mode: Mode,
+    editor: struct {
+        selected_entity: int
+    },
     camera: struct {
         position: v2,
         // length in world units from camera centre to top edge of camera view
@@ -98,6 +107,11 @@ State :: struct {
     entity_count: int,
 }
 
+Mode :: enum {
+    game,
+    editor
+}
+
 InputState :: enum {
     up,
     down,
@@ -108,8 +122,8 @@ main :: proc() {
     context = custom_context()
     
     state = {
-        width = 1440,
-        height = 1080,
+        width = 1920,
+        height = 1280,
         camera = {
             position = {0, 0},
             // length in world units from camera centre to top edge of camera view
@@ -118,6 +132,7 @@ main :: proc() {
             near_plane = 0.01,
             far_plane = 100
         },
+        mode = .game,
         renderer = {
             quads = make([]Quad, MAX_QUADS)
         },
@@ -173,14 +188,21 @@ main :: proc() {
             glfw.SetWindowShouldClose(state.window, true)
         }
 
+        if state.keys[glfw.KEY_F1] == .down {
+            switch state.mode {
+                case .game:     state.mode = .editor 
+                case .editor:   state.mode = .game 
+            }
+        }
+
         now := glfw.GetTime()
         delta_time := f32(now - state.time)
         state.time = now 
 
-        input()
-        update(delta_time)
-        physics(delta_time)
-        draw(delta_time)
+        switch state.mode {
+            case .game:     tick_game(delta_time)
+            case .editor:   tick_editor(delta_time)
+        }
 
         in_screen_space = false
 
@@ -213,9 +235,27 @@ main :: proc() {
     glfw.Terminate()
 }
 
+tick_game :: proc(delta_time: f32) {
+    input()
+    update(delta_time)
+    physics(delta_time)
+    draw(delta_time)
+}
+
+tick_editor :: proc(delta_time: f32) {
+    input()
+    update_editor()
+    draw(delta_time)
+
+    in_screen_space = false
+
+    draw_editor()
+}
+
 // -------------------------- @game -----------------------
 Entity :: struct {
     // meta
+    id: int,
     flags: bit_set[EntityFlag],
     abilities: bit_set[Ability],
     created_time: f64,
@@ -305,6 +345,12 @@ input :: proc() {
         }
     }
 
+    for &input in state.mouse {
+        if input == .down {
+            input = .pressed
+        }
+    }
+
     glfw.PollEvents()
 
     // TODO: handle disconnect ??
@@ -317,6 +363,12 @@ update :: proc(delta_time: f32) {
     if state.gamepad.axes[glfw.GAMEPAD_AXIS_LEFT_TRIGGER] > GAMEPAD_TRIGGER_DEADZONE {
         create_speeder({-20, 0}) 
         create_drone({20, 0}) 
+    }
+
+    if state.mouse[glfw.MOUSE_BUTTON_LEFT] == .down {
+        log.info(state.mouse_position)
+        position := screen_position_to_world_position(state.mouse_position)
+        create_bullet(position, {})
     }
 
     when CAN_RELOAD_TEXTURES {
@@ -714,7 +766,7 @@ draw :: proc(delta_time: f32) {
         draw_texture(entity.texture, entity.position, entity.size, base_colour, highlight_colour)
     } 
 
-    in_screen_space = true
+    in_screen_space = true 
 
     { // game info 
         text := fmt.tprintf("E: %v/%v       Q: %v/%v", state.entity_count, MAX_ENTITIES, state.renderer.quad_count, MAX_QUADS)
@@ -725,6 +777,89 @@ draw :: proc(delta_time: f32) {
         fps := math.trunc(1 / delta_time)
         text := fmt.tprintf("%v", fps)
         draw_text(text, {10, state.height - 35}, 30, WHITE, .bottom_left)
+    }
+}
+
+update_editor :: proc() {
+    { // camera contols
+        move_input: v2
+
+        if state.keys[glfw.KEY_A] == .pressed {
+            move_input.x -= 1
+        }
+
+        if state.keys[glfw.KEY_D] == .pressed {
+            move_input.x += 1
+        }
+
+        if state.keys[glfw.KEY_W] == .pressed {
+            move_input.y += 1
+        }
+
+        if state.keys[glfw.KEY_S] == .pressed {
+            move_input.y -= 1
+        }
+
+        if linalg.length(move_input) != 0 {
+            move_amount := move_input * EDITOR_CAMERA_MOVE_SPEED
+            state.camera.position += move_amount
+        }
+    }
+
+    { // clicking
+        if state.mouse[glfw.MOUSE_BUTTON_LEFT] == .down {
+            mouse_world_position := screen_position_to_world_position(state.mouse_position)
+            new_selected_entity := get_entity_on_position(mouse_world_position)
+            if new_selected_entity != nil {
+                state.editor.selected_entity = new_selected_entity.id
+            }
+        }
+    }
+
+    update_selected_entity: {
+        selected_entity := get_entity_with_id(state.editor.selected_entity)
+        if selected_entity == nil {
+            break update_selected_entity
+        }
+
+        move_input: v2
+
+        if state.keys[glfw.KEY_LEFT] == .pressed {
+            move_input.x -= 1
+        }
+
+        if state.keys[glfw.KEY_RIGHT] == .pressed {
+            move_input.x += 1
+        }
+
+        if state.keys[glfw.KEY_UP] == .pressed {
+            move_input.y += 1
+        }
+
+        if state.keys[glfw.KEY_DOWN] == .pressed {
+            move_input.y -= 1
+        }
+
+        if linalg.length(move_input) != 0 {
+            move_amount := move_input * EDITOR_ENTITY_MOVE_SPEED
+            selected_entity.position += move_amount
+        }
+    }
+}
+
+draw_editor :: proc() {
+    { // selected entity box
+        entity := get_entity_with_id(state.editor.selected_entity)
+        if entity != nil {
+            draw_rectangle(entity.position, entity.size * 1.5, alpha(GREEN, 0.2))
+        }
+    }
+
+    in_screen_space = true
+
+    { // mode text
+        size : f32 = 25
+        draw_text("Editor", {state.width * 0.5, state.height - size}, size, WHITE, .center)
     }
 }
 
@@ -741,12 +876,17 @@ on_entity_killed :: proc(entity: ^Entity) {
 }
 
 create_entity :: proc(entity: Entity) -> ^Entity {
+    @static id := 0
+
     ptr := &state.entities[state.entity_count]
     state.entity_count += 1
 
     ptr^ = entity
 
+    ptr.id = id
     ptr.created_time = state.time
+
+    id += 1
 
     return ptr
 }
@@ -835,6 +975,28 @@ create_bullet :: proc(position: v2, velocity: v2) -> ^Entity {
 get_entity_with_flag :: proc(flag: EntityFlag) -> ^Entity {
     for &entity in state.entities[0:state.entity_count] {
         if flag in entity.flags {
+            return &entity
+        }
+    }
+
+    return nil
+}
+
+get_entity_with_id :: proc(id: int) -> ^Entity {
+    for &entity in state.entities[0:state.entity_count] {
+        if entity.id == id {
+            return &entity
+        }
+    }
+
+    return nil
+}
+
+// return an entity that is intersecting with this position WARNING SLOW
+get_entity_on_position :: proc(position: v2) -> ^Entity {
+    for &entity in state.entities[0:state.entity_count] {
+        collided := aabb_collided(position, {1, 1}, entity.position, entity.size)
+        if collided {
             return &entity
         }
     }
@@ -1461,6 +1623,18 @@ draw_quad :: proc(position: v2, size: v2, colour: v4, highlight_colour: v4, uv: 
     quad.vertices[3].draw_type = draw_type_value
 }
 
+screen_position_to_world_position :: proc(screen_position: v2) -> v2 {
+    ndc_vec_3 := screen_position_to_ndc({screen_position.x, screen_position.y, state.camera.near_plane})
+    ndc_position := v4{ndc_vec_3.x, ndc_vec_3.y, ndc_vec_3.z, 1}
+    aspect_ratio := state.width / state.height
+
+    inverse_vp := linalg.inverse(get_projection_matrix() *  get_view_matrix())
+    world_position := inverse_vp * ndc_position
+    world_position /= world_position.w
+
+    return {world_position.x, world_position.y}
+}
+
 screen_position_to_ndc :: proc(position: v3) -> v3 {
     // the z co-ordinate is not the same in every graphics api
     // this is currently assuming d3d so the z value is normalised
@@ -1560,10 +1734,10 @@ build_texture_atlas :: proc(renderer: ^Renderer) -> bool {
     { // fill in default atlas data 
         i: int
         for i < ATLAS_BYTE_SIZE {
-            atlas_data[i]       = 255 // r
-            atlas_data[i + 1]   = 0   // g
-            atlas_data[i + 2]   = 255 // b
-            atlas_data[i + 3]   = 255 // a
+            atlas_data[i]       = 0     // r
+            atlas_data[i + 1]   = 255   // g
+            atlas_data[i + 2]   = 0     // b
+            atlas_data[i + 3]   = 255   // a
     
             i += 4
         }
@@ -1805,6 +1979,8 @@ create_window :: proc(width: f32, height: f32, title: cstring) -> (glfw.WindowHa
     glfw.SwapInterval(1 if V_SYNC else 0)
     glfw.SetErrorCallback(glfw_error_callback)
     glfw.SetKeyCallback(window, glfw_key_callback)
+    glfw.SetMouseButtonCallback(window, glfw_mouse_button_callback)
+    glfw.SetCursorPosCallback(window, glfw_mouse_move_callback)
     glfw.SetFramebufferSizeCallback(window, glfw_size_callback)
 
     return window, true
@@ -1817,13 +1993,27 @@ glfw_error_callback :: proc "c" (error: c.int, description: cstring) {
 
 glfw_key_callback :: proc "c" (window: glfw.WindowHandle, key: c.int, scancode: c.int, action: c.int, mods: c.int) {
     // https://www.glfw.org/docs/latest/input_guide.html
-    current_key := &state.keys[key]
-
     switch action {
-        case glfw.RELEASE:  current_key^ = .up
-        case glfw.PRESS:    current_key^ = .down
+        case glfw.RELEASE:  state.keys[key] = .up
+        case glfw.PRESS:    state.keys[key] = .down
         case glfw.REPEAT: 
     }
+}
+
+glfw_mouse_button_callback :: proc "c" (window: glfw.WindowHandle, button: c.int, action: c.int, mods: c.int) {
+    // https://www.glfw.org/docs/latest/input_guide.html
+    switch action {
+        case glfw.RELEASE:  state.mouse[button] = .up
+        case glfw.PRESS:    state.mouse[button] = .down
+        case glfw.REPEAT: 
+    }
+}
+
+glfw_mouse_move_callback :: proc "c" (window: glfw.WindowHandle, x: f64, y: f64) {
+    // glfw thinks 0,0 is top left, this translates it to bottom left
+    adjusted_y := -(f32(y) - state.height)
+
+    state.mouse_position = {f32(x), adjusted_y}
 }
 
 glfw_size_callback :: proc "c" (window: glfw.WindowHandle, width: c.int, height: c.int) {
