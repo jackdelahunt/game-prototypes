@@ -1,4 +1,4 @@
-package src
+package srcmain
 
 import "core:fmt"
 import "base:runtime"
@@ -46,6 +46,7 @@ import json "json"
 // record:
 // start: 21/01/2025
 // total time: 26:00 hrs
+// 4:30
 
 // controls
 // developer:
@@ -523,9 +524,12 @@ PickupType :: enum {
 Prefab :: enum {
     player,
     nest,
+    pickup,
     brick_wall,
     corner_wall,
-    pickup
+    brick_wall_vertical,
+    brick_wall_corner_left,
+    brick_wall_corner_right,
 }
 
 start :: proc() {
@@ -1097,6 +1101,14 @@ create_entity_from_prefab :: proc(prefab: Prefab) -> Entity {
                 texture = .nest,
             }
         }
+        case .pickup: {
+            return Entity {
+                flags = {.interactable, .ability_pickup},
+                size = {30, 30},
+                pickup_type = PickupType(0),
+                texture = .star,
+            }
+        }
         case .brick_wall: {
             return Entity {
                 flags = {.static_hitbox},
@@ -1111,12 +1123,25 @@ create_entity_from_prefab :: proc(prefab: Prefab) -> Entity {
                 texture = .corner_wall,
             }
         }
-        case .pickup: {
+        case .brick_wall_vertical: {
             return Entity {
-                flags = {.interactable, .ability_pickup},
-                size = {30, 30},
-                pickup_type = PickupType(0),
-                texture = .star,
+                flags = {.static_hitbox},
+                size = {50, 100},
+                texture = .brick_wall_vertical,
+            }
+        }
+        case .brick_wall_corner_left: {
+            return Entity {
+                flags = {.static_hitbox},
+                size = {100, 100},
+                texture = .brick_wall_corner_left,
+            }
+        }
+        case .brick_wall_corner_right: {
+            return Entity {
+                flags = {.static_hitbox},
+                size = {100, 100},
+                texture = .brick_wall_corner_right,
             }
         }
     }
@@ -1392,6 +1417,7 @@ Editor :: struct {
     use_grid: bool,
     grid_size: v2,
     camera_move_speed: f32,
+    entity_move_speed: f32,
     selected_entity_id: int,
 }
 
@@ -1468,7 +1494,7 @@ update_editor :: proc() {
                     grid_index += move_input
                     selected_entity.position = grid_index * state.editor.grid_size
                 } else {
-                    move_amount := move_input * EDITOR_ENTITY_MOVE_SPEED
+                    move_amount := move_input * state.editor.entity_move_speed
                     selected_entity.position += move_amount
                 }
             }
@@ -1581,6 +1607,7 @@ editor_ui :: proc() {
                 }
 
                 imgui.SliderFloat("camera speed", &state.editor.camera_move_speed, 0, 15)
+                imgui.SliderFloat("entity speed", &state.editor.entity_move_speed, 0, 15)
             }
 
             if imgui.CollapsingHeader("State") {
@@ -1819,6 +1846,9 @@ TextureHandle :: enum {
     nest,
     brick_wall,
     corner_wall,
+    brick_wall_vertical,
+    brick_wall_corner_left,
+    brick_wall_corner_right,
 }
 
 Texture :: struct {
@@ -2490,6 +2520,12 @@ get_texture_name :: proc(texture: TextureHandle) -> string {
             return "brick_wall.png"
         case .corner_wall:
             return "corner_wall.png"
+        case .brick_wall_vertical:
+            return "brick_wall_vertical.png"
+        case .brick_wall_corner_left:
+            return "brick_wall_corner_left.png"
+        case .brick_wall_corner_right:
+            return "brick_wall_corner_right.png"
     }
 
     unreachable()
