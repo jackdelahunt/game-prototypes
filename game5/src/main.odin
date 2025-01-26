@@ -45,8 +45,7 @@ import json "json"
 
 // record:
 // start: 21/01/2025
-// total time: 26:00 hrs
-// 4:30
+// total time: 31:00 hrs
 
 // controls
 // developer:
@@ -58,6 +57,7 @@ import json "json"
 //      - r:            rotate CW
 //      - shift + r:    rotate CCW
 //      - space:        duplicate
+//      - scroll:       camera zoom
 
 // player:
 // - gamepad
@@ -77,10 +77,10 @@ OPENGL_MESSAGES             :: false
 WRITE_DEBUG_IMAGES          :: true
 V_SYNC                      :: true
 DRAW_ARMOUR_BUBBLE          :: true
-NO_ENEMY_ATTACK             :: true
+NO_ENEMY_ATTACK             :: false
+NO_ENEMY_SPAWN              :: false
 CAN_RELOAD_TEXTURES         :: true
 ALLOW_EDITOR                :: true
-EDITOR_ENTITY_MOVE_SPEED    :: 4
 LEVEL_SAVE_NAME             :: "start"
 
 // internal settings
@@ -88,13 +88,12 @@ MAX_ENTITIES :: 5_000
 
 // gameplay settings
 MAX_PLAYER_HEALTH       :: 100
-PLAYER_SPEED            :: 400
+PLAYER_SPEED            :: 250
 PLAYER_REACH_SIZE       :: 100
 GEM_ATTRACT_RADIUS      :: 200
 GEM_ATTRACT_SPEED       :: 800
 MAX_WEAPON_LEVEL        :: 4
 
-MAX_AI_HEALTH           :: 80
 AI_SPEED                :: 200
 AI_ATTACK_COOLDOWN      :: 0.5
 AI_ATTACK_DISTANCE      :: 10
@@ -121,6 +120,7 @@ State :: struct {
     keys: [348]InputState,
     mouse: [8]InputState,
     mouse_position: v2,
+    mouse_scroll: f32,
     gamepad: glfw.GamepadState,
     time: f64,
     player_state: PlayerState,
@@ -166,13 +166,13 @@ main :: proc() {
     context = custom_context()
 
     state = {
-        width = 1280,
-        height = 900,
+        width = 1920,
+        height = 1080,
         camera = {
             position = {0, 0},
             // length in world units from camera centre to top edge of camera view
             // length of camera centre to side edge is this * aspect ratio
-            orthographic_size = 450,
+            orthographic_size = 600,
             near_plane = 0.01,
             far_plane = 100
         },
@@ -496,6 +496,7 @@ Entity :: struct {
     speeders_to_spawn: int,
     drones_to_spawn: int,
     total_spawns: int,
+    spawn_radius: f32,
 
     // flag: ability pickup
     pickup_type: PickupType,
@@ -571,6 +572,8 @@ input :: proc() {
             input = .pressed
         }
     }
+
+    state.mouse_scroll = 0
 
     glfw.PollEvents()
 
@@ -726,8 +729,7 @@ update :: proc(delta_time: f32) {
                 if linalg.max(distance) < AI_ATTACK_DISTANCE {
                     hit_player := aabb_collided(entity.position, entity.size + AI_ATTACK_DISTANCE * 2, player_this_frame.position, player_this_frame.size)
                     if hit_player {
-                        log.info("hit")
-                        entity_take_damage(player_this_frame, 10)
+                        entity_take_damage(player_this_frame, ai_damage(entity.ai_type))
                         entity.attack_cooldown = AI_ATTACK_COOLDOWN
                     }
                 }
@@ -739,24 +741,43 @@ update :: proc(delta_time: f32) {
                 break nest_update
             }
 
+            when NO_ENEMY_SPAWN {
+                break nest_update
+            }
+
             if entity.spawn_cooldown != 0 {
+                break nest_update
+            }
+
+            if player_this_frame == nil {
+                break nest_update
+            }
+
+            distance_to_player := linalg.distance(entity.position, player_this_frame.position)
+            if distance_to_player > entity.spawn_radius {
                 break nest_update
             }
 
             random := rand.float32()
 
+            spawned: bool
+
             for _ in 0..<entity.cluster_size {
                 if entity.speeders_to_spawn > 0 && random < ai_spawn_chance(.speeder) {
                     create_speeder(entity.position)
                     entity.speeders_to_spawn -= 1
-                    entity.spawn_cooldown += entity.spawn_rate
+                    spawned = true
                 }
     
                 if entity.drones_to_spawn > 0 && random < ai_spawn_chance(.drone) {
                     create_drone(entity.position)    
                     entity.drones_to_spawn -= 1
-                    entity.spawn_cooldown += entity.spawn_rate
+                    spawned = true
                 }
+            }
+
+            if spawned {
+                entity.spawn_cooldown += entity.spawn_rate
             }
         }
 
@@ -800,7 +821,7 @@ update :: proc(delta_time: f32) {
                 break speed_update
             }
             
-            entity.velocity *= 2 
+            entity.velocity *= 1.5
         }
 
         gem_update: {
@@ -1109,8 +1130,8 @@ create_speeder :: proc(position: v2) -> ^Entity {
         mass = 1,
         texture = .cuber,
         ai_type = type,
-        health = MAX_AI_HEALTH,
-        max_health = MAX_AI_HEALTH,
+        health = ai_health(type),
+        max_health = ai_health(type),
     })
 }
 
@@ -1125,8 +1146,8 @@ create_drone :: proc(position: v2) -> ^Entity {
         mass = 1,
         texture = .drone,
         ai_type = type,
-        health = MAX_AI_HEALTH,
-        max_health = MAX_AI_HEALTH,
+        health = ai_health(type),
+        max_health = ai_health(type),
         armour = MAX_ARMOUR
     })
 }
@@ -1309,7 +1330,7 @@ entity_take_damage :: proc(entity: ^Entity, damage: f32) {
 
 ai_speed :: proc(type: AiType) -> f32 {
     switch type {
-        case .speeder:  return 150 // multiplied by speed ability
+        case .speeder:  return 220 // multiplied by speed ability
         case .drone:    return 150
     }
 
@@ -1338,6 +1359,24 @@ ai_spawn_chance :: proc(type: AiType) -> f32 {
     switch type {
         case .speeder:  return  0.4         
         case .drone:    return  0.1 
+    }
+
+    unreachable()
+}
+
+ai_damage :: proc(type: AiType) -> f32 {
+    switch type {
+        case .speeder:  return  5
+        case .drone:    return  10
+    }
+
+    unreachable()
+}
+
+ai_health :: proc(type: AiType) -> f32 {
+    switch type {
+        case .speeder:  return  50
+        case .drone:    return  80
     }
 
     unreachable()
@@ -1644,6 +1683,22 @@ update_editor :: proc() {
                     selected_entity.position += move_amount
                 }
             }
+
+            SCROLL_SPEED :: 80
+            MIN_SIZE     :: 5
+
+            // zoom in
+            if state.mouse_scroll > 0 {
+                state.camera.orthographic_size -= SCROLL_SPEED
+            }
+
+            if state.mouse_scroll < 0 {
+                state.camera.orthographic_size += SCROLL_SPEED
+            }
+
+            if state.camera.orthographic_size < MIN_SIZE {
+                state.camera.orthographic_size = MIN_SIZE
+            }
         }
 
         { // rotate selected entity
@@ -1686,12 +1741,16 @@ editor_ui :: proc() {
 
     if selected_entity != nil {
         draw_rectangle(selected_entity.position, selected_entity.size * 1.5, alpha(GREEN, 0.2))
+
+        if .nest in selected_entity.flags {
+            draw_circle(selected_entity.position, selected_entity.spawn_radius, alpha(BLUE, 0.2))
+        }
     }
 
     if state.editor.use_grid {
         GRID_WIDTH  :: 200
         GRID_HEIGHT :: 200
-        LINE_WIDTH  :: 2
+        LINE_WIDTH  :: 3
 
         x_size := state.editor.grid_size.x
         start_x := -((GRID_WIDTH / 2) * x_size) 
@@ -1746,6 +1805,10 @@ editor_ui :: proc() {
             if imgui.CollapsingHeader("Editor") {
                 imgui.Indent()
                 defer imgui.Unindent()
+
+                if imgui.Button("25x100") {
+                    state.editor.grid_size = {25, 100}
+                }
 
                 imgui.Checkbox("Use grid", &state.editor.use_grid)
                 if state.editor.use_grid {
@@ -1925,6 +1988,7 @@ editor_ui :: proc() {
                 imgui.InputScalar("speeders to spawn", .S64, &selected_entity.speeders_to_spawn, format = "%d")
                 imgui.InputScalar("drones to spawn", .S64, &selected_entity.drones_to_spawn, format = "%d")
                 imgui.InputScalar("total spawns", .S64, &selected_entity.total_spawns, format = "%d")
+                imgui.SliderFloat("spawn radius", &selected_entity.spawn_radius, 0, 2000)
     
                 if imgui.CollapsingHeader("pickup type") {
                     current := i32(selected_entity.pickup_type)
@@ -2825,6 +2889,7 @@ create_window :: proc(width: f32, height: f32, title: cstring) -> (glfw.WindowHa
     glfw.SetKeyCallback(window, glfw_key_callback)
     glfw.SetMouseButtonCallback(window, glfw_mouse_button_callback)
     glfw.SetCursorPosCallback(window, glfw_mouse_move_callback)
+    glfw.SetScrollCallback(window, glfw_scroll_callback)
     glfw.SetFramebufferSizeCallback(window, glfw_size_callback)
 
     return window, true
@@ -2858,6 +2923,10 @@ glfw_mouse_move_callback :: proc "c" (window: glfw.WindowHandle, x: f64, y: f64)
     adjusted_y := -(f32(y) - state.height)
 
     state.mouse_position = {f32(x), adjusted_y}
+}
+
+glfw_scroll_callback :: proc "c" (window: glfw.WindowHandle, x: f64, y: f64) {
+    state.mouse_scroll = f32(y)
 }
 
 glfw_size_callback :: proc "c" (window: glfw.WindowHandle, width: c.int, height: c.int) {

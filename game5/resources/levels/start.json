@@ -6,8 +6,8 @@
             "abilities": 0,
             "created_time": 0.0000000000000000,
             "position": [
-                52.00000000,
-                0.00000000
+                100.00000000,
+                -1000.00000000
             ],
             "size": [
                 50.00000000,
@@ -36,28 +36,29 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 82,
+            "id": 153,
             "flags": 64,
             "abilities": 0,
-            "created_time": 66.4158800000000014,
+            "created_time": 450.2329422000000250,
             "position": [
-                225.00000000,
-                200.00000000
+                400.00000000,
+                -400.00000000
             ],
             "size": [
-                50.00000000,
+                100.00000000,
                 100.00000000
             ],
             "velocity": [
                 0.00000000,
                 0.00000000
             ],
-            "rotation": 180.00000000,
+            "rotation": 0.00000000,
             "mass": 0.00000000,
-            "texture": 9,
+            "texture": 7,
             "attack_cooldown": 0.00000000,
             "aim_direction": [
                 0.00000000,
@@ -74,15 +75,16 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 4,
+            "id": 164,
             "flags": 64,
             "abilities": 0,
-            "created_time": 27.1236548999999982,
+            "created_time": 507.9288253999999938,
             "position": [
-                0.00000000,
+                900.00000000,
                 -100.00000000
             ],
             "size": [
@@ -112,15 +114,16 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 5,
+            "id": 165,
             "flags": 64,
             "abilities": 0,
-            "created_time": 33.9962816000000032,
+            "created_time": 508.2983426000000122,
             "position": [
-                100.00000000,
+                800.00000000,
                 -100.00000000
             ],
             "size": [
@@ -150,28 +153,29 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 76,
+            "id": 152,
             "flags": 64,
             "abilities": 0,
-            "created_time": 115.1121284999999972,
+            "created_time": 449.8449095999999940,
             "position": [
-                225.00000000,
-                100.00000000
+                500.00000000,
+                -400.00000000
             ],
             "size": [
-                50.00000000,
+                100.00000000,
                 100.00000000
             ],
             "velocity": [
                 0.00000000,
                 0.00000000
             ],
-            "rotation": 180.00000000,
+            "rotation": 0.00000000,
             "mass": 0.00000000,
-            "texture": 9,
+            "texture": 7,
             "attack_cooldown": 0.00000000,
             "aim_direction": [
                 0.00000000,
@@ -188,91 +192,16 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 66,
+            "id": 199,
             "flags": 64,
             "abilities": 0,
-            "created_time": 45.1192050000000009,
+            "created_time": 326.8871556000000282,
             "position": [
-                625.00000000,
-                700.00000000
-            ],
-            "size": [
-                50.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 180.00000000,
-            "mass": 0.00000000,
-            "texture": 9,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 65,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 44.0162182999999985,
-            "position": [
-                625.00000000,
-                600.00000000
-            ],
-            "size": [
-                50.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 180.00000000,
-            "mass": 0.00000000,
-            "texture": 9,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 55,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 95.9515126000000009,
-            "position": [
-                -500.00000000,
+                700.00000000,
                 300.00000000
             ],
             "size": [
@@ -302,28 +231,29 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 77,
+            "id": 200,
             "flags": 64,
             "abilities": 0,
-            "created_time": 115.9483642000000003,
+            "created_time": 327.7234048000000257,
             "position": [
-                225.00000000,
-                0.00000000
+                800.00000000,
+                300.00000000
             ],
             "size": [
-                50.00000000,
+                100.00000000,
                 100.00000000
             ],
             "velocity": [
                 0.00000000,
                 0.00000000
             ],
-            "rotation": 180.00000000,
+            "rotation": 0.00000000,
             "mass": 0.00000000,
-            "texture": 9,
+            "texture": 7,
             "attack_cooldown": 0.00000000,
             "aim_direction": [
                 0.00000000,
@@ -340,6 +270,85 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 156,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 451.2510030000000256,
+            "position": [
+                100.00000000,
+                -400.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 151,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 449.4510948999999869,
+            "position": [
+                600.00000000,
+                -400.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
@@ -348,8 +357,8 @@
             "abilities": 0,
             "created_time": 32.8589789999999979,
             "position": [
-                625.00000000,
-                400.00000000
+                425.00000000,
+                0.00000000
             ],
             "size": [
                 50.00000000,
@@ -378,53 +387,16 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 64,
+            "id": 201,
             "flags": 64,
             "abilities": 0,
-            "created_time": 43.0888995999999977,
+            "created_time": 328.4930770999999936,
             "position": [
-                625.00000000,
-                500.00000000
-            ],
-            "size": [
-                50.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 180.00000000,
-            "mass": 0.00000000,
-            "texture": 9,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 13,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 51.3959694999999996,
-            "position": [
-                -200.00000000,
+                1000.00000000,
                 300.00000000
             ],
             "size": [
@@ -454,92 +426,17 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 14,
+            "id": 158,
             "flags": 64,
             "abilities": 0,
-            "created_time": 54.6929360000000031,
-            "position": [
-                -300.00000000,
-                300.00000000
-            ],
-            "size": [
-                100.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 7,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 15,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 55.0200710000000015,
-            "position": [
-                -400.00000000,
-                300.00000000
-            ],
-            "size": [
-                100.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 7,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 51,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 59.5402659000000014,
+            "created_time": 452.2751228000000197,
             "position": [
                 -100.00000000,
-                1300.00000000
+                -400.00000000
             ],
             "size": [
                 100.00000000,
@@ -568,16 +465,17 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 52,
+            "id": 155,
             "flags": 64,
             "abilities": 0,
-            "created_time": 59.8371208000000010,
+            "created_time": 450.9176337000000103,
             "position": [
-                -200.00000000,
-                1300.00000000
+                200.00000000,
+                -400.00000000
             ],
             "size": [
                 100.00000000,
@@ -606,16 +504,17 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 53,
+            "id": 157,
             "flags": 64,
             "abilities": 0,
-            "created_time": 60.1038684000000032,
+            "created_time": 451.5783045000000016,
             "position": [
-                -300.00000000,
-                1300.00000000
+                0.00000000,
+                -400.00000000
             ],
             "size": [
                 100.00000000,
@@ -644,15 +543,211 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 56,
+            "id": 186,
             "flags": 64,
             "abilities": 0,
-            "created_time": 103.9392157999999995,
+            "created_time": 255.2097733999999889,
             "position": [
-                600.00000000,
+                500.00000000,
+                -100.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 174,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 640.7018078999999489,
+            "position": [
+                -125.00000000,
+                -200.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 173,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 635.4109237000000121,
+            "position": [
+                -125.00000000,
+                -300.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 143,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 317.1749171000000160,
+            "position": [
+                1325.00000000,
+                -400.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 134,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 177.9716124999999920,
+            "position": [
+                1325.00000000,
+                -600.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 193,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 315.8751017000000161,
+            "position": [
+                0.00000000,
                 300.00000000
             ],
             "size": [
@@ -682,54 +777,17 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 58,
+            "id": 161,
             "flags": 64,
             "abilities": 0,
-            "created_time": 17.6594073999999992,
+            "created_time": 490.2260024000000271,
             "position": [
-                -525.00000000,
-                400.00000000
-            ],
-            "size": [
-                50.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 9,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 67,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 50.0038862999999978,
-            "position": [
-                600.00000000,
-                1300.00000000
+                1300.00000000,
+                -100.00000000
             ],
             "size": [
                 100.00000000,
@@ -758,19 +816,20 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 78,
+            "id": 163,
             "flags": 64,
             "abilities": 0,
-            "created_time": 45.4946948999999989,
+            "created_time": 507.5468192999999815,
             "position": [
-                -125.00000000,
-                100.00000000
+                1000.00000000,
+                -100.00000000
             ],
             "size": [
-                50.00000000,
+                100.00000000,
                 100.00000000
             ],
             "velocity": [
@@ -779,7 +838,7 @@
             ],
             "rotation": 0.00000000,
             "mass": 0.00000000,
-            "texture": 9,
+            "texture": 7,
             "attack_cooldown": 0.00000000,
             "aim_direction": [
                 0.00000000,
@@ -796,282 +855,56 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 80,
+            "id": 166,
             "flags": 64,
             "abilities": 0,
-            "created_time": 52.4157571000000004,
+            "created_time": 508.6378697999999758,
+            "position": [
+                700.00000000,
+                -100.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 181,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 657.0289473999999927,
             "position": [
                 -100.00000000,
                 -100.00000000
-            ],
-            "size": [
-                100.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 7,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 81,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 55.0468040000000016,
-            "position": [
-                200.00000000,
-                -100.00000000
-            ],
-            "size": [
-                100.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 7,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 54,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 60.3825950000000020,
-            "position": [
-                -400.00000000,
-                1300.00000000
-            ],
-            "size": [
-                100.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 7,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 83,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 68.2036532000000051,
-            "position": [
-                225.00000000,
-                300.00000000
-            ],
-            "size": [
-                50.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 180.00000000,
-            "mass": 0.00000000,
-            "texture": 9,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 28,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 74.2439526000000001,
-            "position": [
-                300.00000000,
-                300.00000000
-            ],
-            "size": [
-                100.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 7,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 29,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 85.6922765999999996,
-            "position": [
-                400.00000000,
-                300.00000000
-            ],
-            "size": [
-                100.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 7,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 30,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 86.2863925000000052,
-            "position": [
-                500.00000000,
-                300.00000000
-            ],
-            "size": [
-                100.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 7,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 62,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 43.0344145999999981,
-            "position": [
-                -500.00000000,
-                1300.00000000
             ],
             "size": [
                 100.00000000,
@@ -1100,16 +933,212 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 61,
+            "id": 154,
             "flags": 64,
             "abilities": 0,
-            "created_time": 36.6951630000000009,
+            "created_time": 450.5782634000000257,
             "position": [
-                -525.00000000,
-                700.00000000
+                300.00000000,
+                -400.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 150,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 448.9964848000000188,
+            "position": [
+                700.00000000,
+                -400.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 149,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 448.5903604999999743,
+            "position": [
+                800.00000000,
+                -400.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 148,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 447.7359058999999775,
+            "position": [
+                900.00000000,
+                -400.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 177,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 652.2653116999999838,
+            "position": [
+                0.00000000,
+                -100.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 139,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 272.7396509000000151,
+            "position": [
+                975.00000000,
+                -700.00000000
             ],
             "size": [
                 50.00000000,
@@ -1138,16 +1167,17 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 60,
+            "id": 140,
             "flags": 64,
             "abilities": 0,
-            "created_time": 35.6044472000000027,
+            "created_time": 291.7693236000000070,
             "position": [
-                -525.00000000,
-                600.00000000
+                975.00000000,
+                -600.00000000
             ],
             "size": [
                 50.00000000,
@@ -1176,16 +1206,17 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 59,
+            "id": 184,
             "flags": 64,
             "abilities": 0,
-            "created_time": 34.5679755000000029,
+            "created_time": 105.0550803999999943,
             "position": [
-                -525.00000000,
-                500.00000000
+                975.00000000,
+                -400.00000000
             ],
             "size": [
                 50.00000000,
@@ -1214,15 +1245,250 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 73,
+            "id": 160,
             "flags": 64,
             "abilities": 0,
-            "created_time": 60.7252304000000009,
+            "created_time": 471.6991241000000059,
             "position": [
-                -125.00000000,
+                1325.00000000,
+                -200.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 162,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 507.0135369999999853,
+            "position": [
+                1100.00000000,
+                -100.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 159,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 470.5113284000000249,
+            "position": [
+                1325.00000000,
+                -300.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 187,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 284.5000301000000036,
+            "position": [
+                425.00000000,
+                100.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 189,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 299.0816750999999840,
+            "position": [
+                425.00000000,
+                200.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 188,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 286.7182065000000080,
+            "position": [
+                175.00000000,
+                100.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 190,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 301.4512639000000149,
+            "position": [
+                175.00000000,
                 200.00000000
             ],
             "size": [
@@ -1252,15 +1518,250 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 79,
+            "id": 191,
             "flags": 64,
             "abilities": 0,
-            "created_time": 49.6158983999999990,
+            "created_time": 303.4450079000000073,
             "position": [
-                -125.00000000,
+                500.00000000,
+                300.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 192,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 305.8511199999999803,
+            "position": [
+                100.00000000,
+                300.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 141,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 292.2843096999999943,
+            "position": [
+                975.00000000,
+                -500.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 146,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 329.2047597000000110,
+            "position": [
+                1200.00000000,
+                -100.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 183,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 54.5590125000000015,
+            "position": [
+                100.00000000,
+                -100.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 169,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 569.0607654000000366,
+            "position": [
+                600.00000000,
+                -100.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 185,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 233.4467363999999918,
+            "position": [
+                175.00000000,
                 0.00000000
             ],
             "size": [
@@ -1290,15 +1791,1849 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 74,
+            "id": 198,
             "flags": 64,
             "abilities": 0,
-            "created_time": 61.8524214999999984,
+            "created_time": 325.7538208000000282,
             "position": [
-                -125.00000000,
+                600.00000000,
+                300.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 197,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 320.1601547999999866,
+            "position": [
+                -400.00000000,
+                300.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 196,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 318.5360648999999853,
+            "position": [
+                -300.00000000,
+                300.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 195,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 317.7480406000000244,
+            "position": [
+                -200.00000000,
+                300.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 194,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 316.7661127999999735,
+            "position": [
+                -100.00000000,
+                300.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 101,
+            "flags": 4,
+            "abilities": 0,
+            "created_time": 80.2157863000000049,
+            "position": [
+                16.00000000,
+                -240.00000000
+            ],
+            "size": [
+                150.00000000,
+                150.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 6,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 4,
+            "spawn_rate": 2.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 20,
+            "drones_to_spawn": 0,
+            "total_spawns": 20,
+            "spawn_radius": 644.37701416,
+            "pickup_type": 0
+        },
+        {
+            "id": 102,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 48.9678189999999987,
+            "position": [
+                0.00000000,
+                -1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 103,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 59.0344876999999997,
+            "position": [
+                100.00000000,
+                -1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 104,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 59.7433752999999967,
+            "position": [
+                200.00000000,
+                -1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 105,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 60.1797321999999966,
+            "position": [
+                300.00000000,
+                -1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 106,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 60.6344133999999997,
+            "position": [
+                400.00000000,
+                -1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 107,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 61.0887864999999977,
+            "position": [
+                500.00000000,
+                -1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 108,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 61.5069648999999998,
+            "position": [
+                600.00000000,
+                -1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 109,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 61.9069679999999991,
+            "position": [
+                700.00000000,
+                -1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 110,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 62.3008511000000027,
+            "position": [
+                800.00000000,
+                -1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 111,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 62.6827009000000004,
+            "position": [
+                900.00000000,
+                -1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 112,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 63.0588113000000021,
+            "position": [
+                1000.00000000,
+                -1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 238,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 129.3701460999999995,
+            "position": [
+                900.00000000,
+                300.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 114,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 86.7126152000000019,
+            "position": [
+                -25.00000000,
+                -1000.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 115,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 96.2638945000000064,
+            "position": [
+                0.00000000,
+                -900.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 10,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 116,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 114.8333587000000051,
+            "position": [
+                100.00000000,
+                -900.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 117,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 115.6998214999999988,
+            "position": [
+                200.00000000,
+                -900.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 118,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 116.1180724999999967,
+            "position": [
+                300.00000000,
+                -900.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 119,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 116.5180552000000063,
+            "position": [
+                400.00000000,
+                -900.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 120,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 116.9301982000000066,
+            "position": [
+                500.00000000,
+                -900.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 121,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 117.3422609999999935,
+            "position": [
+                600.00000000,
+                -900.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 122,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 117.7363047999999992,
+            "position": [
+                700.00000000,
+                -900.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 123,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 118.1300940999999938,
+            "position": [
+                800.00000000,
+                -900.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 124,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 118.4998096000000061,
+            "position": [
+                900.00000000,
+                -900.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 135,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 178.4804245999999921,
+            "position": [
+                1325.00000000,
+                -500.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 126,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 119.2695228000000043,
+            "position": [
+                1100.00000000,
+                -1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 127,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 125.4816890000000029,
+            "position": [
+                1200.00000000,
+                -1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 239,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 131.2609850000000051,
+            "position": [
+                900.00000000,
+                1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 129,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 129.1056360999999981,
+            "position": [
+                1325.00000000,
+                -1000.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 130,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 161.1837399000000062,
+            "position": [
+                1300.00000000,
+                -1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 131,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 176.2622666999999979,
+            "position": [
+                1325.00000000,
+                -900.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 132,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 176.9775927999999965,
+            "position": [
+                1325.00000000,
+                -800.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 133,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 177.4987293000000079,
+            "position": [
+                1325.00000000,
+                -700.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 236,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 67.3045725000000061,
+            "position": [
+                425.00000000,
+                300.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 203,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 366.0499446000000034,
+            "position": [
+                1025.00000000,
+                400.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 204,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 366.7044940999999767,
+            "position": [
+                1025.00000000,
+                500.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 205,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 367.2379252999999721,
+            "position": [
+                1025.00000000,
+                600.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 206,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 367.6926179999999817,
+            "position": [
+                1025.00000000,
+                700.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 207,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 368.1166107999999895,
+            "position": [
+                1025.00000000,
+                800.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 208,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 370.0438905999999974,
+            "position": [
+                1025.00000000,
+                900.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 209,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 370.5891849000000207,
+            "position": [
+                1025.00000000,
+                1000.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 210,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 371.8559349000000225,
+            "position": [
+                1025.00000000,
+                1100.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 237,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 69.9652076999999935,
+            "position": [
+                175.00000000,
                 300.00000000
             ],
             "size": [
@@ -1328,16 +3663,407 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 84,
+            "id": 212,
             "flags": 64,
             "abilities": 0,
-            "created_time": 31.2412756999999992,
+            "created_time": 381.7466239999999971,
             "position": [
+                -425.00000000,
+                400.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
                 0.00000000,
-                1300.00000000
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 213,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 382.2616821999999956,
+            "position": [
+                -425.00000000,
+                500.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 214,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 382.6557103999999754,
+            "position": [
+                -425.00000000,
+                600.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 215,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 383.0315492999999947,
+            "position": [
+                -425.00000000,
+                700.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 216,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 383.3769004000000109,
+            "position": [
+                -425.00000000,
+                800.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 217,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 383.7042321999999785,
+            "position": [
+                -425.00000000,
+                900.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 218,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 384.0012644999999907,
+            "position": [
+                -425.00000000,
+                1000.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 219,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 386.6192492000000129,
+            "position": [
+                -425.00000000,
+                1100.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 220,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 391.4011548999999945,
+            "position": [
+                -400.00000000,
+                1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 10,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 221,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 396.9648369999999886,
+            "position": [
+                1000.00000000,
+                1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 11,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 222,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 407.9038830000000075,
+            "position": [
+                800.00000000,
+                1200.00000000
             ],
             "size": [
                 100.00000000,
@@ -1366,16 +4092,17 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 85,
+            "id": 223,
             "flags": 64,
             "abilities": 0,
-            "created_time": 31.6894488999999986,
+            "created_time": 410.3096851000000242,
             "position": [
-                100.00000000,
-                1300.00000000
+                700.00000000,
+                1200.00000000
             ],
             "size": [
                 100.00000000,
@@ -1404,16 +4131,17 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 86,
+            "id": 224,
             "flags": 64,
             "abilities": 0,
-            "created_time": 32.1259864000000022,
+            "created_time": 411.2611761000000001,
             "position": [
-                200.00000000,
-                1300.00000000
+                600.00000000,
+                1200.00000000
             ],
             "size": [
                 100.00000000,
@@ -1442,92 +4170,17 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 87,
+            "id": 225,
             "flags": 64,
             "abilities": 0,
-            "created_time": 32.5744102000000026,
-            "position": [
-                300.00000000,
-                1300.00000000
-            ],
-            "size": [
-                100.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 7,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 88,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 33.5925660999999991,
-            "position": [
-                400.00000000,
-                1300.00000000
-            ],
-            "size": [
-                100.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 7,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 89,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 39.7743072999999967,
+            "created_time": 411.8126973999999905,
             "position": [
                 500.00000000,
-                1300.00000000
+                1200.00000000
             ],
             "size": [
                 100.00000000,
@@ -1556,171 +4209,20 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 91,
+            "id": 226,
             "flags": 64,
             "abilities": 0,
-            "created_time": 57.2344932999999969,
+            "created_time": 412.2308884999999918,
             "position": [
-                -525.00000000,
-                800.00000000
-            ],
-            "size": [
-                50.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 9,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 92,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 58.4222971000000015,
-            "position": [
-                -525.00000000,
-                900.00000000
-            ],
-            "size": [
-                50.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 9,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 93,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 59.2950052999999997,
-            "position": [
-                -525.00000000,
-                1000.00000000
-            ],
-            "size": [
-                50.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 9,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 94,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 59.9495806999999985,
-            "position": [
-                -525.00000000,
-                1100.00000000
-            ],
-            "size": [
-                50.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 9,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 95,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 60.4162517999999977,
-            "position": [
-                -525.00000000,
+                400.00000000,
                 1200.00000000
             ],
             "size": [
-                50.00000000,
+                100.00000000,
                 100.00000000
             ],
             "velocity": [
@@ -1729,7 +4231,7 @@
             ],
             "rotation": 0.00000000,
             "mass": 0.00000000,
-            "texture": 9,
+            "texture": 7,
             "attack_cooldown": 0.00000000,
             "aim_direction": [
                 0.00000000,
@@ -1746,180 +4248,29 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 96,
+            "id": 227,
             "flags": 64,
             "abilities": 0,
-            "created_time": 64.1677519999999930,
+            "created_time": 412.6673503000000096,
             "position": [
-                625.00000000,
-                800.00000000
-            ],
-            "size": [
-                50.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 180.00000000,
-            "mass": 0.00000000,
-            "texture": 9,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 97,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 64.7923707000000064,
-            "position": [
-                625.00000000,
-                900.00000000
-            ],
-            "size": [
-                50.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 180.00000000,
-            "mass": 0.00000000,
-            "texture": 9,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 98,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 65.3433646999999951,
-            "position": [
-                625.00000000,
-                1000.00000000
-            ],
-            "size": [
-                50.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 180.00000000,
-            "mass": 0.00000000,
-            "texture": 9,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 99,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 66.4524504000000036,
-            "position": [
-                625.00000000,
-                1100.00000000
-            ],
-            "size": [
-                50.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 180.00000000,
-            "mass": 0.00000000,
-            "texture": 9,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 100,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 66.9252333999999962,
-            "position": [
-                625.00000000,
+                300.00000000,
                 1200.00000000
             ],
             "size": [
-                50.00000000,
+                100.00000000,
                 100.00000000
             ],
             "velocity": [
                 0.00000000,
                 0.00000000
             ],
-            "rotation": 180.00000000,
+            "rotation": 0.00000000,
             "mass": 0.00000000,
-            "texture": 9,
+            "texture": 7,
             "attack_cooldown": 0.00000000,
             "aim_direction": [
                 0.00000000,
@@ -1936,16 +4287,251 @@
             "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0
         },
         {
-            "id": 101,
+            "id": 228,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 413.0792726999999900,
+            "position": [
+                200.00000000,
+                1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 229,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 413.4616523000000257,
+            "position": [
+                100.00000000,
+                1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 230,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 413.8430776999999807,
+            "position": [
+                0.00000000,
+                1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 231,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 414.2188084000000003,
+            "position": [
+                -100.00000000,
+                1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 232,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 414.5887121000000093,
+            "position": [
+                -200.00000000,
+                1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 233,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 414.9582568000000151,
+            "position": [
+                -300.00000000,
+                1200.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 234,
             "flags": 4,
             "abilities": 0,
-            "created_time": 80.2157863000000049,
+            "created_time": 500.2899211000000150,
             "position": [
-                38.63700104,
-                1050.00000000
+                650.00000000,
+                650.00000000
             ],
             "size": [
                 150.00000000,
@@ -1968,12 +4554,208 @@
             "armour": 0.00000000,
             "armour_regen_cooldown": 0.00000000,
             "ai_type": 0,
-            "cluster_size": 2,
-            "spawn_rate": 0.40000001,
+            "cluster_size": 5,
+            "spawn_rate": 1.00000000,
             "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 900,
-            "drones_to_spawn": 100,
-            "total_spawns": 1000,
+            "speeders_to_spawn": 50,
+            "drones_to_spawn": 0,
+            "total_spawns": 50,
+            "spawn_radius": 474.16400146,
+            "pickup_type": 0
+        },
+        {
+            "id": 244,
+            "flags": 4,
+            "abilities": 0,
+            "created_time": 356.2780382000000259,
+            "position": [
+                1150.00000000,
+                -1000.00000000
+            ],
+            "size": [
+                150.00000000,
+                150.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 6,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 1,
+            "spawn_rate": 1.70000005,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 5,
+            "drones_to_spawn": 0,
+            "total_spawns": 5,
+            "spawn_radius": 431.61099243,
+            "pickup_type": 0
+        },
+        {
+            "id": 240,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 124.8097292000000067,
+            "position": [
+                -25.00000000,
+                -1100.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 241,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 127.2400257000000039,
+            "position": [
+                975.00000000,
+                -800.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 243,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 132.6096875000000068,
+            "position": [
+                1325.00000000,
+                -1100.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 245,
+            "flags": 4,
+            "abilities": 0,
+            "created_time": 160.6891707000000054,
+            "position": [
+                -100.00000000,
+                850.00000000
+            ],
+            "size": [
+                150.00000000,
+                150.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 6,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 5,
+            "spawn_rate": 1.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 50,
+            "drones_to_spawn": 0,
+            "total_spawns": 50,
+            "spawn_radius": 474.16400146,
             "pickup_type": 0
         }
     ]
