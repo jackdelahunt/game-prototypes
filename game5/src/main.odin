@@ -89,8 +89,10 @@ MAX_ENTITIES :: 5_000
 // gameplay settings
 MAX_PLAYER_HEALTH       :: 100
 PLAYER_SPEED            :: 400
-PLAYER_SHOOT_COOLDOWN   :: 0.03
 PLAYER_REACH_SIZE       :: 100
+GEM_ATTRACT_RADIUS      :: 200
+GEM_ATTRACT_SPEED       :: 800
+MAX_WEAPON_LEVEL        :: 4
 
 MAX_AI_HEALTH           :: 80
 AI_SPEED                :: 200
@@ -121,7 +123,7 @@ State :: struct {
     mouse_position: v2,
     gamepad: glfw.GamepadState,
     time: f64,
-    dropped_abilities: bit_set[Ability; u64],
+    player_state: PlayerState,
     mode: Mode,
     editor: Editor,
     camera: struct {
@@ -136,6 +138,12 @@ State :: struct {
     entities: []Entity,
     entity_count: int,
     id_counter: int,
+}
+
+PlayerState :: struct {
+    dropped_abilities: bit_set[Ability; u64],
+    weapon_level: int,
+    collected_gems_this_level: int,
 }
 
 Mode :: enum {
@@ -156,7 +164,7 @@ InputState :: enum {
 
 main :: proc() {
     context = custom_context()
-    
+
     state = {
         width = 1280,
         height = 900,
@@ -168,11 +176,15 @@ main :: proc() {
             near_plane = 0.01,
             far_plane = 100
         },
+        player_state = {
+            weapon_level = 1
+        },
         mode = .game,
         editor = {
             use_grid = true,
             grid_size = {50, 50},
-            camera_move_speed = 4
+            camera_move_speed = 4,
+            entity_move_speed = 2
         },
         renderer = {
             quads = make([]Quad, MAX_QUADS)
@@ -353,7 +365,7 @@ save_level :: proc(name: string) -> bool {
                 pretty = true,
                 use_spaces = true,
                 spaces = 0,
-                write_uint_as_hex = false
+                write_uint_as_hex = false,
             },
             context.temp_allocator
         )
@@ -503,6 +515,8 @@ EntityFlag :: enum {
 
     has_health,
 
+    gem,
+
     to_be_deleted
 }
 
@@ -530,6 +544,7 @@ Prefab :: enum {
     brick_wall_vertical,
     brick_wall_corner_left,
     brick_wall_corner_right,
+    gem,
 }
 
 start :: proc() {
@@ -580,6 +595,8 @@ update :: proc(delta_time: f32) {
             }
         }
     }
+
+    player_this_frame := get_entity_with_flag(.player)
 
     for &entity in state.entities[0:state.entity_count] {
         { // reduce cooldowns
@@ -642,7 +659,7 @@ update :: proc(delta_time: f32) {
                     break shooting
                 }
                    
-                entity.attack_cooldown = PLAYER_SHOOT_COOLDOWN
+                entity.attack_cooldown = attack_cooldown_for_weapon_level(state.player_state.weapon_level)
                 create_bullet(entity.position, entity.aim_direction * BULLET_SPEED)
             }
 
@@ -666,6 +683,18 @@ update :: proc(delta_time: f32) {
                     }
                 }
             }
+
+            weapon_upgrade: {
+                if state.player_state.weapon_level == MAX_WEAPON_LEVEL {
+                    break weapon_upgrade
+                }
+
+                gems_needed_for_upgrade := gems_needed_for_level(state.player_state.weapon_level + 1)
+                if state.player_state.collected_gems_this_level >= gems_needed_for_upgrade {
+                    state.player_state.weapon_level += 1
+                    state.player_state.collected_gems_this_level = 0
+                }
+            }
         }
 
         ai_update: {
@@ -675,13 +704,12 @@ update :: proc(delta_time: f32) {
 
             entity.velocity = 0
 
-            player := get_entity_with_flag(.player)
-            if player == nil {
+            if player_this_frame == nil {
                 break ai_update
             }
 
             { // move
-                direction := linalg.normalize(player.position - entity.position)
+                direction := linalg.normalize(player_this_frame.position - entity.position)
                 entity.velocity = direction * ai_speed(entity.ai_type)    
             }
 
@@ -694,12 +722,12 @@ update :: proc(delta_time: f32) {
                     break attack
                 }
 
-                distance := distance_between_entity_edges(&entity, player)
+                distance := distance_between_entity_edges(&entity, player_this_frame)
                 if linalg.max(distance) < AI_ATTACK_DISTANCE {
-                    hit_player := aabb_collided(entity.position, entity.size + AI_ATTACK_DISTANCE * 2, player.position, player.size)
+                    hit_player := aabb_collided(entity.position, entity.size + AI_ATTACK_DISTANCE * 2, player_this_frame.position, player_this_frame.size)
                     if hit_player {
                         log.info("hit")
-                        entity_take_damage(player, 10)
+                        entity_take_damage(player_this_frame, 10)
                         entity.attack_cooldown = AI_ATTACK_COOLDOWN
                     }
                 }
@@ -773,6 +801,32 @@ update :: proc(delta_time: f32) {
             }
             
             entity.velocity *= 2 
+        }
+
+        gem_update: {
+            if !(.gem in entity.flags) {
+                break gem_update
+            }
+
+            if player_this_frame == nil {
+                break gem_update
+            }
+
+            distance_to_player := linalg.distance(entity.position, player_this_frame.position)
+            
+            if distance_to_player  <= GEM_ATTRACT_RADIUS {
+                direction := linalg.normalize(player_this_frame.position - entity.position)
+                distance_percentage := distance_to_player / GEM_ATTRACT_RADIUS
+
+                speed := ease_in_sine(1 - distance_percentage) * GEM_ATTRACT_SPEED * direction 
+
+                entity.velocity = speed    
+            }
+
+            if distance_to_player < linalg.min(player_this_frame.size) {
+                state.player_state.collected_gems_this_level += 1
+                entity.flags += {.to_be_deleted}
+            }
         }
     }
 
@@ -979,17 +1033,46 @@ draw :: proc(delta_time: f32) {
     { // input mode
         size : f32 = 20
         draw_text(fmt.tprint(state.input_mode), {state.width * 0.5, size}, size, WHITE, .center)
+    } 
+
+    { // weapon info
+        gems_needed_for_upgrade: int
+        gems := state.player_state.collected_gems_this_level
+
+        if state.player_state.weapon_level != MAX_WEAPON_LEVEL {
+            gems_needed_for_upgrade = gems_needed_for_level(state.player_state.weapon_level + 1)
+        }
+       
+        size : f32 = 20
+        text := fmt.tprintf("%v/%v", gems, gems_needed_for_upgrade)
+        draw_text(text, {state.width - 100, state.height - size}, size, YELLOW, .bottom_left)
     }
 }
 
 on_entity_killed :: proc(entity: ^Entity) {
     if .ai in entity.flags {
-        assert(card(entity.abilities) == 1, "only one ability per ai")
-    
-        if entity.abilities & state.dropped_abilities == {} {
-            pickup := pickup_type_from_ability(ai_ability(entity.ai_type))
-            create_ability_pickup(entity.position, pickup)
-            state.dropped_abilities += entity.abilities
+        { // drop ability pickup on death
+            assert(card(entity.abilities) == 1, "only one ability per ai")
+        
+            if entity.abilities & state.player_state.dropped_abilities == {} {
+                pickup := pickup_type_from_ability(ai_ability(entity.ai_type))
+                create_ability_pickup(entity.position, pickup)
+                state.player_state.dropped_abilities += entity.abilities
+            }
+        }
+
+        { // drop gems on death
+            gem_count := ai_gem_drop_amount(entity.ai_type)
+            for i in 0..<gem_count {
+                // normalise to -1 to 1 for unit vector direction
+                random_x := (rand.float32() * 2) - 1
+                random_y := (rand.float32() * 2) - 1
+
+                direction := linalg.normalize(v2{random_x, random_y})
+                position := entity.position + (direction * (entity.size) * 0.5)
+
+                create_gem(position)                
+            }
         }
     }
 }
@@ -1066,6 +1149,7 @@ create_nest :: proc(position: v2, cluster_size: int, spawn_rate: f32, speeders_t
 create_ability_pickup :: proc(position: v2, type: PickupType) -> ^Entity {
     prefab := create_entity_from_prefab(.pickup)
     prefab.pickup_type = type
+    prefab.position = position
 
     return create_entity(prefab)
 }
@@ -1078,6 +1162,13 @@ create_bullet :: proc(position: v2, velocity: v2) -> ^Entity {
         size = {5, 5},
         texture = .cuber
     })
+}
+
+create_gem :: proc(position: v2) -> ^Entity {
+    prefab := create_entity_from_prefab(.gem)
+    prefab.position = position
+
+    return create_entity(prefab)
 }
 
 create_entity_from_prefab :: proc(prefab: Prefab) -> Entity {
@@ -1142,6 +1233,13 @@ create_entity_from_prefab :: proc(prefab: Prefab) -> Entity {
                 flags = {.static_hitbox},
                 size = {100, 100},
                 texture = .brick_wall_corner_right,
+            }
+        }
+        case .gem: {
+            return Entity {
+                flags = {.gem},
+                size = {15, 15},
+                texture = .gem,
             }
         }
     }
@@ -1218,6 +1316,15 @@ ai_speed :: proc(type: AiType) -> f32 {
     unreachable()
 }
 
+ai_gem_drop_amount :: proc(type: AiType) -> int {
+    switch type {
+        case .speeder:  return 1 
+        case .drone:    return 3
+    }
+
+    unreachable()
+}
+
 ai_ability :: proc(type: AiType) -> Ability {
     switch type {
         case .speeder:  return .speed         
@@ -1231,6 +1338,45 @@ ai_spawn_chance :: proc(type: AiType) -> f32 {
     switch type {
         case .speeder:  return  0.4         
         case .drone:    return  0.1 
+    }
+
+    unreachable()
+}
+
+attack_cooldown_for_weapon_level :: proc(weapon_level: int) -> f32 {
+    assert(weapon_level > 0 && weapon_level <= MAX_WEAPON_LEVEL)
+
+    switch weapon_level {
+        case 1: return 0.12
+        case 2: return 0.07
+        case 3: return 0.04
+        case 4: return 0.02
+    }
+
+    unreachable()
+}
+
+damage_for_weapon_level :: proc(weapon_level: int) -> f32 {
+    assert(weapon_level > 0 && weapon_level <= MAX_WEAPON_LEVEL)
+
+    switch weapon_level {
+        case 1: return 10
+        case 2: return 15
+        case 3: return 20
+        case 4: return 25
+    }
+
+    unreachable()
+}
+
+gems_needed_for_level :: proc(weapon_level: int) -> int {
+    assert(weapon_level > 0 && weapon_level <= MAX_WEAPON_LEVEL)
+
+    switch weapon_level {
+        case 1: return 0
+        case 2: return 150
+        case 3: return 500
+        case 4: return 3000
     }
 
     unreachable()
@@ -1361,7 +1507,7 @@ distance_between_entity_edges :: proc(entity_a: ^Entity, entity_b: ^Entity) -> v
 
 on_trigger_collision :: proc(trigger: ^Entity, other: ^Entity) {
     if .has_health in other.flags {
-        entity_take_damage(other, 10) 
+        entity_take_damage(other, damage_for_weapon_level(state.player_state.weapon_level)) 
     }
 }
 
@@ -1849,6 +1995,7 @@ TextureHandle :: enum {
     brick_wall_vertical,
     brick_wall_corner_left,
     brick_wall_corner_right,
+    gem,
 }
 
 Texture :: struct {
@@ -2526,6 +2673,9 @@ get_texture_name :: proc(texture: TextureHandle) -> string {
             return "brick_wall_corner_left.png"
         case .brick_wall_corner_right:
             return "brick_wall_corner_right.png"
+        case .gem:
+            return "gem.png"
+    
     }
 
     unreachable()
@@ -2728,6 +2878,12 @@ next_enum_value :: proc(t: $T) -> T
     }
 
     return T(next_index)
+}
+
+// https://easings.net/#easeInSine
+ease_in_sine :: proc(t: f32) -> f32 {
+    assert(t >= 0 && t <= 1)
+    return 1 - math.cos_f32((t * math.PI) * 0.5)
 }
 
 custom_context :: proc() -> runtime.Context {
