@@ -10,8 +10,8 @@
                 0.00000000
             ],
             "size": [
-                50.00000000,
-                50.00000000
+                40.00000000,
+                40.00000000
             ],
             "velocity": [
                 0.00000000,
@@ -267,12 +267,12 @@
             "pickup_type": 0
         },
         {
-            "id": 55,
+            "id": 40,
             "flags": 64,
             "abilities": 0,
-            "created_time": 95.9515126000000009,
+            "created_time": 18.1449831999999986,
             "position": [
-                -500.00000000,
+                600.00000000,
                 300.00000000
             ],
             "size": [
@@ -283,9 +283,9 @@
                 0.00000000,
                 0.00000000
             ],
-            "rotation": 0.00000000,
+            "rotation": 90.00000000,
             "mass": 0.00000000,
-            "texture": 7,
+            "texture": 8,
             "attack_cooldown": 0.00000000,
             "aim_direction": [
                 0.00000000,
@@ -875,13 +875,13 @@
             "pickup_type": 0
         },
         {
-            "id": 54,
+            "id": 42,
             "flags": 64,
             "abilities": 0,
-            "created_time": 60.3825950000000020,
+            "created_time": 27.8238592000000011,
             "position": [
-                -400.00000000,
-                800.00000000
+                -500.00000000,
+                300.00000000
             ],
             "size": [
                 100.00000000,
@@ -891,9 +891,9 @@
                 0.00000000,
                 0.00000000
             ],
-            "rotation": 0.00000000,
+            "rotation": -180.00000000,
             "mass": 0.00000000,
-            "texture": 7,
+            "texture": 8,
             "attack_cooldown": 0.00000000,
             "aim_direction": [
                 0.00000000,
@@ -1521,13 +1521,13 @@
             "pickup_type": 0
         },
         {
-            "id": 56,
+            "id": 54,
             "flags": 64,
             "abilities": 0,
-            "created_time": 103.9392157999999995,
+            "created_time": 60.3825950000000020,
             "position": [
-                600.00000000,
-                300.00000000
+                -400.00000000,
+                800.00000000
             ],
             "size": [
                 100.00000000,
@@ -1540,44 +1540,6 @@
             "rotation": 0.00000000,
             "mass": 0.00000000,
             "texture": 7,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "total_spawns": 0,
-            "pickup_type": 0
-        },
-        {
-            "id": 57,
-            "flags": 272,
-            "abilities": 0,
-            "created_time": 8.8956692000000004,
-            "position": [
-                50.00000000,
-                550.00000000
-            ],
-            "size": [
-                30.00000000,
-                30.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 3,
             "attack_cooldown": 0.00000000,
             "aim_direction": [
                 0.00000000,

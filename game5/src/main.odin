@@ -45,18 +45,18 @@ import json "json"
 
 // record:
 // start: 21/01/2025
-// total time: 24:30 hrs
-// 3:00
+// total time: 26:00 hrs
 
 // controls
 // developer:
 // - f1: toggle live editor
 // - f2: toggle input mode
 // - f4: toggle editor
-// - t: reload textures
+// - t:  reload textures
 //   - editor:
 //      - r:            rotate CW
 //      - shift + r:    rotate CCW
+//      - space:        duplicate
 
 // player:
 // - gamepad
@@ -523,7 +523,9 @@ PickupType :: enum {
 Prefab :: enum {
     player,
     nest,
-    brick_wall
+    brick_wall,
+    corner_wall,
+    pickup
 }
 
 start :: proc() {
@@ -597,6 +599,8 @@ update :: proc(delta_time: f32) {
             if !(.player in entity.flags) {
                 break player_update
             }
+
+            state.camera.position = entity.position
 
             { // set aim
                 aim_vector := get_aim_input(entity.position)
@@ -952,14 +956,7 @@ draw :: proc(delta_time: f32) {
         }
 
         if .ability_pickup in entity.flags {
-            switch entity.pickup_type {
-                case .armour: {
-                    highlight_colour = SKY_BLUE
-                }
-                case .speed: {
-                    highlight_colour = RED
-                }
-            }
+            // TODO: think of a way to show the different types of pickups
         }
 
         draw_texture(entity.texture, entity.position, entity.size, rotation = entity.rotation, colour = base_colour, highlight_colour = highlight_colour)
@@ -1063,13 +1060,10 @@ create_nest :: proc(position: v2, cluster_size: int, spawn_rate: f32, speeders_t
 }
 
 create_ability_pickup :: proc(position: v2, type: PickupType) -> ^Entity {
-    return create_entity({
-        flags = {.interactable, .ability_pickup},
-        position = position,
-        size = {20, 20},
-        texture = .chip,
-        pickup_type = type,
-    })
+    prefab := create_entity_from_prefab(.pickup)
+    prefab.pickup_type = type
+
+    return create_entity(prefab)
 }
 
 create_bullet :: proc(position: v2, velocity: v2) -> ^Entity {
@@ -1087,7 +1081,7 @@ create_entity_from_prefab :: proc(prefab: Prefab) -> Entity {
         case .player: {
             return Entity {
                 flags = {.player, .has_health, .solid_hitbox},
-                size = {40, 40},
+                size = {50, 50},
                 mass = 200,
                 texture = .player,
                 aim_direction = {0, 1},
@@ -1108,6 +1102,21 @@ create_entity_from_prefab :: proc(prefab: Prefab) -> Entity {
                 flags = {.static_hitbox},
                 size = {100, 100},
                 texture = .brick_wall,
+            }
+        }
+        case .corner_wall: {
+            return Entity {
+                flags = {.static_hitbox},
+                size = {100, 100},
+                texture = .corner_wall,
+            }
+        }
+        case .pickup: {
+            return Entity {
+                flags = {.interactable, .ability_pickup},
+                size = {30, 30},
+                pickup_type = PickupType(0),
+                texture = .star,
             }
         }
     }
@@ -1473,6 +1482,27 @@ update_editor :: proc() {
                 selected_entity.rotation += 90
             }
         }
+
+        { // duplicate selected entity
+            if state.keys[glfw.KEY_SPACE] == .down {
+                copy := selected_entity^
+                new_entity := create_entity(copy)
+                state.editor.selected_entity_id = new_entity.id
+            }
+        }
+
+        { // delete selected entity
+            if state.keys[glfw.KEY_DELETE] == .down {
+                // do this to get an imediate deletion, setting the flag
+                // means you need to wait for an update cycle in game
+                for index in 0..<state.entity_count {
+                    if state.entities[index].id == selected_entity.id {
+                        delete_entity_from_buffer(index)
+                        state.editor.selected_entity_id = -1
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1783,11 +1813,12 @@ TextureHandle :: enum {
     cuber,
     player,
     armour,
-    chip,
+    star,
     x_button,
     drone,
     nest,
     brick_wall,
+    corner_wall,
 }
 
 Texture :: struct {
@@ -2447,8 +2478,8 @@ get_texture_name :: proc(texture: TextureHandle) -> string {
             return "player.png"
         case .armour:
             return "armour.png"
-        case .chip:
-            return "chip.png"
+        case .star:
+            return "star.png"
         case .x_button:
             return "x_button.png"
         case .drone:
@@ -2457,6 +2488,8 @@ get_texture_name :: proc(texture: TextureHandle) -> string {
             return "nest.png"
         case .brick_wall:
             return "brick_wall.png"
+        case .corner_wall:
+            return "corner_wall.png"
     }
 
     unreachable()
