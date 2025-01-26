@@ -26,10 +26,12 @@ import "imgui"
 import "imgui/imgui_impl_glfw"
 import "imgui/imgui_impl_opengl3"
 
+import json "json"
 
 // TODO:
-// nest to spawn enemies
-// player can destroy nests
+// save levels
+// create levels and save them from editor
+// figure out problems about changes entity types 
 
 // TODO, abilities:
 // level 1:
@@ -45,8 +47,28 @@ import "imgui/imgui_impl_opengl3"
 
 // record:
 // start: 21/01/2025
-// total time: 18:00 hrs
-// start: 6:30pm
+// total time: 21:30 hrs
+// 23:45
+
+// controls
+// developer:
+// - f1: toggle editor
+// - f2: toggle input mode
+// - f9: save level
+// - f10: load level
+// - r: reload textures
+
+// player:
+// - gamepad
+//      - left stick: move
+//      - right stick: aim
+//      - right trigger: shoot
+//      - x button: interact
+// - mouse and keyboard
+//      - WASD: move
+//      - mouse: aim
+//      - left click: shoot
+//      - e key: interact
 
 // indev settings
 LOG_COLOURS         :: false
@@ -98,7 +120,7 @@ State :: struct {
     mouse_position: v2,
     gamepad: glfw.GamepadState,
     time: f64,
-    dropped_abilities: bit_set[Ability],
+    dropped_abilities: bit_set[Ability; u64],
     mode: Mode,
     editor: Editor,
     camera: struct {
@@ -206,6 +228,19 @@ main :: proc() {
             glfw.SetWindowShouldClose(state.window, true)
         }
 
+        if state.keys[glfw.KEY_F9] == .down {
+            ok := save_level()
+            if !ok {
+                log.error("there was an error saving the level")
+            }
+        }
+
+        if state.keys[glfw.KEY_F10] == .down {
+            ok := load_level()
+            if !ok {
+                log.error("there was an error loading the level")
+            }
+        }
 
         when ALLOW_EDITOR {
             if state.keys[glfw.KEY_F1] == .down {
@@ -297,12 +332,82 @@ tick_editor :: proc(delta_time: f32) {
     draw_editor()
 }
 
+LevelSaveData :: struct {
+    entities: []Entity
+}
+
+save_level :: proc() -> bool {
+    log.info("saving level")
+
+    save_data := LevelSaveData {
+        entities = state.entities[0:state.entity_count]
+    }
+
+    { // marshal into json bytes and write
+        bytes, error := json.marshal(
+            save_data, 
+            json.Marshal_Options{
+                spec = .JSON5,
+                pretty = true,
+                use_spaces = true,
+                spaces = 0,
+                write_uint_as_hex = false
+            },
+            context.temp_allocator
+        )
+        
+        if error != nil {
+            log.errorf("error when trying to marshal entities, marshaling returned: %v", error)
+            return false
+        }
+
+        ok := os.write_entire_file("save.json", bytes)
+        if !ok {
+            log.error("error when trying to write json data to file")
+            return false
+        }
+    }
+
+    log.info("succesfully saved level data")
+
+    return true
+}
+
+load_level :: proc() -> bool {
+    log.info("loading level")
+
+    bytes, ok := os.read_entire_file("save.json", context.temp_allocator)
+    if !ok {
+        log.error("error when trying to read json data from file")
+        return false
+    }
+
+    save_data: LevelSaveData
+
+    error := json.unmarshal(bytes, &save_data, spec = .JSON5, allocator = context.temp_allocator)
+    if error != nil {
+        log.errorf("error when trying to unmarshal entities, unmarshaling returned: %v", error)
+        return false
+    }
+
+    when true {
+        mem.copy(&state.entities[0], &save_data.entities[0], len(save_data.entities) * size_of(Entity))
+        state.entity_count = len(save_data.entities)
+    } else {
+        log.info(save_data)
+    }
+
+    log.info("succesfully loaded level data")
+
+    return true
+}
+
 // -------------------------- @game -----------------------
 Entity :: struct {
     // meta
     id: int,
-    flags: bit_set[EntityFlag],
-    abilities: bit_set[Ability],
+    flags: bit_set[EntityFlag; u64],
+    abilities: bit_set[Ability; u64],
     created_time: f64,
 
     // global
@@ -1317,6 +1422,16 @@ draw_editor :: proc() {
         // imgui.ShowDemoWindow()
 
 	if imgui.Begin("Inspector", &state.editor.active, flags = {.NoCollapse}) {
+            if imgui.Button("Save Level") {
+                save_level()
+            }
+
+            imgui.SameLine()
+
+            if imgui.Button("Load Level") {
+                load_level()
+            }
+
             if imgui.CollapsingHeader("State") {
                 imgui.Indent()
                 defer imgui.Unindent()
