@@ -132,6 +132,7 @@ State :: struct {
     renderer: Renderer,
     entities: []Entity,
     entity_count: int,
+    id_counter: int,
 }
 
 Mode :: enum {
@@ -386,11 +387,20 @@ load_level :: proc(name: string) -> bool {
         return false
     }
 
-    when true {
-        mem.copy(&state.entities[0], &save_data.entities[0], len(save_data.entities) * size_of(Entity))
-        state.entity_count = len(save_data.entities)
-    } else {
-        log.info(save_data)
+    mem.copy(&state.entities[0], &save_data.entities[0], len(save_data.entities) * size_of(Entity))
+    state.entity_count = len(save_data.entities)
+
+    { // reset id counter
+        max_id := -1
+
+        for &entity in state.entities[0:state.entity_count] {
+            if entity.id > max_id {
+                max_id = entity.id 
+            }
+        }
+
+        state.id_counter = max_id + 1
+        assert(state.id_counter >= 0)
     }
 
     log.info("succesfully loaded level data")
@@ -440,6 +450,7 @@ Entity :: struct {
     position: v2,
     size: v2,
     velocity: v2,
+    rotation: f32,
     mass: f32,
     texture: TextureHandle,
     attack_cooldown: f32,
@@ -505,6 +516,7 @@ PickupType :: enum {
 Prefab :: enum {
     player,
     nest,
+    brick_wall
 }
 
 start :: proc() {
@@ -899,7 +911,7 @@ draw :: proc(delta_time: f32) {
 
                     icon_position := other.position + {0, (other.size.y * 0.5) + ICON_SIZE}
 
-                    draw_texture(.x_button, icon_position, {ICON_SIZE, ICON_SIZE}, WHITE, WHITE)
+                    draw_texture(.x_button, icon_position, {ICON_SIZE, ICON_SIZE}, colour = WHITE, highlight_colour = WHITE)
                 }
             }
         }
@@ -929,7 +941,7 @@ draw :: proc(delta_time: f32) {
 
             armour_alpha := entity.armour / MAX_ARMOUR
 
-            draw_texture(.armour, entity.position, entity.size * 2, alpha(WHITE, armour_alpha), alpha(armour_colour, armour_alpha))
+            draw_texture(.armour, entity.position, entity.size * 2, colour = alpha(WHITE, armour_alpha), highlight_colour = alpha(armour_colour, armour_alpha))
         }
 
         if .ability_pickup in entity.flags {
@@ -943,7 +955,7 @@ draw :: proc(delta_time: f32) {
             }
         }
 
-        draw_texture(entity.texture, entity.position, entity.size, base_colour, highlight_colour)
+        draw_texture(entity.texture, entity.position, entity.size, rotation = entity.rotation, colour = base_colour, highlight_colour = highlight_colour)
     } 
 
     in_screen_space = true 
@@ -975,17 +987,15 @@ on_entity_killed :: proc(entity: ^Entity) {
 }
 
 create_entity :: proc(entity: Entity) -> ^Entity {
-    @static id := 0
-
     ptr := &state.entities[state.entity_count]
     state.entity_count += 1
 
     ptr^ = entity
 
-    ptr.id = id
+    ptr.id = state.id_counter
     ptr.created_time = state.time
 
-    id += 1
+    state.id_counter += 1
 
     return ptr
 }
@@ -1084,6 +1094,13 @@ create_entity_from_prefab :: proc(prefab: Prefab) -> Entity {
                 flags = {.nest},
                 size = {150, 150},
                 texture = .nest,
+            }
+        }
+        case .brick_wall: {
+            return Entity {
+                flags = {.static_hitbox},
+                size = {100, 100},
+                texture = .brick_wall,
             }
         }
     }
@@ -1488,7 +1505,9 @@ editor_ui :: proc() {
                 imgui.InputFloat("near plane", &state.camera.near_plane)
                 imgui.InputFloat("far plane", &state.camera.far_plane)
                 imgui.Text("entity count: %d", state.entity_count)
+                imgui.Text("id counter: %d", state.id_counter)
                 imgui.Text("quad count: %d", state.renderer.quad_count)
+
             }
 
             if imgui.CollapsingHeader("Prefabs") {
@@ -1524,7 +1543,9 @@ editor_ui :: proc() {
                     state.editor.selected_entity_id = -1
                     break entity_editor
                 }
+
                 imgui.SameLine()
+
                 if imgui.Button("Delete") {
                     // do this to get an imediate deletion, setting the flag
                     // means you need to wait for an update cycle in game
@@ -1534,6 +1555,16 @@ editor_ui :: proc() {
                             break entity_editor
                         }
                     }
+                }
+
+                if imgui.Button("Rotate CCW") {
+                    selected_entity.rotation -= 90
+                }
+
+                imgui.SameLine()
+
+                if imgui.Button("Rotate CW") {
+                    selected_entity.rotation += 90
                 }
 
                 imgui.Separator()
@@ -1576,6 +1607,7 @@ editor_ui :: proc() {
                 imgui.InputFloat2("position", &selected_entity.position)
                 imgui.InputFloat2("size", &selected_entity.size)
                 imgui.InputFloat2("velocity", &selected_entity.velocity)
+                imgui.InputFloat("rotation", &selected_entity.rotation)
                 imgui.InputFloat("mass", &selected_entity.mass)
                     
                 if imgui.CollapsingHeader("Texture") {
@@ -1685,6 +1717,7 @@ TextureHandle :: enum {
     x_button,
     drone,
     nest,
+    brick_wall,
 }
 
 Texture :: struct {
@@ -1969,15 +2002,15 @@ reload_textures :: proc(renderer: ^Renderer) -> bool {
 // }
 
 draw_rectangle :: proc(position: v2, size: v2, colour: v4) {
-    draw_quad(position, size, colour, {}, DEFAULT_UV, .rectangle)
+    draw_quad(position, size, 0, colour, {}, DEFAULT_UV, .rectangle)
 }
 
-draw_texture :: proc(texture: TextureHandle, position: v2, size: v2, colour: v4, highlight_colour: v4) {
-    draw_quad(position, size, colour, highlight_colour, state.renderer.textures[texture].uv, .texture)
+draw_texture :: proc(texture: TextureHandle, position: v2, size: v2, rotation : f32 = 0,  colour := WHITE, highlight_colour := WHITE) {
+    draw_quad(position, size, rotation, colour, highlight_colour, state.renderer.textures[texture].uv, .texture)
 }
 
 draw_circle :: proc(position: v2, radius: f32, colour: v4) {
-    draw_quad(position, {radius * 2, radius * 2}, colour, {}, DEFAULT_UV, .circle)
+    draw_quad(position, {radius * 2, radius * 2}, 0, colour, {}, DEFAULT_UV, .circle)
 }
 
 draw_text :: proc(text: string, position: v2, font_size: f32, colour: v4, allignment: TextAllignment) {
@@ -2078,11 +2111,11 @@ draw_text :: proc(text: string, position: v2, font_size: f32, colour: v4, allign
         translated_position := scaled_position + pivot_point_translation + position
 
         // draw quad needs position to be centre of quad so just convert that here
-        draw_quad(translated_position + (scaled_size * 0.5), scaled_size, colour, {}, glyph.uvs, .font);
+        draw_quad(translated_position + (scaled_size * 0.5), scaled_size, 0, colour, {}, glyph.uvs, .font);
     } 
 }
 
-draw_quad :: proc(position: v2, size: v2, colour: v4, highlight_colour: v4, uv: [4]v2, draw_type: DrawType) {
+draw_quad :: proc(position: v2, size: v2, rotation: f32, colour: v4, highlight_colour: v4, uv: [4]v2, draw_type: DrawType) {
     transformation_matrix: Mat4
 
     if in_screen_space {
@@ -2091,7 +2124,9 @@ draw_quad :: proc(position: v2, size: v2, colour: v4, highlight_colour: v4, uv: 
         transformation_matrix = linalg.matrix4_translate(ndc_position) * linalg.matrix4_scale(v3{ndc_size.x, ndc_size.y, 1})
     } else {
         // model matrix
-        transformation_matrix = linalg.matrix4_translate(v3{position.x, position.y, 10}) * linalg.matrix4_scale(v3{size.x, size.y, 1})
+        transformation_matrix = linalg.matrix4_translate(v3{position.x, position.y, 10}) * 
+        linalg.matrix4_rotate_f32(-linalg.to_radians(rotation), {0, 0, 1}) *
+        linalg.matrix4_scale(v3{size.x, size.y, 1})
     
         // model view matrix
         transformation_matrix = get_view_matrix() * transformation_matrix
@@ -2350,6 +2385,8 @@ get_texture_name :: proc(texture: TextureHandle) -> string {
             return "drone.png"
         case .nest:
             return "nest.png"
+        case .brick_wall:
+            return "brick_wall.png"
     }
 
     unreachable()
