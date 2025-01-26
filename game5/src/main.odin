@@ -21,7 +21,6 @@ import stbi "vendor:stb/image"
 import stbtt "vendor:stb/truetype"
 import stbrp "vendor:stb/rect_pack"
 
-
 import "imgui"
 import "imgui/imgui_impl_glfw"
 import "imgui/imgui_impl_opengl3"
@@ -29,7 +28,6 @@ import "imgui/imgui_impl_opengl3"
 import json "json"
 
 // TODO:
-// save levels
 // create levels and save them from editor
 // figure out problems about changes entity types 
 
@@ -52,10 +50,9 @@ import json "json"
 
 // controls
 // developer:
-// - f1: toggle editor
+// - f1: toggle live editor
 // - f2: toggle input mode
-// - f9: save level
-// - f10: load level
+// - f4: toggle editor
 // - r: reload textures
 
 // player:
@@ -71,16 +68,17 @@ import json "json"
 //      - e key: interact
 
 // indev settings
-LOG_COLOURS         :: false
-OPENGL_MESSAGES     :: false
-WRITE_DEBUG_IMAGES  :: true
-V_SYNC              :: true
-DRAW_ARMOUR_BUBBLE  :: true
-NO_ENEMY_ATTACK     :: true
-CAN_RELOAD_TEXTURES :: true
-ALLOW_EDITOR             :: true
-EDITOR_ENTITY_MOVE_SPEED :: 2
-EDITOR_CAMERA_MOVE_SPEED :: 2
+LOG_COLOURS                 :: false
+OPENGL_MESSAGES             :: false
+WRITE_DEBUG_IMAGES          :: true
+V_SYNC                      :: true
+DRAW_ARMOUR_BUBBLE          :: true
+NO_ENEMY_ATTACK             :: true
+CAN_RELOAD_TEXTURES         :: true
+ALLOW_EDITOR                :: true
+EDITOR_ENTITY_MOVE_SPEED    :: 2
+EDITOR_CAMERA_MOVE_SPEED    :: 2
+LEVEL_SAVE_NAME             :: "start"
 
 // internal settings
 MAX_ENTITIES :: 5_000
@@ -228,26 +226,16 @@ main :: proc() {
             glfw.SetWindowShouldClose(state.window, true)
         }
 
-        if state.keys[glfw.KEY_F9] == .down {
-            ok := save_level()
-            if !ok {
-                log.error("there was an error saving the level")
-            }
-        }
-
-        if state.keys[glfw.KEY_F10] == .down {
-            ok := load_level()
-            if !ok {
-                log.error("there was an error loading the level")
-            }
-        }
-
         when ALLOW_EDITOR {
             if state.keys[glfw.KEY_F1] == .down {
-                switch state.mode {
-                    case .game:     state.mode = .editor 
-                    case .editor:   state.mode = .game 
-                }
+                state.editor.live_level = true
+                state.mode = next_enum_value(state.mode)
+            }
+
+            if state.keys[glfw.KEY_F4] == .down {
+                state.editor.live_level = false
+                assert(load_level(LEVEL_SAVE_NAME))
+                state.mode = next_enum_value(state.mode)
             }
         }
 
@@ -312,8 +300,6 @@ main :: proc() {
 }
 
 tick_game :: proc(delta_time: f32) {
-    state.editor.active = false
-
     input()
     update(delta_time)
     physics(delta_time)
@@ -321,23 +307,30 @@ tick_game :: proc(delta_time: f32) {
 }
 
 tick_editor :: proc(delta_time: f32) {
-    state.editor.active = true
-
     input()
     update_editor()
     draw(delta_time)
 
     in_screen_space = false
 
-    draw_editor()
+    editor_ui()
 }
 
 LevelSaveData :: struct {
     entities: []Entity
 }
 
-save_level :: proc() -> bool {
-    log.info("saving level")
+save_level :: proc(name: string) -> bool {
+    LEVEL_DIRECTORY :: "resources/levels"
+
+    path := fmt.tprintf("%v/%v.json", LEVEL_DIRECTORY, name)
+    log.infof("saving level to \"%v\"", path)
+
+    backup_ok := make_level_backup_if_exist(path)
+    if !backup_ok {
+        log.error("canceling saving of level because creating backup failed")
+        return false
+    }
 
     save_data := LevelSaveData {
         entities = state.entities[0:state.entity_count]
@@ -361,7 +354,7 @@ save_level :: proc() -> bool {
             return false
         }
 
-        ok := os.write_entire_file("save.json", bytes)
+        ok := os.write_entire_file(path, bytes)
         if !ok {
             log.error("error when trying to write json data to file")
             return false
@@ -373,10 +366,13 @@ save_level :: proc() -> bool {
     return true
 }
 
-load_level :: proc() -> bool {
-    log.info("loading level")
+load_level :: proc(name: string) -> bool {
+    LEVEL_DIRECTORY :: "resources/levels"
 
-    bytes, ok := os.read_entire_file("save.json", context.temp_allocator)
+    path := fmt.tprintf("%v/%v.json", LEVEL_DIRECTORY, name)
+    log.infof("loading level from \"%v\"", path)
+
+    bytes, ok := os.read_entire_file(path, context.temp_allocator)
     if !ok {
         log.error("error when trying to read json data from file")
         return false
@@ -398,6 +394,36 @@ load_level :: proc() -> bool {
     }
 
     log.info("succesfully loaded level data")
+
+    return true
+}
+
+make_level_backup_if_exist :: proc(path: string) -> bool {
+    BACKUP_DIRECTORY :: "resources/levels/backups"
+
+    exists := os.exists(path)
+    if !exists {
+        return true
+    }
+
+    file_data, ok := os.read_entire_file(path, context.temp_allocator)
+    if !ok {
+        log.error("failed to create save backup, failed to read existing file data")
+        return false
+    }
+
+    file_name := filepath.base(path)
+    random_prefix := rand.int_max(999_999)
+    
+    backup_path := fmt.tprintf("%v/%v_%v.json", BACKUP_DIRECTORY, random_prefix, file_name)
+
+    ok = os.write_entire_file(backup_path, file_data)
+    if !ok {
+        log.error("failed to create save backup, failed to write file")
+        return false
+    }
+
+    log.infof("created save backup to \"%v\"", backup_path)
 
     return true
 }
@@ -482,8 +508,7 @@ Prefab :: enum {
 }
 
 start :: proc() {
-    create_player({100, 100})
-    create_nest({-200, -200}, 1, 1, 200, 20)
+    load_level(LEVEL_SAVE_NAME)
 }
 
 input :: proc() {
@@ -924,7 +949,7 @@ draw :: proc(delta_time: f32) {
     in_screen_space = true 
 
     { // game info 
-        font_size : f32 = 15
+        font_size : f32 = 15 
 
         fps := math.trunc(1 / delta_time)
         text := fmt.tprintf("%v", fps)
@@ -1330,7 +1355,7 @@ next :: proc(iterator: ^BoxColliderIterator) -> ^Entity {
 
 // -------------------------- @editor -----------------------
 Editor :: struct {
-    active: bool,
+    live_level: bool,
     selected_entity_id: int,
 }
 
@@ -1401,7 +1426,7 @@ update_editor :: proc() {
     }
 }
 
-draw_editor :: proc() {
+editor_ui :: proc() {
     selected_entity := get_entity_with_id(state.editor.selected_entity_id)
     if selected_entity == nil {
         state.editor.selected_entity_id = -1
@@ -1415,21 +1440,33 @@ draw_editor :: proc() {
 
     { // mode text
         size : f32 = 25
-        draw_text("Editor", {state.width * 0.5, state.height - size}, size, WHITE, .center)
+        position := v2{state.width * 0.5, state.height - size}
+
+        if state.editor.live_level {
+            draw_rectangle(position, {300, size + 10}, RED)
+        }
+
+        draw_text("Editor", position, size, WHITE, .center)
     } 
 
     { // inspector imgui window
         // imgui.ShowDemoWindow()
 
-	if imgui.Begin("Inspector", &state.editor.active, flags = {.NoCollapse}) {
-            if imgui.Button("Save Level") {
-                save_level()
+	if imgui.Begin("Inspector", flags = {.NoCollapse}) {
+            if !state.editor.live_level && imgui.Button("Save Level") {
+                ok := save_level(LEVEL_SAVE_NAME)
+                if !ok {
+                    log.error("failed to save level")
+                }
             }
 
             imgui.SameLine()
 
             if imgui.Button("Load Level") {
-                load_level()
+                ok := load_level(LEVEL_SAVE_NAME)
+                if !ok {
+                    log.error("failed to load level")
+                }
             }
 
             if imgui.CollapsingHeader("State") {
