@@ -45,15 +45,18 @@ import json "json"
 
 // record:
 // start: 21/01/2025
-// total time: 21:30 hrs
-// 23:45
+// total time: 24:30 hrs
+// 3:00
 
 // controls
 // developer:
 // - f1: toggle live editor
 // - f2: toggle input mode
 // - f4: toggle editor
-// - r: reload textures
+// - t: reload textures
+//   - editor:
+//      - r:            rotate CW
+//      - shift + r:    rotate CCW
 
 // player:
 // - gamepad
@@ -76,8 +79,7 @@ DRAW_ARMOUR_BUBBLE          :: true
 NO_ENEMY_ATTACK             :: true
 CAN_RELOAD_TEXTURES         :: true
 ALLOW_EDITOR                :: true
-EDITOR_ENTITY_MOVE_SPEED    :: 2
-EDITOR_CAMERA_MOVE_SPEED    :: 2
+EDITOR_ENTITY_MOVE_SPEED    :: 4
 LEVEL_SAVE_NAME             :: "start"
 
 // internal settings
@@ -166,6 +168,11 @@ main :: proc() {
             far_plane = 100
         },
         mode = .game,
+        editor = {
+            use_grid = true,
+            grid_size = {50, 50},
+            camera_move_speed = 4
+        },
         renderer = {
             quads = make([]Quad, MAX_QUADS)
         },
@@ -560,7 +567,7 @@ update :: proc(delta_time: f32) {
     // } 
 
     when CAN_RELOAD_TEXTURES {
-        if state.keys[glfw.KEY_R] == .down {
+        if state.keys[glfw.KEY_T] == .down {
             ok := reload_textures(&state.renderer)
             if !ok {
                 log.error("tried to reload textures but failed...")
@@ -1373,6 +1380,9 @@ next :: proc(iterator: ^BoxColliderIterator) -> ^Entity {
 // -------------------------- @editor -----------------------
 Editor :: struct {
     live_level: bool,
+    use_grid: bool,
+    grid_size: v2,
+    camera_move_speed: f32,
     selected_entity_id: int,
 }
 
@@ -1397,7 +1407,7 @@ update_editor :: proc() {
         }
 
         if linalg.length(move_input) != 0 {
-            move_amount := move_input * EDITOR_CAMERA_MOVE_SPEED
+            move_amount := move_input * state.editor.camera_move_speed
             state.camera.position += move_amount
         }
     }
@@ -1418,27 +1428,50 @@ update_editor :: proc() {
             break update_selected_entity
         }
 
-        move_input: v2
-
-        if state.keys[glfw.KEY_LEFT] == .pressed {
-            move_input.x -= 1
+        { // move selected entity
+            desired_key_state: InputState = .down if state.editor.use_grid else .pressed
+    
+            move_input: v2
+    
+            if state.keys[glfw.KEY_LEFT] == desired_key_state {
+                move_input.x -= 1
+            }
+    
+            if state.keys[glfw.KEY_RIGHT] == desired_key_state {
+                move_input.x += 1
+            }
+    
+            if state.keys[glfw.KEY_UP] == desired_key_state {
+                move_input.y += 1
+            }
+    
+            if state.keys[glfw.KEY_DOWN] == desired_key_state {
+                move_input.y -= 1
+            }
+    
+            if linalg.length(move_input) != 0 {
+                if state.editor.use_grid {
+                    grid_index := selected_entity.position / state.editor.grid_size
+    
+                    grid_index.x = math.trunc(grid_index.x)
+                    grid_index.y = math.trunc(grid_index.y)
+    
+                    grid_index += move_input
+                    selected_entity.position = grid_index * state.editor.grid_size
+                } else {
+                    move_amount := move_input * EDITOR_ENTITY_MOVE_SPEED
+                    selected_entity.position += move_amount
+                }
+            }
         }
 
-        if state.keys[glfw.KEY_RIGHT] == .pressed {
-            move_input.x += 1
-        }
-
-        if state.keys[glfw.KEY_UP] == .pressed {
-            move_input.y += 1
-        }
-
-        if state.keys[glfw.KEY_DOWN] == .pressed {
-            move_input.y -= 1
-        }
-
-        if linalg.length(move_input) != 0 {
-            move_amount := move_input * EDITOR_ENTITY_MOVE_SPEED
-            selected_entity.position += move_amount
+        { // rotate selected entity
+            if state.keys[glfw.KEY_LEFT_SHIFT] == .pressed && state.keys[glfw.KEY_R] == .down {
+                selected_entity.rotation -= 90
+            }
+            else if state.keys[glfw.KEY_R] == .down {
+                selected_entity.rotation += 90
+            }
         }
     }
 }
@@ -1451,6 +1484,28 @@ editor_ui :: proc() {
 
     if selected_entity != nil {
         draw_rectangle(selected_entity.position, selected_entity.size * 1.5, alpha(GREEN, 0.2))
+    }
+
+    if state.editor.use_grid {
+        GRID_WIDTH  :: 200
+        GRID_HEIGHT :: 200
+        LINE_WIDTH  :: 2
+
+        x_size := state.editor.grid_size.x
+        start_x := -((GRID_WIDTH / 2) * x_size) 
+
+        y_size := state.editor.grid_size.y
+        start_y := -((GRID_HEIGHT / 2) * y_size) 
+
+        for x in 0..<GRID_WIDTH {
+            draw_rectangle({start_x + f32(x) * x_size, 0}, {LINE_WIDTH, GRID_HEIGHT * y_size}, alpha(RED, 0.2))
+        }
+
+        for y in 0..<GRID_HEIGHT {
+            draw_rectangle({0, start_y + f32(y) * y_size}, {GRID_WIDTH * x_size, LINE_WIDTH}, alpha(RED, 0.2))
+        }
+
+        draw_circle({}, 15, alpha(BLUE, 0.4))
     }
 
     in_screen_space = true
@@ -1486,6 +1541,18 @@ editor_ui :: proc() {
                 }
             }
 
+            if imgui.CollapsingHeader("Editor") {
+                imgui.Indent()
+                defer imgui.Unindent()
+
+                imgui.Checkbox("Use grid", &state.editor.use_grid)
+                if state.editor.use_grid {
+                    imgui.InputFloat2("grid size", &state.editor.grid_size)
+                }
+
+                imgui.SliderFloat("camera speed", &state.editor.camera_move_speed, 0, 15)
+            }
+
             if imgui.CollapsingHeader("State") {
                 imgui.Indent()
                 defer imgui.Unindent()
@@ -1501,13 +1568,12 @@ editor_ui :: proc() {
                 imgui.Text("mouse position: %f, %f", state.mouse_position.x, state.mouse_position.y)
                 imgui.Text("time: %f", state.time)
                 imgui.InputFloat2("camera position", &state.camera.position)
-                imgui.InputFloat("orthographic size", &state.camera.orthographic_size)
+                imgui.SliderFloat("orthographic size", &state.camera.orthographic_size, 10, 5_000)
                 imgui.InputFloat("near plane", &state.camera.near_plane)
                 imgui.InputFloat("far plane", &state.camera.far_plane)
                 imgui.Text("entity count: %d", state.entity_count)
                 imgui.Text("id counter: %d", state.id_counter)
                 imgui.Text("quad count: %d", state.renderer.quad_count)
-
             }
 
             if imgui.CollapsingHeader("Prefabs") {
@@ -1565,6 +1631,10 @@ editor_ui :: proc() {
 
                 if imgui.Button("Rotate CW") {
                     selected_entity.rotation += 90
+                }
+
+                if imgui.Button("Set size as grid") {
+                    state.editor.grid_size = selected_entity.size
                 }
 
                 imgui.Separator()
