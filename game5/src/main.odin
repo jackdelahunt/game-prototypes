@@ -1,4 +1,4 @@
-package srcmain
+package src
 
 import "core:fmt"
 import "base:runtime"
@@ -28,24 +28,27 @@ import "imgui/imgui_impl_opengl3"
 import json "json"
 
 // TODO:
-// create levels and save them from editor
-// figure out problems about changes entity types 
+// crates
+// finish layout of first level
+// better spawning of enemies in nests
+// switch to different levels
+// real path finding for enemies  
 
 // TODO, abilities:
-// level 1:
+// level 1: going outside
 //  - armour I
 //  - speed
-// level 2:
+// level 2: freinds
 //  - power dash (tank enemy that dashes at player, player can dash at emeies)
-// level 3:
+// level 3: the girl
 //  - multi spawn (on death enemy spawn 4 smaller versions of itself, player can spawn smaller versions to attack enemies)
-// level 4:
+// level 4: family, the girl, freinds
 //  - armour 2?? same as armour just more
 //  - lava pit (enemies shoots projectiles to cover floor in lava, player does the same)
 
 // record:
 // start: 21/01/2025
-// total time: 31:00 hrs
+// total time: 34:00 hrs
 
 // controls
 // developer:
@@ -82,27 +85,28 @@ NO_ENEMY_SPAWN              :: false
 CAN_RELOAD_TEXTURES         :: true
 ALLOW_EDITOR                :: true
 LEVEL_SAVE_NAME             :: "start"
+ALL_ABILITIES_ACTIVE        :: true
 
 // internal settings
 MAX_ENTITIES :: 5_000
 
 // gameplay settings
 MAX_PLAYER_HEALTH       :: 100
-PLAYER_SPEED            :: 250
+PLAYER_SPEED            :: 275
 PLAYER_REACH_SIZE       :: 100
 GEM_ATTRACT_RADIUS      :: 200
 GEM_ATTRACT_SPEED       :: 800
+START_WEAPON_LEVEL      :: 2
 MAX_WEAPON_LEVEL        :: 4
 
-AI_SPEED                :: 200
 AI_ATTACK_COOLDOWN      :: 0.5
 AI_ATTACK_DISTANCE      :: 10
 
 BULLET_SPEED            :: 1000
 
-MAX_ARMOUR              :: 100
-ARMOUR_REGEN_RATE       :: 25
-ARMOUR_REGEN_COOLDOWN   :: 5
+MAX_ARMOUR              :: 150
+ARMOUR_REGEN_RATE       :: 50
+ARMOUR_REGEN_COOLDOWN   :: 1.5
 
 // player settings
 AIM_DEADZONE        :: 0.15
@@ -124,6 +128,7 @@ State :: struct {
     gamepad: glfw.GamepadState,
     time: f64,
     player_state: PlayerState,
+    level_state: LevelState,
     mode: Mode,
     editor: Editor,
     camera: struct {
@@ -144,6 +149,12 @@ PlayerState :: struct {
     dropped_abilities: bit_set[Ability; u64],
     weapon_level: int,
     collected_gems_this_level: int,
+    kills_per_ai: [AiType]int,
+}
+
+LevelState :: struct {
+    in_boss_battle: bool,
+    boss_battle_over: bool
 }
 
 Mode :: enum {
@@ -177,14 +188,15 @@ main :: proc() {
             far_plane = 100
         },
         player_state = {
-            weapon_level = 1
+            weapon_level = START_WEAPON_LEVEL
         },
         mode = .game,
         editor = {
             use_grid = true,
             grid_size = {50, 50},
-            camera_move_speed = 4,
-            entity_move_speed = 2
+            use_highlight = true,
+            camera_move_speed = 6,
+            entity_move_speed = 5
         },
         renderer = {
             quads = make([]Quad, MAX_QUADS)
@@ -257,6 +269,15 @@ main :: proc() {
                 state.editor.live_level = false
                 assert(load_level(LEVEL_SAVE_NAME))
                 state.mode = next_enum_value(state.mode)
+            }
+        }
+
+        when CAN_RELOAD_TEXTURES {
+            if state.keys[glfw.KEY_T] == .down {
+                ok := reload_textures(&state.renderer)
+                if !ok {
+                    log.error("tried to reload textures but failed...")
+                }
             }
         }
 
@@ -465,6 +486,7 @@ Entity :: struct {
     flags: bit_set[EntityFlag; u64],
     abilities: bit_set[Ability; u64],
     created_time: f64,
+    only_boss_battle: bool,
 
     // global
     position: v2,
@@ -518,6 +540,8 @@ EntityFlag :: enum {
 
     gem,
 
+    door,
+
     to_be_deleted
 }
 
@@ -537,6 +561,7 @@ PickupType :: enum {
 }
 
 Prefab :: enum {
+    blank,
     player,
     nest,
     pickup,
@@ -546,6 +571,8 @@ Prefab :: enum {
     brick_wall_corner_left,
     brick_wall_corner_right,
     gem,
+    crate,
+    door,
 }
 
 start :: proc() {
@@ -585,20 +612,6 @@ input :: proc() {
 }
 
 update :: proc(delta_time: f32) {
-    // if state.gamepad.axes[glfw.GAMEPAD_AXIS_LEFT_TRIGGER] > GAMEPAD_TRIGGER_DEADZONE {
-        // create_speeder({-20, 0}) 
-        // create_drone({20, 0}) 
-    // } 
-
-    when CAN_RELOAD_TEXTURES {
-        if state.keys[glfw.KEY_T] == .down {
-            ok := reload_textures(&state.renderer)
-            if !ok {
-                log.error("tried to reload textures but failed...")
-            }
-        }
-    }
-
     player_this_frame := get_entity_with_flag(.player)
 
     for &entity in state.entities[0:state.entity_count] {
@@ -619,12 +632,22 @@ update :: proc(delta_time: f32) {
             }
         }
 
+        if entity.only_boss_battle {
+            if !state.level_state.in_boss_battle {
+                continue
+            }
+        }
+
         player_update: {
             if !(.player in entity.flags) {
                 break player_update
             }
 
             state.camera.position = entity.position
+
+            when ALL_ABILITIES_ACTIVE {
+                entity.abilities += {.speed, .armour}
+            }
 
             { // set aim
                 aim_vector := get_aim_input(entity.position)
@@ -666,22 +689,28 @@ update :: proc(delta_time: f32) {
                 create_bullet(entity.position, entity.aim_direction * BULLET_SPEED)
             }
 
-            { // interact
-                input := get_interact_input()
+            interact: { // interact
+                if get_interact_input() != .down {
+                    break interact
+                }
 
-                if input == .down {
-                    for &other in state.entities[0:state.entity_count] {
-                        if !(.interactable in other.flags) {
-                            continue 
-                        }
+                for &other in state.entities[0:state.entity_count] {
+                    if !(.interactable in other.flags) {
+                        continue 
+                    }
 
-                        assert(.ability_pickup in other.flags, "only interactables are pickups right now")
-
+                    if .ability_pickup in other.flags {
                         if linalg.distance(entity.position, other.position) < PLAYER_REACH_SIZE {
                             ability := ability_from_pickup_type(other.pickup_type)
-    
+     
                             entity.abilities += {ability}
                             other.flags += {.to_be_deleted}
+                        }
+                    }
+
+                    if .door in other.flags {
+                        if !state.level_state.in_boss_battle && !state.level_state.boss_battle_over {
+                            state.level_state.in_boss_battle = true
                         }
                     }
                 }
@@ -1038,6 +1067,14 @@ draw :: proc(delta_time: f32) {
             // TODO: think of a way to show the different types of pickups
         }
 
+        if entity.only_boss_battle && !state.level_state.in_boss_battle {
+            if state.mode == .editor {
+                base_colour = GREEN
+            } else {
+                continue
+            }
+        }
+
         draw_texture(entity.texture, entity.position, entity.size, rotation = entity.rotation, colour = base_colour, highlight_colour = highlight_colour)
     } 
 
@@ -1072,17 +1109,29 @@ draw :: proc(delta_time: f32) {
 
 on_entity_killed :: proc(entity: ^Entity) {
     if .ai in entity.flags {
-        { // drop ability pickup on death
-            assert(card(entity.abilities) == 1, "only one ability per ai")
-        
-            if entity.abilities & state.player_state.dropped_abilities == {} {
-                pickup := pickup_type_from_ability(ai_ability(entity.ai_type))
-                create_ability_pickup(entity.position, pickup)
-                state.player_state.dropped_abilities += entity.abilities
-            }
+        { // add death to player state
+            state.player_state.kills_per_ai[entity.ai_type] += 1
         }
 
-        { // drop gems on death
+        ability_drop: { // drop ability pickup
+            // set should be empty if the ability has not dropped yet
+            if entity.abilities & state.player_state.dropped_abilities != {} {
+                break ability_drop
+            }
+
+            if state.player_state.kills_per_ai[entity.ai_type] < ai_kills_for_ability(entity.ai_type) {
+                break ability_drop
+            }
+
+            pickup := pickup_type_from_ability(ai_ability(entity.ai_type))
+            create_ability_pickup(entity.position, pickup)
+
+            // dont accidently add more then one ability
+            assert(card(entity.abilities) == 1)
+            state.player_state.dropped_abilities += entity.abilities
+        }
+
+        { // drop gems
             gem_count := ai_gem_drop_amount(entity.ai_type)
             for i in 0..<gem_count {
                 // normalise to -1 to 1 for unit vector direction
@@ -1142,8 +1191,8 @@ create_drone :: proc(position: v2) -> ^Entity {
         flags = {.ai, .solid_hitbox, .has_health},
         abilities = {ai_ability(type)},
         position = position,
-        size = {35, 35},
-        mass = 1,
+        size = {45, 45},
+        mass = 10,
         texture = .drone,
         ai_type = type,
         health = ai_health(type),
@@ -1194,6 +1243,12 @@ create_gem :: proc(position: v2) -> ^Entity {
 
 create_entity_from_prefab :: proc(prefab: Prefab) -> Entity {
     switch prefab {
+        case .blank: {
+            return Entity {
+                flags = {},
+                size = {100, 100},
+            }
+        }
         case .player: {
             return Entity {
                 flags = {.player, .has_health, .solid_hitbox},
@@ -1203,7 +1258,6 @@ create_entity_from_prefab :: proc(prefab: Prefab) -> Entity {
                 aim_direction = {0, 1},
                 health = MAX_PLAYER_HEALTH,
                 max_health = MAX_PLAYER_HEALTH,
-                armour = MAX_ARMOUR
             }
         }
         case .nest: {
@@ -1261,6 +1315,23 @@ create_entity_from_prefab :: proc(prefab: Prefab) -> Entity {
                 flags = {.gem},
                 size = {15, 15},
                 texture = .gem,
+            }
+        }
+        case .crate: {
+            return Entity {
+                flags = {.solid_hitbox, .has_health},
+                size = {80, 80},
+                texture = .crate,
+                mass = 20,
+                max_health = 50,
+                health = 50
+            }
+        }
+        case .door: {
+            return Entity {
+                flags = {.door, .static_hitbox, .interactable},
+                size = {100, 100},
+                texture = .door,
             }
         }
     }
@@ -1330,8 +1401,8 @@ entity_take_damage :: proc(entity: ^Entity, damage: f32) {
 
 ai_speed :: proc(type: AiType) -> f32 {
     switch type {
-        case .speeder:  return 220 // multiplied by speed ability
-        case .drone:    return 150
+        case .speeder:  return 190 // multiplied by speed ability
+        case .drone:    return 210
     }
 
     unreachable()
@@ -1355,6 +1426,15 @@ ai_ability :: proc(type: AiType) -> Ability {
     unreachable()
 }
 
+ai_kills_for_ability :: proc(type: AiType) -> int {
+    switch type {
+        case .speeder:  return 40         
+        case .drone:    return 20
+    }
+
+    unreachable()
+}
+
 ai_spawn_chance :: proc(type: AiType) -> f32 {
     switch type {
         case .speeder:  return  0.4         
@@ -1366,8 +1446,8 @@ ai_spawn_chance :: proc(type: AiType) -> f32 {
 
 ai_damage :: proc(type: AiType) -> f32 {
     switch type {
-        case .speeder:  return  5
-        case .drone:    return  10
+        case .speeder:  return  4
+        case .drone:    return  20
     }
 
     unreachable()
@@ -1375,8 +1455,8 @@ ai_damage :: proc(type: AiType) -> f32 {
 
 ai_health :: proc(type: AiType) -> f32 {
     switch type {
-        case .speeder:  return  50
-        case .drone:    return  80
+        case .speeder:  return  20
+        case .drone:    return  100
     }
 
     unreachable()
@@ -1414,8 +1494,8 @@ gems_needed_for_level :: proc(weapon_level: int) -> int {
     switch weapon_level {
         case 1: return 0
         case 2: return 150
-        case 3: return 500
-        case 4: return 3000
+        case 3: return 3_000
+        case 4: return 10_000
     }
 
     unreachable()
@@ -1601,6 +1681,7 @@ Editor :: struct {
     live_level: bool,
     use_grid: bool,
     grid_size: v2,
+    use_highlight: bool,
     camera_move_speed: f32,
     entity_move_speed: f32,
     selected_entity_id: int,
@@ -1739,7 +1820,7 @@ editor_ui :: proc() {
         state.editor.selected_entity_id = -1
     }
 
-    if selected_entity != nil {
+    if state.editor.use_highlight && selected_entity != nil {
         draw_rectangle(selected_entity.position, selected_entity.size * 1.5, alpha(GREEN, 0.2))
 
         if .nest in selected_entity.flags {
@@ -1748,8 +1829,8 @@ editor_ui :: proc() {
     }
 
     if state.editor.use_grid {
-        GRID_WIDTH  :: 200
-        GRID_HEIGHT :: 200
+        GRID_WIDTH  :: 500
+        GRID_HEIGHT :: 300
         LINE_WIDTH  :: 3
 
         x_size := state.editor.grid_size.x
@@ -1815,6 +1896,7 @@ editor_ui :: proc() {
                     imgui.InputFloat2("grid size", &state.editor.grid_size)
                 }
 
+                imgui.Checkbox("Use highlight", &state.editor.use_highlight)
                 imgui.SliderFloat("camera speed", &state.editor.camera_move_speed, 0, 15)
                 imgui.SliderFloat("entity speed", &state.editor.entity_move_speed, 0, 15)
             }
@@ -1940,6 +2022,7 @@ editor_ui :: proc() {
                 }
     
                 imgui.Text("created time: %f", selected_entity.created_time)
+                imgui.Checkbox("only boss battle", &selected_entity.only_boss_battle)
                 imgui.InputFloat2("position", &selected_entity.position)
                 imgui.InputFloat2("size", &selected_entity.size)
                 imgui.InputFloat2("velocity", &selected_entity.velocity)
@@ -2060,6 +2143,9 @@ TextureHandle :: enum {
     brick_wall_corner_left,
     brick_wall_corner_right,
     gem,
+    crate,
+    door,
+    window,
 }
 
 Texture :: struct {
@@ -2739,7 +2825,12 @@ get_texture_name :: proc(texture: TextureHandle) -> string {
             return "brick_wall_corner_right.png"
         case .gem:
             return "gem.png"
-    
+        case .crate:
+            return "crate.png"
+        case .door:
+            return "door.png"
+        case .window:
+            return "window.png"
     }
 
     unreachable()
