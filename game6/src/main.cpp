@@ -1,8 +1,16 @@
-#include "glad/glad.cpp"
-#include "glfw/glfw3.h"
-
 #include <stdint.h>
 #include <stdio.h>
+
+#include "glad/glad.cpp"
+#include "glfw/GLFW/glfw3.h"
+
+#include "glfw/glfw3.h"
+#include "imgui/imgui.h"
+#include "imgui/backends/imgui_impl_glfw.h"
+#include "imgui/backends/imgui_impl_opengl3.h"
+
+// Total: 3
+// Started: 8:30
 
 #define u8  uint8_t
 #define u16 uint16_t
@@ -20,6 +28,8 @@ enum class InputState {
 };
 
 struct State {
+    i32 width;
+    i32 height;
     GLFWwindow *window;
     InputState keys[348];
 };
@@ -27,13 +37,18 @@ struct State {
 State state;
 
 bool init_opengl();
+void init_imgui();
 GLFWwindow *create_window(const char *title, i32 width, i32 height);
 void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
+void glfw_error_callback(int error_code, const char* description);
 
 int main() {
-    state = {};
+    state = {
+        .width = 1080,
+        .height = 720,
+    };
 
-    state.window = create_window("my glfw window", 640, 420);
+    state.window = create_window("game6", state.width, state.height);
     if (state.window == nullptr) {
         printf("failed to create window");
         return -1;
@@ -45,6 +60,8 @@ int main() {
         return -1;
     }
 
+    init_imgui();
+
     while (!glfwWindowShouldClose(state.window)) {
         glfwPollEvents();
 
@@ -52,7 +69,32 @@ int main() {
             glfwSetWindowShouldClose(state.window, GLFW_TRUE);
         }
 
+        { // imgui draw commands
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+    
+            static bool demo = true;
+            ImGui::ShowDemoWindow(&demo);
+    
+        }
+
         glad_glClear(GL_COLOR_BUFFER_BIT);
+
+        { // our rendering code goes here
+
+        }
+
+        { // imgui rendering
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+            GLFWwindow *current = glfwGetCurrentContext();
+            ImGui::UpdatePlatformWindows();
+            ImGui::RenderPlatformWindowsDefault();
+            glfwMakeContextCurrent(current);
+        }
+
         glfwSwapBuffers(state.window);
     }
 
@@ -73,7 +115,25 @@ bool init_opengl() {
     float f = 0.8f;
     glad_glClearColor(f, f, f, 1.0f);
 
+    glad_glViewport(0, 0, state.width, state.height);
+
     return true;
+}
+
+void init_imgui() {
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+
+    ImGui::StyleColorsDark();
+
+    ImGuiIO& io = ImGui::GetIO();
+
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+
+    ImGui_ImplGlfw_InitForOpenGL(state.window, true);
+    ImGui_ImplOpenGL3_Init("#version 460");
 }
 
 GLFWwindow *create_window(const char *title, i32 width, i32 height) {
@@ -86,17 +146,23 @@ GLFWwindow *create_window(const char *title, i32 width, i32 height) {
         return nullptr;
     }
 
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, GL_MAJOR_VERSION);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, GL_MINOR_VERSION);
+    glfwMakeContextCurrent(window);
+
+    glfwSetErrorCallback(glfw_error_callback);
+
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 
+    glfwSwapInterval(1);
     glfwSetKeyCallback(window, glfw_key_callback);
 
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
-
     return window;
+}
+
+void glfw_error_callback(int error_code, const char* description) {
+    printf("glfw error: [%d]: %s", error_code, description);
 }
 
 void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
