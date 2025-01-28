@@ -1,10 +1,10 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "glad/glad.cpp"
+#define GLEW_STATIC
+#include "glew/include/GL/glew.h"
 #include "glfw/GLFW/glfw3.h"
 
-#include "glfw/glfw3.h"
 #include "imgui/imgui.h"
 #include "imgui/backends/imgui_impl_glfw.h"
 #include "imgui/backends/imgui_impl_opengl3.h"
@@ -79,7 +79,7 @@ int main() {
     
         }
 
-        glad_glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT);
 
         { // our rendering code goes here
 
@@ -104,18 +104,18 @@ int main() {
 }
 
 bool init_opengl() {
-    i32 loaded = gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
-    if (loaded == 0) {
+    GLenum result = glewInit();
+    if (result != GLEW_OK) {
         return false;
     }
 
-    glad_glEnable(GL_BLEND);
-    glad_glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     float f = 0.8f;
-    glad_glClearColor(f, f, f, 1.0f);
+    glClearColor(f, f, f, 1.0f);
 
-    glad_glViewport(0, 0, state.width, state.height);
+    glViewport(0, 0, state.width, state.height);
 
     return true;
 }
