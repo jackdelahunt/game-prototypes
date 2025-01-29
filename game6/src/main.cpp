@@ -5,24 +5,32 @@
 #define GLEW_STATIC
 #include "glew/include/GL/glew.h"
 #include "glfw/GLFW/glfw3.h"
-
 #include "imgui/imgui.h"
 #include "imgui/backends/imgui_impl_glfw.h"
 #include "imgui/backends/imgui_impl_opengl3.h"
+#include "glm/glm.hpp"
+#include "glm/ext.hpp"
 
-// Total: 5.5
+// Total: 7
 
-#define u8  uint8_t
-#define u16 uint16_t
-#define u32 uint32_t
-#define u64 uint64_t
+typedef uint8_t u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+typedef uint64_t u64;
 
-#define i8  int8_t
-#define i16 int16_t
-#define i32 int32_t
-#define i64 int64_t
+typedef int8_t i8;
+typedef int16_t i16;
+typedef int32_t i32;
+typedef int64_t i64;
 
-#define f32 float
+typedef float f32;
+typedef double f64;
+
+typedef glm::vec2 v2;
+typedef glm::vec3 v3;
+typedef glm::vec4 v4;
+
+typedef glm::mat4 mat4;
 
 #define MAX_QUADS 100
 
@@ -32,8 +40,8 @@ enum class InputState {
 };
 
 struct Vertex {
-    f32 position[3]; 
-    f32 colour[3]; 
+    v3 position;
+    v4 colour;
 };
 
 struct Quad {
@@ -42,6 +50,7 @@ struct Quad {
 
 struct Renderer {
     Quad quads[MAX_QUADS];
+    i64 quad_count;
 
     u32 vertex_array_id;
     u32 vertex_buffer_id;
@@ -53,8 +62,16 @@ struct State {
     const char *title;
     i32 width;
     i32 height;
+
     GLFWwindow *window;
     InputState keys[348];
+
+    struct {
+        v2 position;
+        f32 orthographic_size;
+        f32 near_plane;
+        f32 far_plane;
+    } camera;
 
     Renderer renderer;
 } state = {};
@@ -65,6 +82,10 @@ struct Slice {
     i64 len;
 };
 
+v4 RED      = {1, 0, 0, 1};
+v4 GREEN    = {0, 1, 0, 1};
+v4 BLUE     = {0, 0, 1, 1};
+
 bool create_window();
 void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
 void glfw_error_callback(int error_code, const char* description);
@@ -72,6 +93,9 @@ void glfw_error_callback(int error_code, const char* description);
 bool init_opengl();
 void init_imgui();
 bool init_renderer();
+void draw_quad(v3 position, v2 size);
+mat4 get_view_matrix();
+mat4 get_projection_matrix();
 
 Slice<char> read_file(const char *path);
 
@@ -80,6 +104,12 @@ int main() {
         .title = "game6",
         .width = 1080,
         .height = 720,
+        .camera = {
+            .position = {},
+            .orthographic_size = 10,
+            .near_plane = 0.1f,
+            .far_plane = 100.0f,
+        }
     };
 
     {
@@ -113,20 +143,53 @@ int main() {
             glfwSetWindowShouldClose(state.window, GLFW_TRUE);
         }
 
+        static v3 position = {0, 0, 1};
+        static v2 size = {1, 1};
+
+        { // our rendering code goes here
+            state.renderer.quad_count = 0;
+            draw_quad(position, size);
+        }
+
         { // imgui draw commands
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
+
+            if (ImGui::Begin("Inspector", 0, ImGuiChildFlags_AlwaysAutoResize)) {
+
+                ImGui::PushID("camera");
+                ImGui::SeparatorText("Camera");
+                ImGui::SliderFloat2("position", &state.camera.position.x, -100, 100);
+                ImGui::SliderFloat("ortho size", &state.camera.orthographic_size, 1, 100);
+                ImGui::PopID();
+
+                ImGui::PushID("quad");
+                ImGui::SeparatorText("Quad");
+                ImGui::SliderFloat3("position", &position.x, -100, 100);
+                ImGui::SliderFloat2("size", &size.x, 1, 100);
+                ImGui::PopID();
+
+                v3 ndc = state.renderer.quads[0].vertices[0].position;
+                ImGui::Text("%f %f %f", ndc.x, ndc.y, ndc.z);
+
+
+                ImGui::End();
+            }
     
-            static bool demo = true;
-            ImGui::ShowDemoWindow(&demo);
-    
+            // bool demo = false;
+            // ImGui::ShowDemoWindow(&demo);
         }
 
         glClear(GL_COLOR_BUFFER_BIT);
 
-        { // our rendering code goes here
+        { // draw the things we have sent to the renderer
+            glBindBuffer(GL_ARRAY_BUFFER, state.renderer.vertex_buffer_id);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * state.renderer.quad_count, state.renderer.quads);
 
+            glUseProgram(state.renderer.shader_program_id);
+            glBindVertexArray(state.renderer.vertex_array_id);
+            glDrawElements(GL_TRIANGLES, 6 * state.renderer.quad_count, GL_UNSIGNED_INT, 0);
         }
 
         { // imgui rendering
@@ -337,6 +400,58 @@ bool init_renderer() {
     }
 
     return true;
+}
+
+void draw_quad(v3 position, v2 size) {
+    mat4 transformation_matrix = glm::mat4(1);
+
+    // model
+    transformation_matrix = glm::translate(transformation_matrix, position); 
+    transformation_matrix = glm::scale(transformation_matrix, {size.x, size.y, 1});    
+
+    // view
+    transformation_matrix = get_view_matrix() * transformation_matrix;
+
+    // projection
+    transformation_matrix = get_projection_matrix() * transformation_matrix;
+
+    Quad *quad = &state.renderer.quads[state.renderer.quad_count];
+    state.renderer.quad_count++;
+
+    v4 top_left      = {-0.5,   0.5, 0, 1};
+    v4 top_right     = { 0.5,   0.5, 0, 1};
+    v4 bottom_right  = { 0.5,  -0.5, 0, 1};
+    v4 bottom_left   = {-0.5,  -0.5, 0, 1};
+
+    quad->vertices[0].position = transformation_matrix * top_left;
+    quad->vertices[1].position = transformation_matrix * top_right;
+    quad->vertices[2].position = transformation_matrix * bottom_right;
+    quad->vertices[3].position = transformation_matrix * bottom_left;
+
+    quad->vertices[0].colour = RED;
+    quad->vertices[1].colour = GREEN;
+    quad->vertices[2].colour = BLUE;
+    quad->vertices[3].colour = RED;
+}
+
+mat4 get_view_matrix() {
+    return glm::lookAt(
+        v3{state.camera.position.x, state.camera.position.y, 0},
+        v3{state.camera.position.x, state.camera.position.y, 1},
+        v3{0, 1, 0}
+    );
+}
+
+mat4 get_projection_matrix() {
+    f32 aspect_ratio = (f32)state.width / (f32)state.height;
+    f32 size = state.camera.orthographic_size;
+
+    return glm::ortho(
+        -size * aspect_ratio, 
+        size * aspect_ratio, 
+        -size, size,
+        state.camera.near_plane, state.camera.far_plane
+    );
 }
 
 Slice<char> read_file(const char *path) {
