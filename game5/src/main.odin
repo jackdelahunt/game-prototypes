@@ -49,6 +49,7 @@ import json "json"
 // record:
 // start: 21/01/2025
 // total time: 34:00 hrs
+// start 18:30
 
 // controls
 // developer:
@@ -73,6 +74,7 @@ import json "json"
 //      - mouse: aim
 //      - left click: shoot
 //      - e key: interact
+// start 18:30
 
 // indev settings
 LOG_COLOURS                 :: false
@@ -850,7 +852,7 @@ update :: proc(delta_time: f32) {
                 break speed_update
             }
             
-            entity.velocity *= 1.5
+            entity.velocity *= 1.3
         }
 
         gem_update: {
@@ -1060,7 +1062,14 @@ draw :: proc(delta_time: f32) {
 
             armour_alpha := entity.armour / MAX_ARMOUR
 
-            draw_texture(.armour, entity.position, entity.size * 2, colour = alpha(WHITE, armour_alpha), highlight_colour = alpha(armour_colour, armour_alpha))
+            size_multiplier: f32
+            if .player in entity.flags {
+                size_multiplier = 2 
+            } else {
+                size_multiplier = 1.2
+            }
+
+            draw_texture(.armour, entity.position, entity.size * size_multiplier, colour = alpha(WHITE, armour_alpha), highlight_colour = alpha(armour_colour, armour_alpha))
         }
 
         if .ability_pickup in entity.flags {
@@ -1191,8 +1200,8 @@ create_drone :: proc(position: v2) -> ^Entity {
         flags = {.ai, .solid_hitbox, .has_health},
         abilities = {ai_ability(type)},
         position = position,
-        size = {45, 45},
-        mass = 10,
+        size = {80, 80},
+        mass = 80,
         texture = .drone,
         ai_type = type,
         health = ai_health(type),
@@ -1402,7 +1411,7 @@ entity_take_damage :: proc(entity: ^Entity, damage: f32) {
 ai_speed :: proc(type: AiType) -> f32 {
     switch type {
         case .speeder:  return 190 // multiplied by speed ability
-        case .drone:    return 210
+        case .drone:    return 220
     }
 
     unreachable()
@@ -1456,7 +1465,7 @@ ai_damage :: proc(type: AiType) -> f32 {
 ai_health :: proc(type: AiType) -> f32 {
     switch type {
         case .speeder:  return  20
-        case .drone:    return  100
+        case .drone:    return  140
     }
 
     unreachable()

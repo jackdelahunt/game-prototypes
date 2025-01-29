@@ -12071,12 +12071,12 @@
             "armour": 0.00000000,
             "armour_regen_cooldown": 0.00000000,
             "ai_type": 0,
-            "cluster_size": 4,
-            "spawn_rate": 1.29999995,
+            "cluster_size": 2,
+            "spawn_rate": 4.00000000,
             "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 30,
+            "speeders_to_spawn": 0,
             "drones_to_spawn": 30,
-            "total_spawns": 60,
+            "total_spawns": 30,
             "spawn_radius": 911.85400391,
             "pickup_type": 0
         },
@@ -12114,9 +12114,9 @@
             "cluster_size": 10,
             "spawn_rate": 0.69999999,
             "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 300,
+            "speeders_to_spawn": 500,
             "drones_to_spawn": 0,
-            "total_spawns": 300,
+            "total_spawns": 500,
             "spawn_radius": 996.96002197,
             "pickup_type": 0
         },
@@ -12601,134 +12601,14 @@
             "pickup_type": 0
         },
         {
-            "id": 481,
-            "flags": 4,
-            "abilities": 0,
-            "created_time": 72.3200224999999932,
-            "only_boss_battle": true,
-            "position": [
-                3000.00000000,
-                -1265.00000000
-            ],
-            "size": [
-                150.00000000,
-                150.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 6,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 4,
-            "spawn_rate": 1.29999995,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 30,
-            "drones_to_spawn": 30,
-            "total_spawns": 60,
-            "spawn_radius": 911.85400391,
-            "pickup_type": 0
-        },
-        {
-            "id": 482,
-            "flags": 4,
-            "abilities": 0,
-            "created_time": 73.7924713000000025,
-            "only_boss_battle": true,
-            "position": [
-                4535.00000000,
-                -1265.00000000
-            ],
-            "size": [
-                150.00000000,
-                150.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 6,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 4,
-            "spawn_rate": 1.29999995,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 30,
-            "drones_to_spawn": 30,
-            "total_spawns": 60,
-            "spawn_radius": 911.85400391,
-            "pickup_type": 0
-        },
-        {
-            "id": 483,
-            "flags": 4,
-            "abilities": 0,
-            "created_time": 76.1075527999999935,
-            "only_boss_battle": true,
-            "position": [
-                4535.00000000,
-                -2115.00000000
-            ],
-            "size": [
-                150.00000000,
-                150.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 6,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "cluster_size": 4,
-            "spawn_rate": 1.29999995,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 30,
-            "drones_to_spawn": 30,
-            "total_spawns": 60,
-            "spawn_radius": 911.85400391,
-            "pickup_type": 0
-        },
-        {
-            "id": 490,
+            "id": 488,
             "flags": 64,
             "abilities": 0,
-            "created_time": 146.0665341000000126,
+            "created_time": 136.0605494000000135,
             "only_boss_battle": false,
             "position": [
-                3300.00000000,
-                -1900.00000000
+                4200.00000000,
+                -1450.00000000
             ],
             "size": [
                 100.00000000,
@@ -12761,14 +12641,14 @@
             "pickup_type": 0
         },
         {
-            "id": 488,
+            "id": 489,
             "flags": 64,
             "abilities": 0,
-            "created_time": 136.0605494000000135,
+            "created_time": 143.9696107999999981,
             "only_boss_battle": false,
             "position": [
-                4200.00000000,
-                -1450.00000000
+                4000.00000000,
+                -2100.00000000
             ],
             "size": [
                 100.00000000,
@@ -12841,14 +12721,14 @@
             "pickup_type": 0
         },
         {
-            "id": 489,
+            "id": 490,
             "flags": 64,
             "abilities": 0,
-            "created_time": 143.9696107999999981,
+            "created_time": 146.0665341000000126,
             "only_boss_battle": false,
             "position": [
-                4000.00000000,
-                -2100.00000000
+                3300.00000000,
+                -1900.00000000
             ],
             "size": [
                 100.00000000,
@@ -12878,6 +12758,126 @@
             "drones_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
+            "pickup_type": 0
+        },
+        {
+            "id": 492,
+            "flags": 4,
+            "abilities": 0,
+            "created_time": 124.5957413999999943,
+            "only_boss_battle": true,
+            "position": [
+                3000.00000000,
+                -1300.00000000
+            ],
+            "size": [
+                150.00000000,
+                150.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 6,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 2,
+            "spawn_rate": 4.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 30,
+            "total_spawns": 30,
+            "spawn_radius": 911.85400391,
+            "pickup_type": 0
+        },
+        {
+            "id": 493,
+            "flags": 4,
+            "abilities": 0,
+            "created_time": 127.9109387999999967,
+            "only_boss_battle": true,
+            "position": [
+                4550.00000000,
+                -1300.00000000
+            ],
+            "size": [
+                150.00000000,
+                150.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 6,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 2,
+            "spawn_rate": 4.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 30,
+            "total_spawns": 30,
+            "spawn_radius": 911.85400391,
+            "pickup_type": 0
+        },
+        {
+            "id": 494,
+            "flags": 4,
+            "abilities": 0,
+            "created_time": 134.0742888000000050,
+            "only_boss_battle": true,
+            "position": [
+                4550.00000000,
+                -2100.00000000
+            ],
+            "size": [
+                150.00000000,
+                150.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 6,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "cluster_size": 2,
+            "spawn_rate": 4.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 30,
+            "total_spawns": 30,
+            "spawn_radius": 911.85400391,
             "pickup_type": 0
         }
     ]
