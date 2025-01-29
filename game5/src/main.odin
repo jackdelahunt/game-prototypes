@@ -104,7 +104,8 @@ MAX_WEAPON_LEVEL        :: 4
 AI_ATTACK_COOLDOWN      :: 0.5
 AI_ATTACK_DISTANCE      :: 10
 
-BULLET_SPEED            :: 1000
+PROJECTILE_SPEED        :: 750
+PROJECTILE_LIFETIME     :: 0.8
 
 MAX_ARMOUR              :: 150
 ARMOUR_REGEN_RATE       :: 50
@@ -688,7 +689,7 @@ update :: proc(delta_time: f32) {
                 }
                    
                 entity.attack_cooldown = attack_cooldown_for_weapon_level(state.player_state.weapon_level)
-                create_bullet(entity.position, entity.aim_direction * BULLET_SPEED)
+                create_bullet(entity.position, entity.aim_direction * PROJECTILE_SPEED)
             }
 
             interact: { // interact
@@ -817,8 +818,8 @@ update :: proc(delta_time: f32) {
                 break projectile_update
             }
 
-            if state.time - entity.created_time > 3 {
-                entity.flags += {.to_be_deleted} 
+            if state.time - entity.created_time > PROJECTILE_LIFETIME {
+                entity.flags += {.to_be_deleted}  
             }
         }
 
@@ -3053,6 +3054,12 @@ next_enum_value :: proc(t: $T) -> T
 ease_in_sine :: proc(t: f32) -> f32 {
     assert(t >= 0 && t <= 1)
     return 1 - math.cos_f32((t * math.PI) * 0.5)
+}
+
+// https://easings.net/#easeOutSine
+ease_out_sine :: proc(t: f32) -> f32 {
+    assert(t >= 0 && t <= 1)
+    return math.sin_f32((t * math.PI) * 0.5)
 }
 
 custom_context :: proc() -> runtime.Context {
