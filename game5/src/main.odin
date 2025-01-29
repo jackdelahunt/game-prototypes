@@ -48,7 +48,7 @@ import json "json"
 
 // record:
 // start: 21/01/2025
-// total time: 34:00 hrs
+// total time: 35:00 hrs
 // start 18:30
 
 // controls
@@ -550,17 +550,20 @@ EntityFlag :: enum {
 
 AiType :: enum {
     speeder,
-    drone
+    drone,
+    orc,
 }
 
 Ability :: enum {
     armour,
     speed,
+    dash
 }
 
 PickupType :: enum {
     armour,
-    speed
+    speed,
+    dash,
 }
 
 Prefab :: enum {
@@ -576,6 +579,7 @@ Prefab :: enum {
     gem,
     crate,
     door,
+    orc,
 }
 
 start :: proc() {
@@ -1113,7 +1117,7 @@ draw :: proc(delta_time: f32) {
        
         size : f32 = 20
         text := fmt.tprintf("%v/%v", gems, gems_needed_for_upgrade)
-        draw_text(text, {state.width - 100, state.height - size}, size, YELLOW, .bottom_left)
+        draw_text(text, {state.width - 130, state.height - size}, size, YELLOW, .bottom_left)
     }
 }
 
@@ -1344,6 +1348,18 @@ create_entity_from_prefab :: proc(prefab: Prefab) -> Entity {
                 texture = .door,
             }
         }
+        case .orc: {
+            return Entity {
+                flags = {.ai, .solid_hitbox, .has_health},
+                abilities = {},
+                size = {100, 150},
+                mass = 120,
+                texture = .orc,
+                ai_type = .orc,
+                health = ai_health(.orc),
+                max_health = ai_health(.orc),
+            }
+        }
     }
 
     unreachable()
@@ -1413,6 +1429,7 @@ ai_speed :: proc(type: AiType) -> f32 {
     switch type {
         case .speeder:  return 190 // multiplied by speed ability
         case .drone:    return 220
+        case .orc:      return 150
     }
 
     unreachable()
@@ -1422,6 +1439,7 @@ ai_gem_drop_amount :: proc(type: AiType) -> int {
     switch type {
         case .speeder:  return 1 
         case .drone:    return 3
+        case .orc:      return 10
     }
 
     unreachable()
@@ -1431,6 +1449,7 @@ ai_ability :: proc(type: AiType) -> Ability {
     switch type {
         case .speeder:  return .speed         
         case .drone:    return .armour
+        case .orc:      return .dash         
     }
 
     unreachable()
@@ -1440,6 +1459,7 @@ ai_kills_for_ability :: proc(type: AiType) -> int {
     switch type {
         case .speeder:  return 40         
         case .drone:    return 20
+        case .orc:      return 10
     }
 
     unreachable()
@@ -1449,6 +1469,7 @@ ai_spawn_chance :: proc(type: AiType) -> f32 {
     switch type {
         case .speeder:  return  0.4         
         case .drone:    return  0.1 
+        case .orc:      return  0.1 
     }
 
     unreachable()
@@ -1458,6 +1479,7 @@ ai_damage :: proc(type: AiType) -> f32 {
     switch type {
         case .speeder:  return  4
         case .drone:    return  20
+        case .orc:      return  60
     }
 
     unreachable()
@@ -1467,6 +1489,7 @@ ai_health :: proc(type: AiType) -> f32 {
     switch type {
         case .speeder:  return  20
         case .drone:    return  140
+        case .orc:      return  250
     }
 
     unreachable()
@@ -1644,6 +1667,7 @@ ability_from_pickup_type :: proc(type: PickupType) -> Ability {
     switch type {
         case .armour:   return .armour
         case .speed:    return .speed
+        case .dash:     return .dash
     }
 
     unreachable()
@@ -1653,6 +1677,7 @@ pickup_type_from_ability :: proc(ability: Ability) -> PickupType {
     switch ability {
         case .armour:   return .armour
         case .speed:    return .speed
+        case .dash:     return .dash
     }
 
     unreachable()
@@ -2156,6 +2181,7 @@ TextureHandle :: enum {
     crate,
     door,
     window,
+    orc,
 }
 
 Texture :: struct {
@@ -2841,6 +2867,8 @@ get_texture_name :: proc(texture: TextureHandle) -> string {
             return "door.png"
         case .window:
             return "window.png"
+         case .orc:
+            return "orc.png"
     }
 
     unreachable()
