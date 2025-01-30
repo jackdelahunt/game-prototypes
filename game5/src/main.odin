@@ -14,6 +14,7 @@ import "core:mem"
 import "core:math"
 import "core:math/rand"
 import "base:intrinsics"
+import "core:container/small_array"
 
 import "vendor:glfw"
 import gl "vendor:OpenGL"
@@ -49,7 +50,7 @@ import json "json"
 // record:
 // start: 21/01/2025
 // total time: 35:00 hrs
-// start 18:30
+// start 5:30
 
 // controls
 // developer:
@@ -82,7 +83,6 @@ OPENGL_MESSAGES             :: false
 WRITE_DEBUG_IMAGES          :: true
 V_SYNC                      :: true
 DRAW_ARMOUR_BUBBLE          :: true
-NO_ENEMY_ATTACK             :: false
 NO_ENEMY_SPAWN              :: false
 CAN_RELOAD_TEXTURES         :: true
 ALLOW_EDITOR                :: true
@@ -101,8 +101,9 @@ GEM_ATTRACT_SPEED       :: 800
 START_WEAPON_LEVEL      :: 2
 MAX_WEAPON_LEVEL        :: 4
 
-AI_ATTACK_COOLDOWN      :: 0.5
-AI_ATTACK_DISTANCE      :: 10
+AI_ATTACK_COOLDOWN          :: 0.5
+AI_ATTACK_DISTANCE          :: 10
+ORC_TARGET_ATTACK_DISTANCE  :: 300
 
 PROJECTILE_SPEED        :: 750
 PROJECTILE_LIFETIME     :: 0.8
@@ -513,6 +514,7 @@ Entity :: struct {
 
     // flag: ai
     ai_type: AiType,
+    ai_state: AiState,
 
     // flag: nest
     cluster_size: int,
@@ -520,6 +522,7 @@ Entity :: struct {
     spawn_cooldown: f32,
     speeders_to_spawn: int,
     drones_to_spawn: int,
+    orcs_to_spawn: int,
     total_spawns: int,
     spawn_radius: f32,
 
@@ -554,6 +557,14 @@ AiType :: enum {
     orc,
 }
 
+AiState :: enum {
+    tracking,
+    attacking,
+    charging_dash,
+    dashing,
+    dash_cooldown
+}
+
 Ability :: enum {
     armour,
     speed,
@@ -579,6 +590,8 @@ Prefab :: enum {
     gem,
     crate,
     door,
+    speeder,
+    drone,
     orc,
 }
 
@@ -747,29 +760,89 @@ update :: proc(delta_time: f32) {
                 break ai_update
             }
 
-            { // move
-                direction := linalg.normalize(player_this_frame.position - entity.position)
-                entity.velocity = direction * ai_speed(entity.ai_type)    
-            }
-
-            attack: { // attack
-                if entity.attack_cooldown > 0 {
-                    break attack
-                }
-
-                when NO_ENEMY_ATTACK {
-                    break attack
-                }
-
-                distance := distance_between_entity_edges(&entity, player_this_frame)
-                if linalg.max(distance) < AI_ATTACK_DISTANCE {
-                    hit_player := aabb_collided(entity.position, entity.size + AI_ATTACK_DISTANCE * 2, player_this_frame.position, player_this_frame.size)
-                    if hit_player {
-                        entity_take_damage(player_this_frame, ai_damage(entity.ai_type))
-                        entity.attack_cooldown = AI_ATTACK_COOLDOWN
+            switch entity.ai_type {
+                case .speeder, .drone:
+                switch entity.ai_state {
+                    case .charging_dash:
+                    case .dashing:
+                    case .dash_cooldown: unreachable()
+                    case .tracking: {
+                        direction := linalg.normalize(player_this_frame.position - entity.position)
+                        entity.velocity = direction * ai_speed(entity.ai_type)
+    
+                        if entity.attack_cooldown != 0 {
+                            break
+                        }
+    
+                        distance := distance_between_entity_edges(&entity, player_this_frame)
+                        if linalg.max(distance) < AI_ATTACK_DISTANCE {
+                            entity.ai_state = .attacking     
+                        }
+                    }
+                    case .attacking: {
+                        hit_player := aabb_collided(entity.position, entity.size + AI_ATTACK_DISTANCE * 2, player_this_frame.position, player_this_frame.size)
+                        if hit_player {
+                            entity_take_damage(player_this_frame, ai_damage(entity.ai_type))
+                            entity.attack_cooldown = AI_ATTACK_COOLDOWN
+                        }
+     
+                        entity.ai_state = .tracking 
                     }
                 }
-            } 
+                case .orc:
+                log.info(entity.ai_state)
+
+                DASH_CHARGE_TIME    :: 0.8
+                DASHING_TIME        :: 0.45
+                DASH_COOLDOWN_TIME  :: 1.2
+
+                switch entity.ai_state {
+                    case .attacking: unreachable()
+                    case .tracking: {
+                        direction := linalg.normalize(player_this_frame.position - entity.position)
+                        entity.velocity = direction * ai_speed(entity.ai_type)
+    
+                        if entity.attack_cooldown != 0 {
+                            break
+                        }
+   
+                        distance := linalg.distance(entity.position, player_this_frame.position)
+                        if distance < ORC_TARGET_ATTACK_DISTANCE {
+                            entity.ai_state = .charging_dash
+                        }
+                    }
+                    case .charging_dash: {
+                        done := wait(TimeId(entity.id), DASH_CHARGE_TIME)
+                        if done {
+                            entity.ai_state = .dashing
+                        }
+                    }
+                    case .dashing: {
+                        dashing_timer := TimeId(entity.id)
+
+                        done := wait(dashing_timer, DASHING_TIME)
+                        if done {
+                            entity.ai_state = .dash_cooldown
+                        }
+
+                        direction := linalg.normalize(player_this_frame.position - entity.position)
+                        entity.velocity = direction * ai_speed(entity.ai_type) * 5
+
+                        hit_player := aabb_collided(entity.position, entity.size + AI_ATTACK_DISTANCE * 2, player_this_frame.position, player_this_frame.size)
+                        if hit_player {
+                            entity_take_damage(player_this_frame, ai_damage(entity.ai_type))
+                            cancel(dashing_timer)
+                            entity.ai_state = .dash_cooldown
+                        }
+                    }
+                    case .dash_cooldown: {
+                        done := wait(TimeId(entity.id), DASH_COOLDOWN_TIME)
+                        if done {
+                            entity.ai_state = .tracking
+                        }
+                    }
+                }
+            }
         }
 
         nest_update: {
@@ -808,6 +881,12 @@ update :: proc(delta_time: f32) {
                 if entity.drones_to_spawn > 0 && random < ai_spawn_chance(.drone) {
                     create_drone(entity.position)    
                     entity.drones_to_spawn -= 1
+                    spawned = true
+                }
+
+                if entity.orcs_to_spawn > 0 && random < ai_spawn_chance(.orc) {
+                    create_orc(entity.position)    
+                    entity.orcs_to_spawn -= 1
                     spawned = true
                 }
             }
@@ -1043,7 +1122,7 @@ draw :: proc(delta_time: f32) {
         }
 
         if .nest in entity.flags {
-            left_to_spawn := entity.speeders_to_spawn + entity.drones_to_spawn
+            left_to_spawn := entity.speeders_to_spawn + entity.drones_to_spawn + entity.orcs_to_spawn
 
             percentage_left_to_spawn := f32(left_to_spawn) / f32(entity.total_spawns)
             highlight_colour = mix(BLACK, RED, percentage_left_to_spawn)
@@ -1183,36 +1262,24 @@ create_player :: proc(position: v2) -> ^Entity {
 }
 
 create_speeder :: proc(position: v2) -> ^Entity {
-    type := AiType.speeder
+    prefab := create_entity_from_prefab(.speeder)
+    prefab.position = position
 
-    return create_entity({
-        flags = {.ai, .solid_hitbox, .has_health},
-        abilities = {ai_ability(type)},
-        position = position,
-        size = {20, 20},
-        mass = 1,
-        texture = .cuber,
-        ai_type = type,
-        health = ai_health(type),
-        max_health = ai_health(type),
-    })
+    return create_entity(prefab)
 }
 
 create_drone :: proc(position: v2) -> ^Entity {
-    type := AiType.drone
+    prefab := create_entity_from_prefab(.drone)
+    prefab.position = position
 
-    return create_entity({
-        flags = {.ai, .solid_hitbox, .has_health},
-        abilities = {ai_ability(type)},
-        position = position,
-        size = {80, 80},
-        mass = 80,
-        texture = .drone,
-        ai_type = type,
-        health = ai_health(type),
-        max_health = ai_health(type),
-        armour = MAX_ARMOUR
-    })
+    return create_entity(prefab)
+}
+
+create_orc :: proc(position: v2) -> ^Entity {
+    prefab := create_entity_from_prefab(.orc)
+    prefab.position = position
+
+    return create_entity(prefab)
 }
 
 create_nest :: proc(position: v2, cluster_size: int, spawn_rate: f32, speeders_to_spawn: int, drones_to_spawn: int) -> ^Entity {
@@ -1348,12 +1415,37 @@ create_entity_from_prefab :: proc(prefab: Prefab) -> Entity {
                 texture = .door,
             }
         }
+        case .speeder: {
+            return Entity {
+                flags = {.ai, .solid_hitbox, .has_health},
+                abilities = {.speed},
+                size = {20, 20},
+                mass = 1,
+                texture = .cuber,
+                ai_type = .speeder,
+                health = ai_health(.speeder),
+                max_health = ai_health(.speeder),
+            }
+        }
+        case .drone: {
+            return Entity{
+                flags = {.ai, .solid_hitbox, .has_health},
+                abilities = {.armour},
+                size = {80, 80},
+                mass = 80,
+                texture = .drone,
+                ai_type = .drone,
+                health = ai_health(.drone),
+                max_health = ai_health(.drone),
+                armour = MAX_ARMOUR
+            } 
+        }
         case .orc: {
             return Entity {
                 flags = {.ai, .solid_hitbox, .has_health},
-                abilities = {},
+                abilities = {.dash},
                 size = {100, 150},
-                mass = 120,
+                mass = 200,
                 texture = .orc,
                 ai_type = .orc,
                 health = ai_health(.orc),
@@ -1429,7 +1521,7 @@ ai_speed :: proc(type: AiType) -> f32 {
     switch type {
         case .speeder:  return 190 // multiplied by speed ability
         case .drone:    return 220
-        case .orc:      return 150
+        case .orc:      return 190
     }
 
     unreachable()
@@ -1479,7 +1571,7 @@ ai_damage :: proc(type: AiType) -> f32 {
     switch type {
         case .speeder:  return  4
         case .drone:    return  20
-        case .orc:      return  60
+        case .orc:      return  150
     }
 
     unreachable()
@@ -1489,7 +1581,7 @@ ai_health :: proc(type: AiType) -> f32 {
     switch type {
         case .speeder:  return  20
         case .drone:    return  140
-        case .orc:      return  250
+        case .orc:      return  600
     }
 
     unreachable()
@@ -2105,6 +2197,7 @@ editor_ui :: proc() {
                 imgui.InputFloat("spawn cooldown", &selected_entity.spawn_cooldown)
                 imgui.InputScalar("speeders to spawn", .S64, &selected_entity.speeders_to_spawn, format = "%d")
                 imgui.InputScalar("drones to spawn", .S64, &selected_entity.drones_to_spawn, format = "%d")
+                imgui.InputScalar("orcs to spawn", .S64, &selected_entity.orcs_to_spawn, format = "%d")
                 imgui.InputScalar("total spawns", .S64, &selected_entity.total_spawns, format = "%d")
                 imgui.SliderFloat("spawn radius", &selected_entity.spawn_radius, 0, 2000)
     
@@ -3065,6 +3158,15 @@ glfw_size_callback :: proc "c" (window: glfw.WindowHandle, width: c.int, height:
 }
 
 // -------------------------- @random -------------------------
+Timer :: struct{ 
+    id: TimeId, 
+    time_started: f64
+}
+
+TimeId :: distinct u64
+
+wait_list: small_array.Small_Array(MAX_ENTITIES, Timer)
+
 // Warning: assumes enum values are not overwritten
 next_enum_value :: proc(t: $T) -> T 
     where intrinsics.type_is_enum(T)
@@ -3088,6 +3190,35 @@ ease_in_sine :: proc(t: f32) -> f32 {
 ease_out_sine :: proc(t: f32) -> f32 {
     assert(t >= 0 && t <= 1)
     return math.sin_f32((t * math.PI) * 0.5)
+}
+
+wait :: proc(id: TimeId, seconds: f64) -> bool {
+    for i in 0..<wait_list.len {
+        waiter := &wait_list.data[i]
+
+        if waiter.id == id {
+            if waiter.time_started + seconds < state.time {
+                small_array.unordered_remove(&wait_list, i)
+                return true
+            }
+
+            return false
+        }
+    }
+
+    small_array.append(&wait_list, Timer{id = id, time_started = state.time})
+
+    return false    
+}
+
+cancel :: proc(id: TimeId) {
+    for i in 0..<wait_list.len {
+        waiter := &wait_list.data[i]
+
+        if waiter.id == id {
+            small_array.unordered_remove(&wait_list, i)
+        }
+    }
 }
 
 custom_context :: proc() -> runtime.Context {
