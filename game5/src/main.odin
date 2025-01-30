@@ -49,8 +49,7 @@ import json "json"
 
 // record:
 // start: 21/01/2025
-// total time: 35:00 hrs
-// start 5:30
+// total time: 38.5 hrs
 
 // controls
 // developer:
@@ -75,7 +74,6 @@ import json "json"
 //      - mouse: aim
 //      - left click: shoot
 //      - e key: interact
-// start 18:30
 
 // indev settings
 LOG_COLOURS                 :: false
@@ -101,12 +99,14 @@ GEM_ATTRACT_SPEED       :: 800
 START_WEAPON_LEVEL      :: 2
 MAX_WEAPON_LEVEL        :: 4
 
-AI_ATTACK_COOLDOWN          :: 0.5
 AI_ATTACK_DISTANCE          :: 10
 ORC_TARGET_ATTACK_DISTANCE  :: 300
+WIZARD_TARGET_ATTACK_DISTANCE  :: 500
 
 PROJECTILE_SPEED        :: 750
 PROJECTILE_LIFETIME     :: 0.8
+
+POTION_SPEED            :: 500
 
 MAX_ARMOUR              :: 150
 ARMOUR_REGEN_RATE       :: 50
@@ -528,6 +528,9 @@ Entity :: struct {
 
     // flag: ability pickup
     pickup_type: PickupType,
+
+    // flag: potion
+    potion_lifetime: f32
 }
 
 EntityFlag :: enum {
@@ -545,8 +548,8 @@ EntityFlag :: enum {
     has_health,
 
     gem,
-
     door,
+    potion,
 
     to_be_deleted
 }
@@ -555,6 +558,7 @@ AiType :: enum {
     speeder,
     drone,
     orc,
+    wizard,
 }
 
 AiState :: enum {
@@ -562,19 +566,22 @@ AiState :: enum {
     attacking,
     charging_dash,
     dashing,
-    dash_cooldown
+    dash_cooldown,
+    throwing_potion
 }
 
 Ability :: enum {
     armour,
     speed,
-    dash
+    dash,
+    potion
 }
 
 PickupType :: enum {
     armour,
     speed,
     dash,
+    potion
 }
 
 Prefab :: enum {
@@ -593,6 +600,7 @@ Prefab :: enum {
     speeder,
     drone,
     orc,
+    wizard,
 }
 
 start :: proc() {
@@ -762,10 +770,7 @@ update :: proc(delta_time: f32) {
 
             switch entity.ai_type {
                 case .speeder, .drone:
-                switch entity.ai_state {
-                    case .charging_dash:
-                    case .dashing:
-                    case .dash_cooldown: unreachable()
+                #partial switch entity.ai_state {
                     case .tracking: {
                         direction := linalg.normalize(player_this_frame.position - entity.position)
                         entity.velocity = direction * ai_speed(entity.ai_type)
@@ -783,21 +788,19 @@ update :: proc(delta_time: f32) {
                         hit_player := aabb_collided(entity.position, entity.size + AI_ATTACK_DISTANCE * 2, player_this_frame.position, player_this_frame.size)
                         if hit_player {
                             entity_take_damage(player_this_frame, ai_damage(entity.ai_type))
-                            entity.attack_cooldown = AI_ATTACK_COOLDOWN
+                            entity.attack_cooldown = ai_attack_cooldown(entity.ai_type)
                         }
      
                         entity.ai_state = .tracking 
                     }
+                    case: unreachable()
                 }
                 case .orc:
-                log.info(entity.ai_state)
-
                 DASH_CHARGE_TIME    :: 0.8
                 DASHING_TIME        :: 0.45
                 DASH_COOLDOWN_TIME  :: 1.2
 
-                switch entity.ai_state {
-                    case .attacking: unreachable()
+                #partial switch entity.ai_state {
                     case .tracking: {
                         direction := linalg.normalize(player_this_frame.position - entity.position)
                         entity.velocity = direction * ai_speed(entity.ai_type)
@@ -841,6 +844,38 @@ update :: proc(delta_time: f32) {
                             entity.ai_state = .tracking
                         }
                     }
+                    case: unreachable()
+                }
+                case .wizard:
+                #partial switch entity.ai_state {
+                    case .tracking: {
+                        direction := linalg.normalize(player_this_frame.position - entity.position)
+                        entity.velocity = direction * ai_speed(entity.ai_type)
+    
+                        distance := linalg.distance(entity.position, player_this_frame.position)
+                        if distance < WIZARD_TARGET_ATTACK_DISTANCE {
+                            entity.ai_state = .throwing_potion
+                        }
+                    }
+                    case .throwing_potion: {
+                        done := wait(TimeId(entity.id), 3)
+                        if done {
+                            entity.ai_state = .tracking
+                        }
+
+                        if entity.attack_cooldown != 0 {
+                            break
+                        }
+
+                        target_position := player_this_frame.position + player_this_frame.velocity // target is player in 1 second
+                        target_direction := target_position - entity.position
+
+                        seconds_to_target := linalg.length(target_direction) / POTION_SPEED
+
+                        create_potion(entity.position, linalg.normalize(target_direction) * POTION_SPEED, seconds_to_target)
+                        entity.attack_cooldown = ai_attack_cooldown(.wizard) 
+                    }
+                    case: unreachable()
                 }
             }
         }
@@ -902,6 +937,23 @@ update :: proc(delta_time: f32) {
             }
 
             if state.time - entity.created_time > PROJECTILE_LIFETIME {
+                entity.flags += {.to_be_deleted}  
+            }
+        }
+
+        potion_update: {
+            if !(.potion in entity.flags) {
+                break potion_update
+            }
+
+            entity.rotation += 1
+
+            if f32(state.time - entity.created_time) > entity.potion_lifetime {
+                create_entity({
+                    position = entity.position,
+                    texture = .spludge,
+                    size = {250, 180}
+                })
                 entity.flags += {.to_be_deleted}  
             }
         }
@@ -1315,6 +1367,17 @@ create_bullet :: proc(position: v2, velocity: v2) -> ^Entity {
     })
 }
 
+create_potion :: proc(position: v2, velocity: v2, lifetime: f32) -> ^Entity {
+    return create_entity({
+        flags = {.potion, .trigger_hitbox},
+        position = position,
+        velocity = velocity,
+        size = {20, 20},
+        texture = .potion,
+        potion_lifetime = lifetime
+    })
+}
+
 create_gem :: proc(position: v2) -> ^Entity {
     prefab := create_entity_from_prefab(.gem)
     prefab.position = position
@@ -1452,6 +1515,18 @@ create_entity_from_prefab :: proc(prefab: Prefab) -> Entity {
                 max_health = ai_health(.orc),
             }
         }
+        case .wizard: {
+            return Entity {
+                flags = {.ai, .solid_hitbox, .has_health},
+                abilities = {.potion},
+                size = {75, 100},
+                mass = 20,
+                texture = .wizard,
+                ai_type = .wizard,
+                health = ai_health(.wizard),
+                max_health = ai_health(.wizard),
+            }
+        }
     }
 
     unreachable()
@@ -1522,6 +1597,7 @@ ai_speed :: proc(type: AiType) -> f32 {
         case .speeder:  return 190 // multiplied by speed ability
         case .drone:    return 220
         case .orc:      return 190
+        case .wizard:   return 220
     }
 
     unreachable()
@@ -1531,7 +1607,8 @@ ai_gem_drop_amount :: proc(type: AiType) -> int {
     switch type {
         case .speeder:  return 1 
         case .drone:    return 3
-        case .orc:      return 10
+        case .orc:      return 20
+        case .wizard:   return 5
     }
 
     unreachable()
@@ -1542,6 +1619,7 @@ ai_ability :: proc(type: AiType) -> Ability {
         case .speeder:  return .speed         
         case .drone:    return .armour
         case .orc:      return .dash         
+        case .wizard:   return .dash         
     }
 
     unreachable()
@@ -1552,6 +1630,7 @@ ai_kills_for_ability :: proc(type: AiType) -> int {
         case .speeder:  return 40         
         case .drone:    return 20
         case .orc:      return 10
+        case .wizard:   return 10
     }
 
     unreachable()
@@ -1561,7 +1640,8 @@ ai_spawn_chance :: proc(type: AiType) -> f32 {
     switch type {
         case .speeder:  return  0.4         
         case .drone:    return  0.1 
-        case .orc:      return  0.1 
+        case .orc:      return  0.5
+        case .wizard:   return  0.2 
     }
 
     unreachable()
@@ -1572,6 +1652,7 @@ ai_damage :: proc(type: AiType) -> f32 {
         case .speeder:  return  4
         case .drone:    return  20
         case .orc:      return  150
+        case .wizard:   return  0
     }
 
     unreachable()
@@ -1582,6 +1663,18 @@ ai_health :: proc(type: AiType) -> f32 {
         case .speeder:  return  20
         case .drone:    return  140
         case .orc:      return  600
+        case .wizard:   return  180
+    }
+
+    unreachable()
+}
+
+ai_attack_cooldown :: proc(type: AiType) -> f32 {
+    switch type {
+        case .speeder:  return  0.5
+        case .drone:    return  0.5
+        case .orc:      unreachable()
+        case .wizard:   return  1
     }
 
     unreachable()
@@ -1760,6 +1853,7 @@ ability_from_pickup_type :: proc(type: PickupType) -> Ability {
         case .armour:   return .armour
         case .speed:    return .speed
         case .dash:     return .dash
+        case .potion:   return .potion
     }
 
     unreachable()
@@ -1770,6 +1864,7 @@ pickup_type_from_ability :: proc(ability: Ability) -> PickupType {
         case .armour:   return .armour
         case .speed:    return .speed
         case .dash:     return .dash
+        case .potion:   return .potion
     }
 
     unreachable()
@@ -2275,6 +2370,9 @@ TextureHandle :: enum {
     door,
     window,
     orc,
+    wizard,
+    potion,
+    spludge
 }
 
 Texture :: struct {
@@ -2841,7 +2939,7 @@ build_texture_atlas :: proc(renderer: ^Renderer) -> bool {
 
     atlas_data := make([^]byte, ATLAS_BYTE_SIZE)
 
-    { // fill in default atlas data 
+    if false { // fill in default atlas data 
         i: int
         for i < ATLAS_BYTE_SIZE {
             atlas_data[i]       = 0     // r
@@ -2855,7 +2953,8 @@ build_texture_atlas :: proc(renderer: ^Renderer) -> bool {
 
     { // copy textures into atlas with rect pack
         RECT_COUNT :: len(TextureHandle)
-        
+        TEXTURE_PADDING_PIXELS :: 1
+
         rp_context: stbrp.Context
         nodes:      [ATLAS_WIDTH]stbrp.Node
         rects:      [RECT_COUNT]stbrp.Rect
@@ -2867,8 +2966,8 @@ build_texture_atlas :: proc(renderer: ^Renderer) -> bool {
 
             rects[i] = {
                 id = c.int(texture),
-                w = stbrp.Coord(info.width),
-                h = stbrp.Coord(info.height),
+                w = stbrp.Coord(info.width) + (TEXTURE_PADDING_PIXELS * 2),
+                h = stbrp.Coord(info.height) + (TEXTURE_PADDING_PIXELS * 2),
             }
         }
 
@@ -2882,10 +2981,15 @@ build_texture_atlas :: proc(renderer: ^Renderer) -> bool {
             rect := &rects[i] 
             texture_info := &renderer.textures[TextureHandle(rect.id)]
 
-            bottom_y_uv := f32(rect.y) / f32(ATLAS_HEIGHT)
-            top_y_uv    := f32(rect.y + rect.h) / f32(ATLAS_HEIGHT)
-            left_x_uv   := f32(rect.x) / f32(ATLAS_HEIGHT)
-            right_x_uv    := f32(rect.x + rect.w) / f32(ATLAS_HEIGHT)
+            real_x := rect.x + TEXTURE_PADDING_PIXELS
+            real_y := rect.y + TEXTURE_PADDING_PIXELS
+            real_w := rect.w - (TEXTURE_PADDING_PIXELS * 2)
+            real_h := rect.h - (TEXTURE_PADDING_PIXELS * 2)
+
+            bottom_y_uv := f32(real_y)          / f32(ATLAS_HEIGHT)
+            top_y_uv    := f32(real_y + real_h) / f32(ATLAS_HEIGHT)
+            left_x_uv   := f32(real_x)          / f32(ATLAS_HEIGHT)
+            right_x_uv  := f32(real_x + real_w) / f32(ATLAS_HEIGHT)
 
             texture_info.uv = {
                 {left_x_uv, top_y_uv},      // top left
@@ -2895,10 +2999,10 @@ build_texture_atlas :: proc(renderer: ^Renderer) -> bool {
             }
 
             for row in 0..< rect.h {
-                source_row := mem.ptr_offset(texture_info.data, row * rect.w * BYTES_PER_PIXEL)
-                dest_row   := mem.ptr_offset(atlas_data, ((rect.y + row) * ATLAS_WIDTH + rect.x) * BYTES_PER_PIXEL) // flipped textures in atlas
+                source_row := mem.ptr_offset(texture_info.data, row * real_w * BYTES_PER_PIXEL)
+                dest_row   := mem.ptr_offset(atlas_data, ((real_y + row) * ATLAS_WIDTH + real_x) * BYTES_PER_PIXEL) // flipped textures in atlas
 
-                mem.copy(dest_row, source_row, int(rect.w) * BYTES_PER_PIXEL)
+                mem.copy(dest_row, source_row, int(real_w) * BYTES_PER_PIXEL)
             }
         }
     } 
@@ -2960,8 +3064,14 @@ get_texture_name :: proc(texture: TextureHandle) -> string {
             return "door.png"
         case .window:
             return "window.png"
-         case .orc:
+        case .orc:
             return "orc.png"
+        case .wizard:
+            return "wizard.png"
+        case .potion:
+            return "potion.png"
+        case .spludge:
+            return "spludge.png"
     }
 
     unreachable()
