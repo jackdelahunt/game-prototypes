@@ -50,6 +50,7 @@ import json "json"
 // record:
 // start: 21/01/2025
 // total time: 38.5 hrs
+// start 6:00
 
 // controls
 // developer:
@@ -89,6 +90,7 @@ ALL_ABILITIES_ACTIVE        :: true
 
 // internal settings
 MAX_ENTITIES :: 5_000
+MAX_QUADS :: 10_000
 
 // gameplay settings
 MAX_PLAYER_HEALTH       :: 100
@@ -107,6 +109,8 @@ PROJECTILE_SPEED        :: 750
 PROJECTILE_LIFETIME     :: 0.8
 
 POTION_SPEED            :: 500
+SLUDGE_LIFETIME         :: 3
+SPLUDGE_DPS             :: 30
 
 MAX_ARMOUR              :: 150
 ARMOUR_REGEN_RATE       :: 50
@@ -550,6 +554,7 @@ EntityFlag :: enum {
     gem,
     door,
     potion,
+    spludge,
 
     to_be_deleted
 }
@@ -601,6 +606,8 @@ Prefab :: enum {
     drone,
     orc,
     wizard,
+    potion,
+    spludge,
 }
 
 start :: proc() {
@@ -949,11 +956,7 @@ update :: proc(delta_time: f32) {
             entity.rotation += 1
 
             if f32(state.time - entity.created_time) > entity.potion_lifetime {
-                create_entity({
-                    position = entity.position,
-                    texture = .spludge,
-                    size = {250, 180}
-                })
+                create_spludge(entity.position)
                 entity.flags += {.to_be_deleted}  
             }
         }
@@ -1014,6 +1017,28 @@ update :: proc(delta_time: f32) {
             if distance_to_player < linalg.min(player_this_frame.size) {
                 state.player_state.collected_gems_this_level += 1
                 entity.flags += {.to_be_deleted}
+            }
+        }
+
+       spludge_update: {
+            if !(.spludge in entity.flags) {
+                break spludge_update
+            }
+
+            alive_for := state.time - entity.created_time
+
+            if alive_for > SLUDGE_LIFETIME {
+                entity.flags += {.to_be_deleted}
+                break spludge_update
+            }
+
+            if player_this_frame == nil {
+                break spludge_update
+            }
+
+            hit_player := aabb_collided(entity.position, entity.size, player_this_frame.position, player_this_frame.size)
+            if hit_player {
+                entity_take_damage(player_this_frame, SPLUDGE_DPS * delta_time)
             }
         }
     }
@@ -1212,6 +1237,13 @@ draw :: proc(delta_time: f32) {
             // TODO: think of a way to show the different types of pickups
         }
 
+        if .spludge in entity.flags {
+            alive_for := state.time - entity.created_time
+            alive_percentage := f32(alive_for / SLUDGE_LIFETIME)
+
+            base_colour = alpha(base_colour, 1 - ease_in_cubic(alive_percentage))
+        }
+
         if entity.only_boss_battle && !state.level_state.in_boss_battle {
             if state.mode == .editor {
                 base_colour = GREEN
@@ -1368,14 +1400,19 @@ create_bullet :: proc(position: v2, velocity: v2) -> ^Entity {
 }
 
 create_potion :: proc(position: v2, velocity: v2, lifetime: f32) -> ^Entity {
-    return create_entity({
-        flags = {.potion, .trigger_hitbox},
-        position = position,
-        velocity = velocity,
-        size = {20, 20},
-        texture = .potion,
-        potion_lifetime = lifetime
-    })
+    prefab := create_entity_from_prefab(.potion)
+    prefab.position = position
+    prefab.velocity = velocity
+    prefab.potion_lifetime = lifetime
+
+    return create_entity(prefab)
+}
+
+create_spludge :: proc(position: v2) -> ^Entity {
+    prefab := create_entity_from_prefab(.spludge)
+    prefab.position = position
+
+    return create_entity(prefab)
 }
 
 create_gem :: proc(position: v2) -> ^Entity {
@@ -1527,6 +1564,20 @@ create_entity_from_prefab :: proc(prefab: Prefab) -> Entity {
                 max_health = ai_health(.wizard),
             }
         }
+        case .potion: {
+            return Entity {
+                flags = {.potion, .trigger_hitbox},
+                size = {20, 20},
+                texture = .potion,
+            }
+        }
+        case .spludge: {
+            return Entity {
+                flags = {.spludge},
+                size = {250, 180},
+                texture = .spludge,
+            }
+        }
     }
 
     unreachable()
@@ -1674,7 +1725,7 @@ ai_attack_cooldown :: proc(type: AiType) -> f32 {
         case .speeder:  return  0.5
         case .drone:    return  0.5
         case .orc:      unreachable()
-        case .wizard:   return  1
+        case .wizard:   return  1.8
     }
 
     unreachable()
@@ -2324,7 +2375,6 @@ Mat4 :: linalg.Matrix4f32
 
 GL_MAJOR :: 4
 GL_MINOR :: 6
-MAX_QUADS :: 10_000
 
 Vertex :: struct {
     position: v3,
@@ -3302,6 +3352,12 @@ ease_in_sine :: proc(t: f32) -> f32 {
 ease_out_sine :: proc(t: f32) -> f32 {
     assert(t >= 0 && t <= 1)
     return math.sin_f32((t * math.PI) * 0.5)
+}
+
+// https://easings.net/#easeInCubic
+ease_in_cubic :: proc(t: f32) -> f32 {
+    assert(t >= 0 && t <= 1)
+    return t * t * t
 }
 
 wait :: proc(id: TimeId, seconds: f64) -> bool {
