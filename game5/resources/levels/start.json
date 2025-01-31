@@ -40,7 +40,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 153,
@@ -82,7 +83,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 164,
@@ -124,7 +126,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 165,
@@ -166,7 +169,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 152,
@@ -208,7 +212,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 199,
@@ -250,7 +255,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 200,
@@ -292,7 +298,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 156,
@@ -334,7 +341,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 151,
@@ -376,7 +384,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 63,
@@ -418,7 +427,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 201,
@@ -460,7 +470,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 158,
@@ -502,7 +513,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 155,
@@ -544,7 +556,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 157,
@@ -586,7 +599,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 186,
@@ -628,7 +642,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 174,
@@ -670,7 +685,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 173,
@@ -712,7 +728,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 143,
@@ -754,7 +771,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 134,
@@ -796,7 +814,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 193,
@@ -838,7 +857,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 161,
@@ -880,7 +900,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 163,
@@ -922,7 +943,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 166,
@@ -964,7 +986,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 181,
@@ -1006,7 +1029,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 154,
@@ -1048,7 +1072,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 150,
@@ -1090,7 +1115,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 149,
@@ -1132,7 +1158,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 148,
@@ -1174,7 +1201,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 177,
@@ -1216,7 +1244,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 139,
@@ -1258,7 +1287,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 140,
@@ -1300,7 +1330,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 184,
@@ -1342,7 +1373,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 160,
@@ -1384,7 +1416,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 162,
@@ -1426,7 +1459,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 159,
@@ -1468,7 +1502,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 187,
@@ -1510,7 +1545,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 189,
@@ -1552,7 +1588,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 188,
@@ -1594,7 +1631,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 190,
@@ -1636,7 +1674,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 191,
@@ -1678,7 +1717,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 192,
@@ -1720,7 +1760,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 141,
@@ -1762,7 +1803,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 146,
@@ -1804,7 +1846,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 183,
@@ -1846,7 +1889,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 169,
@@ -1888,7 +1932,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 185,
@@ -1930,7 +1975,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 198,
@@ -1972,7 +2018,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 197,
@@ -2014,7 +2061,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 196,
@@ -2056,7 +2104,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 195,
@@ -2098,7 +2147,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 194,
@@ -2140,7 +2190,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 101,
@@ -2182,7 +2233,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 20,
             "spawn_radius": 644.37701416,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 102,
@@ -2224,7 +2276,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 103,
@@ -2266,7 +2319,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 104,
@@ -2308,7 +2362,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 105,
@@ -2350,7 +2405,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 106,
@@ -2392,7 +2448,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 107,
@@ -2434,7 +2491,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 108,
@@ -2476,7 +2534,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 109,
@@ -2518,7 +2577,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 110,
@@ -2560,7 +2620,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 111,
@@ -2602,7 +2663,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 112,
@@ -2644,7 +2706,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 238,
@@ -2686,7 +2749,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 114,
@@ -2728,7 +2792,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 115,
@@ -2770,7 +2835,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 116,
@@ -2812,7 +2878,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 117,
@@ -2854,7 +2921,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 118,
@@ -2896,7 +2964,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 119,
@@ -2938,7 +3007,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 120,
@@ -2980,7 +3050,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 121,
@@ -3022,7 +3093,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 122,
@@ -3064,7 +3136,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 123,
@@ -3106,7 +3179,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 124,
@@ -3148,7 +3222,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 135,
@@ -3190,7 +3265,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 126,
@@ -3232,7 +3308,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 127,
@@ -3274,7 +3351,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 239,
@@ -3316,7 +3394,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 129,
@@ -3358,7 +3437,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 130,
@@ -3400,7 +3480,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 131,
@@ -3442,7 +3523,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 132,
@@ -3484,7 +3566,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 133,
@@ -3526,7 +3609,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 236,
@@ -3568,7 +3652,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 203,
@@ -3610,7 +3695,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 204,
@@ -3652,7 +3738,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 205,
@@ -3694,7 +3781,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 249,
@@ -3736,7 +3824,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 248,
@@ -3778,7 +3867,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 254,
@@ -3820,7 +3910,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 209,
@@ -3862,7 +3953,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 210,
@@ -3904,7 +3996,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 237,
@@ -3946,7 +4039,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 212,
@@ -3988,7 +4082,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 213,
@@ -4030,7 +4125,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 214,
@@ -4072,7 +4168,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 215,
@@ -4114,7 +4211,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 216,
@@ -4156,7 +4254,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 217,
@@ -4198,7 +4297,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 218,
@@ -4240,7 +4340,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 219,
@@ -4282,7 +4383,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 220,
@@ -4324,7 +4426,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 221,
@@ -4366,7 +4469,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 222,
@@ -4408,7 +4512,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 223,
@@ -4450,7 +4555,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 224,
@@ -4492,7 +4598,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 225,
@@ -4534,7 +4641,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 226,
@@ -4576,7 +4684,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 227,
@@ -4618,7 +4727,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 228,
@@ -4660,7 +4770,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 229,
@@ -4702,7 +4813,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 230,
@@ -4744,7 +4856,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 231,
@@ -4786,7 +4899,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 232,
@@ -4828,7 +4942,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 233,
@@ -4870,7 +4985,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 234,
@@ -4912,7 +5028,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 50,
             "spawn_radius": 474.16400146,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 244,
@@ -4954,7 +5071,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 5,
             "spawn_radius": 431.61099243,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 240,
@@ -4996,7 +5114,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 241,
@@ -5038,7 +5157,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 243,
@@ -5080,7 +5200,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 245,
@@ -5122,7 +5243,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 50,
             "spawn_radius": 474.16400146,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 246,
@@ -5164,7 +5286,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 250,
@@ -5206,7 +5329,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 251,
@@ -5248,7 +5372,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 252,
@@ -5290,7 +5415,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 253,
@@ -5332,7 +5458,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 255,
@@ -5374,7 +5501,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 256,
@@ -5416,7 +5544,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 257,
@@ -5458,7 +5587,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 258,
@@ -5500,7 +5630,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 259,
@@ -5542,7 +5673,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 260,
@@ -5584,7 +5716,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 261,
@@ -5626,7 +5759,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 262,
@@ -5668,7 +5802,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 263,
@@ -5710,7 +5845,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 264,
@@ -5752,7 +5888,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 265,
@@ -5794,7 +5931,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 266,
@@ -5836,7 +5974,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 267,
@@ -5878,7 +6017,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 268,
@@ -5920,7 +6060,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 269,
@@ -5962,7 +6103,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 270,
@@ -6004,7 +6146,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 271,
@@ -6046,7 +6189,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 272,
@@ -6088,7 +6232,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 273,
@@ -6130,7 +6275,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 274,
@@ -6172,7 +6318,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 275,
@@ -6214,7 +6361,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 276,
@@ -6256,7 +6404,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 277,
@@ -6298,7 +6447,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 278,
@@ -6340,7 +6490,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 279,
@@ -6382,7 +6533,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 280,
@@ -6424,7 +6576,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 281,
@@ -6466,7 +6619,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 282,
@@ -6508,7 +6662,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 283,
@@ -6550,7 +6705,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 314,
@@ -6592,7 +6748,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 20,
             "spawn_radius": 705.16699219,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 313,
@@ -6634,7 +6791,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 80,
             "spawn_radius": 753.79901123,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 316,
@@ -6676,7 +6834,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 287,
@@ -6718,7 +6877,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 288,
@@ -6760,7 +6920,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 289,
@@ -6802,7 +6963,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 290,
@@ -6844,7 +7006,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 291,
@@ -6886,7 +7049,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 292,
@@ -6928,7 +7092,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 293,
@@ -6970,7 +7135,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 294,
@@ -7012,7 +7178,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 295,
@@ -7054,7 +7221,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 296,
@@ -7096,7 +7264,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 297,
@@ -7138,7 +7307,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 298,
@@ -7180,7 +7350,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 299,
@@ -7222,7 +7393,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 300,
@@ -7264,7 +7436,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 301,
@@ -7306,7 +7479,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 302,
@@ -7348,7 +7522,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 303,
@@ -7390,7 +7565,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 304,
@@ -7432,7 +7608,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 305,
@@ -7474,7 +7651,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 306,
@@ -7516,7 +7694,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 307,
@@ -7558,7 +7737,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 308,
@@ -7600,7 +7780,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 309,
@@ -7642,7 +7823,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 310,
@@ -7684,7 +7866,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 311,
@@ -7726,7 +7909,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 312,
@@ -7768,7 +7952,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 315,
@@ -7810,7 +7995,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 317,
@@ -7852,7 +8038,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 318,
@@ -7894,7 +8081,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 319,
@@ -7936,7 +8124,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 320,
@@ -7978,7 +8167,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 321,
@@ -8020,7 +8210,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 322,
@@ -8062,7 +8253,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 323,
@@ -8104,7 +8296,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 324,
@@ -8146,7 +8339,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 325,
@@ -8188,7 +8382,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 326,
@@ -8230,7 +8425,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 327,
@@ -8272,7 +8468,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 334,
@@ -8314,7 +8511,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 335,
@@ -8356,7 +8554,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 336,
@@ -8398,7 +8597,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 337,
@@ -8440,7 +8640,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 338,
@@ -8482,7 +8683,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 339,
@@ -8524,7 +8726,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 340,
@@ -8566,7 +8769,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 341,
@@ -8608,7 +8812,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 342,
@@ -8650,7 +8855,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 343,
@@ -8692,7 +8898,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 344,
@@ -8734,7 +8941,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 345,
@@ -8776,7 +8984,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 346,
@@ -8818,7 +9027,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 347,
@@ -8860,7 +9070,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 348,
@@ -8902,7 +9113,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 356,
@@ -8944,7 +9156,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 350,
@@ -8986,7 +9199,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 351,
@@ -9028,7 +9242,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 352,
@@ -9070,7 +9285,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 353,
@@ -9112,7 +9328,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 357,
@@ -9154,7 +9371,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 358,
@@ -9196,7 +9414,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 359,
@@ -9238,7 +9457,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 360,
@@ -9280,7 +9500,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 361,
@@ -9322,7 +9543,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 362,
@@ -9364,7 +9586,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 363,
@@ -9406,7 +9629,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 364,
@@ -9448,7 +9672,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 365,
@@ -9490,7 +9715,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 366,
@@ -9532,7 +9758,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 367,
@@ -9574,7 +9801,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 368,
@@ -9616,7 +9844,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 369,
@@ -9658,7 +9887,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 370,
@@ -9700,7 +9930,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 371,
@@ -9742,7 +9973,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 372,
@@ -9784,7 +10016,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 373,
@@ -9826,7 +10059,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 374,
@@ -9868,7 +10102,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 375,
@@ -9910,7 +10145,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 376,
@@ -9952,7 +10188,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 389,
@@ -9994,7 +10231,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 378,
@@ -10036,7 +10274,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 379,
@@ -10078,7 +10317,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 380,
@@ -10120,7 +10360,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 381,
@@ -10162,7 +10403,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 382,
@@ -10204,7 +10446,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 383,
@@ -10246,7 +10489,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 384,
@@ -10288,7 +10532,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 385,
@@ -10330,7 +10575,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 386,
@@ -10372,7 +10618,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 390,
@@ -10414,7 +10661,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 388,
@@ -10456,7 +10704,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 391,
@@ -10498,7 +10747,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 392,
@@ -10540,7 +10790,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 393,
@@ -10582,7 +10833,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 394,
@@ -10624,7 +10876,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 395,
@@ -10666,7 +10919,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 396,
@@ -10708,7 +10962,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 397,
@@ -10750,7 +11005,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 398,
@@ -10792,7 +11048,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 399,
@@ -10834,7 +11091,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 400,
@@ -10876,7 +11134,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 401,
@@ -10918,7 +11177,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 402,
@@ -10960,7 +11220,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 404,
@@ -11002,7 +11263,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 405,
@@ -11044,7 +11306,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 406,
@@ -11086,7 +11349,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 407,
@@ -11128,7 +11392,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 408,
@@ -11170,7 +11435,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 409,
@@ -11212,7 +11478,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 410,
@@ -11254,7 +11521,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 411,
@@ -11296,7 +11564,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 412,
@@ -11338,7 +11607,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 413,
@@ -11380,7 +11650,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 414,
@@ -11422,7 +11693,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 415,
@@ -11464,7 +11736,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 416,
@@ -11506,7 +11779,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 418,
@@ -11548,7 +11822,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 419,
@@ -11590,7 +11865,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 420,
@@ -11632,7 +11908,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 421,
@@ -11674,7 +11951,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 422,
@@ -11716,7 +11994,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 423,
@@ -11758,7 +12037,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 424,
@@ -11800,7 +12080,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 425,
@@ -11842,7 +12123,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 426,
@@ -11884,7 +12166,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 441,
@@ -11926,7 +12209,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 439,
@@ -11968,7 +12252,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 440,
@@ -12010,7 +12295,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 442,
@@ -12052,7 +12338,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 431,
@@ -12094,7 +12381,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 432,
@@ -12136,7 +12424,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 433,
@@ -12178,7 +12467,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 434,
@@ -12220,7 +12510,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 435,
@@ -12262,7 +12553,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 436,
@@ -12304,7 +12596,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 437,
@@ -12346,7 +12639,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 438,
@@ -12388,7 +12682,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 444,
@@ -12430,7 +12725,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 445,
@@ -12472,7 +12768,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 446,
@@ -12514,7 +12811,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 447,
@@ -12556,7 +12854,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 448,
@@ -12598,7 +12897,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 450,
@@ -12640,7 +12940,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 451,
@@ -12682,7 +12983,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 30,
             "spawn_radius": 911.85400391,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 455,
@@ -12724,7 +13026,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 500,
             "spawn_radius": 996.96002197,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 478,
@@ -12766,7 +13069,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 479,
@@ -12808,7 +13112,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 480,
@@ -12850,7 +13155,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 469,
@@ -12892,7 +13198,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 470,
@@ -12934,7 +13241,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 471,
@@ -12976,7 +13284,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 472,
@@ -13018,7 +13327,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 473,
@@ -13060,7 +13370,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 474,
@@ -13102,7 +13413,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 475,
@@ -13144,7 +13456,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 476,
@@ -13186,7 +13499,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 477,
@@ -13228,7 +13542,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 488,
@@ -13270,7 +13585,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 489,
@@ -13312,7 +13628,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 491,
@@ -13354,7 +13671,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 490,
@@ -13396,7 +13714,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 492,
@@ -13438,7 +13757,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 30,
             "spawn_radius": 911.85400391,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 493,
@@ -13480,7 +13800,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 30,
             "spawn_radius": 911.85400391,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 494,
@@ -13522,7 +13843,8 @@
             "orcs_to_spawn": 1,
             "total_spawns": 31,
             "spawn_radius": 911.85400391,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         },
         {
             "id": 496,
@@ -13531,8 +13853,8 @@
             "created_time": 7.1356887000000002,
             "only_boss_battle": false,
             "position": [
-                3700.00000000,
-                -2000.00000000
+                1105.00000000,
+                -865.00000000
             ],
             "size": [
                 75.00000000,
@@ -13564,7 +13886,8 @@
             "orcs_to_spawn": 0,
             "total_spawns": 0,
             "spawn_radius": 0.00000000,
-            "pickup_type": 0
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
         }
     ]
 }

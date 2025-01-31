@@ -2981,6 +2981,8 @@ build_texture_atlas :: proc(renderer: ^Renderer) -> bool {
             rect := &rects[i] 
             texture_info := &renderer.textures[TextureHandle(rect.id)]
 
+            // actual points that represent the texture,
+            // the values stored in the rect include padding
             real_x := rect.x + TEXTURE_PADDING_PIXELS
             real_y := rect.y + TEXTURE_PADDING_PIXELS
             real_w := rect.w - (TEXTURE_PADDING_PIXELS * 2)
@@ -2998,7 +3000,7 @@ build_texture_atlas :: proc(renderer: ^Renderer) -> bool {
                 {left_x_uv, bottom_y_uv},   // bottom left
             }
 
-            for row in 0..< rect.h {
+            for row in 0..< real_h {
                 source_row := mem.ptr_offset(texture_info.data, row * real_w * BYTES_PER_PIXEL)
                 dest_row   := mem.ptr_offset(atlas_data, ((real_y + row) * ATLAS_WIDTH + real_x) * BYTES_PER_PIXEL) // flipped textures in atlas
 
