@@ -49,8 +49,7 @@ import json "json"
 
 // record:
 // start: 21/01/2025
-// total time: 38.5 hrs
-// start 6:00
+// total time: 41 hrs
 
 // controls
 // developer:
@@ -89,9 +88,9 @@ LEVEL_SAVE_NAME             :: "start"
 ALL_ABILITIES_ACTIVE        :: true
 
 // internal settings
-MAX_ENTITIES :: 5_000
-MAX_QUADS :: 10_000
-
+MAX_ENTITIES    :: 5_000
+MAX_QUADS       :: 10_000
+    
 // gameplay settings
 MAX_PLAYER_HEALTH       :: 100
 PLAYER_SPEED            :: 275
@@ -260,6 +259,8 @@ main :: proc() {
 
     start()
 
+    last_frame_start_time: f64
+
     for !glfw.WindowShouldClose(state.window) {
         free_all(context.temp_allocator)
 
@@ -294,8 +295,12 @@ main :: proc() {
         }
 
         now := glfw.GetTime()
-        delta_time := f32(now - state.time)
-        state.time = now 
+        delta_time := f32(now - last_frame_start_time)
+        last_frame_start_time = now
+
+        if state.mode == .game {
+            state.time = now 
+        }
 
         when ALLOW_EDITOR {
             imgui_impl_opengl3.NewFrame()
@@ -1256,6 +1261,75 @@ draw :: proc(delta_time: f32) {
     } 
 
     in_screen_space = true 
+
+    player_info: { // player abilities info
+        ICON_SIZE       :: v2{30, 30}
+        SCREEN_PADDING  :: v2{10, 10}
+        ICON_X_PADDING  :: 5
+        ICON_COUNT      :: 10
+        LAST_HEART_SIZE_MULTIPLIER :: 1.2
+
+        player := get_entity_with_flag(.player)
+        if player == nil {
+            break player_info 
+        }
+
+        remaining_health := (player.health / MAX_PLAYER_HEALTH) * 10 // from 0 -> 10
+        hearts_remaining := int(math.trunc_f32(remaining_health))
+        hearts_remaining = clamp(hearts_remaining, 1, ICON_COUNT) // if health was less then 10% then this is 0
+
+        last_heart_alpha: f32
+        if remaining_health < 1 {
+            // if you dont do this when the health is less then 10%
+            // it will always be zero because there is no value on 
+            // the left side of the decimal point
+            last_heart_alpha = remaining_health / 10
+        } else {
+            last_heart_alpha = remaining_health - math.trunc_f32(remaining_health) // 9.5 - 9 == 0.5 alpha
+        }
+
+        last_heart_alpha = clamp(last_heart_alpha, 0.1, 1)
+
+        for i in 0..<hearts_remaining {
+            heart_colour := WHITE
+            icon_draw_size := ICON_SIZE
+
+            // only change size when last heart
+            if i == hearts_remaining - 1 {
+                if remaining_health != 10 {
+                    heart_colour = alpha(heart_colour, last_heart_alpha)
+                }
+
+                icon_draw_size *= LAST_HEART_SIZE_MULTIPLIER
+            }
+
+            start_position := ICON_SIZE * 0.5 + SCREEN_PADDING
+            offset_from_start := v2{ICON_SIZE.x * f32(i) + (ICON_X_PADDING * f32(i)), 0}
+            draw_texture(.heart, start_position + offset_from_start, icon_draw_size, colour = heart_colour)
+        }
+
+        armour_bar: {
+            if !(.armour in player.abilities) {
+                break armour_bar
+            }
+
+            percentage_remaining_armour := player.armour / MAX_ARMOUR
+
+            MAX_WIDTH :: 350
+            height := MAX_WIDTH * (1 / state.renderer.textures[.armour_bar].aspect_ratio)
+            size := v2{MAX_WIDTH * percentage_remaining_armour, height}
+
+            BASE_BLUE :: v4{0.121, 0.176, 0.521, 1} // same blue from texture
+            highlight_colour := brightness(BASE_BLUE, 0.75)
+
+            if percentage_remaining_armour == 1 {
+                highlight_colour = YELLOW 
+            }
+
+            start_position := SCREEN_PADDING + {0, 50}
+            draw_texture(.armour_bar, start_position + (size * 0.5), size, highlight_colour = highlight_colour)  
+        }
+    }
 
     { // game info 
         font_size : f32 = 15 
@@ -2422,12 +2496,15 @@ TextureHandle :: enum {
     orc,
     wizard,
     potion,
-    spludge
+    spludge,
+    heart,
+    armour_bar
 }
 
 Texture :: struct {
     width: int,
     height: int,
+    aspect_ratio: f32,
     uv: [4]v2,
     data: [^]byte
 }
@@ -2972,6 +3049,7 @@ load_textures :: proc(renderer: ^Renderer) -> bool {
         renderer.textures[texture] = {
             width = int(width),
             height = int(height),
+            aspect_ratio = f32(width) / f32(height),
             data = data
         }
     }
@@ -3124,6 +3202,10 @@ get_texture_name :: proc(texture: TextureHandle) -> string {
             return "potion.png"
         case .spludge:
             return "spludge.png"
+        case .heart:
+            return "heart.png"
+        case .armour_bar:
+            return "armour_bar.png"
     }
 
     unreachable()
