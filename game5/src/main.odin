@@ -50,6 +50,7 @@ import json "json"
 // record:
 // start: 21/01/2025
 // total time: 41 hrs
+// started: 23
 
 // controls
 // developer:
@@ -69,11 +70,13 @@ import json "json"
 //      - right stick: aim
 //      - right trigger: shoot
 //      - x button: interact
+//      - rb: dash
 // - mouse and keyboard
 //      - WASD: move
 //      - mouse: aim
 //      - left click: shoot
 //      - e key: interact
+//      - f key: dash
 
 // indev settings
 LOG_COLOURS                 :: false
@@ -86,6 +89,7 @@ CAN_RELOAD_TEXTURES         :: true
 ALLOW_EDITOR                :: true
 LEVEL_SAVE_NAME             :: "start"
 ALL_ABILITIES_ACTIVE        :: true
+GOD_MODE                    :: true
 
 // internal settings
 MAX_ENTITIES    :: 5_000
@@ -95,6 +99,11 @@ MAX_QUADS       :: 10_000
 MAX_PLAYER_HEALTH       :: 100
 PLAYER_SPEED            :: 275
 PLAYER_REACH_SIZE       :: 100
+PLAYER_DASH_COOLDOWN    :: 2
+PLAYER_DASH_DURATION    :: 0.25
+PLAYER_DASH_ATTACK_SIZE :: 100
+PLAYER_DASH_DPS         :: 2000
+PLAYER_DASH_SPEED_MULTIPLIER :: 5
 GEM_ATTRACT_RADIUS      :: 200
 GEM_ATTRACT_SPEED       :: 800
 START_WEAPON_LEVEL      :: 2
@@ -512,6 +521,7 @@ Entity :: struct {
 
     // flag: player
     aim_direction: v2,
+    player_dash_cooldown: f32,
 
     // flag: has_health
     health: f32,
@@ -560,6 +570,8 @@ EntityFlag :: enum {
     door,
     potion,
     spludge,
+
+    is_dashing,
 
     to_be_deleted
 }
@@ -670,6 +682,11 @@ update :: proc(delta_time: f32) {
             if entity.spawn_cooldown < 0 {
                 entity.spawn_cooldown = 0
             }
+
+            entity.player_dash_cooldown -= delta_time
+            if entity.player_dash_cooldown < 0 {
+                entity.player_dash_cooldown = 0
+            }
         }
 
         if entity.only_boss_battle {
@@ -686,7 +703,7 @@ update :: proc(delta_time: f32) {
             state.camera.position = entity.position
 
             when ALL_ABILITIES_ACTIVE {
-                entity.abilities += {.speed, .armour}
+                entity.abilities += {.speed, .armour, .dash}
             }
 
             { // set aim
@@ -767,6 +784,48 @@ update :: proc(delta_time: f32) {
                     state.player_state.collected_gems_this_level = 0
                 }
             }
+
+            dash: {
+                if !(.dash in entity.abilities) {
+                    break dash
+                }
+
+                if !(.is_dashing in entity.flags) {
+                    if entity.player_dash_cooldown > 0 {
+                        break dash
+                    }
+    
+                    input := get_dash_input()
+                    if input == .down {
+                        entity.flags += {.is_dashing}
+                        entity.player_dash_cooldown = PLAYER_DASH_COOLDOWN
+                        entity.armour = MAX_ARMOUR
+                    }
+                }
+
+                if .is_dashing in entity.flags {
+                    done := wait(TimeId(entity.id), PLAYER_DASH_DURATION)
+                    if done {
+                        entity.flags -= {.is_dashing}
+                    }
+                    
+                    entity.velocity = entity.aim_direction * PLAYER_SPEED * PLAYER_DASH_SPEED_MULTIPLIER
+
+                    iter := new_box_collider_iterator(entity.position, entity.size + PLAYER_DASH_ATTACK_SIZE)
+                    for {
+                        other := next(&iter)
+                        if other == nil {
+                            break
+                        }
+
+                        if !(.ai in other.flags) {
+                            continue
+                        }
+
+                        entity_take_damage(other, PLAYER_DASH_DPS * delta_time)
+                    }
+                }
+            }
         }
 
         ai_update: {
@@ -817,10 +876,6 @@ update :: proc(delta_time: f32) {
                         direction := linalg.normalize(player_this_frame.position - entity.position)
                         entity.velocity = direction * ai_speed(entity.ai_type)
     
-                        if entity.attack_cooldown != 0 {
-                            break
-                        }
-   
                         distance := linalg.distance(entity.position, player_this_frame.position)
                         if distance < ORC_TARGET_ATTACK_DISTANCE {
                             entity.ai_state = .charging_dash
@@ -830,6 +885,7 @@ update :: proc(delta_time: f32) {
                         done := wait(TimeId(entity.id), DASH_CHARGE_TIME)
                         if done {
                             entity.ai_state = .dashing
+                            entity.flags += {.is_dashing}
                         }
                     }
                     case .dashing: {
@@ -851,6 +907,8 @@ update :: proc(delta_time: f32) {
                         }
                     }
                     case .dash_cooldown: {
+                        entity.flags -= {.is_dashing}
+
                         done := wait(TimeId(entity.id), DASH_COOLDOWN_TIME)
                         if done {
                             entity.ai_state = .tracking
@@ -1203,6 +1261,24 @@ draw :: proc(delta_time: f32) {
             }
         }
 
+        if .is_dashing in entity.flags {
+            angle := linalg.angle_between(entity.velocity, v2{0, 1}) * linalg.DEG_PER_RAD
+             
+            if math.sign(entity.velocity.x) != 0 {
+                angle *= math.sign(entity.velocity.x)
+            }
+
+            fireball_scale: f32
+
+            if .player in entity.flags {
+                fireball_scale = 3
+            } else {
+                fireball_scale = 1.5
+            }
+
+            draw_texture(.fireball, entity.position, entity.size * fireball_scale, rotation = angle)
+        }
+
         if .nest in entity.flags {
             left_to_spawn := entity.speeders_to_spawn + entity.drones_to_spawn + entity.orcs_to_spawn
 
@@ -1217,7 +1293,8 @@ draw :: proc(delta_time: f32) {
             highlight_colour = mix(RED, SKY_BLUE, percentage_health_left)
         }
 
-        if .armour in entity.abilities && DRAW_ARMOUR_BUBBLE {
+        when DRAW_ARMOUR_BUBBLE {
+        if .armour in entity.abilities && !(.is_dashing in entity.flags) {
             armour_colour: v4
 
             if entity.armour == MAX_ARMOUR {
@@ -1236,6 +1313,7 @@ draw :: proc(delta_time: f32) {
             }
 
             draw_texture(.armour, entity.position, entity.size * size_multiplier, colour = alpha(WHITE, armour_alpha), highlight_colour = alpha(armour_colour, armour_alpha))
+        }
         }
 
         if .ability_pickup in entity.flags {
@@ -1328,6 +1406,26 @@ draw :: proc(delta_time: f32) {
 
             start_position := SCREEN_PADDING + {0, 50}
             draw_texture(.armour_bar, start_position + (size * 0.5), size, highlight_colour = highlight_colour)  
+        }
+
+        dash: {
+            DASH_ICON_SIZE :: 90
+
+            if !(.dash in player.abilities) {
+                break dash
+            }
+
+            colour := WHITE
+            if player.player_dash_cooldown != 0 {
+                colour = alpha(colour, 0.25)
+            }
+
+            position := v2{state.width, 0} + SCREEN_PADDING * {-1, 0}
+            draw_texture(.dash_icon, position + v2{-DASH_ICON_SIZE, DASH_ICON_SIZE}, v2{DASH_ICON_SIZE, DASH_ICON_SIZE}, colour = colour)
+
+            if .is_dashing in player.flags {
+                draw_texture(.speed_lines, {state.width, state.height} * 0.5, {state.width, state.height})
+            }
         }
     }
 
@@ -1692,6 +1790,18 @@ get_entity_on_position :: proc(position: v2) -> ^Entity {
 entity_take_damage :: proc(entity: ^Entity, damage: f32) {
     assert(.has_health in entity.flags)
 
+    when GOD_MODE {
+        if .player in entity.flags {
+            return
+        }
+    }
+
+    if .player in entity.flags {
+        if .is_dashing in entity.flags {
+            return 
+        }
+    }
+
     // if entity has armour take from that first
     // if damage is more then armour left take remainder
     // from the health
@@ -1937,6 +2047,23 @@ get_interact_input :: proc() -> InputState {
         }
         case .mouse_and_keyboard: {
             return state.keys[glfw.KEY_E] 
+        }
+    }
+
+    unreachable()
+}
+
+get_dash_input :: proc() -> InputState {
+    switch state.input_mode {
+        case .gamepad: {
+            if state.gamepad.buttons[glfw.GAMEPAD_BUTTON_RIGHT_BUMPER] == glfw.PRESS {
+                return .down
+            }
+
+            return .up 
+        }
+        case .mouse_and_keyboard: {
+            return state.keys[glfw.KEY_F] 
         }
     }
 
@@ -2391,6 +2518,7 @@ editor_ui :: proc() {
     
                 imgui.InputFloat("attack cooldown", &selected_entity.attack_cooldown)
                 imgui.InputFloat2("aim direction", &selected_entity.aim_direction)
+
     
                 imgui.InputFloat("health", &selected_entity.health)
                 imgui.InputFloat("max health", &selected_entity.max_health)
@@ -2498,7 +2626,10 @@ TextureHandle :: enum {
     potion,
     spludge,
     heart,
-    armour_bar
+    armour_bar,
+    fireball,
+    dash_icon,
+    speed_lines,
 }
 
 Texture :: struct {
@@ -3206,6 +3337,12 @@ get_texture_name :: proc(texture: TextureHandle) -> string {
             return "heart.png"
         case .armour_bar:
             return "armour_bar.png"
+        case .fireball:
+            return "fireball.png"
+        case .dash_icon:
+            return "dash_icon.png"
+        case .speed_lines:
+            return "speed_lines.png"
     }
 
     unreachable()
@@ -3367,6 +3504,13 @@ glfw_error_callback :: proc "c" (error: c.int, description: cstring) {
 }
 
 glfw_key_callback :: proc "c" (window: glfw.WindowHandle, key: c.int, scancode: c.int, action: c.int, mods: c.int) {
+    context = custom_context()
+
+    if key < 0 || key >= len(state.keys) {
+        log.warn("input key ignored as it is not supported")
+        return
+    }
+
     // https://www.glfw.org/docs/latest/input_guide.html
     switch action {
         case glfw.RELEASE:  state.keys[key] = .up
