@@ -49,8 +49,7 @@ import json "json"
 
 // record:
 // start: 21/01/2025
-// total time: 41 hrs
-// started: 23
+// total time: 43 hrs
 
 // controls
 // developer:
