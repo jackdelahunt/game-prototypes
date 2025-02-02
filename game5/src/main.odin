@@ -15,6 +15,7 @@ import "core:math"
 import "core:math/rand"
 import "base:intrinsics"
 import "core:container/small_array"
+import "vendor:miniaudio"
 
 import "vendor:glfw"
 import gl "vendor:OpenGL"
@@ -49,7 +50,7 @@ import json "json"
 
 // record:
 // start: 21/01/2025
-// total time: 43 hrs
+// total time: 46.5 hrs
 
 // controls
 // developer:
@@ -112,8 +113,8 @@ AI_ATTACK_DISTANCE          :: 10
 ORC_TARGET_ATTACK_DISTANCE  :: 300
 WIZARD_TARGET_ATTACK_DISTANCE  :: 500
 
-PROJECTILE_SPEED        :: 750
-PROJECTILE_LIFETIME     :: 0.8
+BULLET_SPEED            :: 750
+BULLET_LIFETIME         :: 0.8
 
 POTION_SPEED            :: 500
 SLUDGE_LIFETIME         :: 3
@@ -155,6 +156,8 @@ State :: struct {
         far_plane: f32
     },
     renderer: Renderer,
+    sound_engine: miniaudio.engine,
+    sounds: [SoundHandle]Sound,
     entities: []Entity,
     entity_count: int,
     id_counter: int,
@@ -213,6 +216,21 @@ main :: proc() {
             camera_move_speed = 6,
             entity_move_speed = 5
         },
+        sounds = {
+            .dash = Sound {
+                volume = 1,
+            },
+            .hit = Sound {
+                volume = 1,
+            },
+            .shoot = Sound {
+                volume = 1,
+            },
+            .shoot_fade = Sound {
+                volume = 1,
+                restart_on_play = true
+            }
+        },
         renderer = {
             quads = make([]Quad, MAX_QUADS)
         },
@@ -261,6 +279,12 @@ main :: proc() {
         ok = init_imgui(&state.renderer)
         if !ok {
             log.fatal("error when initialising imgui")
+            return
+        }
+
+        ok = init_sound()
+        if !ok {
+            log.fatal("error when initialising sound")
             return
         }
     }
@@ -534,6 +558,9 @@ Entity :: struct {
     ai_type: AiType,
     ai_state: AiState,
 
+    // flag: bullet
+    bullet_hits: int,
+
     // flag: nest
     cluster_size: int,
     spawn_rate: f32,
@@ -555,7 +582,7 @@ EntityFlag :: enum {
     player,
     ai,
     nest,
-    projectile,
+    bullet,
     ability_pickup,
 
     solid_hitbox,
@@ -742,7 +769,10 @@ update :: proc(delta_time: f32) {
                 }
                    
                 entity.attack_cooldown = attack_cooldown_for_weapon_level(state.player_state.weapon_level)
-                create_bullet(entity.position, entity.aim_direction * PROJECTILE_SPEED)
+                create_bullet(entity.position, entity.aim_direction * BULLET_SPEED)
+
+                play_sound(.shoot)
+                // play_sound(.shoot_fade, 2000)
             }
 
             interact: { // interact
@@ -799,6 +829,7 @@ update :: proc(delta_time: f32) {
                         entity.flags += {.is_dashing}
                         entity.player_dash_cooldown = PLAYER_DASH_COOLDOWN
                         entity.armour = MAX_ARMOUR
+                        play_sound(.dash)
                     }
                 }
 
@@ -1000,12 +1031,12 @@ update :: proc(delta_time: f32) {
             }
         }
 
-        projectile_update: {
-            if !(.projectile in entity.flags) {
-                break projectile_update
+        bullet_update: {
+            if !(.bullet in entity.flags) {
+                break bullet_update
             }
 
-            if state.time - entity.created_time > PROJECTILE_LIFETIME {
+            if state.time - entity.created_time > BULLET_LIFETIME {
                 entity.flags += {.to_be_deleted}  
             }
         }
@@ -1562,7 +1593,7 @@ create_ability_pickup :: proc(position: v2, type: PickupType) -> ^Entity {
 
 create_bullet :: proc(position: v2, velocity: v2) -> ^Entity {
     return create_entity({
-        flags = {.projectile, .trigger_hitbox},
+        flags = {.bullet, .trigger_hitbox},
         position = position,
         velocity = velocity,
         size = {5, 5},
@@ -1789,13 +1820,11 @@ get_entity_on_position :: proc(position: v2) -> ^Entity {
 entity_take_damage :: proc(entity: ^Entity, damage: f32) {
     assert(.has_health in entity.flags)
 
-    when GOD_MODE {
-        if .player in entity.flags {
+    if .player in entity.flags {
+        when GOD_MODE {
             return
         }
-    }
 
-    if .player in entity.flags {
         if .is_dashing in entity.flags {
             return 
         }
@@ -1918,10 +1947,10 @@ attack_cooldown_for_weapon_level :: proc(weapon_level: int) -> f32 {
     assert(weapon_level > 0 && weapon_level <= MAX_WEAPON_LEVEL)
 
     switch weapon_level {
-        case 1: return 0.12
-        case 2: return 0.07
-        case 3: return 0.04
-        case 4: return 0.02
+        case 1: return 0.18
+        case 2: return 0.12
+        case 3: return 0.10
+        case 4: return 0.08
     }
 
     unreachable()
@@ -2094,7 +2123,14 @@ distance_between_entity_edges :: proc(entity_a: ^Entity, entity_b: ^Entity) -> v
 }
 
 on_trigger_collision :: proc(trigger: ^Entity, other: ^Entity) {
+    assert(.bullet in trigger.flags)
+
     if .has_health in other.flags {
+        if trigger.bullet_hits == 0 {
+            play_sound(.hit)
+        }
+
+        trigger.bullet_hits += 1
         entity_take_damage(other, damage_for_weapon_level(state.player_state.weapon_level)) 
     }
 }
@@ -2538,6 +2574,8 @@ editor_ui :: proc() {
                         }
                     }
                 }
+
+                imgui.InputScalar("bullet hits", .S64, &selected_entity.bullet_hits, format = "%d")
     
                 imgui.InputScalar("cluster size", .S64, &selected_entity.cluster_size, format = "%d")
                 imgui.InputFloat("spawn rate", &selected_entity.spawn_rate)
@@ -3459,6 +3497,94 @@ opengl_message_callback :: proc "c" (source: u32, type: u32, id: u32, severity: 
             log.info(log_string)
         }
     }
+}
+
+// -------------------------- @sound -------------------------
+SoundHandle :: enum {
+    dash,   // https://sfxr.me/#8GPBVRggKgdDS5wy7en8F66C8wiPSKeQjaJywLoBo6gjf2MSJBhw1Vih7wqB7G81m5XaHo41XuQ92SBREYPEpQrnD1zBGs437GRE65NQ78kX8r2AD76P44Nns
+    hit,        
+    shoot,
+    shoot_fade,
+}
+
+Sound :: struct {
+    source: miniaudio.sound,
+    volume: f32,
+    variance: f32,
+    restart_on_play: bool,
+}
+
+init_sound :: proc() -> bool {
+    result := miniaudio.engine_init(nil, &state.sound_engine)
+    if result != .SUCCESS {
+        log.errorf("failed to initialize sound engine with error %v", result)
+        return false
+    }
+
+    SOUND_DIRECTORY :: "resources/sounds"
+    
+    for sound_handle in SoundHandle {
+        sound := &state.sounds[sound_handle]
+
+        { // load sound from file
+            name := get_sound_name(sound_handle)
+            path := fmt.tprintf("%v/%v", SOUND_DIRECTORY, name)
+    
+            result := miniaudio.sound_init_from_file(&state.sound_engine, strings.clone_to_cstring(path, context.temp_allocator), 0, nil, nil, &sound.source)
+            if result != .SUCCESS {
+                log.errorf("failed to init sound with path \"%v\"", path)
+                return false
+            }
+
+            log.infof("loaded sound \"%v\"", path)
+        }
+
+        miniaudio.sound_set_volume(&sound.source, sound.volume)
+    }
+
+    return true
+}
+
+play_sound :: proc(sound_handle: SoundHandle, delay_ms: u64 = 0) {
+    sound := &state.sounds[sound_handle]
+
+    if playing_sound(sound_handle) {
+        if !sound.restart_on_play {
+            return
+        }
+
+        miniaudio.sound_stop(&sound.source)
+        miniaudio.sound_seek_to_pcm_frame(&sound.source, 0)
+    }
+
+    if delay_ms > 0 {
+        miniaudio.sound_set_start_time_in_milliseconds(&sound.source, delay_ms)
+    }
+
+    result := miniaudio.sound_start(&sound.source)
+    if result != .SUCCESS {
+        log.warn("playing sound: %v was not successful", sound_handle)
+    }
+}
+
+playing_sound :: proc(sound_handle: SoundHandle) -> bool {
+    return auto_cast miniaudio.sound_is_playing(&state.sounds[sound_handle].source)
+}
+
+
+get_sound_name :: proc(sound: SoundHandle) -> string {
+    switch sound {
+        case .dash:
+            return "dash.wav"
+        case .hit:
+            return "hit.wav"
+        case .shoot:
+            return "shoot.wav"
+        case .shoot_fade:
+            return "shoot_fade.wav"
+    }
+
+    unreachable()
 }
 
 // -------------------------- @window -------------------------
