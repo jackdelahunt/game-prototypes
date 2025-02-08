@@ -11,7 +11,7 @@ set windows_libs=User32.lib Gdi32.lib Shell32.lib opengl32.lib
 
 set includes=/I..\src\imgui /I..\src\glfw /I..\src\glew\include
 
-set libs=..\src\glfw\GLFW\glfw3_mt.lib ..\src\glew\lib\Release\x64\glew32s.lib ..\src\imgui\backends\imgui_impl_glfw.cpp ..\src\imgui\backends\imgui_impl_opengl3.cpp ..\src\imgui\imgui*.cpp 
+set libs=..\src\glfw\GLFW\glfw3_mt.lib ..\src\glew\lib\Release\x64\glew32s.lib ..\src\imgui\imgui*.cpp 
 
 
 cl %compile_flags% %includes% ..\src\main.cpp %libs% %windows_libs% /Fegame6.exe /link %link_flags%
