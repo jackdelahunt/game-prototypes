@@ -1,17 +1,19 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 
 #define GLEW_STATIC
 #include "glew/include/GL/glew.h"
 #include "glfw/GLFW/glfw3.h"
 #include "imgui/imgui.h"
-#include "imgui/backends/imgui_impl_glfw.h"
-#include "imgui/backends/imgui_impl_opengl3.h"
-#include "glm/glm.hpp"
-#include "glm/ext.hpp"
+#include "imgui/imgui_impl_glfw.h"
+#include "imgui/imgui_impl_opengl3.h"
+
+#include "HandmadeMath.h"
 
 // Total: 7
+// started: 10am
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -26,12 +28,6 @@ typedef int64_t i64;
 typedef float f32;
 typedef double f64;
 
-typedef glm::vec2 v2;
-typedef glm::vec3 v3;
-typedef glm::vec4 v4;
-
-typedef glm::mat4 mat4;
-
 #define MAX_QUADS 100
 
 enum class InputState {
@@ -40,8 +36,8 @@ enum class InputState {
 };
 
 struct Vertex {
-    v3 position;
-    v4 colour;
+    HMM_Vec3 position;
+    HMM_Vec4 colour;
 };
 
 struct Quad {
@@ -67,7 +63,7 @@ struct State {
     InputState keys[348];
 
     struct {
-        v2 position;
+        HMM_Vec3 position;
         f32 orthographic_size;
         f32 near_plane;
         f32 far_plane;
@@ -82,9 +78,9 @@ struct Slice {
     i64 len;
 };
 
-v4 RED      = {1, 0, 0, 1};
-v4 GREEN    = {0, 1, 0, 1};
-v4 BLUE     = {0, 0, 1, 1};
+HMM_Vec4 RED      = {1, 0, 0, 1};
+HMM_Vec4 GREEN    = {0, 1, 0, 1};
+HMM_Vec4 BLUE     = {0, 0, 1, 1};
 
 bool create_window();
 void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
@@ -93,9 +89,9 @@ void glfw_error_callback(int error_code, const char* description);
 bool init_opengl();
 void init_imgui();
 bool init_renderer();
-void draw_quad(v3 position, v2 size);
-mat4 get_view_matrix();
-mat4 get_projection_matrix();
+void draw_quad(HMM_Vec3 position, HMM_Vec2 size);
+HMM_Mat4 get_view_matrix();
+HMM_Mat4 get_projection_matrix();
 
 Slice<char> read_file(const char *path);
 
@@ -105,8 +101,8 @@ int main() {
         .width = 1080,
         .height = 720,
         .camera = {
-            .position = {},
-            .orthographic_size = 10,
+            .position = {0, 0, 0},
+            .orthographic_size = 250,
             .near_plane = 0.1f,
             .far_plane = 100.0f,
         }
@@ -143,8 +139,8 @@ int main() {
             glfwSetWindowShouldClose(state.window, GLFW_TRUE);
         }
 
-        static v3 position = {0, 0, 1};
-        static v2 size = {1, 1};
+        static HMM_Vec3 position = {0, 0, 1};
+        static HMM_Vec2 size = {100, 100};
 
         { // our rendering code goes here
             state.renderer.quad_count = 0;
@@ -160,18 +156,18 @@ int main() {
 
                 ImGui::PushID("camera");
                 ImGui::SeparatorText("Camera");
-                ImGui::SliderFloat2("position", &state.camera.position.x, -100, 100);
-                ImGui::SliderFloat("ortho size", &state.camera.orthographic_size, 1, 100);
+                ImGui::SliderFloat2("position", (f32 *) &state.camera.position, -5, 5);
+                ImGui::SliderFloat("ortho size", &state.camera.orthographic_size, 1, 500);
                 ImGui::PopID();
 
                 ImGui::PushID("quad");
                 ImGui::SeparatorText("Quad");
-                ImGui::SliderFloat3("position", &position.x, -100, 100);
-                ImGui::SliderFloat2("size", &size.x, 1, 100);
+                ImGui::SliderFloat3("position", (f32 *) &position, -10, 10);
+                ImGui::SliderFloat2("size", (f32 *) &size, 1, 300);
                 ImGui::PopID();
 
-                v3 ndc = state.renderer.quads[0].vertices[0].position;
-                ImGui::Text("%f %f %f", ndc.x, ndc.y, ndc.z);
+                HMM_Vec3 ndc = state.renderer.quads[0].vertices[0].position;
+                ImGui::Text("%f %f %f", ndc.X, ndc.Y, ndc.Z);
 
 
                 ImGui::End();
@@ -392,9 +388,8 @@ bool init_renderer() {
     }
 
     { // vertex attributes
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);                             // position
-        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) (sizeof(f32) * 3));    // colour
-        
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, position));   // position
+        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, colour));     // colour
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
     }
@@ -402,31 +397,26 @@ bool init_renderer() {
     return true;
 }
 
-void draw_quad(v3 position, v2 size) {
-    mat4 transformation_matrix = glm::mat4(1);
+void draw_quad(HMM_Vec3 position, HMM_Vec2 size) {
+    HMM_Mat4 model_matrix = HMM_M4D(1.0f);
+    model_matrix = HMM_MulM4(model_matrix, HMM_Scale({size.X, size.Y, 1}));
+    model_matrix = HMM_MulM4(model_matrix, HMM_Translate(position));
 
-    // model
-    transformation_matrix = glm::translate(transformation_matrix, position); 
-    transformation_matrix = glm::scale(transformation_matrix, {size.x, size.y, 1});    
-
-    // view
-    transformation_matrix = get_view_matrix() * transformation_matrix;
-
-    // projection
-    transformation_matrix = get_projection_matrix() * transformation_matrix;
-
+    HMM_Mat4 view_projection = HMM_MulM4(get_projection_matrix(), get_view_matrix());
+    HMM_Mat4 mvp_matrix = HMM_MulM4(view_projection, model_matrix);
+ 
     Quad *quad = &state.renderer.quads[state.renderer.quad_count];
     state.renderer.quad_count++;
 
-    v4 top_left      = {-0.5,   0.5, 0, 1};
-    v4 top_right     = { 0.5,   0.5, 0, 1};
-    v4 bottom_right  = { 0.5,  -0.5, 0, 1};
-    v4 bottom_left   = {-0.5,  -0.5, 0, 1};
+    HMM_Vec4 top_left      = {-0.5,   0.5, 0, 1};
+    HMM_Vec4 top_right     = { 0.5,   0.5, 0, 1};
+    HMM_Vec4 bottom_right  = { 0.5,  -0.5, 0, 1};
+    HMM_Vec4 bottom_left   = {-0.5,  -0.5, 0, 1};
 
-    quad->vertices[0].position = transformation_matrix * top_left;
-    quad->vertices[1].position = transformation_matrix * top_right;
-    quad->vertices[2].position = transformation_matrix * bottom_right;
-    quad->vertices[3].position = transformation_matrix * bottom_left;
+    quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).XYZ;
+    quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).XYZ;
+    quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right).XYZ;
+    quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left).XYZ;
 
     quad->vertices[0].colour = RED;
     quad->vertices[1].colour = GREEN;
@@ -434,23 +424,25 @@ void draw_quad(v3 position, v2 size) {
     quad->vertices[3].colour = RED;
 }
 
-mat4 get_view_matrix() {
-    return glm::lookAt(
-        v3{state.camera.position.x, state.camera.position.y, 0},
-        v3{state.camera.position.x, state.camera.position.y, 1},
-        v3{0, 1, 0}
+HMM_Mat4 get_view_matrix() {
+    return HMM_LookAt_LH(
+        state.camera.position, 
+        {state.camera.position.X, state.camera.position.Y, state.camera.position.Z + 1}, 
+        {0, 1, 0}
     );
 }
 
-mat4 get_projection_matrix() {
+HMM_Mat4 get_projection_matrix() {
     f32 aspect_ratio = (f32)state.width / (f32)state.height;
     f32 size = state.camera.orthographic_size;
 
-    return glm::ortho(
+    return HMM_Orthographic_LH_NO(
         -size * aspect_ratio, 
         size * aspect_ratio, 
-        -size, size,
-        state.camera.near_plane, state.camera.far_plane
+        -size, 
+        size, 
+        state.camera.near_plane, 
+        state.camera.far_plane 
     );
 }
 
