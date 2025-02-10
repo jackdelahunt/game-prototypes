@@ -12,8 +12,8 @@
 
 #include "HandmadeMath.h"
 
-// Total: 7
-// started: 10am
+// Total: 9
+// started: 4:30
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -44,7 +44,15 @@ struct Quad {
     Vertex vertices[4];
 };
 
+struct DrawCommand {
+    HMM_Vec3 position;
+    HMM_Vec2 size;
+};
+
 struct Renderer {
+    DrawCommand commands[MAX_QUADS];
+    i64 command_count;
+
     Quad quads[MAX_QUADS];
     i64 quad_count;
 
@@ -86,10 +94,16 @@ bool create_window();
 void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
 void glfw_error_callback(int error_code, const char* description);
 
-bool init_opengl();
-void init_imgui();
+// renderer - public
 bool init_renderer();
 void draw_quad(HMM_Vec3 position, HMM_Vec2 size);
+void new_frame();
+void draw_frame();
+
+// renderer - internal
+bool init_opengl();
+void init_imgui();
+void update_quad_buffer();
 HMM_Mat4 get_view_matrix();
 HMM_Mat4 get_projection_matrix();
 
@@ -139,66 +153,30 @@ int main() {
             glfwSetWindowShouldClose(state.window, GLFW_TRUE);
         }
 
+        new_frame();
+
         static HMM_Vec3 position = {0, 0, 1};
         static HMM_Vec2 size = {100, 100};
 
-        { // our rendering code goes here
-            state.renderer.quad_count = 0;
-            draw_quad(position, size);
+        draw_quad(position, size);
+
+        if (ImGui::Begin("Inspector", 0, ImGuiChildFlags_AlwaysAutoResize)) {
+            ImGui::PushID("camera");
+            ImGui::SeparatorText("Camera");
+            ImGui::SliderFloat2("position", (f32 *) &state.camera.position, -5, 5);
+            ImGui::SliderFloat("ortho size", &state.camera.orthographic_size, 1, 500);
+            ImGui::PopID();
+            ImGui::PushID("quad");
+            ImGui::SeparatorText("Quad");
+            ImGui::SliderFloat3("position", (f32 *) &position, -10, 10);
+            ImGui::SliderFloat2("size", (f32 *) &size, 1, 300);
+            ImGui::PopID();
+            HMM_Vec3 ndc = state.renderer.quads[0].vertices[0].position;
+            ImGui::Text("%f %f %f", ndc.X, ndc.Y, ndc.Z);
+            ImGui::End();
         }
 
-        { // imgui draw commands
-            ImGui_ImplOpenGL3_NewFrame();
-            ImGui_ImplGlfw_NewFrame();
-            ImGui::NewFrame();
-
-            if (ImGui::Begin("Inspector", 0, ImGuiChildFlags_AlwaysAutoResize)) {
-
-                ImGui::PushID("camera");
-                ImGui::SeparatorText("Camera");
-                ImGui::SliderFloat2("position", (f32 *) &state.camera.position, -5, 5);
-                ImGui::SliderFloat("ortho size", &state.camera.orthographic_size, 1, 500);
-                ImGui::PopID();
-
-                ImGui::PushID("quad");
-                ImGui::SeparatorText("Quad");
-                ImGui::SliderFloat3("position", (f32 *) &position, -10, 10);
-                ImGui::SliderFloat2("size", (f32 *) &size, 1, 300);
-                ImGui::PopID();
-
-                HMM_Vec3 ndc = state.renderer.quads[0].vertices[0].position;
-                ImGui::Text("%f %f %f", ndc.X, ndc.Y, ndc.Z);
-
-
-                ImGui::End();
-            }
-    
-            // bool demo = false;
-            // ImGui::ShowDemoWindow(&demo);
-        }
-
-        glClear(GL_COLOR_BUFFER_BIT);
-
-        { // draw the things we have sent to the renderer
-            glBindBuffer(GL_ARRAY_BUFFER, state.renderer.vertex_buffer_id);
-            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * state.renderer.quad_count, state.renderer.quads);
-
-            glUseProgram(state.renderer.shader_program_id);
-            glBindVertexArray(state.renderer.vertex_array_id);
-            glDrawElements(GL_TRIANGLES, 6 * state.renderer.quad_count, GL_UNSIGNED_INT, 0);
-        }
-
-        { // imgui rendering
-            ImGui::Render();
-            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-            GLFWwindow *current = glfwGetCurrentContext();
-            ImGui::UpdatePlatformWindows();
-            ImGui::RenderPlatformWindowsDefault();
-            glfwMakeContextCurrent(current);
-        }
-
-        glfwSwapBuffers(state.window);
+        draw_frame();
     }
 
     glfwTerminate();
@@ -397,31 +375,80 @@ bool init_renderer() {
     return true;
 }
 
-void draw_quad(HMM_Vec3 position, HMM_Vec2 size) {
-    HMM_Mat4 model_matrix = HMM_M4D(1.0f);
-    model_matrix = HMM_MulM4(model_matrix, HMM_Scale({size.X, size.Y, 1}));
-    model_matrix = HMM_MulM4(model_matrix, HMM_Translate(position));
+void new_frame() {
+    state.renderer.quad_count = 0;
+    state.renderer.command_count = 0;
+
+    { // new frame for imgui
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame(); 
+    }
+
+    glClear(GL_COLOR_BUFFER_BIT);
+}
+
+void draw_frame() {
+    update_quad_buffer();
+
+    { // draw the things we have sent to the renderer
+        glBindBuffer(GL_ARRAY_BUFFER, state.renderer.vertex_buffer_id);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * state.renderer.quad_count, state.renderer.quads);
+        glUseProgram(state.renderer.shader_program_id);
+        glBindVertexArray(state.renderer.vertex_array_id);
+        glDrawElements(GL_TRIANGLES, 6 * state.renderer.quad_count, GL_UNSIGNED_INT, 0);
+    }
+
+    { // imgui rendering
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        GLFWwindow *current = glfwGetCurrentContext();
+        ImGui::UpdatePlatformWindows();
+        ImGui::RenderPlatformWindowsDefault();
+        glfwMakeContextCurrent(current);
+    }
+
+    glfwSwapBuffers(state.window);
+}
+
+void update_quad_buffer() {
+    const HMM_Vec4 top_left      = {-0.5,   0.5, 0, 1};
+    const HMM_Vec4 top_right     = { 0.5,   0.5, 0, 1};
+    const HMM_Vec4 bottom_right  = { 0.5,  -0.5, 0, 1};
+    const HMM_Vec4 bottom_left   = {-0.5,  -0.5, 0, 1};
 
     HMM_Mat4 view_projection = HMM_MulM4(get_projection_matrix(), get_view_matrix());
-    HMM_Mat4 mvp_matrix = HMM_MulM4(view_projection, model_matrix);
- 
-    Quad *quad = &state.renderer.quads[state.renderer.quad_count];
-    state.renderer.quad_count++;
 
-    HMM_Vec4 top_left      = {-0.5,   0.5, 0, 1};
-    HMM_Vec4 top_right     = { 0.5,   0.5, 0, 1};
-    HMM_Vec4 bottom_right  = { 0.5,  -0.5, 0, 1};
-    HMM_Vec4 bottom_left   = {-0.5,  -0.5, 0, 1};
+    state.renderer.quad_count = state.renderer.command_count;
+    
+    for (i64 i = 0; i < state.renderer.command_count; i++) {
+        DrawCommand *command    = &state.renderer.commands[i];
+        Quad *quad              = &state.renderer.quads[i];
 
-    quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).XYZ;
-    quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).XYZ;
-    quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right).XYZ;
-    quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left).XYZ;
+        HMM_Mat4 model_matrix = HMM_M4D(1.0f);
+        model_matrix = HMM_MulM4(model_matrix, HMM_Scale({command->size.X, command->size.Y, 1}));
+        model_matrix = HMM_MulM4(model_matrix, HMM_Translate(command->position));
+    
+        HMM_Mat4 mvp_matrix = HMM_MulM4(view_projection, model_matrix);
+   
+        quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).XYZ;
+        quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).XYZ;
+        quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right).XYZ;
+        quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left).XYZ;
+    
+        quad->vertices[0].colour = RED;
+        quad->vertices[1].colour = GREEN;
+        quad->vertices[2].colour = BLUE;
+        quad->vertices[3].colour = RED;
+    }
+}
 
-    quad->vertices[0].colour = RED;
-    quad->vertices[1].colour = GREEN;
-    quad->vertices[2].colour = BLUE;
-    quad->vertices[3].colour = RED;
+void draw_quad(HMM_Vec3 position, HMM_Vec2 size) {
+    DrawCommand *command = &state.renderer.commands[state.renderer.command_count];
+    state.renderer.command_count++;
+
+    command->position = position;
+    command->size = size;
 }
 
 HMM_Mat4 get_view_matrix() {
