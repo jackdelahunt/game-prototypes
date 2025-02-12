@@ -88,11 +88,13 @@ bool init_renderer(Renderer *renderer, Window window) {
     
         Slice<char> vertex_shader_source = read_file("./src/shaders/vertex.shader");
         if (vertex_shader_source.len == 0) {
+            printf("failed to load vertex shader\n");
             return false;
         }
 
         Slice<char> fragment_shader_source = read_file("./src/shaders/fragment.shader");
         if (fragment_shader_source.len == 0) {
+            printf("failed to load vertex shader\n");
             return false;
         }
 
