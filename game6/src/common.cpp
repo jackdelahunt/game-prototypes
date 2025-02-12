@@ -1,3 +1,6 @@
+#ifndef COMMON_CPP
+#define COMMON_CPP
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,3 +42,5 @@ Slice<char> read_file(const char *path) {
 
     return Slice<char> {.data = data, .len = file_size};
 }
+
+#endif
