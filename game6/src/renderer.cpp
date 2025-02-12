@@ -6,8 +6,8 @@
 #define MAX_QUADS 100
 
 struct Vertex {
-    HMM_Vec3 position;
-    HMM_Vec4 colour;
+    v3 position;
+    v4 colour;
 };
 
 struct Quad {
@@ -15,12 +15,12 @@ struct Quad {
 };
 
 struct DrawCommand {
-    HMM_Vec3 position;
-    HMM_Vec2 size;
+    v3 position;
+    v2 size;
 };
 
 struct Camera {
-    HMM_Vec3 position;
+    v3 position;
     f32 orthographic_size;
     f32 near_plane;
     f32 far_plane;
@@ -39,12 +39,12 @@ struct Renderer {
     u32 shader_program_id;
 };
 
-HMM_Vec4 RED      = {1, 0, 0, 1};
-HMM_Vec4 GREEN    = {0, 1, 0, 1};
-HMM_Vec4 BLUE     = {0, 0, 1, 1};
+v4 RED      = {1, 0, 0, 1};
+v4 GREEN    = {0, 1, 0, 1};
+v4 BLUE     = {0, 0, 1, 1};
 
 bool init_renderer(Renderer *renderer, Window window);
-void draw_quad(Renderer *renderer, HMM_Vec3 position, HMM_Vec2 size);
+void draw_quad(Renderer *renderer, v3 position, v2 size);
 void new_frame(Renderer *renderer);
 void draw_frame(Renderer *renderer, Window window, Camera camera);
 HMM_Mat4 get_view_matrix(Camera camera);
@@ -192,7 +192,7 @@ bool init_renderer(Renderer *renderer, Window window) {
     return true;
 }
 
-void draw_quad(Renderer *renderer, HMM_Vec3 position, HMM_Vec2 size) {
+void draw_quad(Renderer *renderer, v3 position, v2 size) {
     DrawCommand *command = &renderer->commands[renderer->command_count];
     renderer->command_count++;
 
@@ -215,10 +215,10 @@ void new_frame(Renderer *renderer) {
 
 void draw_frame(Renderer *renderer, Window window, Camera camera) {
     { // update quad buffer based on draw commands
-        const HMM_Vec4 top_left      = {-0.5,   0.5, 0, 1};
-        const HMM_Vec4 top_right     = { 0.5,   0.5, 0, 1};
-        const HMM_Vec4 bottom_right  = { 0.5,  -0.5, 0, 1};
-        const HMM_Vec4 bottom_left   = {-0.5,  -0.5, 0, 1};
+        const v4 top_left      = {-0.5,   0.5, 0, 1};
+        const v4 top_right     = { 0.5,   0.5, 0, 1};
+        const v4 bottom_right  = { 0.5,  -0.5, 0, 1};
+        const v4 bottom_left   = {-0.5,  -0.5, 0, 1};
 
         HMM_Mat4 view_projection = HMM_MulM4(get_projection_matrix(camera, (f32) window.width / (f32) window.height), get_view_matrix(camera));
     
