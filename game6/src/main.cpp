@@ -7,7 +7,7 @@
 #include "imgui/imgui_impl_glfw.h"
 #include "imgui/imgui_impl_opengl3.h"
 
-#include "HandmadeMath.h"
+#include "hmm.cpp"
 #include "common.cpp"
 #include "window.cpp"
 #include "renderer.cpp"

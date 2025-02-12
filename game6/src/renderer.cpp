@@ -47,8 +47,8 @@ bool init_renderer(Renderer *renderer, Window window);
 void draw_quad(Renderer *renderer, v3 position, v2 size);
 void new_frame(Renderer *renderer);
 void draw_frame(Renderer *renderer, Window window, Camera camera);
-HMM_Mat4 get_view_matrix(Camera camera);
-HMM_Mat4 get_projection_matrix(Camera camera, f32 aspect);
+m4 get_view_matrix(Camera camera);
+m4 get_projection_matrix(Camera camera, f32 aspect);
 
 bool init_renderer(Renderer *renderer, Window window) {
     { // init opengl
@@ -220,7 +220,7 @@ void draw_frame(Renderer *renderer, Window window, Camera camera) {
         const v4 bottom_right  = { 0.5,  -0.5, 0, 1};
         const v4 bottom_left   = {-0.5,  -0.5, 0, 1};
 
-        HMM_Mat4 view_projection = HMM_MulM4(get_projection_matrix(camera, (f32) window.width / (f32) window.height), get_view_matrix(camera));
+        m4 view_projection = HMM_MulM4(get_projection_matrix(camera, (f32) window.width / (f32) window.height), get_view_matrix(camera));
     
         renderer->quad_count = renderer->command_count;
         
@@ -228,11 +228,11 @@ void draw_frame(Renderer *renderer, Window window, Camera camera) {
             DrawCommand *command    = &renderer->commands[i];
             Quad *quad              = &renderer->quads[i];
     
-            HMM_Mat4 model_matrix = HMM_M4D(1.0f);
+            m4 model_matrix = HMM_M4D(1.0f);
             model_matrix = HMM_MulM4(model_matrix, HMM_Translate(command->position));
             model_matrix = HMM_MulM4(model_matrix, HMM_Scale({command->size.X, command->size.Y, 1}));
         
-            HMM_Mat4 mvp_matrix = HMM_MulM4(view_projection, model_matrix);
+            m4 mvp_matrix = HMM_MulM4(view_projection, model_matrix);
        
             quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).XYZ;
             quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).XYZ;
@@ -265,7 +265,7 @@ void draw_frame(Renderer *renderer, Window window, Camera camera) {
     }
 }
 
-HMM_Mat4 get_view_matrix(Camera camera) {
+m4 get_view_matrix(Camera camera) {
     return HMM_LookAt_LH(
         camera.position, 
         {camera.position.X, camera.position.Y, camera.position.Z + 1}, 
@@ -273,7 +273,7 @@ HMM_Mat4 get_view_matrix(Camera camera) {
     );
 }
 
-HMM_Mat4 get_projection_matrix(Camera camera, f32 aspect) {
+m4 get_projection_matrix(Camera camera, f32 aspect) {
     return HMM_Orthographic_LH_NO(
         -camera.orthographic_size * aspect,  // left
          camera.orthographic_size * aspect,  // right
