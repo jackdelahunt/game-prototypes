@@ -49,6 +49,13 @@ struct DrawCommand {
     HMM_Vec2 size;
 };
 
+struct Camera {
+    HMM_Vec3 position;
+    f32 orthographic_size;
+    f32 near_plane;
+    f32 far_plane;
+};
+
 struct Renderer {
     DrawCommand commands[MAX_QUADS];
     i64 command_count;
@@ -70,12 +77,7 @@ struct State {
     GLFWwindow *window;
     InputState keys[348];
 
-    struct {
-        HMM_Vec3 position;
-        f32 orthographic_size;
-        f32 near_plane;
-        f32 far_plane;
-    } camera;
+    Camera camera;
 
     Renderer renderer;
 } state = {};
@@ -98,14 +100,13 @@ void glfw_error_callback(int error_code, const char* description);
 bool init_renderer();
 void draw_quad(HMM_Vec3 position, HMM_Vec2 size);
 void new_frame();
-void draw_frame();
+void draw_frame(Camera camera, f32 width, f32 height);
 
 // renderer - internal
 bool init_opengl();
 void init_imgui();
-void update_quad_buffer();
-HMM_Mat4 get_view_matrix();
-HMM_Mat4 get_projection_matrix();
+HMM_Mat4 get_view_matrix(Camera camera);
+HMM_Mat4 get_projection_matrix(Camera camera, f32 width, f32 height);
 
 Slice<char> read_file(const char *path);
 
@@ -159,11 +160,12 @@ int main() {
         static HMM_Vec2 size = {100, 100};
 
         draw_quad(position, size);
+        draw_quad(HMM_Vec3{position.X + (size.X * 2), position.Y  + (size.Y * 2), position.Z}, size);
 
         if (ImGui::Begin("Inspector", 0, ImGuiChildFlags_AlwaysAutoResize)) {
             ImGui::PushID("camera");
             ImGui::SeparatorText("Camera");
-            ImGui::SliderFloat2("position", (f32 *) &state.camera.position, -5, 5);
+            ImGui::SliderFloat2("position", (f32 *) &state.camera.position, -500, 500);
             ImGui::SliderFloat("ortho size", &state.camera.orthographic_size, 1, 500);
             ImGui::PopID();
             ImGui::PushID("quad");
@@ -176,7 +178,7 @@ int main() {
             ImGui::End();
         }
 
-        draw_frame();
+        draw_frame(state.camera, (f32)state.width, (f32)state.height);
     }
 
     glfwTerminate();
@@ -388,8 +390,38 @@ void new_frame() {
     glClear(GL_COLOR_BUFFER_BIT);
 }
 
-void draw_frame() {
-    update_quad_buffer();
+void draw_frame(Camera camera, f32 width, f32 height) {
+    { // update quad buffer based on draw commands
+        const HMM_Vec4 top_left      = {-0.5,   0.5, 0, 1};
+        const HMM_Vec4 top_right     = { 0.5,   0.5, 0, 1};
+        const HMM_Vec4 bottom_right  = { 0.5,  -0.5, 0, 1};
+        const HMM_Vec4 bottom_left   = {-0.5,  -0.5, 0, 1};
+    
+        HMM_Mat4 view_projection = HMM_MulM4(get_projection_matrix(camera, width, height), get_view_matrix(camera));
+    
+        state.renderer.quad_count = state.renderer.command_count;
+        
+        for (i64 i = 0; i < state.renderer.command_count; i++) {
+            DrawCommand *command    = &state.renderer.commands[i];
+            Quad *quad              = &state.renderer.quads[i];
+    
+            HMM_Mat4 model_matrix = HMM_M4D(1.0f);
+            model_matrix = HMM_MulM4(model_matrix, HMM_Translate(command->position));
+            model_matrix = HMM_MulM4(model_matrix, HMM_Scale({command->size.X, command->size.Y, 1}));
+        
+            HMM_Mat4 mvp_matrix = HMM_MulM4(view_projection, model_matrix);
+       
+            quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).XYZ;
+            quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).XYZ;
+            quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right).XYZ;
+            quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left).XYZ;
+        
+            quad->vertices[0].colour = RED;
+            quad->vertices[1].colour = GREEN;
+            quad->vertices[2].colour = BLUE;
+            quad->vertices[3].colour = RED;
+        }
+    }
 
     { // draw the things we have sent to the renderer
         glBindBuffer(GL_ARRAY_BUFFER, state.renderer.vertex_buffer_id);
@@ -411,38 +443,6 @@ void draw_frame() {
     glfwSwapBuffers(state.window);
 }
 
-void update_quad_buffer() {
-    const HMM_Vec4 top_left      = {-0.5,   0.5, 0, 1};
-    const HMM_Vec4 top_right     = { 0.5,   0.5, 0, 1};
-    const HMM_Vec4 bottom_right  = { 0.5,  -0.5, 0, 1};
-    const HMM_Vec4 bottom_left   = {-0.5,  -0.5, 0, 1};
-
-    HMM_Mat4 view_projection = HMM_MulM4(get_projection_matrix(), get_view_matrix());
-
-    state.renderer.quad_count = state.renderer.command_count;
-    
-    for (i64 i = 0; i < state.renderer.command_count; i++) {
-        DrawCommand *command    = &state.renderer.commands[i];
-        Quad *quad              = &state.renderer.quads[i];
-
-        HMM_Mat4 model_matrix = HMM_M4D(1.0f);
-        model_matrix = HMM_MulM4(model_matrix, HMM_Scale({command->size.X, command->size.Y, 1}));
-        model_matrix = HMM_MulM4(model_matrix, HMM_Translate(command->position));
-    
-        HMM_Mat4 mvp_matrix = HMM_MulM4(view_projection, model_matrix);
-   
-        quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).XYZ;
-        quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).XYZ;
-        quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right).XYZ;
-        quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left).XYZ;
-    
-        quad->vertices[0].colour = RED;
-        quad->vertices[1].colour = GREEN;
-        quad->vertices[2].colour = BLUE;
-        quad->vertices[3].colour = RED;
-    }
-}
-
 void draw_quad(HMM_Vec3 position, HMM_Vec2 size) {
     DrawCommand *command = &state.renderer.commands[state.renderer.command_count];
     state.renderer.command_count++;
@@ -451,25 +451,24 @@ void draw_quad(HMM_Vec3 position, HMM_Vec2 size) {
     command->size = size;
 }
 
-HMM_Mat4 get_view_matrix() {
+HMM_Mat4 get_view_matrix(Camera camera) {
     return HMM_LookAt_LH(
-        state.camera.position, 
-        {state.camera.position.X, state.camera.position.Y, state.camera.position.Z + 1}, 
+        camera.position, 
+        {camera.position.X, camera.position.Y, camera.position.Z + 1}, 
         {0, 1, 0}
     );
 }
 
-HMM_Mat4 get_projection_matrix() {
-    f32 aspect_ratio = (f32)state.width / (f32)state.height;
-    f32 size = state.camera.orthographic_size;
+HMM_Mat4 get_projection_matrix(Camera camera, f32 width, f32 height) {
+    f32 aspect_ratio = width / height;
 
     return HMM_Orthographic_LH_NO(
-        -size * aspect_ratio, 
-        size * aspect_ratio, 
-        -size, 
-        size, 
-        state.camera.near_plane, 
-        state.camera.far_plane 
+        -camera.orthographic_size * aspect_ratio, // left
+        camera.orthographic_size * aspect_ratio,  // right
+        -camera.orthographic_size,                // bottom
+        camera.orthographic_size,                 // top
+        camera.near_plane, 
+        camera.far_plane 
     );
 }
 
