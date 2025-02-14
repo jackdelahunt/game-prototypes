@@ -9,9 +9,9 @@ set link_flags=/DEBUG:FULL /SUBSYSTEM:CONSOLE
 
 set windows_libs=User32.lib Gdi32.lib Shell32.lib opengl32.lib
 
-set includes=/I..\src\imgui /I..\src\glfw /I..\src\glew\include
+set includes=/I..\src\libs\imgui /I..\src\libs /I..\src\libs\glew\include
 
-set libs=..\src\glfw\GLFW\glfw3_mt.lib ..\src\glew\lib\Release\x64\glew32s.lib ..\src\imgui\imgui*.cpp 
+set libs=..\src\libs\glfw\glfw3_mt.lib ..\src\libs\glew\lib\Release\x64\glew32s.lib ..\src\libs\imgui\imgui*.cpp 
 
 cl %compile_flags% %includes% ..\src\main.cpp %libs% %windows_libs% /Fegame6.exe /link %link_flags%
 if %errorlevel% neq 0 exit /b %errorlevel%

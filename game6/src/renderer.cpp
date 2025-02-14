@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-#include "libs.h"
+#include "libs/libs.h"
 #include "game.h"
 
 #define MAX_QUADS 100
@@ -89,13 +89,15 @@ bool init_renderer(Renderer *renderer, Window window) {
         i32 link_status = 0;
         char error_buffer[buffer_size];
     
-        Slice<char> vertex_shader_source = read_file("./src/shaders/vertex.shader");
+        Slice<char> vertex_shader_source = read_file("./resources/shaders/vertex.shader");
         if (vertex_shader_source.len == 0) {
+            printf("failed to load vertex shader");
             return false;
         }
 
-        Slice<char> fragment_shader_source = read_file("./src/shaders/fragment.shader");
+        Slice<char> fragment_shader_source = read_file("./resources/shaders/fragment.shader");
         if (fragment_shader_source.len == 0) {
+            printf("failed to load fragment shader");
             return false;
         }
 

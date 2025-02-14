@@ -3,7 +3,7 @@
 
 #include <assert.h>
 
-#include "libs.h"
+#include "libs/libs.h"
 #include "game.h"
 
 struct Window {

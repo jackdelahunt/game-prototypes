@@ -1,9 +1,9 @@
 #include <stdio.h>
 
-#include "libs.h"
+#include "libs/libs.h"
 #include "game.h"
 
-// Total: 10
+// Total: 14
 
 struct State {
     Camera camera;
