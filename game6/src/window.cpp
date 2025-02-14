@@ -1,6 +1,11 @@
 #ifndef WINDOW_CPP
 #define WINDOW_CPP
 
+#include <assert.h>
+
+#include "libs.h"
+#include "game.h"
+
 struct Window {
     i32 width;
     i32 height;

@@ -3,6 +3,9 @@
 
 #include <stddef.h>
 
+#include "libs.h"
+#include "game.h"
+
 #define MAX_QUADS 100
 
 struct Vertex {
