@@ -9,7 +9,7 @@
 struct Window {
     i32 width;
     i32 height;
-    const char *title;
+    string title;
     GLFWwindow *glfw_window;
 };
 
@@ -20,11 +20,11 @@ enum class InputState {
 
 InputState KEYS[348] = {};
 
-Window create_window();
+Window create_window(i32 width, i32 height, string title);
 void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
 void glfw_error_callback(int error_code, const char* description);
 
-Window create_window(i32 width, i32 height, const char *title) {
+Window create_window(i32 width, i32 height, string title) {
     Window window = {
         .width = width,
         .height = height,
@@ -33,7 +33,7 @@ Window create_window(i32 width, i32 height, const char *title) {
 
     assert(glfwInit() != 0);
 
-    window.glfw_window = glfwCreateWindow(width, height, title, 0, 0);
+    window.glfw_window = glfwCreateWindow(width, height, title.c(), 0, 0);
     assert(window.glfw_window != nullptr);
 
     glfwMakeContextCurrent(window.glfw_window);
