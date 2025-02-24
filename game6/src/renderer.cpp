@@ -19,11 +19,6 @@ struct Quad {
     Vertex vertices[4];
 };
 
-struct DrawCommand {
-    v3 position;
-    v2 size;
-};
-
 struct Camera {
     v3 position;
     f32 orthographic_size;
@@ -49,6 +44,12 @@ struct Atlas {
     i64 width;
     i64 height;
     u8 *data;
+};
+
+struct DrawCommand {
+    v3 position;
+    v2 size;
+    TextureHandle texture_handle;
 };
 
 struct Renderer {
@@ -257,11 +258,6 @@ bool load_textures(Renderer *renderer) {
             .height = height,
             .data = image_data,   
         };
-
-        u32 texture_id = send_bitmap_to_gpu(renderer, width, height, image_data);
-        assert(texture_id != 0);
-
-        renderer->atlas_texture_id = texture_id;
     }
 
     const i64 ATLAS_WIDTH     = 256;
@@ -284,7 +280,7 @@ bool load_textures(Renderer *renderer) {
         }
     }
 
-    { // copy textures into atlas with rect pack
+    { // copy textures into atlas with rect pack and send to gpu
         const i64 RECT_COUNT = TH_COUNT__;
 
         stbrp_context rp_context;
@@ -314,9 +310,9 @@ bool load_textures(Renderer *renderer) {
             Texture *texture = &renderer->textures[rect->id];
 
             f32 bottom_y_uv = (f32) rect->y             / (f32) ATLAS_HEIGHT;
-            f32 top_y_uv    = (f32) rect->y + rect->h   / (f32) ATLAS_HEIGHT;
-            f32 left_x_uv   = (f32) rect->x             / (f32) ATLAS_HEIGHT;
-            f32 right_x_uv  = (f32) rect->x + rect->w   / (f32) ATLAS_HEIGHT;
+            f32 top_y_uv    = (f32) (rect->y + rect->h) / (f32) ATLAS_HEIGHT;
+            f32 left_x_uv   = (f32) rect->x             / (f32) ATLAS_WIDTH;
+            f32 right_x_uv  = (f32) (rect->x + rect->w) / (f32) ATLAS_WIDTH;
 
             texture->uv[0] = {left_x_uv, top_y_uv};
             texture->uv[1] = {right_x_uv, top_y_uv};
@@ -329,6 +325,11 @@ bool load_textures(Renderer *renderer) {
                 memcpy(dest_row, source_row, rect->w * BYTES_PER_PIXEL);
             }
         }
+
+        u32 texture_id = send_bitmap_to_gpu(renderer, ATLAS_WIDTH, ATLAS_HEIGHT, atlas_data);
+        assert(texture_id != 0);
+
+        renderer->atlas_texture_id = texture_id;
     }
 
     { // write atlas to build folder
@@ -412,10 +413,19 @@ void draw_frame(Renderer *renderer, Window window, Camera camera) {
             quad->vertices[2].colour = BLUE;
             quad->vertices[3].colour = RED;
 
+            #if 0
             quad->vertices[0].uv = {0, 1};
             quad->vertices[1].uv = {1, 1};
             quad->vertices[2].uv = {1, 0};
             quad->vertices[3].uv = {0, 0};
+            #endif
+
+            Texture *texture = &renderer->textures[command->texture_handle];
+
+            quad->vertices[0].uv = texture->uv[0];
+            quad->vertices[1].uv = texture->uv[1];
+            quad->vertices[2].uv = texture->uv[2];
+            quad->vertices[3].uv = texture->uv[3];
         }
     }
 
