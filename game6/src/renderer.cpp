@@ -13,6 +13,7 @@ struct Vertex {
     v3 position;
     v4 colour;
     v2 uv;
+    i32 draw_type;
 };
 
 struct Quad {
@@ -47,9 +48,26 @@ struct Atlas {
 };
 
 struct DrawCommand {
-    v3 position;
-    v2 size;
-    TextureHandle texture_handle;
+    enum { RECTANGLE, CIRCLE, TEXTURE } type;
+
+    union {
+        struct {
+            v3 position;
+            v2 size;
+            v4 color;
+        } rectangle;
+        struct {
+            v3 position;
+            f32 radius;
+            v4 color;
+        } circle;
+        struct {
+            v3 position;
+            v2 size;
+            v4 color;
+            TextureHandle texture_handle;
+        } texture;
+    };
 };
 
 struct Renderer {
@@ -70,6 +88,8 @@ struct Renderer {
     u32 atlas_texture_id;
 };
 
+v4 WHITE      = {1, 1, 1, 1};
+v4 BLACK      = {0, 0, 0, 1};
 v4 RED      = {1, 0, 0, 1};
 v4 GREEN    = {0, 1, 0, 1};
 v4 BLUE     = {0, 0, 1, 1};
@@ -77,7 +97,9 @@ v4 BLUE     = {0, 0, 1, 1};
 bool init_renderer(Renderer *renderer, Window window);
 bool load_textures(Renderer *renderer);
 u32 send_bitmap_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
-void draw_quad(Renderer *renderer, v3 position, v2 size);
+void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
+void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
+void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size, v4 color);
 void new_frame(Renderer *renderer);
 void draw_frame(Renderer *renderer, Window window, Camera camera);
 m4 get_view_matrix(Camera camera);
@@ -223,10 +245,12 @@ bool init_renderer(Renderer *renderer, Window window) {
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, position));   // position
         glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, colour));     // colour
         glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, uv));         // uv
+        glVertexAttribIPointer(3, 1, GL_INT, sizeof(Vertex), (void *) offsetof(Vertex, draw_type));             // draw_type
 
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
         glEnableVertexAttribArray(2);
+        glEnableVertexAttribArray(3);
     }
 
     return true;
@@ -361,12 +385,47 @@ u32 send_bitmap_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data) {
     return texture_id;
 }
 
-void draw_quad(Renderer *renderer, v3 position, v2 size) {
+void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color) {
     DrawCommand *command = &renderer->commands[renderer->command_count];
     renderer->command_count++;
 
-    command->position = position;
-    command->size = size;
+    *command = {
+        .type = DrawCommand::RECTANGLE,
+        .rectangle = {
+            .position = position, 
+            .size = size, 
+            .color = color
+        },
+    };
+}
+
+void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color) {
+    DrawCommand *command = &renderer->commands[renderer->command_count];
+    renderer->command_count++;
+
+    *command = {
+        .type = DrawCommand::CIRCLE,
+        .circle = { 
+            .position = position, 
+            .radius = radius,
+            .color = color,
+        },
+    };
+}
+
+void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size, v4 color) {
+    DrawCommand *command = &renderer->commands[renderer->command_count];
+    renderer->command_count++;
+
+    *command = {
+        .type = DrawCommand::TEXTURE,
+        .texture = {
+            .position = position, 
+            .size = size, 
+            .color = color,
+            .texture_handle = handle,
+        },
+    };
 }
 
 void new_frame(Renderer *renderer) {
@@ -396,36 +455,95 @@ void draw_frame(Renderer *renderer, Window window, Camera camera) {
         for (i64 i = 0; i < renderer->command_count; i++) {
             DrawCommand *command    = &renderer->commands[i];
             Quad *quad              = &renderer->quads[i];
-    
-            m4 model_matrix = HMM_M4D(1.0f);
-            model_matrix = HMM_MulM4(model_matrix, HMM_Translate(command->position));
-            model_matrix = HMM_MulM4(model_matrix, HMM_Scale({command->size.X, command->size.Y, 1}));
+
+            switch (command->type) {
+                case DrawCommand::RECTANGLE: {
+                    m4 model_matrix = HMM_M4D(1.0f);
+                    model_matrix = HMM_MulM4(model_matrix, HMM_Translate(command->rectangle.position));
+                    model_matrix = HMM_MulM4(model_matrix, HMM_Scale({command->rectangle.size.X, command->rectangle.size.Y, 1}));
+                
+                    m4 mvp_matrix = HMM_MulM4(view_projection, model_matrix);
+               
+                    quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).XYZ;
+                    quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).XYZ;
+                    quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right).XYZ;
+                    quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left).XYZ;
+                
+                    quad->vertices[0].colour = command->rectangle.color;
+                    quad->vertices[1].colour = command->rectangle.color;
+                    quad->vertices[2].colour = command->rectangle.color;
+                    quad->vertices[3].colour = command->rectangle.color;
         
-            m4 mvp_matrix = HMM_MulM4(view_projection, model_matrix);
-       
-            quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).XYZ;
-            quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).XYZ;
-            quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right).XYZ;
-            quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left).XYZ;
+                    quad->vertices[0].uv = {0, 1};
+                    quad->vertices[1].uv = {1, 1};
+                    quad->vertices[2].uv = {1, 0};
+                    quad->vertices[3].uv = {0, 0};
+
+                    quad->vertices[0].draw_type = 0;
+                    quad->vertices[1].draw_type = 0;
+                    quad->vertices[2].draw_type = 0;
+                    quad->vertices[3].draw_type = 0;
+                } break;
+                case DrawCommand::CIRCLE: {
+                    v2 size = {command->circle.radius * 2, command->circle.radius * 2};
+
+                    m4 model_matrix = HMM_M4D(1.0f);
+                    model_matrix = HMM_MulM4(model_matrix, HMM_Translate(command->circle.position));
+                    model_matrix = HMM_MulM4(model_matrix, HMM_Scale({size.X, size.Y, 1}));
+                
+                    m4 mvp_matrix = HMM_MulM4(view_projection, model_matrix);
+               
+                    quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).XYZ;
+                    quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).XYZ;
+                    quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right).XYZ;
+                    quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left).XYZ;
+                
+                    quad->vertices[0].colour = command->circle.color;
+                    quad->vertices[1].colour = command->circle.color;
+                    quad->vertices[2].colour = command->circle.color;
+                    quad->vertices[3].colour = command->circle.color;
         
-            quad->vertices[0].colour = RED;
-            quad->vertices[1].colour = GREEN;
-            quad->vertices[2].colour = BLUE;
-            quad->vertices[3].colour = RED;
+                    quad->vertices[0].uv = {0, 1};
+                    quad->vertices[1].uv = {1, 1};
+                    quad->vertices[2].uv = {1, 0};
+                    quad->vertices[3].uv = {0, 0};
 
-            #if 0
-            quad->vertices[0].uv = {0, 1};
-            quad->vertices[1].uv = {1, 1};
-            quad->vertices[2].uv = {1, 0};
-            quad->vertices[3].uv = {0, 0};
-            #endif
+                    quad->vertices[0].draw_type = 1;
+                    quad->vertices[1].draw_type = 1;
+                    quad->vertices[2].draw_type = 1;
+                    quad->vertices[3].draw_type = 1;
+                } break;
+                case DrawCommand::TEXTURE: {
+                    m4 model_matrix = HMM_M4D(1.0f);
+                    model_matrix = HMM_MulM4(model_matrix, HMM_Translate(command->texture.position));
+                    model_matrix = HMM_MulM4(model_matrix, HMM_Scale({command->texture.size.X, command->texture.size.Y, 1}));
+                
+                    m4 mvp_matrix = HMM_MulM4(view_projection, model_matrix);
+               
+                    quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).XYZ;
+                    quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).XYZ;
+                    quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right).XYZ;
+                    quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left).XYZ;
+                
+                    quad->vertices[0].colour = command->texture.color;
+                    quad->vertices[1].colour = command->texture.color;
+                    quad->vertices[2].colour = command->texture.color;
+                    quad->vertices[3].colour = command->texture.color;
 
-            Texture *texture = &renderer->textures[command->texture_handle];
+                    Texture *texture = &renderer->textures[command->texture.texture_handle];
+        
+                    quad->vertices[0].uv = texture->uv[0];
+                    quad->vertices[1].uv = texture->uv[1];
+                    quad->vertices[2].uv = texture->uv[2];
+                    quad->vertices[3].uv = texture->uv[3];
 
-            quad->vertices[0].uv = texture->uv[0];
-            quad->vertices[1].uv = texture->uv[1];
-            quad->vertices[2].uv = texture->uv[2];
-            quad->vertices[3].uv = texture->uv[3];
+                    quad->vertices[0].draw_type = 2;
+                    quad->vertices[1].draw_type = 2;
+                    quad->vertices[2].draw_type = 2;
+                    quad->vertices[3].draw_type = 2;
+                } break;
+                default: assert(0);
+            };
         }
     }
 

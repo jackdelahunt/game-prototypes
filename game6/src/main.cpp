@@ -46,27 +46,9 @@ int main() {
 
         new_frame(&state.renderer);
 
-        static v3 position = {0, 0, 1};
-        static v2 size = {100, 100};
-
-        draw_quad(&state.renderer, position, size);
-        draw_quad(&state.renderer, v3{position.X + (size.X * 2), position.Y  + (size.Y * 2), position.Z}, size);
-
-        if (ImGui::Begin("Inspector", 0, ImGuiChildFlags_AlwaysAutoResize)) {
-            ImGui::PushID("camera");
-            ImGui::SeparatorText("Camera");
-            ImGui::SliderFloat2("position", (f32 *) &state.camera.position, -500, 500);
-            ImGui::SliderFloat("ortho size", &state.camera.orthographic_size, 1, 500);
-            ImGui::PopID();
-            ImGui::PushID("quad");
-            ImGui::SeparatorText("Quad");
-            ImGui::SliderFloat3("position", (f32 *) &position, -10, 10);
-            ImGui::SliderFloat2("size", (f32 *) &size, 1, 300);
-            ImGui::PopID();
-            v3 ndc = state.renderer.quads[0].vertices[0].position;
-            ImGui::Text("%f %f %f", ndc.X, ndc.Y, ndc.Z);
-            ImGui::End();
-        }
+        draw_rectangle(&state.renderer, {0, 0, 1}, {100, 100}, RED);
+        draw_circle(&state.renderer, {100, 100, 1}, 50, BLUE);
+        draw_texture(&state.renderer, TH_ALIEN, {-100, -150, 1}, {100, 100}, BLACK);
 
         draw_frame(&state.renderer, state.window, state.camera);
         glfwSwapBuffers(state.window.glfw_window);
