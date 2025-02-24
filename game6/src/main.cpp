@@ -29,6 +29,12 @@ int main() {
             printf("failed to init the renderer");
             return -1;
         }
+
+        ok = load_textures(&state.renderer);
+        if (!ok) {
+            printf("failed to load textures");
+            return -1;
+        }
     }
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {

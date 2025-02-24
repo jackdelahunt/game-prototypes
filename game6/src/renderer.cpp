@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 
+#include "common.cpp"
 #include "libs/libs.h"
 #include "game.h"
 
@@ -11,6 +12,7 @@
 struct Vertex {
     v3 position;
     v4 colour;
+    v2 uv;
 };
 
 struct Quad {
@@ -29,6 +31,26 @@ struct Camera {
     f32 far_plane;
 };
 
+enum TextureHandle {
+    TH_ALIEN,
+    TH_BLUE_FACE,
+    TH_COUNT__
+};
+
+struct Texture {
+    TextureHandle handle;
+    i64 width;
+    i64 height;
+    v2 uv[4];
+    u8 *data;
+};
+
+struct Atlas {
+    i64 width;
+    i64 height;
+    u8 *data;
+};
+
 struct Renderer {
     DrawCommand commands[MAX_QUADS];
     i64 command_count;
@@ -36,10 +58,15 @@ struct Renderer {
     Quad quads[MAX_QUADS];
     i64 quad_count;
 
+    Array<Texture, TH_COUNT__> textures;
+    Atlas atlas;
+
     u32 vertex_array_id;
     u32 vertex_buffer_id;
     u32 index_buffer_id;
     u32 shader_program_id;
+
+    u32 atlas_texture_id;
 };
 
 v4 RED      = {1, 0, 0, 1};
@@ -47,11 +74,14 @@ v4 GREEN    = {0, 1, 0, 1};
 v4 BLUE     = {0, 0, 1, 1};
 
 bool init_renderer(Renderer *renderer, Window window);
+bool load_textures(Renderer *renderer);
+u32 send_bitmap_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
 void draw_quad(Renderer *renderer, v3 position, v2 size);
 void new_frame(Renderer *renderer);
 void draw_frame(Renderer *renderer, Window window, Camera camera);
 m4 get_view_matrix(Camera camera);
 m4 get_projection_matrix(Camera camera, f32 aspect);
+const char *texture_path(TextureHandle handle);
 
 bool init_renderer(Renderer *renderer, Window window) {
     { // init opengl
@@ -89,13 +119,13 @@ bool init_renderer(Renderer *renderer, Window window) {
         i32 link_status = 0;
         char error_buffer[buffer_size];
     
-        Slice<char> vertex_shader_source = read_file("./resources/shaders/vertex.shader");
+        Slice<u8> vertex_shader_source = read_file("./resources/shaders/vertex.shader");
         if (vertex_shader_source.len == 0) {
             printf("failed to load vertex shader");
             return false;
         }
 
-        Slice<char> fragment_shader_source = read_file("./resources/shaders/fragment.shader");
+        Slice<u8> fragment_shader_source = read_file("./resources/shaders/fragment.shader");
         if (fragment_shader_source.len == 0) {
             printf("failed to load fragment shader");
             return false;
@@ -103,7 +133,7 @@ bool init_renderer(Renderer *renderer, Window window) {
 
         u32 vertex_shader = glCreateShader(GL_VERTEX_SHADER);
 
-        glShaderSource(vertex_shader, 1, &vertex_shader_source.data, NULL);
+        glShaderSource(vertex_shader, 1, (char **) &vertex_shader_source.ptr, NULL);
         glCompileShader(vertex_shader);
 
         glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &compile_status);
@@ -115,7 +145,7 @@ bool init_renderer(Renderer *renderer, Window window) {
 
         u32 fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
 
-        glShaderSource(fragment_shader, 1, &fragment_shader_source.data, NULL);
+        glShaderSource(fragment_shader, 1, (char**) &fragment_shader_source.ptr, NULL);
         glCompileShader(fragment_shader);
 
         glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &compile_status);
@@ -140,6 +170,7 @@ bool init_renderer(Renderer *renderer, Window window) {
         renderer->shader_program_id = shader_program;
 
         glUseProgram(shader_program);
+        glUniform1i(glGetUniformLocation(shader_program, "atlas_texture"), 0);
 
         glDeleteShader(vertex_shader);
         glDeleteShader(fragment_shader);
@@ -190,11 +221,143 @@ bool init_renderer(Renderer *renderer, Window window) {
     { // vertex attributes
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, position));   // position
         glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, colour));     // colour
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, uv));         // uv
+
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
+        glEnableVertexAttribArray(2);
     }
 
     return true;
+}
+
+bool load_textures(Renderer *renderer) {
+
+    stbi_set_flip_vertically_on_load(true);
+
+    for(i64 i = 0; i < renderer->textures.size; i++) {
+        TextureHandle handle = (TextureHandle) i;
+
+        const char *path = texture_path(handle);
+
+        i32 width       = 0;
+        i32 height      = 0;
+        i32 channels    = 0;
+        u8 *image_data  = nullptr;
+    
+        image_data = stbi_load(path, &width, &height, &channels, 4);
+        if (!image_data) {
+            printf("Failed to load texture: %s\n", path);
+            return false;
+        }
+
+        renderer->textures[i] = {
+            .handle = handle,
+            .width = width,
+            .height = height,
+            .data = image_data,   
+        };
+
+        u32 texture_id = send_bitmap_to_gpu(renderer, width, height, image_data);
+        assert(texture_id != 0);
+
+        renderer->atlas_texture_id = texture_id;
+    }
+
+    const i64 ATLAS_WIDTH     = 256;
+    const i64 ATLAS_HEIGHT    = 256;
+    const i64 BYTES_PER_PIXEL = 4;
+    const i64 CHANNELS        = 4;
+    const i64 ATLAS_BYTE_SIZE = ATLAS_WIDTH * ATLAS_HEIGHT * BYTES_PER_PIXEL;
+
+    u8 *atlas_data = (u8 *) malloc(ATLAS_BYTE_SIZE);
+
+    { // fill in atlas default data
+        i64 i = 0;
+        while (i < ATLAS_BYTE_SIZE) {
+            atlas_data[i]       = 255;  // r
+            atlas_data[i + 1]   = 0;    // g
+            atlas_data[i + 2]   = 255;  // b
+            atlas_data[i + 3]   = 255;  // a
+     
+            i += 4;
+        }
+    }
+
+    { // copy textures into atlas with rect pack
+        const i64 RECT_COUNT = TH_COUNT__;
+
+        stbrp_context rp_context;
+        stbrp_node nodes[ATLAS_WIDTH];
+        stbrp_rect rects[RECT_COUNT];
+
+        stbrp_init_target(&rp_context, ATLAS_WIDTH, ATLAS_HEIGHT, nodes, ATLAS_WIDTH);
+        for(i64 i = 0; i < renderer->textures.size; i++) {
+            TextureHandle texture_handle = (TextureHandle) i; 
+            Texture *texture = &renderer->textures[texture_handle];
+
+            rects[i] = stbrp_rect {
+                .id = texture_handle,
+                .w = (i32) texture->width,
+                .h = (i32) texture->height,
+            };
+        }
+
+        i64 status = stbrp_pack_rects(&rp_context, rects, RECT_COUNT);
+        if (status == 0) {
+            printf("error packing textures into atlas\n");
+            return false;
+        }
+
+        for(int i = 0; i < RECT_COUNT; i++) {
+            stbrp_rect *rect = &rects[i];
+            Texture *texture = &renderer->textures[rect->id];
+
+            f32 bottom_y_uv = (f32) rect->y             / (f32) ATLAS_HEIGHT;
+            f32 top_y_uv    = (f32) rect->y + rect->h   / (f32) ATLAS_HEIGHT;
+            f32 left_x_uv   = (f32) rect->x             / (f32) ATLAS_HEIGHT;
+            f32 right_x_uv  = (f32) rect->x + rect->w   / (f32) ATLAS_HEIGHT;
+
+            texture->uv[0] = {left_x_uv, top_y_uv};
+            texture->uv[1] = {right_x_uv, top_y_uv};
+            texture->uv[2] = {right_x_uv, bottom_y_uv};
+            texture->uv[3] = {left_x_uv, bottom_y_uv};
+
+            for (i64 row = 0; row < rect->h; row++) {
+                u8 *source_row = texture->data + (row * rect->w * BYTES_PER_PIXEL);
+                u8 *dest_row = atlas_data + (((rect->y + row) * ATLAS_WIDTH + rect->x) * BYTES_PER_PIXEL);
+                memcpy(dest_row, source_row, rect->w * BYTES_PER_PIXEL);
+            }
+        }
+    }
+
+    { // write atlas to build folder
+        stbi_flip_vertically_on_write(true);
+        i64 status = stbi_write_png("build/atlas.png", ATLAS_WIDTH, ATLAS_HEIGHT, 4, atlas_data, ATLAS_WIDTH * BYTES_PER_PIXEL);
+        if (status == 0) {
+            printf("error writing atlas to build folder\n");
+            return false;
+        }
+    }
+
+    return true;
+}
+
+u32 send_bitmap_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data) {
+    u32 texture_id = 0;
+    glGenTextures(1, &texture_id);
+
+    glBindTexture(GL_TEXTURE_2D, texture_id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    // border param might fix texture bleeding
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+
+    return texture_id;
 }
 
 void draw_quad(Renderer *renderer, v3 position, v2 size) {
@@ -248,15 +411,27 @@ void draw_frame(Renderer *renderer, Window window, Camera camera) {
             quad->vertices[1].colour = GREEN;
             quad->vertices[2].colour = BLUE;
             quad->vertices[3].colour = RED;
+
+            quad->vertices[0].uv = {0, 1};
+            quad->vertices[1].uv = {1, 1};
+            quad->vertices[2].uv = {1, 0};
+            quad->vertices[3].uv = {0, 0};
         }
     }
 
     { // draw the things we have sent to the renderer
         glViewport(0, 0, window.width, window.height);
+
+        // update quad buffer on gou and bind for shader program
         glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quad_count, renderer->quads);
-        glUseProgram(renderer->shader_program_id);
         glBindVertexArray(renderer->vertex_array_id);
+
+        glUseProgram(renderer->shader_program_id);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
+
         glDrawElements(GL_TRIANGLES, 6 * renderer->quad_count, GL_UNSIGNED_INT, 0);
     }
 
@@ -287,6 +462,21 @@ m4 get_projection_matrix(Camera camera, f32 aspect) {
          camera.near_plane, 
          camera.far_plane 
     );
+}
+
+const char *texture_path(TextureHandle handle) {
+    switch (handle) {
+        case TH_ALIEN: 
+            return "resources/textures/alien.png";
+            break;
+        case TH_BLUE_FACE: 
+            return "resources/textures/blue_face.png";
+            break;
+        case TH_COUNT__: assert(0);
+            break;
+    }
+
+    return nullptr;
 }
 
 #endif

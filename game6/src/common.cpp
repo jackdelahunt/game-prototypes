@@ -22,31 +22,31 @@ typedef double f64;
 
 template <typename T>
 struct Slice { // TODO: do safety checks in slices
-    T *data;
+    T *ptr;
     i64 len;
 
     Slice() {}
 
     Slice(T *data, i64 len) { // C++ sucks
-        this->data = data;
+        this->ptr = data;
         this->len = len;
     }
 
     Slice(const char *c_string) {
-        this->data = (T *) c_string;
+        this->ptr = (T *) c_string;
         this->len = strlen(c_string);
     }
 
     T& operator[](i64 index) {
-        return this->data[index];
+        return this->ptr[index];
     }
 
     Slice<T> slice(i64 start, i64 end) {
-        return Slice<T>(this->data + start, end - start);
+        return Slice<T>(this->ptr + start, end - start);
     }
 
     const char *c() {
-        return (const char *) this->data;
+        return (const char *) this->ptr;
     }
 };
 
@@ -57,7 +57,17 @@ Slice<T> make_slice(T *data, i64 len) {
     return Slice<T>(data, len);
 }
 
-Slice<char> read_file(const char *path) {
+template <typename T, i64 N>
+struct Array {
+    T data[N];
+    i64 size = N;
+
+    T& operator[](i64 index) {
+        return this->data[index];
+    }
+};
+
+Slice<u8> read_file(const char *path) {
     FILE *file = fopen(path, "rb");
     if (file == nullptr) {
         return {};
@@ -67,7 +77,7 @@ Slice<char> read_file(const char *path) {
     i64 file_size = ftell(file);
     fseek(file, 0, SEEK_SET);  /* same as rewind(f); */
     
-    char *data = (char *) malloc(file_size + 1);
+    u8 *data = (u8 *) malloc(file_size + 1);
     fread(data, file_size, 1, file);
     fclose(file);
     
