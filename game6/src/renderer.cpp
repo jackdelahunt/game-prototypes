@@ -96,15 +96,19 @@ v4 BLUE     = {0, 0, 1, 1};
 
 bool init_renderer(Renderer *renderer, Window window);
 bool load_textures(Renderer *renderer);
-u32 send_bitmap_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
+u32 upload_texture_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
+
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
 void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size, v4 color);
 void new_frame(Renderer *renderer);
 void draw_frame(Renderer *renderer, Window window, Camera camera);
+
 m4 get_view_matrix(Camera camera);
 m4 get_projection_matrix(Camera camera, f32 aspect);
 const char *texture_path(TextureHandle handle);
+
+v4 alpha(v4 base, f32 alpha);
 
 bool init_renderer(Renderer *renderer, Window window) {
     { // init opengl
@@ -112,10 +116,11 @@ bool init_renderer(Renderer *renderer, Window window) {
         if (result != GLEW_OK) {
             return false;
         }
-    
+
+        // alpha blend settings
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    
+
         float f = 0.8f;
         glClearColor(f, f, f, 1.0f);
     }
@@ -350,7 +355,7 @@ bool load_textures(Renderer *renderer) {
             }
         }
 
-        u32 texture_id = send_bitmap_to_gpu(renderer, ATLAS_WIDTH, ATLAS_HEIGHT, atlas_data);
+        u32 texture_id = upload_texture_to_gpu(renderer, ATLAS_WIDTH, ATLAS_HEIGHT, atlas_data);
         assert(texture_id != 0);
 
         renderer->atlas_texture_id = texture_id;
@@ -368,7 +373,7 @@ bool load_textures(Renderer *renderer) {
     return true;
 }
 
-u32 send_bitmap_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data) {
+u32 upload_texture_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data) {
     u32 texture_id = 0;
     glGenTextures(1, &texture_id);
 
@@ -605,6 +610,10 @@ const char *texture_path(TextureHandle handle) {
     }
 
     return nullptr;
+}
+
+v4 alpha(v4 base, f32 alpha) {
+    return {base.R, base.G, base.B, alpha};
 }
 
 #endif

@@ -46,9 +46,8 @@ int main() {
 
         new_frame(&state.renderer);
 
-        draw_rectangle(&state.renderer, {0, 0, 1}, {100, 100}, RED);
-        draw_circle(&state.renderer, {100, 100, 1}, 50, BLUE);
-        draw_texture(&state.renderer, TH_ALIEN, {-100, -150, 1}, {100, 100}, BLACK);
+        draw_texture(&state.renderer, TH_ALIEN, {-50, -50, 10}, {100, 100}, WHITE);
+        draw_rectangle(&state.renderer, {0, 0, 1}, {100, 100}, alpha(RED, 0.2));
 
         draw_frame(&state.renderer, state.window, state.camera);
         glfwSwapBuffers(state.window.glfw_window);
