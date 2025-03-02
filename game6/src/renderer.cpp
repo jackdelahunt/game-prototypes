@@ -3,7 +3,6 @@
 
 #include <stddef.h>
 
-#include "common.cpp"
 #include "libs/libs.h"
 #include "game.h"
 
@@ -28,8 +27,7 @@ struct Camera {
 };
 
 enum TextureHandle {
-    TH_ALIEN,
-    TH_BLUE_FACE,
+    TH_PLAYER,
     TH_COUNT__
 };
 
@@ -64,6 +62,7 @@ struct DrawCommand {
         struct {
             v3 position;
             v2 size;
+            f32 rotation;
             v4 color;
             TextureHandle texture_handle;
         } texture;
@@ -100,7 +99,7 @@ u32 upload_texture_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
 
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
-void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size, v4 color);
+void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size, f32 rotation, v4 color);
 void new_frame(Renderer *renderer);
 void draw_frame(Renderer *renderer, Window window, Camera camera);
 
@@ -121,7 +120,7 @@ bool init_renderer(Renderer *renderer, Window window) {
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-        float f = 0.8f;
+        float f = 0.0f;
         glClearColor(f, f, f, 1.0f);
     }
 
@@ -262,7 +261,6 @@ bool init_renderer(Renderer *renderer, Window window) {
 }
 
 bool load_textures(Renderer *renderer) {
-
     stbi_set_flip_vertically_on_load(true);
 
     for(i64 i = 0; i < renderer->textures.size; i++) {
@@ -418,7 +416,7 @@ void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color) {
     };
 }
 
-void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size, v4 color) {
+void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size, f32 rotation, v4 color) {
     DrawCommand *command = &renderer->commands[renderer->command_count];
     renderer->command_count++;
 
@@ -427,6 +425,7 @@ void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size
         .texture = {
             .position = position, 
             .size = size, 
+            .rotation = rotation,
             .color = color,
             .texture_handle = handle,
         },
@@ -522,6 +521,7 @@ void draw_frame(Renderer *renderer, Window window, Camera camera) {
                     m4 model_matrix = HMM_M4D(1.0f);
                     model_matrix = HMM_MulM4(model_matrix, HMM_Translate(command->texture.position));
                     model_matrix = HMM_MulM4(model_matrix, HMM_Scale({command->texture.size.X, command->texture.size.Y, 1}));
+                    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command->texture.rotation * HMM_DegToRad, {0, 0, 1}));
                 
                     m4 mvp_matrix = HMM_MulM4(view_projection, model_matrix);
                
@@ -599,11 +599,8 @@ m4 get_projection_matrix(Camera camera, f32 aspect) {
 
 const char *texture_path(TextureHandle handle) {
     switch (handle) {
-        case TH_ALIEN: 
-            return "resources/textures/alien.png";
-            break;
-        case TH_BLUE_FACE: 
-            return "resources/textures/blue_face.png";
+        case TH_PLAYER: 
+            return "resources/textures/player.png";
             break;
         case TH_COUNT__: assert(0);
             break;

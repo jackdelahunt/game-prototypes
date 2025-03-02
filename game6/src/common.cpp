@@ -61,11 +61,20 @@ template <typename T, i64 N>
 struct Array {
     T data[N];
     i64 size = N;
+    i64 len;
 
     T& operator[](i64 index) {
         return this->data[index];
     }
 };
+
+template <typename T, i64 N>
+void append(Array<T, N> *array, T value) {
+    assert(array->len < N);
+
+    array->data[array->len] = value;
+    array->len += 1;
+}
 
 Slice<u8> read_file(const char *path) {
     FILE *file = fopen(path, "rb");
