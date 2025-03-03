@@ -57,6 +57,17 @@ Slice<T> make_slice(T *data, i64 len) {
     return Slice<T>(data, len);
 }
 
+template <typename T>
+Slice<T> mem_alloc(i64 len) {
+    T *ptr = (T *) malloc(len * sizeof(T));
+    return make_slice(ptr, len);
+}
+
+template <typename T>
+void mem_free(Slice<T> slice) {
+    free(slice.ptr);
+}
+
 template <typename T, i64 N>
 struct Array {
     T data[N];

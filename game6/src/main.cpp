@@ -40,6 +40,7 @@ struct State {
     Renderer renderer;
 
     Array<Entity, MAX_ENTITIES> entities;
+    i64 score;
 } state = {};
 
 struct CollisionIterator {
@@ -76,6 +77,12 @@ int main() {
         }
 
         ok = load_textures(&state.renderer);
+        if (!ok) {
+            printf("failed to load textures");
+            return -1;
+        }
+
+        ok = load_font(&state.renderer, "resources/fonts/LibreBaskerville.ttf", 1000, 1000, 160);
         if (!ok) {
             printf("failed to load textures");
             return -1;
@@ -195,6 +202,8 @@ void update_and_draw() {
                     if (other->flags & EF_MISSLE) {
                         entity->flags |= EF_DELETE;
                         other->flags |= EF_DELETE;
+
+                        state.score += 1;
                     }
                 }
             }
@@ -209,6 +218,15 @@ void update_and_draw() {
         }
 
         draw_texture(&state.renderer, entity->texture, entity->position, entity->size, entity->rotation, WHITE);
+    }
+
+    { // score
+        u8 buffer[100];
+        i64 length = sprintf((char *) buffer, "score: %lld", state.score);
+
+        string text = make_slice(buffer, length);
+
+        draw_text(&state.renderer, text, {-580, 420, 0}, 20, WHITE);
     }
 
     for (int i = 0; i < state.entities.len; i++) {

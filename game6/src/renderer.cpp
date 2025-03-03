@@ -1,8 +1,6 @@
 #ifndef RENDERER_CPP
 #define RENDERER_CPP
 
-#include <stddef.h>
-
 #include "libs/libs.h"
 #include "game.h"
 
@@ -46,8 +44,15 @@ struct Atlas {
     u8 *data;
 };
 
+struct Font {
+    i64 width;
+    i64 height;
+    Array<stbtt_bakedchar, 96> characters;
+    u8 *bitmap_data;
+};
+
 struct DrawCommand {
-    enum { RECTANGLE, CIRCLE, TEXTURE } type;
+    enum { RECTANGLE, CIRCLE, TEXTURE, TEXT } type;
 
     union {
         struct {
@@ -55,11 +60,13 @@ struct DrawCommand {
             v2 size;
             v4 color;
         } rectangle;
+
         struct {
             v3 position;
             f32 radius;
             v4 color;
         } circle;
+
         struct {
             v3 position;
             v2 size;
@@ -67,6 +74,13 @@ struct DrawCommand {
             v4 color;
             TextureHandle texture_handle;
         } texture;
+
+        struct {
+            string text;
+            v3 position;
+            f32 font_size;
+            v4 color;
+        } text;
     };
 };
 
@@ -80,12 +94,15 @@ struct Renderer {
     Array<Texture, TH_COUNT__> textures;
     Atlas atlas;
 
+    Font font;
+
     u32 vertex_array_id;
     u32 vertex_buffer_id;
     u32 index_buffer_id;
     u32 shader_program_id;
 
     u32 atlas_texture_id;
+    u32 font_texture_id;
 };
 
 v4 WHITE      = {1, 1, 1, 1};
@@ -97,13 +114,17 @@ v4 BLUE     = {0, 0, 1, 1};
 bool init_renderer(Renderer *renderer, Window window);
 bool load_textures(Renderer *renderer);
 u32 upload_texture_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
+u32 upload_font_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
+bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel_height);
 
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
 void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size, f32 rotation, v4 color);
+void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
 void new_frame(Renderer *renderer);
 void draw_frame(Renderer *renderer, Window window, Camera camera);
 
+Quad *next_quad(Renderer *renderer);
 m4 get_view_matrix(Camera camera);
 m4 get_projection_matrix(Camera camera, f32 aspect);
 const char *texture_path(TextureHandle handle);
@@ -199,6 +220,7 @@ bool init_renderer(Renderer *renderer, Window window) {
 
         glUseProgram(shader_program);
         glUniform1i(glGetUniformLocation(shader_program, "atlas_texture"), 0);
+        glUniform1i(glGetUniformLocation(shader_program, "font_texture"), 1);
 
         glDeleteShader(vertex_shader);
         glDeleteShader(fragment_shader);
@@ -288,8 +310,8 @@ bool load_textures(Renderer *renderer) {
         };
     }
 
-    const i64 ATLAS_WIDTH     = 256;
-    const i64 ATLAS_HEIGHT    = 256;
+    const i64 ATLAS_WIDTH     = 128;
+    const i64 ATLAS_HEIGHT    = 128;
     const i64 BYTES_PER_PIXEL = 4;
     const i64 CHANNELS        = 4;
     const i64 ATLAS_BYTE_SIZE = ATLAS_WIDTH * ATLAS_HEIGHT * BYTES_PER_PIXEL;
@@ -389,6 +411,61 @@ u32 upload_texture_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data) {
     return texture_id;
 }
 
+u32 upload_font_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data) {
+    u32 texture_id = 0;
+    glGenTextures(1, &texture_id);
+
+    glBindTexture(GL_TEXTURE_2D, texture_id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // border param might fix texture bleeding
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, data);
+
+    return texture_id;
+}
+
+bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel_height) {
+    Font font = Font{
+        .width = width,
+        .height = height,
+        .characters = {},
+        .bitmap_data = (u8 *) malloc(width * height),
+    };
+
+    Slice<u8> font_data = read_file(path.c());
+    if (font_data.len == 0) {
+        printf("failed to load font \"%s\"\n", path.c());
+        return false;
+    }
+
+    i64 bake_result = stbtt_BakeFontBitmap((const u8*)font_data.c(), 0, pixel_height, font.bitmap_data, font.width, font.height, 32, font.characters.size, font.characters.data);
+    if (bake_result <= 0) {
+        printf("failed to bake font \"%s\"\n", path.c());
+        return false;
+    }
+
+    { // write debug image out
+        stbi_flip_vertically_on_write(false);
+
+        i64 write_result = stbi_write_png("build/font.png", font.width, font.height, 1, font.bitmap_data, font.width);
+        if (write_result == 0) {
+            printf("error writing font to build folder\n");
+            return false;
+        }
+    }
+
+    renderer->font_texture_id = upload_font_to_gpu(renderer, font.width, font.height, font.bitmap_data);
+    assert(renderer->font_texture_id != 0);
+
+    renderer->font = font;
+
+    return true;
+}
+
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color) {
     DrawCommand *command = &renderer->commands[renderer->command_count];
     renderer->command_count++;
@@ -433,6 +510,21 @@ void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size
     };
 }
 
+void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color) {
+    DrawCommand *command = &renderer->commands[renderer->command_count];
+    renderer->command_count++;
+
+    *command = {
+        .type = DrawCommand::TEXT,
+        .text = {
+            .text = text,
+            .position = position, 
+            .font_size = font_size,
+            .color = color,
+        },
+    };
+}
+
 void new_frame(Renderer *renderer) {
     renderer->quad_count = 0;
     renderer->command_count = 0;
@@ -455,12 +547,8 @@ void draw_frame(Renderer *renderer, Window window, Camera camera) {
 
         m4 view_projection = HMM_MulM4(get_projection_matrix(camera, (f32) window.width / (f32) window.height), get_view_matrix(camera));
     
-        renderer->quad_count = renderer->command_count;
-        
         for (i64 i = 0; i < renderer->command_count; i++) {
             DrawCommand *command    = &renderer->commands[i];
-            Quad *quad              = &renderer->quads[i];
-
             switch (command->type) {
                 case DrawCommand::RECTANGLE: {
                     m4 model_matrix = HMM_M4D(1.0f);
@@ -468,6 +556,8 @@ void draw_frame(Renderer *renderer, Window window, Camera camera) {
                     model_matrix = HMM_MulM4(model_matrix, HMM_Scale({command->rectangle.size.X, command->rectangle.size.Y, 1}));
                 
                     m4 mvp_matrix = HMM_MulM4(view_projection, model_matrix);
+
+                    Quad *quad = next_quad(renderer);
                
                     quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).XYZ;
                     quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).XYZ;
@@ -497,6 +587,8 @@ void draw_frame(Renderer *renderer, Window window, Camera camera) {
                     model_matrix = HMM_MulM4(model_matrix, HMM_Scale({size.X, size.Y, 1}));
                 
                     m4 mvp_matrix = HMM_MulM4(view_projection, model_matrix);
+
+                    Quad *quad = next_quad(renderer);
                
                     quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).XYZ;
                     quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).XYZ;
@@ -525,6 +617,8 @@ void draw_frame(Renderer *renderer, Window window, Camera camera) {
                     model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command->texture.rotation * HMM_DegToRad, {0, 0, 1}));
                 
                     m4 mvp_matrix = HMM_MulM4(view_projection, model_matrix);
+
+                    Quad *quad = next_quad(renderer);
                
                     quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).XYZ;
                     quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).XYZ;
@@ -548,6 +642,122 @@ void draw_frame(Renderer *renderer, Window window, Camera camera) {
                     quad->vertices[2].draw_type = 2;
                     quad->vertices[3].draw_type = 2;
                 } break;
+                case DrawCommand::TEXT: {
+                    auto text = &command->text;
+                    
+                    if (text->text.len == 0) {
+                        continue;
+                    }
+
+                    struct Glyph {
+                        v2 position;
+                        v2 size;
+                        v2 uvs[4];
+                    };
+
+                    Slice<Glyph> glyphs = mem_alloc<Glyph>(text->text.len);
+
+                    f32 total_text_width = 0;
+                    f32 text_height = 0;
+
+                    for (i64 i = 0; i < text->text.len; i++) {
+                        char c = text->text[i];
+
+                        f32 advanced_x = 0;
+                        f32 advanced_y = 0;
+                        stbtt_aligned_quad aligned_quad = {};
+
+                        // this is the the data for the aligned_quad we're given, with y+ going down
+                        //	   x0, y0       x1, y0
+                        //     s0, t0       s1, t0
+                        //	    o tl        o tr
+                        
+                        
+                        //     x0, y1      x1, y1
+                        //     s0, t1      s1, t1
+                        //	    o bl        o br
+                        // 
+                        // x, and y and expected vertex positions
+                        // s and t are texture uv position
+ 
+                        stbtt_GetBakedQuad(renderer->font.characters.data, renderer->font.width, renderer->font.height, c - 32, &advanced_x, &advanced_y, &aligned_quad, false);
+
+                        f32 bottom_y = -aligned_quad.y1;
+                        f32 top_y = -aligned_quad.y0;
+
+                        f32 height = top_y - bottom_y;
+                        f32 width = aligned_quad.x1 - aligned_quad.x0;
+
+                        if (height > text_height) {
+                            text_height = height;
+                        }
+
+                        v2 top_left_uv     = v2{aligned_quad.s0, aligned_quad.t0};
+                        v2 top_right_uv    = v2{aligned_quad.s1, aligned_quad.t0};
+                        v2 bottom_right_uv = v2{aligned_quad.s1, aligned_quad.t1};
+                        v2 bottom_left_uv  = v2{aligned_quad.s0, aligned_quad.t1};
+
+                        glyphs[i] = {
+                            .position = {total_text_width, bottom_y},
+                            .size = {width, height},
+                            .uvs = {top_left_uv, top_right_uv, bottom_right_uv, bottom_left_uv}
+                        };
+
+                        // if the character is not the last then add the advanced x to the total width
+                        // because this includes the with of the character and also the kerning gap added
+                        // for the next character, if it is the last one then just take the width and have
+                        // no extra gap at the end - 20/01/25
+                        if (i < text->text.len - 1) {
+                            total_text_width += advanced_x;
+                        } else {
+                            total_text_width += width;
+                        }
+                    }
+
+                    v2 pivot_point_translation = {};
+                    f32 scale = text->font_size / text_height;
+
+                    for (i64 i = 0; i < glyphs.len; i++) {
+                        Glyph *glyph = &glyphs[i];
+
+                        v2 scaled_position = glyph->position * scale;
+                        v2 scaled_size = glyph->size * scale;
+                        v2 translated_position = scaled_position + pivot_point_translation + text->position.XY;
+
+                        // quad needs position to be centre of quad so just convert that here
+                        v2 quad_centered_position = translated_position + (scaled_size * 0.5f);
+
+                        m4 model_matrix = HMM_M4D(1.0f);
+                        model_matrix = HMM_MulM4(model_matrix, HMM_Translate({quad_centered_position.X, quad_centered_position.Y, text->position.Z}));
+                        model_matrix = HMM_MulM4(model_matrix, HMM_Scale({scaled_size.X, scaled_size.Y, 1}));
+                    
+                        m4 mvp_matrix = HMM_MulM4(view_projection, model_matrix);
+
+                        Quad *quad = next_quad(renderer);
+                   
+                        quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).XYZ;
+                        quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).XYZ;
+                        quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right).XYZ;
+                        quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left).XYZ;
+                    
+                        quad->vertices[0].colour = text->color;
+                        quad->vertices[1].colour = text->color;
+                        quad->vertices[2].colour = text->color;
+                        quad->vertices[3].colour = text->color;
+    
+                        quad->vertices[0].uv = glyph->uvs[0];
+                        quad->vertices[1].uv = glyph->uvs[1];
+                        quad->vertices[2].uv = glyph->uvs[2];
+                        quad->vertices[3].uv = glyph->uvs[3];
+    
+                        quad->vertices[0].draw_type = 3;
+                        quad->vertices[1].draw_type = 3;
+                        quad->vertices[2].draw_type = 3;
+                        quad->vertices[3].draw_type = 3;
+                    }
+
+                    mem_free(glyphs);
+                } break;
                 default: assert(0);
             };
         }
@@ -566,6 +776,9 @@ void draw_frame(Renderer *renderer, Window window, Camera camera) {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
 
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, renderer->font_texture_id);
+
         glDrawElements(GL_TRIANGLES, 6 * renderer->quad_count, GL_UNSIGNED_INT, 0);
     }
 
@@ -577,6 +790,15 @@ void draw_frame(Renderer *renderer, Window window, Camera camera) {
         ImGui::RenderPlatformWindowsDefault();
         glfwMakeContextCurrent(current);
     }
+}
+
+Quad *next_quad(Renderer *renderer) {
+    Quad *quad = &renderer->quads[renderer->quad_count];
+    *quad = {};
+
+    renderer->quad_count++;
+
+    return quad;
 }
 
 m4 get_view_matrix(Camera camera) {
