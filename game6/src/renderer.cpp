@@ -28,6 +28,7 @@ struct Camera {
 
 enum TextureHandle {
     TH_PLAYER,
+    TH_MISSLE,
     TH_COUNT__
 };
 
@@ -601,6 +602,9 @@ const char *texture_path(TextureHandle handle) {
     switch (handle) {
         case TH_PLAYER: 
             return "resources/textures/player.png";
+            break;
+        case TH_MISSLE: 
+            return "resources/textures/missle.png";
             break;
         case TH_COUNT__: assert(0);
             break;

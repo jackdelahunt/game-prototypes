@@ -76,6 +76,14 @@ void append(Array<T, N> *array, T value) {
     array->len += 1;
 }
 
+template <typename T, i64 N>
+void swap_remove(Array<T, N> *array, i64 index) {
+    assert(index < array->len);
+
+    array->data[index] = array->data[array->len - 1];
+    array->len -= 1;
+}
+
 Slice<u8> read_file(const char *path) {
     FILE *file = fopen(path, "rb");
     if (file == nullptr) {

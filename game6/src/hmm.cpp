@@ -152,11 +152,6 @@
 # define HMM_DEPRECATED(msg)
 #endif
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 #if !defined(HANDMADE_MATH_USE_DEGREES) \
     && !defined(HANDMADE_MATH_USE_TURNS) \
     && !defined(HANDMADE_MATH_USE_RADIANS)
@@ -213,11 +208,11 @@ extern "C"
 # endif
 #endif
 
-#define HMM_MIN(a, b) ((a) > (b) ? (b) : (a))
-#define HMM_MAX(a, b) ((a) < (b) ? (b) : (a))
-#define HMM_ABS(a) ((a) > 0 ? (a) : -(a))
-#define HMM_MOD(a, m) (((a) % (m)) >= 0 ? ((a) % (m)) : (((a) % (m)) + (m)))
-#define HMM_SQUARE(x) ((x) * (x))
+#define min(a, b) ((a) > (b) ? (b) : (a))
+#define max(a, b) ((a) < (b) ? (b) : (a))
+#define abs(a) ((a) > 0 ? (a) : -(a))
+#define mod(a, m) (((a) % (m)) >= 0 ? ((a) % (m)) : (((a) % (m)) + (m)))
+#define square(x) ((x) * (x))
 
 typedef union v2
 {
@@ -470,6 +465,15 @@ static inline float HMM_ToTurn(float Angle)
 #endif
     
     return Result;
+}
+
+v2 vector_from_angle(float angle) {
+    float angle_radians = angle * HMM_DegToRad;
+
+    return v2 {
+        .X = HMM_SINF(angle_radians),
+        .Y = HMM_COSF(angle_radians),
+    };
 }
 
 /*
@@ -980,66 +984,48 @@ static inline v3 HMM_Cross(v3 Left, v3 Right)
  * Unary vtor operations
  */
 
-COVERAGE(HMM_LenSqrV2, 1)
-static inline float HMM_LenSqrV2(v2 A)
+static inline float length_sqr(v2 A)
 {
-    ASSERT_COVERED(HMM_LenSqrV2);
     return HMM_DotV2(A, A);
 }
 
-COVERAGE(HMM_LenSqrV3, 1)
-static inline float HMM_LenSqrV3(v3 A)
+static inline float length_sqr(v3 A)
 {
-    ASSERT_COVERED(HMM_LenSqrV3);
     return HMM_DotV3(A, A);
 }
 
-COVERAGE(HMM_LenSqrV4, 1)
-static inline float HMM_LenSqrV4(v4 A)
+static inline float length_sqr(v4 A)
 {
-    ASSERT_COVERED(HMM_LenSqrV4);
     return HMM_DotV4(A, A);
 }
 
-COVERAGE(HMM_LenV2, 1)
-static inline float HMM_LenV2(v2 A)
+static inline float length(v2 A)
 {
-    ASSERT_COVERED(HMM_LenV2);
-    return HMM_SqrtF(HMM_LenSqrV2(A));
+    return HMM_SqrtF(length_sqr(A));
 }
 
-COVERAGE(HMM_LenV3, 1)
-static inline float HMM_LenV3(v3 A)
+static inline float length(v3 A)
 {
-    ASSERT_COVERED(HMM_LenV3);
-    return HMM_SqrtF(HMM_LenSqrV3(A));
+    return HMM_SqrtF(length_sqr(A));
 }
 
-COVERAGE(HMM_LenV4, 1)
-static inline float HMM_LenV4(v4 A)
+static inline float length(v4 A)
 {
-    ASSERT_COVERED(HMM_LenV4);
-    return HMM_SqrtF(HMM_LenSqrV4(A));
+    return HMM_SqrtF(length_sqr(A));
 }
 
-COVERAGE(HMM_NormV2, 1)
-static inline v2 HMM_NormV2(v2 A)
+static inline v2 norm(v2 A)
 {
-    ASSERT_COVERED(HMM_NormV2);
     return HMM_MulV2F(A, HMM_InvSqrtF(HMM_DotV2(A, A)));
 }
 
-COVERAGE(HMM_NormV3, 1)
-static inline v3 HMM_NormV3(v3 A)
+static inline v3 norm(v3 A)
 {
-    ASSERT_COVERED(HMM_NormV3);
     return HMM_MulV3F(A, HMM_InvSqrtF(HMM_DotV3(A, A)));
 }
 
-COVERAGE(HMM_NormV4, 1)
-static inline v4 HMM_NormV4(v4 A)
+static inline v4 norm(v4 A)
 {
-    ASSERT_COVERED(HMM_NormV4);
     return HMM_MulV4F(A, HMM_InvSqrtF(HMM_DotV4(A, A)));
 }
 
@@ -1924,7 +1910,7 @@ static inline m4 HMM_Rotate_RH(float Angle, v3 Axis)
 
     m4 Result = HMM_M4D(1.0f);
 
-    Axis = HMM_NormV3(Axis);
+    Axis = norm(Axis);
 
     float SinTheta = HMM_SinF(Angle);
     float CosTheta = HMM_CosF(Angle);
@@ -2018,8 +2004,8 @@ static inline m4 HMM_LookAt_RH(v3 Eye, v3 Center, v3 Up)
 {
     ASSERT_COVERED(HMM_LookAt_RH);
 
-    v3 F = HMM_NormV3(HMM_SubV3(Center, Eye));
-    v3 S = HMM_NormV3(HMM_Cross(F, Up));
+    v3 F = norm(HMM_SubV3(Center, Eye));
+    v3 S = norm(HMM_Cross(F, Up));
     v3 U = HMM_Cross(S, F);
 
     return _HMM_LookAt(F, S, U, Eye);
@@ -2030,8 +2016,8 @@ static inline m4 HMM_LookAt_LH(v3 Eye, v3 Center, v3 Up)
 {
     ASSERT_COVERED(HMM_LookAt_LH);
 
-    v3 F = HMM_NormV3(HMM_SubV3(Eye, Center));
-    v3 S = HMM_NormV3(HMM_Cross(F, Up));
+    v3 F = norm(HMM_SubV3(Eye, Center));
+    v3 S = norm(HMM_Cross(F, Up));
     v3 U = HMM_Cross(S, F);
 
     return _HMM_LookAt(F, S, U, Eye);
@@ -2275,7 +2261,7 @@ static inline HMM_Quat HMM_NormQ(HMM_Quat Quat)
 
     /* NOTE(lcf): Take advantage of SSE implementation in HMM_NormV4 */
     v4 v = {Quat.X, Quat.Y, Quat.Z, Quat.W};
-    v = HMM_NormV4(v);
+    v = norm(v);
     HMM_Quat Result = {v.X, v.Y, v.Z, v.W};
 
     return Result;
@@ -2522,7 +2508,7 @@ static inline HMM_Quat HMM_QFromAxisAngle_RH(v3 Axis, float AngleOfRotation)
 
     HMM_Quat Result;
 
-    v3 AxisNormalized = HMM_NormV3(Axis);
+    v3 AxisNormalized = norm(Axis);
     float SineOfRotation = HMM_SinF(AngleOfRotation / 2.0f);
 
     Result.XYZ = HMM_MulV3F(AxisNormalized, SineOfRotation);
@@ -2541,73 +2527,6 @@ static inline HMM_Quat HMM_QFromAxisAngle_LH(v3 Axis, float AngleOfRotation)
 
 
 #ifdef __cplusplus
-}
-#endif
-
-#ifdef __cplusplus
-
-COVERAGE(HMM_LenV2CPP, 1)
-static inline float HMM_Len(v2 A)
-{
-    ASSERT_COVERED(HMM_LenV2CPP);
-    return HMM_LenV2(A);
-}
-
-COVERAGE(HMM_LenV3CPP, 1)
-static inline float HMM_Len(v3 A)
-{
-    ASSERT_COVERED(HMM_LenV3CPP);
-    return HMM_LenV3(A);
-}
-
-COVERAGE(HMM_LenV4CPP, 1)
-static inline float HMM_Len(v4 A)
-{
-    ASSERT_COVERED(HMM_LenV4CPP);
-    return HMM_LenV4(A);
-}
-
-COVERAGE(HMM_LenSqrV2CPP, 1)
-static inline float HMM_LenSqr(v2 A)
-{
-    ASSERT_COVERED(HMM_LenSqrV2CPP);
-    return HMM_LenSqrV2(A);
-}
-
-COVERAGE(HMM_LenSqrV3CPP, 1)
-static inline float HMM_LenSqr(v3 A)
-{
-    ASSERT_COVERED(HMM_LenSqrV3CPP);
-    return HMM_LenSqrV3(A);
-}
-
-COVERAGE(HMM_LenSqrV4CPP, 1)
-static inline float HMM_LenSqr(v4 A)
-{
-    ASSERT_COVERED(HMM_LenSqrV4CPP);
-    return HMM_LenSqrV4(A);
-}
-
-COVERAGE(HMM_NormV2CPP, 1)
-static inline v2 HMM_Norm(v2 A)
-{
-    ASSERT_COVERED(HMM_NormV2CPP);
-    return HMM_NormV2(A);
-}
-
-COVERAGE(HMM_NormV3CPP, 1)
-static inline v3 HMM_Norm(v3 A)
-{
-    ASSERT_COVERED(HMM_NormV3CPP);
-    return HMM_NormV3(A);
-}
-
-COVERAGE(HMM_NormV4CPP, 1)
-static inline v4 HMM_Norm(v4 A)
-{
-    ASSERT_COVERED(HMM_NormV4CPP);
-    return HMM_NormV4(A);
-}
 
 COVERAGE(HMM_NormQCPP, 1)
 static inline HMM_Quat HMM_Norm(HMM_Quat A)

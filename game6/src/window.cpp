@@ -16,9 +16,10 @@ struct Window {
 enum class InputState {
     up,
     down,
+    pressed
 };
 
-InputState KEYS[348] = {};
+Array<InputState, 348> KEYS = {};
 
 Window create_window(i32 width, i32 height, string title);
 void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
