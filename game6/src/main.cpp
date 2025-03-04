@@ -1,17 +1,25 @@
 #include "libs/libs.h"
 #include "game.h"
 
-// Total: 17.5
-// started: 14:30
+#include <time.h>
+#include <stdlib.h>
+
+// Total: 20.5
+// started: 12:30
 
 #define MAX_ENTITIES 2000
 
-#define PLAYER_SPEED 0.02
-#define PLAYER_MAX_SPEED 1
+#define PLAYER_SPEED 0.7
+#define PLAYER_MAX_SPEED 300
 #define PLAYER_ROTATION_SPEED 1.2
 
-#define MISSLE_SPEED 2
+#define MISSLE_SPEED 400
 #define MISSLE_DESPAWN_DISTANCE 1000
+
+#define ASTEROID_SPAWN_RATE 1
+#define ASTEROID_SPAWN_DISTANCE 800
+#define ASTEROID_SPAWN_OFFSET 200
+#define ASTEROID_SPEED 200
 
 struct Entity {
     // meta
@@ -40,8 +48,11 @@ struct State {
     Renderer renderer;
     SoundEngine sound_engine;
 
-    Array<Entity, MAX_ENTITIES> entities;
+    f64 time;
+
+    f32 spawn_timer;
     i64 score;
+    Array<Entity, MAX_ENTITIES> entities;
 } state = {};
 
 struct CollisionIterator {
@@ -50,8 +61,8 @@ struct CollisionIterator {
 };
 
 void input();
-void update_and_draw();
-void physics();
+void update_and_draw(f32 delta_time);
+void physics(f32 delta_time);
 
 void spawn_entity(Entity entity);
 
@@ -106,6 +117,8 @@ int main() {
             printf("failed to load sounds\n");
             return 1;
         }
+
+        srand(time(NULL));
     }
 
     { // init game stuff
@@ -115,15 +128,20 @@ int main() {
             .texture = TH_PLAYER,
         });
 
-        spawn_entity(Entity {
-            .flags = EF_ASTEROID,
-            .position = {100, 100, 0},
-            .size = {60, 60},
-            .texture = TH_MISSLE,
-        });
+        // spawn_entity(Entity {
+            // .flags = EF_ASTEROID,
+            // .position = {100, 100, 0},
+            // .size = {60, 60},
+            // .texture = TH_MISSLE,
+        // });
     }
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
+        f64 current_time    = state.time;
+        f64 new_time        = glfwGetTime();
+        f32 delta_time      = (f32) (new_time - current_time);
+        state.time          = new_time;
+
         input();
 
         if (KEYS[GLFW_KEY_ESCAPE] == InputState::down) {
@@ -132,11 +150,10 @@ int main() {
 
         new_frame(&state.renderer);
 
-        update_and_draw();
-        physics();
+        update_and_draw(delta_time);
+        physics(delta_time);
 
-        draw_frame(&state.renderer, state.window, state.camera);
-        glfwSwapBuffers(state.window.glfw_window);
+        draw_frame(&state.renderer, &state.window, state.camera);
     }
 
     glfwTerminate();
@@ -165,7 +182,33 @@ void input() {
     glfwPollEvents();
 }
 
-void update_and_draw() {
+void update_and_draw(f32 delta_time) {
+
+    { // asteroid spawning
+        state.spawn_timer -= delta_time;
+
+        if (state.spawn_timer <= 0) {
+            state.spawn_timer = ASTEROID_SPAWN_RATE;
+
+            v2 direction = vector_from_angle(rand_f32() * 360);
+            v2 velocity = -(direction * ASTEROID_SPEED);
+            v2 position_offset = v2{ASTEROID_SPAWN_OFFSET * rand_f32_negative(), ASTEROID_SPAWN_OFFSET * rand_f32_negative()};
+            v2 position = (direction * ASTEROID_SPAWN_DISTANCE) + position_offset;
+
+            spawn_entity(Entity {
+                .flags = EF_ASTEROID,
+                .position = v3 {
+                    position.X,
+                    position.Y, 
+                    0
+                },
+                .size = v2{60, 60},
+                .velocity = velocity,
+                .texture = TH_MISSLE,
+            });
+        }
+    }
+
     for (int i = 0; i < state.entities.len; i++) {
         Entity* entity = &state.entities[i];
 
@@ -205,6 +248,20 @@ void update_and_draw() {
                     });
 
                     play_sound(&state.sound_engine, SH_DASH);
+                }
+
+                // asteroid collision
+                CollisionIterator iter = new_collision_iterator(entity);
+                while (true) {
+                    Entity *other = next(&iter);
+                    if (other == nullptr) {
+                        break;
+                    }
+
+                    if (other->flags & EF_ASTEROID) {
+                        entity->flags |= EF_DELETE;
+                        other->flags |= EF_DELETE;
+                    }
                 }
             }
         }
@@ -262,12 +319,12 @@ void update_and_draw() {
     }
 }
 
-void physics() {
+void physics(f32 delta_time) {
     for (int i = 0; i < state.entities.len; i++) {
         Entity* entity = &state.entities[i];
 
-        entity->position.X += entity->velocity.X;
-        entity->position.Y += entity->velocity.Y;
+        entity->position.X += entity->velocity.X * delta_time;
+        entity->position.Y += entity->velocity.Y * delta_time;
     }
 }
 

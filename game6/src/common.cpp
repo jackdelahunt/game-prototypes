@@ -19,7 +19,6 @@ typedef int64_t i64;
 typedef float f32;
 typedef double f64;
 
-
 template <typename T>
 struct Slice { // TODO: do safety checks in slices
     T *ptr;
@@ -103,7 +102,7 @@ Slice<u8> read_file(const char *path) {
 
     fseek(file, 0, SEEK_END);
     i64 file_size = ftell(file);
-    fseek(file, 0, SEEK_SET);  /* same as rewind(f); */
+    fseek(file, 0, SEEK_SET);
     
     u8 *data = (u8 *) malloc(file_size + 1);
     fread(data, file_size, 1, file);
@@ -112,6 +111,16 @@ Slice<u8> read_file(const char *path) {
     data[file_size] = 0; // null terminate
 
     return make_slice(data, file_size);
+}
+
+// 0 -> 1
+f32 rand_f32() {
+    return (f32) rand() / (f32) RAND_MAX;
+}
+
+// -1 -> 1
+f32 rand_f32_negative() {
+    return (rand_f32() * 2.0f) - 1.0f;
 }
 
 #endif

@@ -4,7 +4,7 @@
 #include "libs/libs.h"
 #include "game.h"
 
-#define MAX_QUADS 100
+#define MAX_QUADS 2000
 
 struct Vertex {
     v3 position;
@@ -122,7 +122,7 @@ void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
 void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
 void new_frame(Renderer *renderer);
-void draw_frame(Renderer *renderer, Window window, Camera camera);
+void draw_frame(Renderer *renderer, Window *window, Camera camera);
 
 Quad *next_quad(Renderer *renderer);
 m4 get_view_matrix(Camera camera);
@@ -538,14 +538,14 @@ void new_frame(Renderer *renderer) {
     glClear(GL_COLOR_BUFFER_BIT);
 }
 
-void draw_frame(Renderer *renderer, Window window, Camera camera) {
+void draw_frame(Renderer *renderer, Window *window, Camera camera) {
     { // update quad buffer based on draw commands
         const v4 top_left      = {-0.5,   0.5, 0, 1};
         const v4 top_right     = { 0.5,   0.5, 0, 1};
         const v4 bottom_right  = { 0.5,  -0.5, 0, 1};
         const v4 bottom_left   = {-0.5,  -0.5, 0, 1};
 
-        m4 view_projection = HMM_MulM4(get_projection_matrix(camera, (f32) window.width / (f32) window.height), get_view_matrix(camera));
+        m4 view_projection = HMM_MulM4(get_projection_matrix(camera, (f32) window->width / (f32) window->height), get_view_matrix(camera));
     
         for (i64 i = 0; i < renderer->command_count; i++) {
             DrawCommand *command    = &renderer->commands[i];
@@ -763,10 +763,9 @@ void draw_frame(Renderer *renderer, Window window, Camera camera) {
         }
     }
 
-    { // draw the things we have sent to the renderer
-        glViewport(0, 0, window.width, window.height);
+    { // update the quad buffer and draw
+        glViewport(0, 0, window->width, window->height);
 
-        // update quad buffer on gou and bind for shader program
         glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quad_count, renderer->quads);
         glBindVertexArray(renderer->vertex_array_id);
@@ -790,6 +789,8 @@ void draw_frame(Renderer *renderer, Window window, Camera camera) {
         ImGui::RenderPlatformWindowsDefault();
         glfwMakeContextCurrent(current);
     }
+
+    glfwSwapBuffers(window->glfw_window);
 }
 
 Quad *next_quad(Renderer *renderer) {

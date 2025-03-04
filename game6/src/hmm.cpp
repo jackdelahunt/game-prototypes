@@ -213,6 +213,7 @@
 #define abs(a) ((a) > 0 ? (a) : -(a))
 #define mod(a, m) (((a) % (m)) >= 0 ? ((a) % (m)) : (((a) % (m)) + (m)))
 #define square(x) ((x) * (x))
+#define sign(a) ((a) > 0 ? 1 : -1)
 
 typedef union v2
 {
