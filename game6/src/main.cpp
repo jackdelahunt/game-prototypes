@@ -4,8 +4,8 @@
 #include <time.h>
 #include <stdlib.h>
 
-// Total: 20.5
-// started: 12:30
+// Total: 22:30
+// started: 16:00
 
 #define MAX_ENTITIES 2000
 
@@ -148,12 +148,12 @@ int main() {
             glfwSetWindowShouldClose(state.window.glfw_window, GLFW_TRUE);
         }
 
-        new_frame(&state.renderer);
+        new_frame(&state.renderer, &state.window, state.camera);
 
         update_and_draw(delta_time);
         physics(delta_time);
 
-        draw_frame(&state.renderer, &state.window, state.camera);
+        draw_frame(&state.renderer, &state.window);
     }
 
     glfwTerminate();

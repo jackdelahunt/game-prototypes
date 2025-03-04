@@ -87,6 +87,20 @@ void append(Array<T, N> *array, T value) {
 }
 
 template <typename T, i64 N>
+T* push(Array<T, N> *array) {
+    assert(array->len < N);
+
+    T *ptr = &array->data[array->len];
+    array->len++;
+    return ptr;
+}
+
+template <typename T, i64 N>
+void reset(Array<T, N> *array) {
+    array->len = 0;
+}
+
+template <typename T, i64 N>
 void swap_remove(Array<T, N> *array, i64 index) {
     assert(index < array->len);
 

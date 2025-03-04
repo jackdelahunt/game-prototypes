@@ -34,7 +34,7 @@ struct Texture {
     TextureHandle handle;
     i64 width;
     i64 height;
-    v2 uv[4];
+    v2 uvs[4];
     u8 *data;
 };
 
@@ -51,45 +51,10 @@ struct Font {
     u8 *bitmap_data;
 };
 
-struct DrawCommand {
-    enum { RECTANGLE, CIRCLE, TEXTURE, TEXT } type;
-
-    union {
-        struct {
-            v3 position;
-            v2 size;
-            v4 color;
-        } rectangle;
-
-        struct {
-            v3 position;
-            f32 radius;
-            v4 color;
-        } circle;
-
-        struct {
-            v3 position;
-            v2 size;
-            f32 rotation;
-            v4 color;
-            TextureHandle texture_handle;
-        } texture;
-
-        struct {
-            string text;
-            v3 position;
-            f32 font_size;
-            v4 color;
-        } text;
-    };
-};
-
 struct Renderer {
-    DrawCommand commands[MAX_QUADS];
-    i64 command_count;
+    Array<Quad, MAX_QUADS> quads;
 
-    Quad quads[MAX_QUADS];
-    i64 quad_count;
+    m4 view_projection_matrix;
 
     Array<Texture, TH_COUNT__> textures;
     Atlas atlas;
@@ -121,10 +86,10 @@ void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
 void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
-void new_frame(Renderer *renderer);
-void draw_frame(Renderer *renderer, Window *window, Camera camera);
+void new_frame(Renderer *renderer, Window *window, Camera camera);
+void draw_frame(Renderer *renderer, Window *window);
+void push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], i32 draw_type);
 
-Quad *next_quad(Renderer *renderer);
 m4 get_view_matrix(Camera camera);
 m4 get_projection_matrix(Camera camera, f32 aspect);
 const char *texture_path(TextureHandle handle);
@@ -238,7 +203,7 @@ bool init_renderer(Renderer *renderer, Window *window) {
         u32 vertex_buffer;
         glGenBuffers(1, &vertex_buffer);
         glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(Quad) * MAX_QUADS, renderer->quads, GL_DYNAMIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(Quad) * MAX_QUADS, renderer->quads.data, GL_DYNAMIC_DRAW);
 
         renderer->vertex_buffer_id = vertex_buffer;
     }
@@ -364,10 +329,10 @@ bool load_textures(Renderer *renderer) {
             f32 left_x_uv   = (f32) rect->x             / (f32) ATLAS_WIDTH;
             f32 right_x_uv  = (f32) (rect->x + rect->w) / (f32) ATLAS_WIDTH;
 
-            texture->uv[0] = {left_x_uv, top_y_uv};
-            texture->uv[1] = {right_x_uv, top_y_uv};
-            texture->uv[2] = {right_x_uv, bottom_y_uv};
-            texture->uv[3] = {left_x_uv, bottom_y_uv};
+            texture->uvs[0] = {left_x_uv, top_y_uv};
+            texture->uvs[1] = {right_x_uv, top_y_uv};
+            texture->uvs[2] = {right_x_uv, bottom_y_uv};
+            texture->uvs[3] = {left_x_uv, bottom_y_uv};
 
             for (i64 row = 0; row < rect->h; row++) {
                 u8 *source_row = texture->data + (row * rect->w * BYTES_PER_PIXEL);
@@ -467,67 +432,127 @@ bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel
 }
 
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color) {
-    DrawCommand *command = &renderer->commands[renderer->command_count];
-    renderer->command_count++;
-
-    *command = {
-        .type = DrawCommand::RECTANGLE,
-        .rectangle = {
-            .position = position, 
-            .size = size, 
-            .color = color
-        },
+    v2 uvs[4] = {
+        {0, 1},
+        {1, 1},
+        {1, 0},
+        {0, 0},
     };
+
+    push_quad(renderer, position, size, 0, color, uvs, 0);
 }
 
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color) {
-    DrawCommand *command = &renderer->commands[renderer->command_count];
-    renderer->command_count++;
+    v2 size = {radius * 2, radius * 2};
 
-    *command = {
-        .type = DrawCommand::CIRCLE,
-        .circle = { 
-            .position = position, 
-            .radius = radius,
-            .color = color,
-        },
+    v2 uvs[4] = {
+        {0, 1},
+        {1, 1},
+        {1, 0},
+        {0, 0},
     };
+
+    push_quad(renderer, position, size, 0, color, uvs, 1);
 }
 
 void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size, f32 rotation, v4 color) {
-    DrawCommand *command = &renderer->commands[renderer->command_count];
-    renderer->command_count++;
-
-    *command = {
-        .type = DrawCommand::TEXTURE,
-        .texture = {
-            .position = position, 
-            .size = size, 
-            .rotation = rotation,
-            .color = color,
-            .texture_handle = handle,
-        },
-    };
+    Texture *texture = &renderer->textures[handle];
+    push_quad(renderer, position, size, rotation, color, texture->uvs, 2);
 }
 
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color) {
-    DrawCommand *command = &renderer->commands[renderer->command_count];
-    renderer->command_count++;
+    if (text.len == 0) {
+        return;
+    }
 
-    *command = {
-        .type = DrawCommand::TEXT,
-        .text = {
-            .text = text,
-            .position = position, 
-            .font_size = font_size,
-            .color = color,
-        },
+    struct Glyph {
+        v2 position;
+        v2 size;
+        v2 uvs[4];
     };
+
+    Slice<Glyph> glyphs = mem_alloc<Glyph>(text.len);
+
+    f32 total_text_width = 0;
+    f32 text_height = 0;
+
+    for (i64 i = 0; i < text.len; i++) {
+        char c = text[i];
+
+        f32 advanced_x = 0;
+        f32 advanced_y = 0;
+        stbtt_aligned_quad aligned_quad = {};
+
+        // this is the the data for the aligned_quad we're given, with y+ going down
+        //	   x0, y0       x1, y0
+        //     s0, t0       s1, t0
+        //	    o tl        o tr
+                        
+                        
+        //     x0, y1      x1, y1
+        //     s0, t1      s1, t1
+        //	    o bl        o br
+        // 
+        // x, and y and expected vertex positions
+        // s and t are texture uv position
+ 
+        stbtt_GetBakedQuad(renderer->font.characters.data, renderer->font.width, renderer->font.height, c - 32, &advanced_x, &advanced_y, &aligned_quad, false);
+
+        f32 bottom_y = -aligned_quad.y1;
+        f32 top_y = -aligned_quad.y0;
+
+        f32 height = top_y - bottom_y;
+        f32 width = aligned_quad.x1 - aligned_quad.x0;
+
+        if (height > text_height) {
+            text_height = height;
+        }
+
+        v2 top_left_uv     = v2{aligned_quad.s0, aligned_quad.t0};
+        v2 top_right_uv    = v2{aligned_quad.s1, aligned_quad.t0};
+        v2 bottom_right_uv = v2{aligned_quad.s1, aligned_quad.t1};
+        v2 bottom_left_uv  = v2{aligned_quad.s0, aligned_quad.t1};
+
+        glyphs[i] = {
+            .position = {total_text_width, bottom_y},
+            .size = {width, height},
+            .uvs = {top_left_uv, top_right_uv, bottom_right_uv, bottom_left_uv}
+        };
+
+        // if the character is not the last then add the advanced x to the total width
+        // because this includes the with of the character and also the kerning gap added
+        // for the next character, if it is the last one then just take the width and have
+        // no extra gap at the end - 20/01/25
+        if (i < text.len - 1) {
+            total_text_width += advanced_x;
+        } else {
+            total_text_width += width;
+        }
+    }
+
+    v2 pivot_point_translation = {};
+    f32 scale = font_size / text_height;
+
+    for (i64 i = 0; i < glyphs.len; i++) {
+        Glyph *glyph = &glyphs[i];
+
+        v2 scaled_position = glyph->position * scale;
+        v2 scaled_size = glyph->size * scale;
+        v2 translated_position = scaled_position + pivot_point_translation + position.XY;
+
+        // quad needs position to be centre of quad so just convert that here
+        v2 quad_centered_position = translated_position + (scaled_size * 0.5f);
+
+        push_quad(renderer, v3{quad_centered_position.X, quad_centered_position.Y, 0}, scaled_size, 0, color, glyph->uvs, 3);
+   }
+
+    mem_free(glyphs);
 }
 
-void new_frame(Renderer *renderer) {
-    renderer->quad_count = 0;
-    renderer->command_count = 0;
+void new_frame(Renderer *renderer, Window *window, Camera camera) {
+    reset(&renderer->quads);
+
+    renderer->view_projection_matrix = HMM_MulM4(get_projection_matrix(camera, (f32) window->width / (f32) window->height), get_view_matrix(camera));
 
     { // new frame for imgui
         ImGui_ImplOpenGL3_NewFrame();
@@ -538,236 +563,12 @@ void new_frame(Renderer *renderer) {
     glClear(GL_COLOR_BUFFER_BIT);
 }
 
-void draw_frame(Renderer *renderer, Window *window, Camera camera) {
-    { // update quad buffer based on draw commands
-        const v4 top_left      = {-0.5,   0.5, 0, 1};
-        const v4 top_right     = { 0.5,   0.5, 0, 1};
-        const v4 bottom_right  = { 0.5,  -0.5, 0, 1};
-        const v4 bottom_left   = {-0.5,  -0.5, 0, 1};
-
-        m4 view_projection = HMM_MulM4(get_projection_matrix(camera, (f32) window->width / (f32) window->height), get_view_matrix(camera));
-    
-        for (i64 i = 0; i < renderer->command_count; i++) {
-            DrawCommand *command    = &renderer->commands[i];
-            switch (command->type) {
-                case DrawCommand::RECTANGLE: {
-                    m4 model_matrix = HMM_M4D(1.0f);
-                    model_matrix = HMM_MulM4(model_matrix, HMM_Translate(command->rectangle.position));
-                    model_matrix = HMM_MulM4(model_matrix, HMM_Scale({command->rectangle.size.X, command->rectangle.size.Y, 1}));
-                
-                    m4 mvp_matrix = HMM_MulM4(view_projection, model_matrix);
-
-                    Quad *quad = next_quad(renderer);
-               
-                    quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).XYZ;
-                    quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).XYZ;
-                    quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right).XYZ;
-                    quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left).XYZ;
-                
-                    quad->vertices[0].colour = command->rectangle.color;
-                    quad->vertices[1].colour = command->rectangle.color;
-                    quad->vertices[2].colour = command->rectangle.color;
-                    quad->vertices[3].colour = command->rectangle.color;
-        
-                    quad->vertices[0].uv = {0, 1};
-                    quad->vertices[1].uv = {1, 1};
-                    quad->vertices[2].uv = {1, 0};
-                    quad->vertices[3].uv = {0, 0};
-
-                    quad->vertices[0].draw_type = 0;
-                    quad->vertices[1].draw_type = 0;
-                    quad->vertices[2].draw_type = 0;
-                    quad->vertices[3].draw_type = 0;
-                } break;
-                case DrawCommand::CIRCLE: {
-                    v2 size = {command->circle.radius * 2, command->circle.radius * 2};
-
-                    m4 model_matrix = HMM_M4D(1.0f);
-                    model_matrix = HMM_MulM4(model_matrix, HMM_Translate(command->circle.position));
-                    model_matrix = HMM_MulM4(model_matrix, HMM_Scale({size.X, size.Y, 1}));
-                
-                    m4 mvp_matrix = HMM_MulM4(view_projection, model_matrix);
-
-                    Quad *quad = next_quad(renderer);
-               
-                    quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).XYZ;
-                    quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).XYZ;
-                    quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right).XYZ;
-                    quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left).XYZ;
-                
-                    quad->vertices[0].colour = command->circle.color;
-                    quad->vertices[1].colour = command->circle.color;
-                    quad->vertices[2].colour = command->circle.color;
-                    quad->vertices[3].colour = command->circle.color;
-        
-                    quad->vertices[0].uv = {0, 1};
-                    quad->vertices[1].uv = {1, 1};
-                    quad->vertices[2].uv = {1, 0};
-                    quad->vertices[3].uv = {0, 0};
-
-                    quad->vertices[0].draw_type = 1;
-                    quad->vertices[1].draw_type = 1;
-                    quad->vertices[2].draw_type = 1;
-                    quad->vertices[3].draw_type = 1;
-                } break;
-                case DrawCommand::TEXTURE: {
-                    m4 model_matrix = HMM_M4D(1.0f);
-                    model_matrix = HMM_MulM4(model_matrix, HMM_Translate(command->texture.position));
-                    model_matrix = HMM_MulM4(model_matrix, HMM_Scale({command->texture.size.X, command->texture.size.Y, 1}));
-                    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command->texture.rotation * HMM_DegToRad, {0, 0, 1}));
-                
-                    m4 mvp_matrix = HMM_MulM4(view_projection, model_matrix);
-
-                    Quad *quad = next_quad(renderer);
-               
-                    quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).XYZ;
-                    quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).XYZ;
-                    quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right).XYZ;
-                    quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left).XYZ;
-                
-                    quad->vertices[0].colour = command->texture.color;
-                    quad->vertices[1].colour = command->texture.color;
-                    quad->vertices[2].colour = command->texture.color;
-                    quad->vertices[3].colour = command->texture.color;
-
-                    Texture *texture = &renderer->textures[command->texture.texture_handle];
-        
-                    quad->vertices[0].uv = texture->uv[0];
-                    quad->vertices[1].uv = texture->uv[1];
-                    quad->vertices[2].uv = texture->uv[2];
-                    quad->vertices[3].uv = texture->uv[3];
-
-                    quad->vertices[0].draw_type = 2;
-                    quad->vertices[1].draw_type = 2;
-                    quad->vertices[2].draw_type = 2;
-                    quad->vertices[3].draw_type = 2;
-                } break;
-                case DrawCommand::TEXT: {
-                    auto text = &command->text;
-                    
-                    if (text->text.len == 0) {
-                        continue;
-                    }
-
-                    struct Glyph {
-                        v2 position;
-                        v2 size;
-                        v2 uvs[4];
-                    };
-
-                    Slice<Glyph> glyphs = mem_alloc<Glyph>(text->text.len);
-
-                    f32 total_text_width = 0;
-                    f32 text_height = 0;
-
-                    for (i64 i = 0; i < text->text.len; i++) {
-                        char c = text->text[i];
-
-                        f32 advanced_x = 0;
-                        f32 advanced_y = 0;
-                        stbtt_aligned_quad aligned_quad = {};
-
-                        // this is the the data for the aligned_quad we're given, with y+ going down
-                        //	   x0, y0       x1, y0
-                        //     s0, t0       s1, t0
-                        //	    o tl        o tr
-                        
-                        
-                        //     x0, y1      x1, y1
-                        //     s0, t1      s1, t1
-                        //	    o bl        o br
-                        // 
-                        // x, and y and expected vertex positions
-                        // s and t are texture uv position
- 
-                        stbtt_GetBakedQuad(renderer->font.characters.data, renderer->font.width, renderer->font.height, c - 32, &advanced_x, &advanced_y, &aligned_quad, false);
-
-                        f32 bottom_y = -aligned_quad.y1;
-                        f32 top_y = -aligned_quad.y0;
-
-                        f32 height = top_y - bottom_y;
-                        f32 width = aligned_quad.x1 - aligned_quad.x0;
-
-                        if (height > text_height) {
-                            text_height = height;
-                        }
-
-                        v2 top_left_uv     = v2{aligned_quad.s0, aligned_quad.t0};
-                        v2 top_right_uv    = v2{aligned_quad.s1, aligned_quad.t0};
-                        v2 bottom_right_uv = v2{aligned_quad.s1, aligned_quad.t1};
-                        v2 bottom_left_uv  = v2{aligned_quad.s0, aligned_quad.t1};
-
-                        glyphs[i] = {
-                            .position = {total_text_width, bottom_y},
-                            .size = {width, height},
-                            .uvs = {top_left_uv, top_right_uv, bottom_right_uv, bottom_left_uv}
-                        };
-
-                        // if the character is not the last then add the advanced x to the total width
-                        // because this includes the with of the character and also the kerning gap added
-                        // for the next character, if it is the last one then just take the width and have
-                        // no extra gap at the end - 20/01/25
-                        if (i < text->text.len - 1) {
-                            total_text_width += advanced_x;
-                        } else {
-                            total_text_width += width;
-                        }
-                    }
-
-                    v2 pivot_point_translation = {};
-                    f32 scale = text->font_size / text_height;
-
-                    for (i64 i = 0; i < glyphs.len; i++) {
-                        Glyph *glyph = &glyphs[i];
-
-                        v2 scaled_position = glyph->position * scale;
-                        v2 scaled_size = glyph->size * scale;
-                        v2 translated_position = scaled_position + pivot_point_translation + text->position.XY;
-
-                        // quad needs position to be centre of quad so just convert that here
-                        v2 quad_centered_position = translated_position + (scaled_size * 0.5f);
-
-                        m4 model_matrix = HMM_M4D(1.0f);
-                        model_matrix = HMM_MulM4(model_matrix, HMM_Translate({quad_centered_position.X, quad_centered_position.Y, text->position.Z}));
-                        model_matrix = HMM_MulM4(model_matrix, HMM_Scale({scaled_size.X, scaled_size.Y, 1}));
-                    
-                        m4 mvp_matrix = HMM_MulM4(view_projection, model_matrix);
-
-                        Quad *quad = next_quad(renderer);
-                   
-                        quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).XYZ;
-                        quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).XYZ;
-                        quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right).XYZ;
-                        quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left).XYZ;
-                    
-                        quad->vertices[0].colour = text->color;
-                        quad->vertices[1].colour = text->color;
-                        quad->vertices[2].colour = text->color;
-                        quad->vertices[3].colour = text->color;
-    
-                        quad->vertices[0].uv = glyph->uvs[0];
-                        quad->vertices[1].uv = glyph->uvs[1];
-                        quad->vertices[2].uv = glyph->uvs[2];
-                        quad->vertices[3].uv = glyph->uvs[3];
-    
-                        quad->vertices[0].draw_type = 3;
-                        quad->vertices[1].draw_type = 3;
-                        quad->vertices[2].draw_type = 3;
-                        quad->vertices[3].draw_type = 3;
-                    }
-
-                    mem_free(glyphs);
-                } break;
-                default: assert(0);
-            };
-        }
-    }
-
+void draw_frame(Renderer *renderer, Window *window) {
     { // update the quad buffer and draw
         glViewport(0, 0, window->width, window->height);
 
         glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quad_count, renderer->quads);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.data);
         glBindVertexArray(renderer->vertex_array_id);
 
         glUseProgram(renderer->shader_program_id);
@@ -778,7 +579,7 @@ void draw_frame(Renderer *renderer, Window *window, Camera camera) {
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, renderer->font_texture_id);
 
-        glDrawElements(GL_TRIANGLES, 6 * renderer->quad_count, GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
     }
 
     { // imgui rendering
@@ -793,13 +594,40 @@ void draw_frame(Renderer *renderer, Window *window, Camera camera) {
     glfwSwapBuffers(window->glfw_window);
 }
 
-Quad *next_quad(Renderer *renderer) {
-    Quad *quad = &renderer->quads[renderer->quad_count];
-    *quad = {};
+void push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], i32 draw_type) {
+    const v4 top_left      = {-0.5,   0.5, 0, 1};
+    const v4 top_right     = { 0.5,   0.5, 0, 1};
+    const v4 bottom_right  = { 0.5,  -0.5, 0, 1};
+    const v4 bottom_left   = {-0.5,  -0.5, 0, 1};
 
-    renderer->quad_count++;
+    m4 model_matrix = HMM_M4D(1.0f);
+    model_matrix = HMM_MulM4(model_matrix, HMM_Translate(position));
+    model_matrix = HMM_MulM4(model_matrix, HMM_Scale({size.X, size.Y, 1}));
+    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation * HMM_DegToRad, {0, 0, 1}));
+                
+    m4 mvp_matrix = HMM_MulM4(renderer->view_projection_matrix, model_matrix);
 
-    return quad;
+    Quad *quad = push(&renderer->quads);
+               
+    quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).XYZ;
+    quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).XYZ;
+    quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right).XYZ;
+    quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left).XYZ;
+                
+    quad->vertices[0].colour = color;
+    quad->vertices[1].colour = color;
+    quad->vertices[2].colour = color;
+    quad->vertices[3].colour = color;
+
+    quad->vertices[0].uv = uvs[0];
+    quad->vertices[1].uv = uvs[1];
+    quad->vertices[2].uv = uvs[2];
+    quad->vertices[3].uv = uvs[3];
+
+    quad->vertices[0].draw_type = draw_type;
+    quad->vertices[1].draw_type = draw_type;
+    quad->vertices[2].draw_type = draw_type;
+    quad->vertices[3].draw_type = draw_type;
 }
 
 m4 get_view_matrix(Camera camera) {
