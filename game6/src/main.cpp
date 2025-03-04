@@ -38,6 +38,7 @@ struct State {
     Camera camera;
     Window window;
     Renderer renderer;
+    SoundEngine sound_engine;
 
     Array<Entity, MAX_ENTITIES> entities;
     i64 score;
@@ -68,24 +69,42 @@ int main() {
     };
 
     { // init engine stuff
-        state.window = create_window(1440, 1080, "game6");
-    
-        bool ok = init_renderer(&state.renderer, state.window);
+        bool ok = false;
+
+        ok = init_window(&state.window, 1440, 1080, "game6");
         if (!ok) {
-            printf("failed to init the renderer");
-            return -1;
+            printf("failed to init window\n");
+            return 1;
+        }
+    
+        ok = init_renderer(&state.renderer, &state.window);
+        if (!ok) {
+            printf("failed to init the renderer\n");
+            return 1;
         }
 
         ok = load_textures(&state.renderer);
         if (!ok) {
-            printf("failed to load textures");
-            return -1;
+            printf("failed to load textures\n");
+            return 1;
         }
 
         ok = load_font(&state.renderer, "resources/fonts/LibreBaskerville.ttf", 1000, 1000, 160);
         if (!ok) {
-            printf("failed to load textures");
-            return -1;
+            printf("failed to load textures\n");
+            return 1;
+        }
+
+        ok = init_sound_engine(&state.sound_engine);
+        if (!ok) {
+            printf("failed to init sound engine\n");
+            return 1;
+        }
+
+        ok = load_sounds(&state.sound_engine);
+        if (!ok) {
+            printf("failed to load sounds\n");
+            return 1;
         }
     }
 
@@ -184,6 +203,8 @@ void update_and_draw() {
                         .velocity = direction * MISSLE_SPEED,
                         .texture = TH_MISSLE,
                     });
+
+                    play_sound(&state.sound_engine, SH_DASH);
                 }
             }
         }
@@ -282,16 +303,3 @@ Entity *next(CollisionIterator *iterator) {
 
     return nullptr;
 }
-
-/*
- aabb :: proc(position_a: v2, size_a: v2, position_b: v2, size_b: v2) -> (v2, v2, bool) {
-    distance := position_b - position_a
-    distance_abs := v2{abs(distance.x), abs(distance.y)}
-    distance_for_collision := (size_a + size_b) * v2{0.5, 0.5}
-
-    collision := distance_for_collision[0] >= distance_abs[0] && distance_for_collision[1] >= distance_abs[1]
-    overlap_amount := distance_for_collision - distance_abs
-
-    return overlap_amount, distance, collision
-}
-*/

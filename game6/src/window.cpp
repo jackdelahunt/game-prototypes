@@ -1,8 +1,6 @@
 #ifndef WINDOW_CPP
 #define WINDOW_CPP
 
-#include <assert.h>
-
 #include "libs/libs.h"
 #include "game.h"
 
@@ -21,23 +19,29 @@ enum class InputState {
 
 Array<InputState, 348> KEYS = {};
 
-Window create_window(i32 width, i32 height, string title);
+bool init_window(i32 width, i32 height, string title);
 void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
 void glfw_error_callback(int error_code, const char* description);
 
-Window create_window(i32 width, i32 height, string title) {
-    Window window = {
+bool init_window(Window *window, i32 width, i32 height, string title) {
+    *window = Window {
         .width = width,
         .height = height,
         .title = title
     };
 
-    assert(glfwInit() != 0);
+    if (glfwInit() == 0) {
+        printf("failed to init glfw\n");
+        return false;
+    }
 
-    window.glfw_window = glfwCreateWindow(width, height, title.c(), 0, 0);
-    assert(window.glfw_window != nullptr);
+    window->glfw_window = glfwCreateWindow(width, height, title.c(), 0, 0);
+    if (window->glfw_window == nullptr) {
+        printf("failed to create window\n");
+        return false;
+    }
 
-    glfwMakeContextCurrent(window.glfw_window);
+    glfwMakeContextCurrent(window->glfw_window);
 
     glfwSetErrorCallback(glfw_error_callback);
 
@@ -47,9 +51,9 @@ Window create_window(i32 width, i32 height, string title) {
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 
     glfwSwapInterval(1);
-    glfwSetKeyCallback(window.glfw_window, glfw_key_callback);
+    glfwSetKeyCallback(window->glfw_window, glfw_key_callback);
 
-    return window;
+    return true;
 }
 
 void glfw_error_callback(int error_code, const char* description) {

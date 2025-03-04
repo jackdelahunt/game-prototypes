@@ -111,7 +111,7 @@ v4 RED      = {1, 0, 0, 1};
 v4 GREEN    = {0, 1, 0, 1};
 v4 BLUE     = {0, 0, 1, 1};
 
-bool init_renderer(Renderer *renderer, Window window);
+bool init_renderer(Renderer *renderer, Window *window);
 bool load_textures(Renderer *renderer);
 u32 upload_texture_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
 u32 upload_font_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
@@ -131,7 +131,7 @@ const char *texture_path(TextureHandle handle);
 
 v4 alpha(v4 base, f32 alpha);
 
-bool init_renderer(Renderer *renderer, Window window) {
+bool init_renderer(Renderer *renderer, Window *window) {
     { // init opengl
         GLenum result = glewInit();
         if (result != GLEW_OK) {
@@ -158,7 +158,7 @@ bool init_renderer(Renderer *renderer, Window window) {
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
         io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
     
-        ImGui_ImplGlfw_InitForOpenGL(window.glfw_window, true);
+        ImGui_ImplGlfw_InitForOpenGL(window->glfw_window, true);
         ImGui_ImplOpenGL3_Init("#version 460");
     }
 
@@ -824,12 +824,10 @@ const char *texture_path(TextureHandle handle) {
     switch (handle) {
         case TH_PLAYER: 
             return "resources/textures/player.png";
-            break;
         case TH_MISSLE: 
             return "resources/textures/missle.png";
-            break;
-        case TH_COUNT__: assert(0);
-            break;
+        case TH_COUNT__: 
+            assert(0);
     }
 
     return nullptr;

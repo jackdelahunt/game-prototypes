@@ -7,6 +7,7 @@
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_glfw.h"
 #include "imgui/imgui_impl_opengl3.h"
-#include "libs/stb/stb.h"
+#include "stb/stb.h"
+#include "miniaudio/miniaudio.h"
 
 #endif

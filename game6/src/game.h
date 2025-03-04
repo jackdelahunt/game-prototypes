@@ -5,6 +5,7 @@
 #include "common.cpp"
 #include "window.cpp"
 #include "renderer.cpp"
+#include "sound.cpp"
 
 #endif
 
