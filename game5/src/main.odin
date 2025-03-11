@@ -30,27 +30,22 @@ import "imgui/imgui_impl_opengl3"
 import json "json"
 
 // TODO:
-// crates
 // finish layout of first level
 // better spawning of enemies in nests
 // switch to different levels
 // real path finding for enemies  
 
 // TODO, abilities:
-// level 1: going outside
+// level 1: 
 //  - armour I
 //  - speed
-// level 2: freinds
+// level 2: 
 //  - power dash (tank enemy that dashes at player, player can dash at emeies)
-// level 3: the girl
-//  - multi spawn (on death enemy spawn 4 smaller versions of itself, player can spawn smaller versions to attack enemies)
-// level 4: family, the girl, freinds
-//  - armour 2?? same as armour just more
-//  - lava pit (enemies shoots projectiles to cover floor in lava, player does the same)
 
 // record:
 // start: 21/01/2025
 // total time: 46.5 hrs
+// started: 13:30
 
 // controls
 // developer:
@@ -88,8 +83,8 @@ NO_ENEMY_SPAWN              :: false
 CAN_RELOAD_TEXTURES         :: true
 ALLOW_EDITOR                :: true
 LEVEL_SAVE_NAME             :: "start"
-ALL_ABILITIES_ACTIVE        :: true
-GOD_MODE                    :: true
+ALL_ABILITIES_ACTIVE        :: false
+GOD_MODE                    :: false
 
 // internal settings
 MAX_ENTITIES    :: 5_000
@@ -106,7 +101,7 @@ PLAYER_DASH_DPS         :: 2000
 PLAYER_DASH_SPEED_MULTIPLIER :: 5
 GEM_ATTRACT_RADIUS      :: 200
 GEM_ATTRACT_SPEED       :: 800
-START_WEAPON_LEVEL      :: 2
+START_WEAPON_LEVEL      :: 1
 MAX_WEAPON_LEVEL        :: 4
 
 AI_ATTACK_DISTANCE          :: 10
@@ -785,13 +780,15 @@ update :: proc(delta_time: f32) {
                         continue 
                     }
 
+                    if linalg.distance(entity.position, other.position) > PLAYER_REACH_SIZE {
+                        continue
+                    }
+
                     if .ability_pickup in other.flags {
-                        if linalg.distance(entity.position, other.position) < PLAYER_REACH_SIZE {
-                            ability := ability_from_pickup_type(other.pickup_type)
-     
-                            entity.abilities += {ability}
-                            other.flags += {.to_be_deleted}
-                        }
+                        ability := ability_from_pickup_type(other.pickup_type)
+ 
+                        entity.abilities += {ability}
+                        other.flags += {.to_be_deleted}
                     }
 
                     if .door in other.flags {
@@ -3226,8 +3223,8 @@ load_textures :: proc(renderer: ^Renderer) -> bool {
 }
 
 build_texture_atlas :: proc(renderer: ^Renderer) -> bool {
-    ATLAS_WIDTH     :: 256
-    ATLAS_HEIGHT    :: 256
+    ATLAS_WIDTH     :: 360
+    ATLAS_HEIGHT    :: 360
     BYTES_PER_PIXEL :: 4
     CHANNELS        :: 4
     ATLAS_BYTE_SIZE :: ATLAS_WIDTH * ATLAS_HEIGHT * BYTES_PER_PIXEL
