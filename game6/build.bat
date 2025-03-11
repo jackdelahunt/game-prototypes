@@ -4,7 +4,7 @@ if not exist build mkdir build
 
 pushd build
 
-set compile_flags=/std:c++20 /MP /MT /Zi /Od /diagnostics:color /diagnostics:caret
+set compile_flags=/std:c++20 /MP /MT /Zi /Od /diagnostics:color /diagnostics:caret /D"DEBUG=1"
 set link_flags=/DEBUG:FULL /SUBSYSTEM:CONSOLE /INCREMENTAL
 
 set windows_libs=User32.lib Gdi32.lib Shell32.lib opengl32.lib

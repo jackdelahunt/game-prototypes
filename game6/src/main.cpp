@@ -5,7 +5,6 @@
 #include <stdlib.h>
 
 // Total: 22:30
-// started: 16:00
 
 #define MAX_ENTITIES 2000
 

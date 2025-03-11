@@ -347,6 +347,7 @@ bool load_textures(Renderer *renderer) {
         renderer->atlas_texture_id = texture_id;
     }
 
+#ifdef DEBUG
     { // write atlas to build folder
         stbi_flip_vertically_on_write(true);
         i64 status = stbi_write_png("build/atlas.png", ATLAS_WIDTH, ATLAS_HEIGHT, 4, atlas_data, ATLAS_WIDTH * BYTES_PER_PIXEL);
@@ -355,6 +356,7 @@ bool load_textures(Renderer *renderer) {
             return false;
         }
     }
+#endif
 
     return true;
 }
@@ -413,6 +415,8 @@ bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel
         return false;
     }
 
+
+#ifdef DEBUG
     { // write debug image out
         stbi_flip_vertically_on_write(false);
 
@@ -422,6 +426,7 @@ bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel
             return false;
         }
     }
+#endif
 
     renderer->font_texture_id = upload_font_to_gpu(renderer, font.width, font.height, font.bitmap_data);
     assert(renderer->font_texture_id != 0);
