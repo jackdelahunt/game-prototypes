@@ -29,23 +29,10 @@ import "imgui/imgui_impl_opengl3"
 
 import json "json"
 
-// TODO:
-// finish layout of first level
-// better spawning of enemies in nests
-// switch to different levels
-// real path finding for enemies  
-
-// TODO, abilities:
-// level 1: 
-//  - armour I
-//  - speed
-// level 2: 
-//  - power dash (tank enemy that dashes at player, player can dash at emeies)
-
 // record:
 // start: 21/01/2025
-// total time: 46.5 hrs
-// started: 13:30
+// total time: 47.5 hrs
+// started: 13:00
 
 // controls
 // developer:
@@ -76,12 +63,12 @@ import json "json"
 // indev settings
 LOG_COLOURS                 :: false
 OPENGL_MESSAGES             :: false
-WRITE_DEBUG_IMAGES          :: true
+WRITE_DEBUG_IMAGES          :: true when ODIN_DEBUG else false
 V_SYNC                      :: true
 DRAW_ARMOUR_BUBBLE          :: true
 NO_ENEMY_SPAWN              :: false
-CAN_RELOAD_TEXTURES         :: true
-ALLOW_EDITOR                :: true
+CAN_RELOAD_TEXTURES         :: true when ODIN_DEBUG else false
+ALLOW_EDITOR                :: true when ODIN_DEBUG else false
 LEVEL_SAVE_NAME             :: "start"
 ALL_ABILITIES_ACTIVE        :: false
 GOD_MODE                    :: false
@@ -637,6 +624,8 @@ Prefab :: enum {
     brick_wall_vertical,
     brick_wall_corner_left,
     brick_wall_corner_right,
+    brick_wall_vertical_corner_left,
+    brick_wall_vertical_corner_right,
     gem,
     crate,
     door,
@@ -1777,6 +1766,20 @@ create_entity_from_prefab :: proc(prefab: Prefab) -> Entity {
                 texture = .spludge,
             }
         }
+        case .brick_wall_vertical_corner_left: {
+            return Entity {
+                flags = {.static_hitbox},
+                size = {50, 100},
+                texture = .brick_wall_vertrical_corner_left,
+            }
+        }
+        case .brick_wall_vertical_corner_right: {
+            return Entity {
+                flags = {.static_hitbox},
+                size = {50, 100},
+                texture = .brick_wall_vertrical_corner_right,
+            }
+        }
     }
 
     unreachable()
@@ -2664,6 +2667,8 @@ TextureHandle :: enum {
     fireball,
     dash_icon,
     speed_lines,
+    brick_wall_vertrical_corner_left,
+    brick_wall_vertrical_corner_right,
 }
 
 Texture :: struct {
@@ -3377,6 +3382,10 @@ get_texture_name :: proc(texture: TextureHandle) -> string {
             return "dash_icon.png"
         case .speed_lines:
             return "speed_lines.png"
+        case .brick_wall_vertrical_corner_left:
+            return "brick_wall_vertical_corner_left.png"
+        case .brick_wall_vertrical_corner_right:
+            return "brick_wall_vertical_corner_right.png"
     }
 
     unreachable()

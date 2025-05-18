@@ -9496,18 +9496,18 @@
             "potion_lifetime": 0.00000000
         },
         {
-            "id": 348,
-            "flags": 64,
+            "id": 492,
+            "flags": 4,
             "abilities": 0,
-            "created_time": 151.6109457000000020,
+            "created_time": 124.5957413999999943,
             "only_boss_battle": false,
             "position": [
-                3700.00000000,
-                -300.00000000
+                3000.00000000,
+                -1300.00000000
             ],
             "size": [
-                100.00000000,
-                100.00000000
+                150.00000000,
+                150.00000000
             ],
             "velocity": [
                 0.00000000,
@@ -9515,7 +9515,7 @@
             ],
             "rotation": 0.00000000,
             "mass": 0.00000000,
-            "texture": 7,
+            "texture": 6,
             "attack_cooldown": 0.00000000,
             "aim_direction": [
                 0.00000000,
@@ -9529,38 +9529,38 @@
             "ai_type": 0,
             "ai_state": 0,
             "bullet_hits": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
+            "cluster_size": 2,
+            "spawn_rate": 4.00000000,
             "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
+            "speeders_to_spawn": 15,
+            "drones_to_spawn": 10,
             "orcs_to_spawn": 0,
-            "total_spawns": 0,
-            "spawn_radius": 0.00000000,
+            "total_spawns": 25,
+            "spawn_radius": 911.85400391,
             "pickup_type": 0,
             "potion_lifetime": 0.00000000
         },
         {
-            "id": 356,
+            "id": 515,
             "flags": 64,
             "abilities": 0,
-            "created_time": 168.9923582000000124,
+            "created_time": 1.6129773999999999,
             "only_boss_battle": false,
             "position": [
-                3825.00000000,
-                -400.00000000
+                4300.00000000,
+                -500.00000000
             ],
             "size": [
-                50.00000000,
+                100.00000000,
                 100.00000000
             ],
             "velocity": [
                 0.00000000,
                 0.00000000
             ],
-            "rotation": 180.00000000,
+            "rotation": 0.00000000,
             "mass": 0.00000000,
-            "texture": 9,
+            "texture": 7,
             "attack_cooldown": 0.00000000,
             "aim_direction": [
                 0.00000000,
@@ -9766,14 +9766,14 @@
             "potion_lifetime": 0.00000000
         },
         {
-            "id": 357,
+            "id": 514,
             "flags": 64,
             "abilities": 0,
-            "created_time": 199.8524471000000062,
+            "created_time": 1.6129773999999999,
             "only_boss_battle": false,
             "position": [
-                3800.00000000,
-                -300.00000000
+                4200.00000000,
+                -500.00000000
             ],
             "size": [
                 100.00000000,
@@ -9785,7 +9785,7 @@
             ],
             "rotation": 0.00000000,
             "mass": 0.00000000,
-            "texture": 11,
+            "texture": 7,
             "attack_cooldown": 0.00000000,
             "aim_direction": [
                 0.00000000,
@@ -10621,18 +10621,18 @@
             "potion_lifetime": 0.00000000
         },
         {
-            "id": 376,
-            "flags": 64,
+            "id": 519,
+            "flags": 4,
             "abilities": 0,
-            "created_time": 286.1233447999999839,
+            "created_time": 1.6129773999999999,
             "only_boss_battle": false,
             "position": [
-                2800.00000000,
-                -1000.00000000
+                3890.00000000,
+                -90.00000000
             ],
             "size": [
-                100.00000000,
-                100.00000000
+                150.00000000,
+                150.00000000
             ],
             "velocity": [
                 0.00000000,
@@ -10640,7 +10640,7 @@
             ],
             "rotation": 0.00000000,
             "mass": 0.00000000,
-            "texture": 7,
+            "texture": 6,
             "attack_cooldown": 0.00000000,
             "aim_direction": [
                 0.00000000,
@@ -10654,14 +10654,14 @@
             "ai_type": 0,
             "ai_state": 0,
             "bullet_hits": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
+            "cluster_size": 4,
+            "spawn_rate": 1.50000000,
             "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
+            "speeders_to_spawn": 10,
+            "drones_to_spawn": 2,
             "orcs_to_spawn": 0,
-            "total_spawns": 0,
-            "spawn_radius": 0.00000000,
+            "total_spawns": 12,
+            "spawn_radius": 419.45300293,
             "pickup_type": 0,
             "potion_lifetime": 0.00000000
         },
@@ -10672,7 +10672,7 @@
             "created_time": 328.1832155999999827,
             "only_boss_battle": false,
             "position": [
-                2700.00000000,
+                2800.00000000,
                 -1000.00000000
             ],
             "size": [
@@ -11071,34 +11071,34 @@
             "potion_lifetime": 0.00000000
         },
         {
-            "id": 386,
-            "flags": 64,
+            "id": 517,
+            "flags": 544,
             "abilities": 0,
-            "created_time": 293.0444578999999976,
+            "created_time": 1.6129773999999999,
             "only_boss_battle": false,
             "position": [
-                4700.00000000,
-                -1000.00000000
+                4130.00000000,
+                -15.00000000
             ],
             "size": [
-                100.00000000,
-                100.00000000
+                80.00000000,
+                80.00000000
             ],
             "velocity": [
                 0.00000000,
                 0.00000000
             ],
             "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 7,
+            "mass": 20.00000000,
+            "texture": 13,
             "attack_cooldown": 0.00000000,
             "aim_direction": [
                 0.00000000,
                 0.00000000
             ],
             "player_dash_cooldown": 0.00000000,
-            "health": 0.00000000,
-            "max_health": 0.00000000,
+            "health": 50.00000000,
+            "max_health": 50.00000000,
             "armour": 0.00000000,
             "armour_regen_cooldown": 0.00000000,
             "ai_type": 0,
@@ -11122,7 +11122,7 @@
             "created_time": 338.2131666000000223,
             "only_boss_battle": false,
             "position": [
-                4800.00000000,
+                4700.00000000,
                 -1000.00000000
             ],
             "size": [
@@ -11167,7 +11167,7 @@
             "created_time": 306.6927848999999924,
             "only_boss_battle": false,
             "position": [
-                2675.00000000,
+                2775.00000000,
                 -1100.00000000
             ],
             "size": [
@@ -11212,7 +11212,7 @@
             "created_time": 381.6548867999999857,
             "only_boss_battle": false,
             "position": [
-                2675.00000000,
+                2775.00000000,
                 -1200.00000000
             ],
             "size": [
@@ -11257,7 +11257,7 @@
             "created_time": 382.3819308999999862,
             "only_boss_battle": false,
             "position": [
-                2675.00000000,
+                2775.00000000,
                 -1300.00000000
             ],
             "size": [
@@ -11302,7 +11302,7 @@
             "created_time": 382.9699370000000158,
             "only_boss_battle": false,
             "position": [
-                2675.00000000,
+                2775.00000000,
                 -1400.00000000
             ],
             "size": [
@@ -11347,7 +11347,7 @@
             "created_time": 383.4547044999999912,
             "only_boss_battle": false,
             "position": [
-                2675.00000000,
+                2775.00000000,
                 -1500.00000000
             ],
             "size": [
@@ -11392,7 +11392,7 @@
             "created_time": 383.9153129000000035,
             "only_boss_battle": false,
             "position": [
-                2675.00000000,
+                2775.00000000,
                 -1600.00000000
             ],
             "size": [
@@ -11437,7 +11437,7 @@
             "created_time": 384.3456479999999829,
             "only_boss_battle": false,
             "position": [
-                2675.00000000,
+                2775.00000000,
                 -1700.00000000
             ],
             "size": [
@@ -11482,7 +11482,7 @@
             "created_time": 384.7701260000000048,
             "only_boss_battle": false,
             "position": [
-                2675.00000000,
+                2775.00000000,
                 -1800.00000000
             ],
             "size": [
@@ -11527,7 +11527,7 @@
             "created_time": 385.1395089999999755,
             "only_boss_battle": false,
             "position": [
-                2675.00000000,
+                2775.00000000,
                 -1900.00000000
             ],
             "size": [
@@ -11572,7 +11572,7 @@
             "created_time": 386.2972373000000061,
             "only_boss_battle": false,
             "position": [
-                2675.00000000,
+                2775.00000000,
                 -2000.00000000
             ],
             "size": [
@@ -11617,7 +11617,7 @@
             "created_time": 386.7030811999999855,
             "only_boss_battle": false,
             "position": [
-                2675.00000000,
+                2775.00000000,
                 -2100.00000000
             ],
             "size": [
@@ -11662,7 +11662,7 @@
             "created_time": 388.4181563999999867,
             "only_boss_battle": false,
             "position": [
-                2675.00000000,
+                2775.00000000,
                 -2200.00000000
             ],
             "size": [
@@ -11707,7 +11707,7 @@
             "created_time": 388.7393746000000192,
             "only_boss_battle": false,
             "position": [
-                2675.00000000,
+                2775.00000000,
                 -2300.00000000
             ],
             "size": [
@@ -11752,7 +11752,7 @@
             "created_time": 396.0544820999999729,
             "only_boss_battle": false,
             "position": [
-                4825.00000000,
+                4725.00000000,
                 -1100.00000000
             ],
             "size": [
@@ -11797,7 +11797,7 @@
             "created_time": 402.7815221999999835,
             "only_boss_battle": false,
             "position": [
-                4825.00000000,
+                4725.00000000,
                 -1200.00000000
             ],
             "size": [
@@ -11842,7 +11842,7 @@
             "created_time": 403.6543235999999979,
             "only_boss_battle": false,
             "position": [
-                4825.00000000,
+                4725.00000000,
                 -1300.00000000
             ],
             "size": [
@@ -11887,7 +11887,7 @@
             "created_time": 404.7271744000000240,
             "only_boss_battle": false,
             "position": [
-                4825.00000000,
+                4725.00000000,
                 -1400.00000000
             ],
             "size": [
@@ -11932,7 +11932,7 @@
             "created_time": 405.1875329000000079,
             "only_boss_battle": false,
             "position": [
-                4825.00000000,
+                4725.00000000,
                 -1500.00000000
             ],
             "size": [
@@ -11977,7 +11977,7 @@
             "created_time": 405.5632744000000116,
             "only_boss_battle": false,
             "position": [
-                4825.00000000,
+                4725.00000000,
                 -1600.00000000
             ],
             "size": [
@@ -12022,7 +12022,7 @@
             "created_time": 405.8786162999999760,
             "only_boss_battle": false,
             "position": [
-                4825.00000000,
+                4725.00000000,
                 -1700.00000000
             ],
             "size": [
@@ -12067,7 +12067,7 @@
             "created_time": 406.1997091999999725,
             "only_boss_battle": false,
             "position": [
-                4825.00000000,
+                4725.00000000,
                 -1800.00000000
             ],
             "size": [
@@ -12112,7 +12112,7 @@
             "created_time": 406.4788002999999890,
             "only_boss_battle": false,
             "position": [
-                4825.00000000,
+                4725.00000000,
                 -1900.00000000
             ],
             "size": [
@@ -12157,7 +12157,7 @@
             "created_time": 406.7511281999999824,
             "only_boss_battle": false,
             "position": [
-                4825.00000000,
+                4725.00000000,
                 -2000.00000000
             ],
             "size": [
@@ -12202,7 +12202,7 @@
             "created_time": 407.0178012999999737,
             "only_boss_battle": false,
             "position": [
-                4825.00000000,
+                4725.00000000,
                 -2100.00000000
             ],
             "size": [
@@ -12247,7 +12247,7 @@
             "created_time": 408.2300544999999943,
             "only_boss_battle": false,
             "position": [
-                4825.00000000,
+                4725.00000000,
                 -2200.00000000
             ],
             "size": [
@@ -12292,7 +12292,7 @@
             "created_time": 408.5450372000000243,
             "only_boss_battle": false,
             "position": [
-                4825.00000000,
+                4725.00000000,
                 -2300.00000000
             ],
             "size": [
@@ -12337,7 +12337,7 @@
             "created_time": 416.7570418000000245,
             "only_boss_battle": false,
             "position": [
-                4800.00000000,
+                4700.00000000,
                 -2400.00000000
             ],
             "size": [
@@ -12376,34 +12376,34 @@
             "potion_lifetime": 0.00000000
         },
         {
-            "id": 419,
-            "flags": 64,
+            "id": 516,
+            "flags": 544,
             "abilities": 0,
-            "created_time": 421.4357914999999934,
+            "created_time": 1.6129773999999999,
             "only_boss_battle": false,
             "position": [
-                4700.00000000,
-                -2400.00000000
+                4235.00000000,
+                -90.00000000
             ],
             "size": [
-                100.00000000,
-                100.00000000
+                80.00000000,
+                80.00000000
             ],
             "velocity": [
                 0.00000000,
                 0.00000000
             ],
             "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 7,
+            "mass": 20.00000000,
+            "texture": 13,
             "attack_cooldown": 0.00000000,
             "aim_direction": [
                 0.00000000,
                 0.00000000
             ],
             "player_dash_cooldown": 0.00000000,
-            "health": 0.00000000,
-            "max_health": 0.00000000,
+            "health": 50.00000000,
+            "max_health": 50.00000000,
             "armour": 0.00000000,
             "armour_regen_cooldown": 0.00000000,
             "ai_type": 0,
@@ -12787,7 +12787,7 @@
             "created_time": 426.5994001000000253,
             "only_boss_battle": false,
             "position": [
-                2700.00000000,
+                2800.00000000,
                 -2400.00000000
             ],
             "size": [
@@ -12826,18 +12826,18 @@
             "potion_lifetime": 0.00000000
         },
         {
-            "id": 440,
-            "flags": 2368,
+            "id": 523,
+            "flags": 4,
             "abilities": 0,
-            "created_time": 10.3453648000000005,
+            "created_time": 1.9276494000000000,
             "only_boss_battle": false,
             "position": [
-                3800.00000000,
-                -2600.00000000
+                3745.00000000,
+                -1710.00000000
             ],
             "size": [
-                100.00000000,
-                100.00000000
+                150.00000000,
+                150.00000000
             ],
             "velocity": [
                 0.00000000,
@@ -12845,7 +12845,7 @@
             ],
             "rotation": 0.00000000,
             "mass": 0.00000000,
-            "texture": 14,
+            "texture": 6,
             "attack_cooldown": 0.00000000,
             "aim_direction": [
                 0.00000000,
@@ -12859,14 +12859,14 @@
             "ai_type": 0,
             "ai_state": 0,
             "bullet_hits": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
+            "cluster_size": 2,
+            "spawn_rate": 4.00000000,
             "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
+            "speeders_to_spawn": 35,
             "drones_to_spawn": 0,
             "orcs_to_spawn": 0,
-            "total_spawns": 0,
-            "spawn_radius": 0.00000000,
+            "total_spawns": 35,
+            "spawn_radius": 911.85400391,
             "pickup_type": 0,
             "potion_lifetime": 0.00000000
         },
@@ -13231,34 +13231,34 @@
             "potion_lifetime": 0.00000000
         },
         {
-            "id": 438,
-            "flags": 64,
+            "id": 518,
+            "flags": 544,
             "abilities": 0,
-            "created_time": 426.3569241999999804,
+            "created_time": 1.6129773999999999,
             "only_boss_battle": false,
             "position": [
-                2800.00000000,
-                -2400.00000000
+                4155.00000000,
+                -85.00000000
             ],
             "size": [
-                100.00000000,
-                100.00000000
+                50.00000000,
+                50.00000000
             ],
             "velocity": [
                 0.00000000,
                 0.00000000
             ],
             "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 7,
+            "mass": 20.00000000,
+            "texture": 13,
             "attack_cooldown": 0.00000000,
             "aim_direction": [
                 0.00000000,
                 0.00000000
             ],
             "player_dash_cooldown": 0.00000000,
-            "health": 0.00000000,
-            "max_health": 0.00000000,
+            "health": 50.00000000,
+            "max_health": 50.00000000,
             "armour": 0.00000000,
             "armour_regen_cooldown": 0.00000000,
             "ai_type": 0,
@@ -13411,149 +13411,14 @@
             "potion_lifetime": 0.00000000
         },
         {
-            "id": 447,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 100.2526897999999989,
-            "only_boss_battle": false,
-            "position": [
-                3900.00000000,
-                -2600.00000000
-            ],
-            "size": [
-                100.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 7,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "player_dash_cooldown": 0.00000000,
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "ai_state": 0,
-            "bullet_hits": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "orcs_to_spawn": 0,
-            "total_spawns": 0,
-            "spawn_radius": 0.00000000,
-            "pickup_type": 0,
-            "potion_lifetime": 0.00000000
-        },
-        {
-            "id": 448,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 103.1193193000000008,
-            "only_boss_battle": false,
-            "position": [
-                3600.00000000,
-                -2600.00000000
-            ],
-            "size": [
-                100.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 7,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "player_dash_cooldown": 0.00000000,
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "ai_state": 0,
-            "bullet_hits": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "orcs_to_spawn": 0,
-            "total_spawns": 0,
-            "spawn_radius": 0.00000000,
-            "pickup_type": 0,
-            "potion_lifetime": 0.00000000
-        },
-        {
-            "id": 450,
-            "flags": 64,
-            "abilities": 0,
-            "created_time": 9.1908560999999995,
-            "only_boss_battle": false,
-            "position": [
-                3700.00000000,
-                -2600.00000000
-            ],
-            "size": [
-                100.00000000,
-                100.00000000
-            ],
-            "velocity": [
-                0.00000000,
-                0.00000000
-            ],
-            "rotation": 0.00000000,
-            "mass": 0.00000000,
-            "texture": 15,
-            "attack_cooldown": 0.00000000,
-            "aim_direction": [
-                0.00000000,
-                0.00000000
-            ],
-            "player_dash_cooldown": 0.00000000,
-            "health": 0.00000000,
-            "max_health": 0.00000000,
-            "armour": 0.00000000,
-            "armour_regen_cooldown": 0.00000000,
-            "ai_type": 0,
-            "ai_state": 0,
-            "bullet_hits": 0,
-            "cluster_size": 0,
-            "spawn_rate": 0.00000000,
-            "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 0,
-            "orcs_to_spawn": 0,
-            "total_spawns": 0,
-            "spawn_radius": 0.00000000,
-            "pickup_type": 0,
-            "potion_lifetime": 0.00000000
-        },
-        {
-            "id": 451,
+            "id": 520,
             "flags": 4,
             "abilities": 0,
-            "created_time": 5.7173498000000000,
-            "only_boss_battle": true,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
             "position": [
-                3000.00000000,
-                -2100.00000000
+                4485.00000000,
+                -1300.00000000
             ],
             "size": [
                 150.00000000,
@@ -13582,23 +13447,23 @@
             "cluster_size": 2,
             "spawn_rate": 4.00000000,
             "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 0,
-            "drones_to_spawn": 30,
+            "speeders_to_spawn": 15,
+            "drones_to_spawn": 10,
             "orcs_to_spawn": 0,
-            "total_spawns": 30,
+            "total_spawns": 25,
             "spawn_radius": 911.85400391,
             "pickup_type": 0,
             "potion_lifetime": 0.00000000
         },
         {
-            "id": 455,
+            "id": 521,
             "flags": 4,
             "abilities": 0,
-            "created_time": 5.5330173000000000,
-            "only_boss_battle": true,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
             "position": [
-                3750.00000000,
-                -1650.00000000
+                4485.00000000,
+                -2145.00000000
             ],
             "size": [
                 150.00000000,
@@ -13624,14 +13489,149 @@
             "ai_type": 0,
             "ai_state": 0,
             "bullet_hits": 0,
-            "cluster_size": 10,
-            "spawn_rate": 0.69999999,
+            "cluster_size": 2,
+            "spawn_rate": 4.00000000,
             "spawn_cooldown": 0.00000000,
-            "speeders_to_spawn": 500,
+            "speeders_to_spawn": 15,
+            "drones_to_spawn": 10,
+            "orcs_to_spawn": 0,
+            "total_spawns": 25,
+            "spawn_radius": 911.85400391,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 522,
+            "flags": 4,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3000.00000000,
+                -2145.00000000
+            ],
+            "size": [
+                150.00000000,
+                150.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 6,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 2,
+            "spawn_rate": 4.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 15,
+            "drones_to_spawn": 10,
+            "orcs_to_spawn": 0,
+            "total_spawns": 25,
+            "spawn_radius": 911.85400391,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 512,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.6129773999999999,
+            "only_boss_battle": false,
+            "position": [
+                3900.00000000,
+                -500.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
             "drones_to_spawn": 0,
             "orcs_to_spawn": 0,
-            "total_spawns": 500,
-            "spawn_radius": 996.96002197,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 513,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.6129773999999999,
+            "only_boss_battle": false,
+            "position": [
+                4100.00000000,
+                -500.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0,
             "potion_lifetime": 0.00000000
         },
@@ -14356,18 +14356,18 @@
             "potion_lifetime": 0.00000000
         },
         {
-            "id": 492,
-            "flags": 4,
+            "id": 495,
+            "flags": 64,
             "abilities": 0,
-            "created_time": 124.5957413999999943,
-            "only_boss_battle": true,
+            "created_time": 1.6129773999999999,
+            "only_boss_battle": false,
             "position": [
-                3000.00000000,
-                -1300.00000000
+                4000.00000000,
+                -500.00000000
             ],
             "size": [
-                150.00000000,
-                150.00000000
+                100.00000000,
+                100.00000000
             ],
             "velocity": [
                 0.00000000,
@@ -14375,7 +14375,7 @@
             ],
             "rotation": 0.00000000,
             "mass": 0.00000000,
-            "texture": 6,
+            "texture": 7,
             "attack_cooldown": 0.00000000,
             "aim_direction": [
                 0.00000000,
@@ -14389,30 +14389,30 @@
             "ai_type": 0,
             "ai_state": 0,
             "bullet_hits": 0,
-            "cluster_size": 2,
-            "spawn_rate": 4.00000000,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
             "spawn_cooldown": 0.00000000,
             "speeders_to_spawn": 0,
-            "drones_to_spawn": 30,
+            "drones_to_spawn": 0,
             "orcs_to_spawn": 0,
-            "total_spawns": 30,
-            "spawn_radius": 911.85400391,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0,
             "potion_lifetime": 0.00000000
         },
         {
-            "id": 493,
-            "flags": 4,
+            "id": 497,
+            "flags": 64,
             "abilities": 0,
-            "created_time": 127.9109387999999967,
-            "only_boss_battle": true,
+            "created_time": 1.6129773999999999,
+            "only_boss_battle": false,
             "position": [
-                4550.00000000,
-                -1300.00000000
+                3675.00000000,
+                -200.00000000
             ],
             "size": [
-                150.00000000,
-                150.00000000
+                50.00000000,
+                100.00000000
             ],
             "velocity": [
                 0.00000000,
@@ -14420,7 +14420,7 @@
             ],
             "rotation": 0.00000000,
             "mass": 0.00000000,
-            "texture": 6,
+            "texture": 9,
             "attack_cooldown": 0.00000000,
             "aim_direction": [
                 0.00000000,
@@ -14434,26 +14434,1376 @@
             "ai_type": 0,
             "ai_state": 0,
             "bullet_hits": 0,
-            "cluster_size": 2,
-            "spawn_rate": 4.00000000,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
             "spawn_cooldown": 0.00000000,
             "speeders_to_spawn": 0,
-            "drones_to_spawn": 30,
+            "drones_to_spawn": 0,
             "orcs_to_spawn": 0,
-            "total_spawns": 30,
-            "spawn_radius": 911.85400391,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0,
             "potion_lifetime": 0.00000000
         },
         {
-            "id": 494,
+            "id": 498,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.6129773999999999,
+            "only_boss_battle": false,
+            "position": [
+                3675.00000000,
+                -100.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 499,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.6129773999999999,
+            "only_boss_battle": false,
+            "position": [
+                3675.00000000,
+                0.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 500,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.6129773999999999,
+            "only_boss_battle": false,
+            "position": [
+                3700.00000000,
+                100.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 10,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 501,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.6129773999999999,
+            "only_boss_battle": false,
+            "position": [
+                3800.00000000,
+                100.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 502,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.6129773999999999,
+            "only_boss_battle": false,
+            "position": [
+                3900.00000000,
+                100.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 503,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.6129773999999999,
+            "only_boss_battle": false,
+            "position": [
+                4000.00000000,
+                100.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 504,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.6129773999999999,
+            "only_boss_battle": false,
+            "position": [
+                4100.00000000,
+                100.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 505,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.6129773999999999,
+            "only_boss_battle": false,
+            "position": [
+                4200.00000000,
+                100.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 506,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.6129773999999999,
+            "only_boss_battle": false,
+            "position": [
+                4300.00000000,
+                100.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 11,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 507,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.6129773999999999,
+            "only_boss_battle": false,
+            "position": [
+                4325.00000000,
+                0.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 508,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.6129773999999999,
+            "only_boss_battle": false,
+            "position": [
+                4325.00000000,
+                -100.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 509,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.6129773999999999,
+            "only_boss_battle": false,
+            "position": [
+                4325.00000000,
+                -200.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 510,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.6129773999999999,
+            "only_boss_battle": false,
+            "position": [
+                4325.00000000,
+                -300.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 511,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.6129773999999999,
+            "only_boss_battle": false,
+            "position": [
+                4325.00000000,
+                -400.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 524,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3575.00000000,
+                -2600.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 525,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3575.00000000,
+                -2700.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 526,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3575.00000000,
+                -2800.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 527,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3575.00000000,
+                -2900.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 528,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3575.00000000,
+                -3000.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 529,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3575.00000000,
+                -3100.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 530,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3575.00000000,
+                -3200.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 574,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3575.00000000,
+                -3400.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 532,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3925.00000000,
+                -2600.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 533,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3925.00000000,
+                -2700.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 534,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3925.00000000,
+                -2800.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 535,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3925.00000000,
+                -2900.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 536,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3925.00000000,
+                -3000.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 537,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3925.00000000,
+                -3100.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 538,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3925.00000000,
+                -3200.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 539,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3925.00000000,
+                -3300.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 540,
             "flags": 4,
             "abilities": 0,
-            "created_time": 134.0742888000000050,
-            "only_boss_battle": true,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
             "position": [
-                4550.00000000,
-                -2100.00000000
+                3750.00000000,
+                -3600.00000000
             ],
             "size": [
                 150.00000000,
@@ -14483,10 +15833,1090 @@
             "spawn_rate": 4.00000000,
             "spawn_cooldown": 0.00000000,
             "speeders_to_spawn": 0,
-            "drones_to_spawn": 30,
+            "drones_to_spawn": 0,
             "orcs_to_spawn": 1,
-            "total_spawns": 31,
-            "spawn_radius": 911.85400391,
+            "total_spawns": 1,
+            "spawn_radius": 577.50799561,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 575,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3575.00000000,
+                -3300.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 573,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3575.00000000,
+                -3500.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 543,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3575.00000000,
+                -3600.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 544,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3575.00000000,
+                -3700.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 545,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3575.00000000,
+                -3800.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 554,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3600.00000000,
+                -3900.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 553,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3700.00000000,
+                -3900.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 548,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3925.00000000,
+                -3600.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 549,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3925.00000000,
+                -3700.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 550,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3925.00000000,
+                -3800.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 551,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3900.00000000,
+                -3900.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 552,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3800.00000000,
+                -3900.00000000
+            ],
+            "size": [
+                100.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 7,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 576,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3925.00000000,
+                -3300.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 577,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3925.00000000,
+                -3400.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 578,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 1.9276494000000000,
+            "only_boss_battle": false,
+            "position": [
+                3925.00000000,
+                -3500.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 180.00000000,
+            "mass": 0.00000000,
+            "texture": 9,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 579,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 4.0802253000000004,
+            "only_boss_battle": false,
+            "position": [
+                975.00000000,
+                -900.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 25,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 580,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 254.3786638999999923,
+            "only_boss_battle": false,
+            "position": [
+                175.00000000,
+                -100.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 25,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 581,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 254.3786638999999923,
+            "only_boss_battle": false,
+            "position": [
+                425.00000000,
+                -100.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 26,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 582,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 2.9604284999999999,
+            "only_boss_battle": false,
+            "position": [
+                1025.00000000,
+                900.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 26,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 583,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 2.9604284999999999,
+            "only_boss_battle": false,
+            "position": [
+                2175.00000000,
+                900.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 25,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 585,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 2.9604284999999999,
+            "only_boss_battle": false,
+            "position": [
+                2925.00000000,
+                -300.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 26,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 586,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 2.9604284999999999,
+            "only_boss_battle": false,
+            "position": [
+                3675.00000000,
+                -300.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 25,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 587,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 2.9604284999999999,
+            "only_boss_battle": false,
+            "position": [
+                3675.00000000,
+                -1000.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 25,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
+            "pickup_type": 0,
+            "potion_lifetime": 0.00000000
+        },
+        {
+            "id": 588,
+            "flags": 64,
+            "abilities": 0,
+            "created_time": 2.9604284999999999,
+            "only_boss_battle": false,
+            "position": [
+                3825.00000000,
+                -1000.00000000
+            ],
+            "size": [
+                50.00000000,
+                100.00000000
+            ],
+            "velocity": [
+                0.00000000,
+                0.00000000
+            ],
+            "rotation": 0.00000000,
+            "mass": 0.00000000,
+            "texture": 26,
+            "attack_cooldown": 0.00000000,
+            "aim_direction": [
+                0.00000000,
+                0.00000000
+            ],
+            "player_dash_cooldown": 0.00000000,
+            "health": 0.00000000,
+            "max_health": 0.00000000,
+            "armour": 0.00000000,
+            "armour_regen_cooldown": 0.00000000,
+            "ai_type": 0,
+            "ai_state": 0,
+            "bullet_hits": 0,
+            "cluster_size": 0,
+            "spawn_rate": 0.00000000,
+            "spawn_cooldown": 0.00000000,
+            "speeders_to_spawn": 0,
+            "drones_to_spawn": 0,
+            "orcs_to_spawn": 0,
+            "total_spawns": 0,
+            "spawn_radius": 0.00000000,
             "pickup_type": 0,
             "potion_lifetime": 0.00000000
         }

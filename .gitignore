@@ -12,4 +12,5 @@ zig-out/
 **.rdbg
 **/*.pdb
 **/*.vs
+**/*.vscode
 game5/resources/levels/backups
