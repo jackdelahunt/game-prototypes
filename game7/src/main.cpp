@@ -30,7 +30,6 @@ struct Entity {
 
 enum EntityFlags {
     EF_PLAYER   = 1 << 0,
-    EF_BULLET   = 1 << 1,
     EF_DELETE   = 1 << 2,
 };
 
@@ -56,7 +55,6 @@ void physics(f32 delta_time);
 
 void spawn_entity(Entity entity);
 void spawn_player();
-void spawn_bullet(v3 position, v2 velocity);
 
 CollisionIterator new_collision_iterator(Entity *entity);
 Entity *next(CollisionIterator *iterator);
@@ -108,7 +106,7 @@ int main() {
         if (!ok) {
             printf("failed to load sounds\n");
             return 1;
-        }
+        } 
 
         srand(time(NULL));
     }
@@ -117,6 +115,21 @@ int main() {
         spawn_player(); 
     }
 
+    FrameBuffer frame_buffer {
+        .width = (u32) state.window.width,
+        .height = (u32) state.window.height
+    };
+
+    bool ok = init_frame_buffer(&frame_buffer);
+    if (!ok) {
+        printf("failed to init frame buffer\n");
+        return 1;
+    }
+
+    // render scene to texture
+    // render texture on a quad to default frame buffer
+    //      - send 1 quad to gpu that covers entire screen
+    //      - send rendered texture to shader as uniform
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
         f64 current_time    = state.time;
         f64 new_time        = glfwGetTime();
@@ -129,12 +142,78 @@ int main() {
             glfwSetWindowShouldClose(state.window.glfw_window, GLFW_TRUE);
         }
 
-        new_frame(&state.renderer, &state.window, state.camera);
+        { // scene rendered to frame buffer
+            glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer.id);
+            new_frame(&state.renderer, &state.window, state.camera);
+    
+            update_and_draw(delta_time);
+            physics(delta_time); 
+    
+            draw_frame(&state.renderer, &state.window);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
 
-        update_and_draw(delta_time);
-        physics(delta_time);
+        { // scene is sent to default frame buffer as textured quad
+            new_frame(&state.renderer, &state.window, state.camera);
 
-        draw_frame(&state.renderer, &state.window);
+            v2 uvs[4] = {
+                {0, 1},
+                {1, 1},
+                {1, 0},
+                {0, 0},
+            };
+
+            draw_light(&state.renderer, {0, 1});
+
+            Quad *quad = push_quad(&state.renderer, {}, {50, 50}, 0, WHITE, uvs, 2);
+            quad->vertices[0].position = {-1, 1, 1};
+            quad->vertices[1].position = {1, 1, 1};
+            quad->vertices[2].position = {1, -1, 1};
+            quad->vertices[3].position = {-1, -1, 1};
+
+            glViewport(0, 0, state.window.width, state.window.height);
+    
+            glBindBuffer(GL_ARRAY_BUFFER, state.renderer.vertex_buffer_id);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * state.renderer.quads.len, state.renderer.quads.data);
+            glBindVertexArray(state.renderer.vertex_array_id);
+    
+            glUseProgram(state.renderer.light_shader_program_id);
+   
+            // set the scene texture
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, frame_buffer.colour_attachment);
+
+            glUniform1i(glGetUniformLocation(state.renderer.light_shader_program_id, "light_count"), state.renderer.lights.len);
+
+            glUniform3f(
+                glGetUniformLocation(state.renderer.light_shader_program_id, "lights[0]"), 
+                state.renderer.lights[0].position.X,
+                state.renderer.lights[0].position.Y,
+                state.renderer.lights[0].position.Z
+            );
+    
+            glDrawElements(GL_TRIANGLES, 6 * state.renderer.quads.len, GL_UNSIGNED_INT, 0);
+        }
+
+        { // imgui render 
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame(); 
+
+            ImGui::Begin("Settings");
+            ImGui::Button("Activate beast mode");
+            ImGui::Image(frame_buffer.colour_attachment, ImVec2(640, 480), ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::End();
+
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            GLFWwindow *current = glfwGetCurrentContext();
+            ImGui::UpdatePlatformWindows();
+            ImGui::RenderPlatformWindowsDefault();
+            glfwMakeContextCurrent(current);
+        }
+
+        swap_buffers(&state.window);
     }
 
     glfwTerminate();
@@ -192,10 +271,6 @@ void update_and_draw(f32 delta_time) {
             } else {
                 entity->velocity = v2{0, 0};
             }
-
-            if (KEYS[GLFW_KEY_SPACE] == InputState::down) {
-                spawn_bullet(entity->position, v2{0, BULLET_SPEED});
-            }
         }
 
         draw_rectangle(&state.renderer, entity->position, entity->size, entity->color);
@@ -211,6 +286,8 @@ void update_and_draw(f32 delta_time) {
             printf("entity deleted\n");
         }
     }
+
+    draw_text(&state.renderer, "Hello sailor", {}, 20, BLACK);
 }
 
 void physics(f32 delta_time) {
@@ -231,16 +308,6 @@ void spawn_player() {
         .flags = EF_PLAYER,
         .size = {50, 50},
         .color = RED,
-    });
-}
-
-void spawn_bullet(v3 position, v2 velocity) {
-    spawn_entity(Entity {
-        .flags = EF_BULLET,
-        .position = position,
-        .size = {10, 10},
-        .velocity = velocity,
-        .color = GREEN,
     });
 }
 

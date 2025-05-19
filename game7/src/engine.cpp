@@ -165,6 +165,7 @@ struct {
 } MOUSE;
 
 bool init_window(i32 width, i32 height, string title);
+void swap_buffers(Window *window);
 void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
 void glfw_mouse_move_callback(GLFWwindow* window, f64 x, f64 y);
 void glfw_error_callback(int error_code, const char* description);
@@ -206,6 +207,10 @@ bool init_window(Window *window, i32 width, i32 height, string title) {
     return true;
 }
 
+void swap_buffers(Window *window) {
+    glfwSwapBuffers(window->glfw_window);
+}
+
 void glfw_error_callback(int error_code, const char* description) {
     printf("glfw error: [%d]: %s", error_code, description);
 }
@@ -242,6 +247,7 @@ void glfw_mouse_move_callback(GLFWwindow* window, f64 x, f64 y) {
 //////////////////////////////// @renderer //////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 #define MAX_QUADS 2000
+#define MAX_LIGHTS 200
 
 struct Vertex {
     v3 position;
@@ -252,6 +258,10 @@ struct Vertex {
 
 struct Quad {
     Vertex vertices[4];
+};
+
+struct Light {
+    v3 position;
 };
 
 struct Camera {
@@ -289,6 +299,7 @@ struct Font {
 
 struct Renderer {
     Array<Quad, MAX_QUADS> quads;
+    Array<Light, MAX_LIGHTS> lights;
 
     m4 view_projection_matrix;
 
@@ -301,9 +312,19 @@ struct Renderer {
     u32 vertex_buffer_id;
     u32 index_buffer_id;
     u32 shader_program_id;
+    u32 light_shader_program_id;
 
     u32 atlas_texture_id;
     u32 font_texture_id;
+};
+
+struct FrameBuffer {
+    u32 id;
+    u32 width;
+    u32 height;
+
+    u32 colour_attachment;
+    u32 depth_attachment;
 };
 
 v4 WHITE      = {1, 1, 1, 1};
@@ -318,13 +339,16 @@ u32 upload_texture_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
 u32 upload_font_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
 bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel_height);
 
+bool init_frame_buffer(FrameBuffer *frame_buffer);
+
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
 void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
+void draw_light(Renderer *renderer, v3 position);
 void new_frame(Renderer *renderer, Window *window, Camera camera);
 void draw_frame(Renderer *renderer, Window *window);
-void push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], i32 draw_type);
+Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], i32 draw_type);
 
 v2 screen_position_to_world_position(v2 screen_position, Camera camera, Window *window);
 v2 screen_position_to_ndc(v2 screen_position, Window *window);
@@ -332,6 +356,8 @@ v2 screen_position_to_ndc(v2 screen_position, Window *window);
 m4 get_view_matrix(Camera camera);
 m4 get_projection_matrix(Camera camera, f32 aspect);
 const char *texture_path(TextureHandle handle);
+
+void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, i32 length, const char *message, const void *user_param);
 
 v4 alpha(v4 base, f32 alpha);
 
@@ -341,6 +367,8 @@ bool init_renderer(Renderer *renderer, Window *window) {
         if (result != GLEW_OK) {
             return false;
         }
+
+        glDebugMessageCallback(opengl_error_callback, NULL);
 
         // alpha blend settings
         glEnable(GL_BLEND);
@@ -354,7 +382,7 @@ bool init_renderer(Renderer *renderer, Window *window) {
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
     
-        ImGui::StyleColorsDark();
+        ImGui::StyleColorsLight();
     
         ImGuiIO& io = ImGui::GetIO();
     
@@ -384,6 +412,12 @@ bool init_renderer(Renderer *renderer, Window *window) {
             return false;
         }
 
+        Slice<u8> light_fragment_shader_source = read_file("./resources/shaders/light.shader");
+        if (light_fragment_shader_source.len == 0) {
+            printf("failed to load light shader");
+            return false;
+        }
+
         u32 vertex_shader = glCreateShader(GL_VERTEX_SHADER);
 
         glShaderSource(vertex_shader, 1, (char **) &vertex_shader_source.ptr, NULL);
@@ -408,23 +442,56 @@ bool init_renderer(Renderer *renderer, Window *window) {
             return false;
         }
 
-        u32 shader_program = glCreateProgram();
-        glAttachShader(shader_program, vertex_shader);
-        glAttachShader(shader_program, fragment_shader);
-        glLinkProgram(shader_program);
+        u32 light_fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
 
-        glGetProgramiv(shader_program, GL_LINK_STATUS, &link_status);
-        if (link_status == 0) {
-            glGetProgramInfoLog(shader_program, buffer_size, nullptr, &error_buffer[0]);
-            printf("failed to link shader program: %s", error_buffer);
+        glShaderSource(light_fragment_shader, 1, (char**) &light_fragment_shader_source.ptr, NULL);
+        glCompileShader(light_fragment_shader);
+
+        glGetShaderiv(light_fragment_shader, GL_COMPILE_STATUS, &compile_status);
+        if (compile_status == 0) {
+            glGetShaderInfoLog(light_fragment_shader, buffer_size, nullptr, &error_buffer[0]);
+            printf("failed to compile light shader: %s", error_buffer);
             return false;
         }
 
-        renderer->shader_program_id = shader_program;
+        { // default shader program
+            u32 shader_program = glCreateProgram();
+            glAttachShader(shader_program, vertex_shader);
+            glAttachShader(shader_program, fragment_shader);
+            glLinkProgram(shader_program);
+    
+            glGetProgramiv(shader_program, GL_LINK_STATUS, &link_status);
+            if (link_status == 0) {
+                glGetProgramInfoLog(shader_program, buffer_size, nullptr, &error_buffer[0]);
+                printf("failed to link shader program: %s", error_buffer);
+                return false;
+            }
+    
+            renderer->shader_program_id = shader_program;
+    
+            glUseProgram(shader_program);
+            glUniform1i(glGetUniformLocation(shader_program, "atlas_texture"), 0);
+            glUniform1i(glGetUniformLocation(shader_program, "font_texture"), 1);
+        }
 
-        glUseProgram(shader_program);
-        glUniform1i(glGetUniformLocation(shader_program, "atlas_texture"), 0);
-        glUniform1i(glGetUniformLocation(shader_program, "font_texture"), 1);
+        { // light shader program
+            u32 light_shader_program = glCreateProgram();
+            glAttachShader(light_shader_program, vertex_shader);
+            glAttachShader(light_shader_program, light_fragment_shader);
+            glLinkProgram(light_shader_program);
+    
+            glGetProgramiv(light_shader_program, GL_LINK_STATUS, &link_status);
+            if (link_status == 0) {
+                glGetProgramInfoLog(light_shader_program, buffer_size, nullptr, &error_buffer[0]);
+                printf("failed to link light shader program: %s", error_buffer);
+                return false;
+            }
+    
+            renderer->light_shader_program_id = light_shader_program;
+    
+            glUseProgram(light_shader_program);
+            glUniform1i(glGetUniformLocation(light_shader_program, "scene_texture"), 0);
+        }
 
         glDeleteShader(vertex_shader);
         glDeleteShader(fragment_shader);
@@ -675,6 +742,37 @@ bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel
     return true;
 }
 
+bool init_frame_buffer(FrameBuffer *frame_buffer) {
+    glCreateFramebuffers(1, &frame_buffer->id);
+    glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer->id);
+
+    // create texture that frame buffer will render into as the colour attachment
+    glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->colour_attachment);
+    glBindTexture(GL_TEXTURE_2D, frame_buffer->colour_attachment);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, frame_buffer->width, frame_buffer->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // create texture that frame buffer will use as depth buffer
+    glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->depth_attachment);
+    glBindTexture(GL_TEXTURE_2D, frame_buffer->depth_attachment);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_DEPTH24_STENCIL8, frame_buffer->width, frame_buffer->height);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // assign attachments to frame buffer
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frame_buffer->colour_attachment, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, frame_buffer->depth_attachment, 0);
+
+    if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        printf("error when createing frame buffer, was not complete\n");
+        return false;
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return true;
+}
+
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color) {
     v2 uvs[4] = {
         {0, 1},
@@ -793,17 +891,17 @@ void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 c
     mem_free(glyphs);
 }
 
+void draw_light(Renderer *renderer, v3 position) {
+    append(&renderer->lights, Light {
+        .position = position
+    });
+}
+
 void new_frame(Renderer *renderer, Window *window, Camera camera) {
     reset(&renderer->quads);
+    reset(&renderer->lights);
 
-    renderer->view_projection_matrix = HMM_MulM4(get_projection_matrix(camera, (f32) window->width / (f32) window->height), get_view_matrix(camera));
-
-    { // new frame for imgui
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame(); 
-    }
-
+    renderer->view_projection_matrix = HMM_MulM4(get_projection_matrix(camera, (f32) window->width / (f32) window->height), get_view_matrix(camera)); 
     glClear(GL_COLOR_BUFFER_BIT);
 }
 
@@ -824,21 +922,10 @@ void draw_frame(Renderer *renderer, Window *window) {
         glBindTexture(GL_TEXTURE_2D, renderer->font_texture_id);
 
         glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
-    }
-
-    { // imgui rendering
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        GLFWwindow *current = glfwGetCurrentContext();
-        ImGui::UpdatePlatformWindows();
-        ImGui::RenderPlatformWindowsDefault();
-        glfwMakeContextCurrent(current);
-    }
-
-    glfwSwapBuffers(window->glfw_window);
+    } 
 }
 
-void push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], i32 draw_type) {
+Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], i32 draw_type) {
     const v4 top_left      = {-0.5,   0.5, 0, 1};
     const v4 top_right     = { 0.5,   0.5, 0, 1};
     const v4 bottom_right  = { 0.5,  -0.5, 0, 1};
@@ -872,6 +959,8 @@ void push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color,
     quad->vertices[1].draw_type = draw_type;
     quad->vertices[2].draw_type = draw_type;
     quad->vertices[3].draw_type = draw_type;
+
+    return quad;
 }
 
 v2 screen_position_to_world_position(v2 screen_position, Camera camera, Window *window) {
@@ -921,6 +1010,11 @@ const char *texture_path(TextureHandle handle) {
 v4 alpha(v4 base, f32 alpha) {
     return {base.R, base.G, base.B, alpha};
 }
+
+void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, i32 length, const char *message, const void *user_param) {
+    printf("OpenGL error: %s", message);
+}
+
 
 ////////////////////////////////////////////////////////////////////////////
 //////////////////////////////// @sound ////////////////////////////////////
