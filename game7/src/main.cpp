@@ -163,8 +163,6 @@ int main() {
                 {0, 0},
             };
 
-            draw_light(&state.renderer, {0, 1});
-
             Quad *quad = push_quad(&state.renderer, {}, {50, 50}, 0, WHITE, uvs, 2);
             quad->vertices[0].position = {-1, 1, 1};
             quad->vertices[1].position = {1, 1, 1};
@@ -183,16 +181,20 @@ int main() {
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, frame_buffer.colour_attachment);
 
-            glUniform1i(glGetUniformLocation(state.renderer.light_shader_program_id, "light_count"), state.renderer.lights.len);
-
-            glUniform3f(
-                glGetUniformLocation(state.renderer.light_shader_program_id, "lights[0]"), 
+            glUniform2f(
+                glGetUniformLocation(state.renderer.light_shader_program_id, "light.position"), 
                 state.renderer.lights[0].position.X,
-                state.renderer.lights[0].position.Y,
-                state.renderer.lights[0].position.Z
+                state.renderer.lights[0].position.Y
+            );
+
+            glUniform4f(
+                glGetUniformLocation(state.renderer.light_shader_program_id, "light.colour"),
+                0, 0, 1, 0.1
             );
     
             glDrawElements(GL_TRIANGLES, 6 * state.renderer.quads.len, GL_UNSIGNED_INT, 0);
+
+            reset(&state.renderer.lights);
         }
 
         { // imgui render 
@@ -274,6 +276,7 @@ void update_and_draw(f32 delta_time) {
         }
 
         draw_rectangle(&state.renderer, entity->position, entity->size, entity->color);
+        draw_light(&state.renderer, {entity->position.X, entity->position.Y});
     }
 
     for (int i = 0; i < state.entities.len; i++) {

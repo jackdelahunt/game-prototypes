@@ -2,6 +2,7 @@
 
 struct Light {
     vec2 position;
+    vec4 colour;
 };
 
 in vec2 uv;
@@ -9,20 +10,20 @@ in vec2 uv;
 out vec4 frag_colour;
 
 uniform sampler2D scene_texture;
-
-uniform int light_count;
-uniform Light lights[20];
+uniform Light light;
 
 void main()
 {
-    float cuttoff = 0.3;
-    float distance = length(uv - vec2(0.5));
+    float cuttoff = 0.4;
+    vec2 ndc_uv = (uv * 2) - 1;
+    float distance = length(ndc_uv - light.position);
 
     if (distance < cuttoff) {
-        float fade = cuttoff / distance;        
+        float fade = distance / cuttoff;
+        vec4 final_colour = mix(light.colour, vec4(0, 0, 0, 1), fade);
 
-        frag_colour = texture(scene_texture, uv) * vec4(fade, fade, fade, 1);
+        frag_colour = texture(scene_texture, uv) * final_colour;
     } else {
         frag_colour = vec4(0, 0, 0, 1);
-    } 
+    }
 } 

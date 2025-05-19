@@ -261,7 +261,7 @@ struct Quad {
 };
 
 struct Light {
-    v3 position;
+    v2 position;
 };
 
 struct Camera {
@@ -345,7 +345,7 @@ void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
 void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
-void draw_light(Renderer *renderer, v3 position);
+void draw_light(Renderer *renderer, v2 position);
 void new_frame(Renderer *renderer, Window *window, Camera camera);
 void draw_frame(Renderer *renderer, Window *window);
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], i32 draw_type);
@@ -891,15 +891,18 @@ void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 c
     mem_free(glyphs);
 }
 
-void draw_light(Renderer *renderer, v3 position) {
-    append(&renderer->lights, Light {
-        .position = position
-    });
+void draw_light(Renderer *renderer, v2 position) {
+    m4 model_matrix = HMM_M4D(1.0f);
+    model_matrix = HMM_MulM4(model_matrix, HMM_Translate(v3{position.X, position.Y, 0}));
+                
+    m4 mvp_matrix = HMM_MulM4(renderer->view_projection_matrix, model_matrix);
+
+    Light *light = push(&renderer->lights);
+    light->position = HMM_MulM4V4(mvp_matrix, {0, 0, 0, 1}).XY;
 }
 
 void new_frame(Renderer *renderer, Window *window, Camera camera) {
     reset(&renderer->quads);
-    reset(&renderer->lights);
 
     renderer->view_projection_matrix = HMM_MulM4(get_projection_matrix(camera, (f32) window->width / (f32) window->height), get_view_matrix(camera)); 
     glClear(GL_COLOR_BUFFER_BIT);
