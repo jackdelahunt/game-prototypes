@@ -189,7 +189,7 @@ int main() {
 
             glUniform4f(
                 glGetUniformLocation(state.renderer.light_shader_program_id, "light.colour"),
-                0, 0, 1, 0.1
+                1, 0.7, 0.2, 1
             );
     
             glDrawElements(GL_TRIANGLES, 6 * state.renderer.quads.len, GL_UNSIGNED_INT, 0);
@@ -290,7 +290,7 @@ void update_and_draw(f32 delta_time) {
         }
     }
 
-    draw_text(&state.renderer, "Hello sailor", {}, 20, BLACK);
+    draw_text(&state.renderer, "Hello sailor", {}, 20, WHITE);
 }
 
 void physics(f32 delta_time) {
