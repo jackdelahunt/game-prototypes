@@ -1,11 +1,14 @@
+#include "libs/imgui/imgui.h"
 #include "libs/libs.h"
 #include "engine.cpp"
 
+#include <cstdio>
+#include <cstring>
 #include <time.h>
 #include <stdlib.h>
 
-// Total: 6
-// Started: 13:30
+// Total: 9
+// Started: 18:45
 
 #define MAX_ENTITIES 2000
 
@@ -25,8 +28,8 @@ struct Entity {
 };
 
 enum EntityFlags {
-    EF_PLAYER   = 1 << 0,
-    EF_DELETE   = 1 << 2,
+    EF_LIGHT    = 1 << 0,
+    EF_DELETE   = 1 << 1,
 };
 
 struct State {
@@ -63,6 +66,9 @@ int main() {
             .orthographic_size = 450,
             .near_plane = 0.1f,
             .far_plane = 100.0f,
+        },
+        .renderer = {
+            .global_light = {0.65, 0.65, 0.95, 1},
         },
     };
 
@@ -176,15 +182,44 @@ int main() {
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, frame_buffer.colour_attachment);
 
-            glUniform2f(
-                glGetUniformLocation(state.renderer.light_shader_program_id, "light.position"), 
-                state.renderer.lights[0].position.X,
-                state.renderer.lights[0].position.Y
+            // set all uniforms used in the lights shader, using sprintf to get
+            // the location of each value in the lights array that is why it looks
+            // really weird and long winded
+            glUniform1i(
+                glGetUniformLocation(state.renderer.light_shader_program_id, "light_count"),
+                (i32) state.renderer.lights.len
             );
 
+            for(i64 i = 0; i < state.renderer.lights.len; i++) {
+                const i64 buffer_size = 32;
+                char buffer[buffer_size] = {};
+
+                sprintf(buffer, "lights[%llu].position", i);
+
+                glUniform2f(
+                    glGetUniformLocation(state.renderer.light_shader_program_id, buffer), 
+                    state.renderer.lights[i].position.X,
+                    state.renderer.lights[i].position.Y
+                );
+
+                memset(buffer, 0, buffer_size);
+
+                sprintf(buffer, "lights[%llu].colour", i);
+                glUniform4f(
+                    glGetUniformLocation(state.renderer.light_shader_program_id, buffer),
+                    state.renderer.lights[i].colour.R,
+                    state.renderer.lights[i].colour.G,
+                    state.renderer.lights[i].colour.B,
+                    state.renderer.lights[i].colour.A
+                );
+            }
+
             glUniform4f(
-                glGetUniformLocation(state.renderer.light_shader_program_id, "light.colour"),
-                1, 0.7, 0.2, 1
+                glGetUniformLocation(state.renderer.light_shader_program_id, "global_light"),
+                state.renderer.global_light[0],
+                state.renderer.global_light[1],
+                state.renderer.global_light[2],
+                state.renderer.global_light[3]
             );
     
             glDrawElements(GL_TRIANGLES, 6 * state.renderer.quads.len, GL_UNSIGNED_INT, 0);
@@ -204,7 +239,8 @@ int main() {
             }
 
             if(ImGui::CollapsingHeader("Rendering")) {
-                ImGui::Image(frame_buffer.colour_attachment, ImVec2(640, 480), ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::SliderFloat4("Global light", &state.renderer.global_light[0], 0, 1);
+                ImGui::Image(frame_buffer.colour_attachment, ImVec2(480, 320), ImVec2(0, 1), ImVec2(1, 0));
             }
 
             ImGui::End();
@@ -250,7 +286,12 @@ void update_and_draw(f32 delta_time) {
     for (int i = 0; i < state.entities.len; i++) {
         Entity* entity = &state.entities[i];
 
-        draw_texture(&state.renderer, entity->texture, entity->position, entity->size, entity->rotation, entity->color);
+        if (entity->flags & EF_LIGHT) {
+            draw_light(&state.renderer, entity->position, WHITE);
+            draw_circle(&state.renderer, entity->position, 4, RED);
+        } else {
+            draw_texture(&state.renderer, entity->texture, entity->position, entity->size, entity->rotation, entity->color);
+        }
     }
 
     for (int i = 0; i < state.entities.len; i++) {
@@ -370,7 +411,7 @@ void create_scene() {
         });
     } 
     
-    { // lamp post
+    { // lamp posts
         f32 ratio = texture_aspect_ratio(&state.renderer, TH_LAMP);
         f32 height = 150;
         f32 width = height * ratio;
@@ -394,6 +435,23 @@ void create_scene() {
             .size = {width, height},
             .color = WHITE,
             .texture = TH_LAMP,
+        });
+    }
+
+    { // lamp posts
+        spawn_entity(Entity{
+            .flags = EF_LIGHT,
+            .position = {20, -140},
+        });
+
+        spawn_entity(Entity{
+            .flags = EF_LIGHT,
+            .position = {310, -140},
+        });
+
+        spawn_entity(Entity{
+            .flags = EF_LIGHT,
+            .position = {600, -140},
         });
     }
 

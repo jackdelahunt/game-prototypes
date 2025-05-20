@@ -247,7 +247,7 @@ void glfw_mouse_move_callback(GLFWwindow* window, f64 x, f64 y) {
 //////////////////////////////// @renderer //////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 #define MAX_QUADS 2000
-#define MAX_LIGHTS 200
+#define MAX_LIGHTS 20
 
 struct Vertex {
     v3 position;
@@ -262,6 +262,7 @@ struct Quad {
 
 struct Light {
     v2 position;
+    v4 colour;
 };
 
 struct Camera {
@@ -306,6 +307,7 @@ struct Font {
 };
 
 struct Renderer {
+    v4 global_light;
     Array<Quad, MAX_QUADS> quads;
     Array<Light, MAX_LIGHTS> lights;
 
@@ -353,7 +355,7 @@ void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
 void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
-void draw_light(Renderer *renderer, v2 position);
+void draw_light(Renderer *renderer, v3 position, v4 colour);
 void new_frame(Renderer *renderer, Window *window, Camera camera);
 void draw_frame(Renderer *renderer, Window *window);
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], i32 draw_type);
@@ -901,7 +903,7 @@ void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 c
     mem_free(glyphs);
 }
 
-void draw_light(Renderer *renderer, v2 position) {
+void draw_light(Renderer *renderer, v3 position, v4 colour) {
     m4 model_matrix = HMM_M4D(1.0f);
     model_matrix = HMM_MulM4(model_matrix, HMM_Translate(v3{position.X, position.Y, 0}));
                 
@@ -909,6 +911,7 @@ void draw_light(Renderer *renderer, v2 position) {
 
     Light *light = push(&renderer->lights);
     light->position = HMM_MulM4V4(mvp_matrix, {0, 0, 0, 1}).XY;
+    light->colour = colour;
 }
 
 void new_frame(Renderer *renderer, Window *window, Camera camera) {
