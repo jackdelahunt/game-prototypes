@@ -35,4 +35,7 @@ void main()
     if (draw_type == 3) {
         frag_colour = texture(font_texture, uv).r * colour;
     }
+
+    // visualise the depth buffer
+    // frag_colour = vec4(vec3(gl_FragCoord.z), 1.0);
 } 

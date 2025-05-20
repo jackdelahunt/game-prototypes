@@ -387,6 +387,11 @@ bool init_renderer(Renderer *renderer, Window *window) {
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+        // depth buffer settings
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+
+
         float f = 0.1f;
         glClearColor(f, f, f, 1.0f);
     }
@@ -918,7 +923,7 @@ void new_frame(Renderer *renderer, Window *window, Camera camera) {
     reset(&renderer->quads);
 
     renderer->view_projection_matrix = HMM_MulM4(get_projection_matrix(camera, (f32) window->width / (f32) window->height), get_view_matrix(camera)); 
-    glClear(GL_COLOR_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
 void draw_frame(Renderer *renderer, Window *window) {

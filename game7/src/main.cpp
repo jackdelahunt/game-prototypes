@@ -1,3 +1,4 @@
+#include "libs/imgui/imgui.h"
 #include "libs/libs.h"
 #include "engine.cpp"
 
@@ -6,13 +7,13 @@
 #include <time.h>
 #include <stdlib.h>
 
-// Total: 10:15
-// Started: 18:45
+// Total: 11
+// Started: 23:30
 //
 // TODO:
+// - forground blurring
 // - leaf particals
 // - maybe animated textures
-// - forground blurring
 // - paralax when moving
 
 #define MAX_ENTITIES 2000
@@ -81,7 +82,7 @@ int main() {
     { // init engine stuff
         bool ok = false;
 
-        ok = init_window(&state.window, 1920, 1080, "game7");
+        ok = init_window(&state.window, 1080, 720, "game7");
         if (!ok) {
             printf("failed to init window\n");
             return 1;
@@ -120,7 +121,26 @@ int main() {
         srand(time(NULL));
     } 
 
-    create_scene();
+    if (true) {
+        create_scene();
+    } else {
+        state.renderer.global_light = WHITE;
+
+        spawn_entity(Entity {
+            .position = {0, 0, 0},
+            .size = {300, 300},
+            .color = WHITE,
+            .texture = TH_SHOP
+        });
+
+        spawn_entity(Entity {
+            .position = {200,  0},
+            .size = {300, 300},
+            .color = RED,
+            .texture = TH_SHOP
+        });
+ 
+    }
 
     FrameBuffer frame_buffer {
         .width = (u32) state.window.width,
@@ -171,10 +191,11 @@ int main() {
             };
 
             Quad *quad = push_quad(&state.renderer, {}, {50, 50}, 0, WHITE, uvs, 2);
-            quad->vertices[0].position = {-1, 1, 1};
-            quad->vertices[1].position = {1, 1, 1};
-            quad->vertices[2].position = {1, -1, 1};
-            quad->vertices[3].position = {-1, -1, 1};
+            f32 z = 0;
+            quad->vertices[0].position = {-1,  1, z};
+            quad->vertices[1].position = { 1,  1, z};
+            quad->vertices[2].position = { 1, -1, z};
+            quad->vertices[3].position = {-1, -1, z};
 
             glViewport(0, 0, state.window.width, state.window.height);
     
@@ -247,7 +268,25 @@ int main() {
             }
 
             if(ImGui::CollapsingHeader("Render passes")) {
-                ImGui::Image(frame_buffer.colour_attachment, ImVec2(480, 320), ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Image(frame_buffer.colour_attachment, ImVec2(360, 240), ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Image(frame_buffer.depth_attachment, ImVec2(360, 240), ImVec2(0, 1), ImVec2(1, 0));
+            }
+
+            if(ImGui::CollapsingHeader("Entities")) {
+                for(i64 i = 0; i < state.entities.len; i++) {
+                    ImGui::PushID(i);
+                    Entity *entity = &state.entities.data[i];
+
+                    char name_buffer[32] = {};
+                    sprintf(name_buffer, "Entity: %llu", i);
+
+                    if (ImGui::CollapsingHeader(name_buffer)) {
+                        ImGui::SliderFloat3("position", &entity->position[0], -500, 500);
+                        ImGui::InputFloat2("size", &entity->size[0]);
+                        ImGui::InputFloat4("colour", &entity->color[0]);
+                    }
+                    ImGui::PopID();
+                }
             }
 
             ImGui::End();
@@ -295,7 +334,6 @@ void update_and_draw(f32 delta_time) {
 
         if (entity->flags & EF_LIGHT) {
             draw_light(&state.renderer, entity->position);
-            draw_circle(&state.renderer, entity->position, 4, RED);
         } else {
             draw_texture(&state.renderer, entity->texture, entity->position, entity->size, entity->rotation, entity->color);
         }
@@ -327,42 +365,52 @@ void spawn_entity(Entity entity) {
 }
 
 void create_scene() {
-    if (true) { // forest background
+    f32 forest_background_z = 80;
+    f32 forest_foreground_z = 60;
+
+    f32 decorations_background_z = 55;
+    f32 decorations_foreground_z = 50;
+
+    f32 floor_top_z = 40;
+    f32 floor_middle_z = 20;
+    f32 floor_bottom_z = 1;
+
+    { // forest background
         f32 ratio = texture_aspect_ratio(&state.renderer, TH_BACKGROUND_LAYER_1);
         f32 height = 900;
         f32 width = height * ratio;
         f32 y = 0;
 
         spawn_entity(Entity{
-            .position = {0, y},
+            .position = {0, y, forest_background_z},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_BACKGROUND_LAYER_1,
         });
     }
 
-    if (true) { // forest foreground
+    { // forest foreground
         f32 ratio = texture_aspect_ratio(&state.renderer, TH_BACKGROUND_LAYER_3);
         f32 height = 900;
         f32 width = height * ratio;
         f32 y = 0;
 
        spawn_entity(Entity{
-            .position = {-width, y},
+            .position = {-width, y, forest_foreground_z},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_BACKGROUND_LAYER_3,
         });
 
         spawn_entity(Entity{
-            .position = {0, y},
+            .position = {0, y, forest_foreground_z},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_BACKGROUND_LAYER_3,
         });
 
         spawn_entity(Entity{
-            .position = {width, y},
+            .position = {width, y, forest_foreground_z},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_BACKGROUND_LAYER_3,
@@ -377,28 +425,28 @@ void create_scene() {
         f32 y = -200;
 
         spawn_entity(Entity{
-            .position = {x - width, y},
+            .position = {x - width, y, decorations_background_z},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_FENCE,
         });
 
         spawn_entity(Entity{
-            .position = {x, y},
+            .position = {x, y, decorations_background_z},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_FENCE,
         });
 
         spawn_entity(Entity{
-            .position = {x + width, y},
+            .position = {x + width, y, decorations_background_z},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_FENCE,
         });
 
         spawn_entity(Entity{
-            .position = {x + width + width, y},
+            .position = {x + width + width, y, decorations_background_z},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_FENCE,
@@ -411,7 +459,7 @@ void create_scene() {
         f32 width = height * ratio;
 
         spawn_entity(Entity{
-            .position = {-400, -100},
+            .position = {-400, -100, decorations_foreground_z},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_SHOP,
@@ -435,21 +483,21 @@ void create_scene() {
         f32 width = height * ratio;
 
         spawn_entity(Entity{
-            .position = {35, -160},
+            .position = {35, -160, decorations_foreground_z},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_LAMP,
         });
 
         spawn_entity(Entity{
-            .position = {325, -160},
+            .position = {325, -160, decorations_foreground_z},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_LAMP,
         });
 
         spawn_entity(Entity{
-            .position = {615, -160},
+            .position = {615, -160, decorations_foreground_z},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_LAMP,
@@ -471,21 +519,21 @@ void create_scene() {
         });
     }
 
-    if (true) { // top floor layer
+    { // top floor layer
         f32 ratio = texture_aspect_ratio(&state.renderer, TH_FLOOR);
         f32 height = 300;
         f32 width = height * ratio;
         f32 y = -325;
 
         spawn_entity(Entity{
-            .position = {-width, y},
+            .position = {-width, y, floor_top_z},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_FLOOR,
         });
 
         spawn_entity(Entity{
-            .position = {0, y},
+            .position = {0, y, floor_top_z},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_FLOOR,
@@ -493,14 +541,14 @@ void create_scene() {
 
 
         spawn_entity(Entity{
-            .position = {width, y},
+            .position = {width, y, floor_top_z},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_FLOOR,
         });
     }
 
-    if (true) { // middle floor layer
+    { // middle floor layer
         f32 ratio = texture_aspect_ratio(&state.renderer, TH_FLOOR);
         f32 height = 375;
         f32 width = height * ratio;
@@ -508,14 +556,14 @@ void create_scene() {
         f32 x = -250;
 
         spawn_entity(Entity{
-            .position = {x - width, y},
+            .position = {x - width, y, floor_middle_z},
             .size = {x + width, height},
             .color = WHITE,
             .texture = TH_FLOOR,
         });
 
         spawn_entity(Entity{
-            .position = {x, y},
+            .position = {x, y, floor_middle_z},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_FLOOR,
@@ -523,7 +571,7 @@ void create_scene() {
 
 
         spawn_entity(Entity{
-            .position = {x + width, y},
+            .position = {x + width, y, floor_middle_z},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_FLOOR,
@@ -538,14 +586,14 @@ void create_scene() {
         f32 x = 250;
 
         spawn_entity(Entity{
-            .position = {x - width, y},
+            .position = {x - width, y, floor_bottom_z},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_FLOOR,
         });
 
         spawn_entity(Entity{
-            .position = {x, y},
+            .position = {x, y, floor_bottom_z},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_FLOOR,
@@ -553,7 +601,7 @@ void create_scene() {
 
 
         spawn_entity(Entity{
-            .position = {x + width, y},
+            .position = {x + width, y, floor_bottom_z},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_FLOOR,
