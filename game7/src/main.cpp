@@ -7,7 +7,7 @@
 #include <time.h>
 #include <stdlib.h>
 
-// Total: 9
+// Total: 10:15
 // Started: 18:45
 
 #define MAX_ENTITIES 2000
@@ -68,7 +68,8 @@ int main() {
             .far_plane = 100.0f,
         },
         .renderer = {
-            .global_light = {0.65, 0.65, 0.95, 1},
+            .global_light = {0.25, 0.25, 0.6, 1},
+            .light_colour = {1, 0.8, 0.6, 1},
         },
     };
 
@@ -185,6 +186,22 @@ int main() {
             // set all uniforms used in the lights shader, using sprintf to get
             // the location of each value in the lights array that is why it looks
             // really weird and long winded
+            glUniform4f(
+                glGetUniformLocation(state.renderer.light_shader_program_id, "global_light"),
+                state.renderer.global_light[0],
+                state.renderer.global_light[1],
+                state.renderer.global_light[2],
+                state.renderer.global_light[3]
+            );
+
+            glUniform4f(
+                glGetUniformLocation(state.renderer.light_shader_program_id, "light_colour"),
+                state.renderer.light_colour[0],
+                state.renderer.light_colour[1],
+                state.renderer.light_colour[2],
+                state.renderer.light_colour[3]
+            );
+
             glUniform1i(
                 glGetUniformLocation(state.renderer.light_shader_program_id, "light_count"),
                 (i32) state.renderer.lights.len
@@ -201,26 +218,7 @@ int main() {
                     state.renderer.lights[i].position.X,
                     state.renderer.lights[i].position.Y
                 );
-
-                memset(buffer, 0, buffer_size);
-
-                sprintf(buffer, "lights[%llu].colour", i);
-                glUniform4f(
-                    glGetUniformLocation(state.renderer.light_shader_program_id, buffer),
-                    state.renderer.lights[i].colour.R,
-                    state.renderer.lights[i].colour.G,
-                    state.renderer.lights[i].colour.B,
-                    state.renderer.lights[i].colour.A
-                );
             }
-
-            glUniform4f(
-                glGetUniformLocation(state.renderer.light_shader_program_id, "global_light"),
-                state.renderer.global_light[0],
-                state.renderer.global_light[1],
-                state.renderer.global_light[2],
-                state.renderer.global_light[3]
-            );
     
             glDrawElements(GL_TRIANGLES, 6 * state.renderer.quads.len, GL_UNSIGNED_INT, 0);
 
@@ -239,7 +237,11 @@ int main() {
             }
 
             if(ImGui::CollapsingHeader("Rendering")) {
-                ImGui::SliderFloat4("Global light", &state.renderer.global_light[0], 0, 1);
+                ImGui::InputFloat4("Global light", &state.renderer.global_light[0]);
+                ImGui::InputFloat4("Lights", &state.renderer.light_colour[0]);
+            }
+
+            if(ImGui::CollapsingHeader("Render passes")) {
                 ImGui::Image(frame_buffer.colour_attachment, ImVec2(480, 320), ImVec2(0, 1), ImVec2(1, 0));
             }
 
@@ -287,7 +289,7 @@ void update_and_draw(f32 delta_time) {
         Entity* entity = &state.entities[i];
 
         if (entity->flags & EF_LIGHT) {
-            draw_light(&state.renderer, entity->position, WHITE);
+            draw_light(&state.renderer, entity->position);
             draw_circle(&state.renderer, entity->position, 4, RED);
         } else {
             draw_texture(&state.renderer, entity->texture, entity->position, entity->size, entity->rotation, entity->color);
@@ -362,7 +364,7 @@ void create_scene() {
         });
     }
 
-    { // fences post
+    { // fence posts
         f32 ratio = texture_aspect_ratio(&state.renderer, TH_FENCE);
         f32 height = 75;
         f32 width = height * ratio;
@@ -409,6 +411,17 @@ void create_scene() {
             .color = WHITE,
             .texture = TH_SHOP,
         });
+
+        spawn_entity(Entity{
+            .flags = EF_LIGHT,
+            .position = {-560, -175},
+        });
+
+        spawn_entity(Entity{
+            .flags = EF_LIGHT,
+            .position = {-240, -175},
+        });
+    
     } 
     
     { // lamp posts
@@ -436,9 +449,7 @@ void create_scene() {
             .color = WHITE,
             .texture = TH_LAMP,
         });
-    }
 
-    { // lamp posts
         spawn_entity(Entity{
             .flags = EF_LIGHT,
             .position = {20, -140},

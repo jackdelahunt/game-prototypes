@@ -262,7 +262,6 @@ struct Quad {
 
 struct Light {
     v2 position;
-    v4 colour;
 };
 
 struct Camera {
@@ -308,6 +307,8 @@ struct Font {
 
 struct Renderer {
     v4 global_light;
+    v4 light_colour;
+
     Array<Quad, MAX_QUADS> quads;
     Array<Light, MAX_LIGHTS> lights;
 
@@ -355,7 +356,7 @@ void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
 void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
-void draw_light(Renderer *renderer, v3 position, v4 colour);
+void draw_light(Renderer *renderer, v3 position);
 void new_frame(Renderer *renderer, Window *window, Camera camera);
 void draw_frame(Renderer *renderer, Window *window);
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], i32 draw_type);
@@ -386,7 +387,7 @@ bool init_renderer(Renderer *renderer, Window *window) {
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-        float f = 0.7f;
+        float f = 0.1f;
         glClearColor(f, f, f, 1.0f);
     }
 
@@ -903,7 +904,7 @@ void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 c
     mem_free(glyphs);
 }
 
-void draw_light(Renderer *renderer, v3 position, v4 colour) {
+void draw_light(Renderer *renderer, v3 position) {
     m4 model_matrix = HMM_M4D(1.0f);
     model_matrix = HMM_MulM4(model_matrix, HMM_Translate(v3{position.X, position.Y, 0}));
                 
@@ -911,7 +912,6 @@ void draw_light(Renderer *renderer, v3 position, v4 colour) {
 
     Light *light = push(&renderer->lights);
     light->position = HMM_MulM4V4(mvp_matrix, {0, 0, 0, 1}).XY;
-    light->colour = colour;
 }
 
 void new_frame(Renderer *renderer, Window *window, Camera camera) {
