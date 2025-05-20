@@ -272,7 +272,15 @@ struct Camera {
 };
 
 enum TextureHandle {
-    TH_PLAYER,
+    TH_FENCE,
+    TH_LAMP,
+    TH_ROCK_1,
+    TH_ROCK_2,
+    TH_SHOP,
+    TH_BACKGROUND_LAYER_1,
+    TH_BACKGROUND_LAYER_2,
+    TH_BACKGROUND_LAYER_3,
+    TH_FLOOR,
     TH_COUNT__
 };
 
@@ -355,6 +363,8 @@ v2 screen_position_to_ndc(v2 screen_position, Window *window);
 
 m4 get_view_matrix(Camera camera);
 m4 get_projection_matrix(Camera camera, f32 aspect);
+
+f32 texture_aspect_ratio(Renderer *renderer, TextureHandle handle);
 const char *texture_path(TextureHandle handle);
 
 void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, i32 length, const char *message, const void *user_param);
@@ -581,8 +591,8 @@ bool load_textures(Renderer *renderer) {
         };
     }
 
-    const i64 ATLAS_WIDTH     = 128;
-    const i64 ATLAS_HEIGHT    = 128;
+    const i64 ATLAS_WIDTH     = 640;
+    const i64 ATLAS_HEIGHT    = 480;
     const i64 BYTES_PER_PIXEL = 4;
     const i64 CHANNELS        = 4;
     const i64 ATLAS_BYTE_SIZE = ATLAS_WIDTH * ATLAS_HEIGHT * BYTES_PER_PIXEL;
@@ -999,10 +1009,31 @@ m4 get_projection_matrix(Camera camera, f32 aspect) {
     );
 }
 
+f32 texture_aspect_ratio(Renderer *renderer, TextureHandle handle) {
+    Texture *texture = &renderer->textures[(i64) handle];
+    return (f32) texture->width / (f32) texture->height;
+}
+
 const char *texture_path(TextureHandle handle) {
     switch (handle) {
-        case TH_PLAYER: 
-            return "resources/textures/player.png";
+        case TH_FENCE: 
+            return "resources/textures/decorations/fence_1.png";
+        case TH_LAMP: 
+            return "resources/textures/decorations/lamp.png";
+        case TH_ROCK_1: 
+            return "resources/textures/decorations/rock_1.png";
+        case TH_ROCK_2: 
+            return "resources/textures/decorations/rock_2.png";
+        case TH_SHOP: 
+            return "resources/textures/decorations/shop.png";
+        case TH_BACKGROUND_LAYER_1: 
+            return "resources/textures/background/background_layer_1.png";
+        case TH_BACKGROUND_LAYER_2: 
+            return "resources/textures/background/background_layer_2.png";
+        case TH_BACKGROUND_LAYER_3: 
+            return "resources/textures/background/background_layer_3_big.png";
+        case TH_FLOOR: 
+            return "resources/textures/background/floor.png";
         case TH_COUNT__: 
             assert(0);
     }

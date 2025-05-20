@@ -4,14 +4,10 @@
 #include <time.h>
 #include <stdlib.h>
 
-// Total: 0
-// Started: 15:00
+// Total: 6
+// Started: 13:30
 
 #define MAX_ENTITIES 2000
-
-#define PLAYER_SPEED 400
-
-#define BULLET_SPEED 1200
 
 struct Entity {
     // meta
@@ -54,7 +50,8 @@ void update_and_draw(f32 delta_time);
 void physics(f32 delta_time);
 
 void spawn_entity(Entity entity);
-void spawn_player();
+
+void create_scene();
 
 CollisionIterator new_collision_iterator(Entity *entity);
 Entity *next(CollisionIterator *iterator);
@@ -72,7 +69,7 @@ int main() {
     { // init engine stuff
         bool ok = false;
 
-        ok = init_window(&state.window, 1440, 1080, "game7");
+        ok = init_window(&state.window, 1920, 1080, "game7");
         if (!ok) {
             printf("failed to init window\n");
             return 1;
@@ -109,11 +106,9 @@ int main() {
         } 
 
         srand(time(NULL));
-    }
+    } 
 
-    { // init game stuff
-        spawn_player(); 
-    }
+    create_scene();
 
     FrameBuffer frame_buffer {
         .width = (u32) state.window.width,
@@ -202,9 +197,16 @@ int main() {
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame(); 
 
-            ImGui::Begin("Settings");
-            ImGui::Button("Activate beast mode");
-            ImGui::Image(frame_buffer.colour_attachment, ImVec2(640, 480), ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::Begin("Inspector");
+
+            if(ImGui::CollapsingHeader("Camera")) {
+                ImGui::SliderFloat("Orthographic size", &state.camera.orthographic_size, 10, 1000);
+            }
+
+            if(ImGui::CollapsingHeader("Rendering")) {
+                ImGui::Image(frame_buffer.colour_attachment, ImVec2(640, 480), ImVec2(0, 1), ImVec2(1, 0));
+            }
+
             ImGui::End();
 
             ImGui::Render();
@@ -248,35 +250,7 @@ void update_and_draw(f32 delta_time) {
     for (int i = 0; i < state.entities.len; i++) {
         Entity* entity = &state.entities[i];
 
-        if (entity->flags & EF_PLAYER) {
-            v2 movement_input = {};
-
-            if (KEYS[GLFW_KEY_W] == InputState::pressed) {
-                movement_input.Y += 1;
-            } 
-
-            if (KEYS[GLFW_KEY_S] == InputState::pressed) {
-                movement_input.Y += -1;
-            }
-
-            if (KEYS[GLFW_KEY_A] == InputState::pressed) {
-                movement_input.X += -1;
-            } 
-
-            if (KEYS[GLFW_KEY_D] == InputState::pressed) {
-                movement_input.X += 1;
-            }
-
-            if (movement_input != v2{0, 0}) {
-                movement_input = norm(movement_input);
-                entity->velocity = movement_input * PLAYER_SPEED;
-            } else {
-                entity->velocity = v2{0, 0};
-            }
-        }
-
-        draw_rectangle(&state.renderer, entity->position, entity->size, entity->color);
-        draw_light(&state.renderer, {entity->position.X, entity->position.Y});
+        draw_texture(&state.renderer, entity->texture, entity->position, entity->size, entity->rotation, entity->color);
     }
 
     for (int i = 0; i < state.entities.len; i++) {
@@ -289,8 +263,6 @@ void update_and_draw(f32 delta_time) {
             printf("entity deleted\n");
         }
     }
-
-    draw_text(&state.renderer, "Hello sailor", {}, 20, WHITE);
 }
 
 void physics(f32 delta_time) {
@@ -306,12 +278,213 @@ void spawn_entity(Entity entity) {
     append(&state.entities, entity);
 }
 
-void spawn_player() {
-    spawn_entity(Entity {
-        .flags = EF_PLAYER,
-        .size = {50, 50},
-        .color = RED,
-    });
+void create_scene() {
+    if (true) { // forest background
+        f32 ratio = texture_aspect_ratio(&state.renderer, TH_BACKGROUND_LAYER_1);
+        f32 height = 900;
+        f32 width = height * ratio;
+        f32 y = 0;
+
+        spawn_entity(Entity{
+            .position = {0, y},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_BACKGROUND_LAYER_1,
+        });
+    }
+
+    if (true) { // forest foreground
+        f32 ratio = texture_aspect_ratio(&state.renderer, TH_BACKGROUND_LAYER_3);
+        f32 height = 900;
+        f32 width = height * ratio;
+        f32 y = 0;
+
+       spawn_entity(Entity{
+            .position = {-width, y},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_BACKGROUND_LAYER_3,
+        });
+
+        spawn_entity(Entity{
+            .position = {0, y},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_BACKGROUND_LAYER_3,
+        });
+
+        spawn_entity(Entity{
+            .position = {width, y},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_BACKGROUND_LAYER_3,
+        });
+    }
+
+    { // fences post
+        f32 ratio = texture_aspect_ratio(&state.renderer, TH_FENCE);
+        f32 height = 75;
+        f32 width = height * ratio;
+        f32 x = 170;
+        f32 y = -200;
+
+        spawn_entity(Entity{
+            .position = {x - width, y},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_FENCE,
+        });
+
+        spawn_entity(Entity{
+            .position = {x, y},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_FENCE,
+        });
+
+        spawn_entity(Entity{
+            .position = {x + width, y},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_FENCE,
+        });
+
+        spawn_entity(Entity{
+            .position = {x + width + width, y},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_FENCE,
+        });
+    }
+
+    { // shop
+        f32 ratio = texture_aspect_ratio(&state.renderer, TH_SHOP);
+        f32 height = 325;
+        f32 width = height * ratio;
+
+        spawn_entity(Entity{
+            .position = {-400, -100},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_SHOP,
+        });
+    } 
+    
+    { // lamp post
+        f32 ratio = texture_aspect_ratio(&state.renderer, TH_LAMP);
+        f32 height = 150;
+        f32 width = height * ratio;
+
+        spawn_entity(Entity{
+            .position = {35, -160},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_LAMP,
+        });
+
+        spawn_entity(Entity{
+            .position = {325, -160},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_LAMP,
+        });
+
+        spawn_entity(Entity{
+            .position = {615, -160},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_LAMP,
+        });
+    }
+
+    if (true) { // top floor layer
+        f32 ratio = texture_aspect_ratio(&state.renderer, TH_FLOOR);
+        f32 height = 300;
+        f32 width = height * ratio;
+        f32 y = -325;
+
+        spawn_entity(Entity{
+            .position = {-width, y},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_FLOOR,
+        });
+
+        spawn_entity(Entity{
+            .position = {0, y},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_FLOOR,
+        });
+
+
+        spawn_entity(Entity{
+            .position = {width, y},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_FLOOR,
+        });
+    }
+
+    if (true) { // middle floor layer
+        f32 ratio = texture_aspect_ratio(&state.renderer, TH_FLOOR);
+        f32 height = 375;
+        f32 width = height * ratio;
+        f32 y = -425;
+        f32 x = -250;
+
+        spawn_entity(Entity{
+            .position = {x - width, y},
+            .size = {x + width, height},
+            .color = WHITE,
+            .texture = TH_FLOOR,
+        });
+
+        spawn_entity(Entity{
+            .position = {x, y},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_FLOOR,
+        });
+
+
+        spawn_entity(Entity{
+            .position = {x + width, y},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_FLOOR,
+        });
+    }
+
+    { // bottom floor layer
+        f32 ratio = texture_aspect_ratio(&state.renderer, TH_FLOOR);
+        f32 height = 450;
+        f32 width = height * ratio;
+        f32 y = -525;
+        f32 x = 250;
+
+        spawn_entity(Entity{
+            .position = {x - width, y},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_FLOOR,
+        });
+
+        spawn_entity(Entity{
+            .position = {x, y},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_FLOOR,
+        });
+
+
+        spawn_entity(Entity{
+            .position = {x + width, y},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_FLOOR,
+        });
+    } 
 }
 
 CollisionIterator new_collision_iterator(Entity *entity) {
