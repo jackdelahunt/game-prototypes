@@ -1,4 +1,3 @@
-#include "libs/imgui/imgui.h"
 #include "libs/libs.h"
 #include "engine.cpp"
 
@@ -9,6 +8,12 @@
 
 // Total: 10:15
 // Started: 18:45
+//
+// TODO:
+// - leaf particals
+// - maybe animated textures
+// - forground blurring
+// - paralax when moving
 
 #define MAX_ENTITIES 2000
 
@@ -452,17 +457,17 @@ void create_scene() {
 
         spawn_entity(Entity{
             .flags = EF_LIGHT,
-            .position = {20, -140},
+            .position = {20, -160},
         });
 
         spawn_entity(Entity{
             .flags = EF_LIGHT,
-            .position = {310, -140},
+            .position = {310, -160},
         });
 
         spawn_entity(Entity{
             .flags = EF_LIGHT,
-            .position = {600, -140},
+            .position = {600, -160},
         });
     }
 
