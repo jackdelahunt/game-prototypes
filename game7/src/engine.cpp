@@ -322,8 +322,10 @@ struct Renderer {
     u32 vertex_array_id;
     u32 vertex_buffer_id;
     u32 index_buffer_id;
+
     u32 shader_program_id;
     u32 light_shader_program_id;
+    u32 blur_shader_program_id;
 
     u32 atlas_texture_id;
     u32 font_texture_id;
@@ -424,15 +426,21 @@ bool init_renderer(Renderer *renderer, Window *window) {
             return false;
         }
 
-        Slice<u8> fragment_shader_source = read_file("./resources/shaders/fragment.shader");
+        Slice<u8> fragment_shader_source = read_file("./resources/shaders/default_fragment.shader");
         if (fragment_shader_source.len == 0) {
-            printf("failed to load fragment shader");
+            printf("failed to load default fragment shader");
             return false;
         }
 
-        Slice<u8> light_fragment_shader_source = read_file("./resources/shaders/light.shader");
+        Slice<u8> light_fragment_shader_source = read_file("./resources/shaders/lighting_fragment.shader");
         if (light_fragment_shader_source.len == 0) {
             printf("failed to load light shader");
+            return false;
+        }
+
+        Slice<u8> blur_fragment_shader_source = read_file("./resources/shaders/blur_fragment.shader");
+        if (blur_fragment_shader_source.len == 0) {
+            printf("failed to load blur shader");
             return false;
         }
 
@@ -469,6 +477,18 @@ bool init_renderer(Renderer *renderer, Window *window) {
         if (compile_status == 0) {
             glGetShaderInfoLog(light_fragment_shader, buffer_size, nullptr, &error_buffer[0]);
             printf("failed to compile light shader: %s", error_buffer);
+            return false;
+        }
+
+        u32 blur_fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+
+        glShaderSource(blur_fragment_shader, 1, (char**) &blur_fragment_shader_source.ptr, NULL);
+        glCompileShader(blur_fragment_shader);
+
+        glGetShaderiv(blur_fragment_shader, GL_COMPILE_STATUS, &compile_status);
+        if (compile_status == 0) {
+            glGetShaderInfoLog(blur_fragment_shader, buffer_size, nullptr, &error_buffer[0]);
+            printf("failed to compile blur shader: %s", error_buffer);
             return false;
         }
 
@@ -511,8 +531,29 @@ bool init_renderer(Renderer *renderer, Window *window) {
             glUniform1i(glGetUniformLocation(light_shader_program, "scene_texture"), 0);
         }
 
+        { // blur shader program
+            u32 blur_shader_program = glCreateProgram();
+            glAttachShader(blur_shader_program, vertex_shader);
+            glAttachShader(blur_shader_program, blur_fragment_shader);
+            glLinkProgram(blur_shader_program);
+    
+            glGetProgramiv(blur_shader_program, GL_LINK_STATUS, &link_status);
+            if (link_status == 0) {
+                glGetProgramInfoLog(blur_shader_program, buffer_size, nullptr, &error_buffer[0]);
+                printf("failed to link blur shader program: %s", error_buffer);
+                return false;
+            }
+    
+            renderer->blur_shader_program_id = blur_shader_program;
+    
+            glUseProgram(blur_shader_program);
+            glUniform1i(glGetUniformLocation(blur_shader_program, "scene_texture"), 0);
+        }
+
         glDeleteShader(vertex_shader);
         glDeleteShader(fragment_shader);
+        glDeleteShader(light_fragment_shader);
+        glDeleteShader(blur_fragment_shader);
     }
 
     { // vertex array

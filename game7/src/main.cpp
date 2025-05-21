@@ -1,4 +1,3 @@
-#include "libs/imgui/imgui.h"
 #include "libs/libs.h"
 #include "engine.cpp"
 
@@ -7,7 +6,7 @@
 #include <time.h>
 #include <stdlib.h>
 
-// Total: 11
+// Total: 12
 // Started: 23:30
 //
 // TODO:
@@ -74,7 +73,7 @@ int main() {
             .far_plane = 100.0f,
         },
         .renderer = {
-            .global_light = {0.25, 0.25, 0.6, 1},
+            .global_light = {0.25, 0.25, 0.5, 1},
             .light_colour = {1, 0.8, 0.6, 1},
         },
     };
@@ -82,7 +81,7 @@ int main() {
     { // init engine stuff
         bool ok = false;
 
-        ok = init_window(&state.window, 1080, 720, "game7");
+        ok = init_window(&state.window, 1920, 1080, "game7");
         if (!ok) {
             printf("failed to init window\n");
             return 1;
@@ -142,21 +141,28 @@ int main() {
  
     }
 
-    FrameBuffer frame_buffer {
+    FrameBuffer unlit_frame_buffer {
         .width = (u32) state.window.width,
         .height = (u32) state.window.height
     };
 
-    bool ok = init_frame_buffer(&frame_buffer);
+    bool ok = init_frame_buffer(&unlit_frame_buffer);
     if (!ok) {
-        printf("failed to init frame buffer\n");
+        printf("failed to init unlit frame buffer\n");
         return 1;
     }
 
-    // render scene to texture
-    // render texture on a quad to default frame buffer
-    //      - send 1 quad to gpu that covers entire screen
-    //      - send rendered texture to shader as uniform
+    FrameBuffer lighting_frame_buffer {
+        .width = (u32) state.window.width,
+        .height = (u32) state.window.height
+    };
+
+    ok = init_frame_buffer(&lighting_frame_buffer);
+    if (!ok) {
+        printf("failed to init lighting frame buffer\n");
+        return 1;
+    }
+
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
         f64 current_time    = state.time;
         f64 new_time        = glfwGetTime();
@@ -169,8 +175,8 @@ int main() {
             glfwSetWindowShouldClose(state.window.glfw_window, GLFW_TRUE);
         }
 
-        { // scene rendered to frame buffer
-            glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer.id);
+        { // first render pass - unlit scene
+            glBindFramebuffer(GL_FRAMEBUFFER, unlit_frame_buffer.id);
             new_frame(&state.renderer, &state.window, state.camera);
     
             update_and_draw(delta_time);
@@ -180,7 +186,9 @@ int main() {
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
         }
 
-        { // scene is sent to default frame buffer as textured quad
+        { // second render pass - lighting 
+            glBindFramebuffer(GL_FRAMEBUFFER, lighting_frame_buffer.id);
+
             new_frame(&state.renderer, &state.window, state.camera);
 
             v2 uvs[4] = {
@@ -207,7 +215,7 @@ int main() {
    
             // set the scene texture
             glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, frame_buffer.colour_attachment);
+            glBindTexture(GL_TEXTURE_2D, unlit_frame_buffer.colour_attachment);
 
             // set all uniforms used in the lights shader, using sprintf to get
             // the location of each value in the lights array that is why it looks
@@ -249,6 +257,40 @@ int main() {
             glDrawElements(GL_TRIANGLES, 6 * state.renderer.quads.len, GL_UNSIGNED_INT, 0);
 
             reset(&state.renderer.lights);
+
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
+
+        { // third render pass- blur
+            new_frame(&state.renderer, &state.window, state.camera);
+
+            v2 uvs[4] = {
+                {0, 1},
+                {1, 1},
+                {1, 0},
+                {0, 0},
+            };
+
+            Quad *quad = push_quad(&state.renderer, {}, {50, 50}, 0, WHITE, uvs, 2);
+            f32 z = 0;
+            quad->vertices[0].position = {-1,  1, z};
+            quad->vertices[1].position = { 1,  1, z};
+            quad->vertices[2].position = { 1, -1, z};
+            quad->vertices[3].position = {-1, -1, z};
+
+            glViewport(0, 0, state.window.width, state.window.height);
+    
+            glBindBuffer(GL_ARRAY_BUFFER, state.renderer.vertex_buffer_id);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * state.renderer.quads.len, state.renderer.quads.data);
+            glBindVertexArray(state.renderer.vertex_array_id);
+    
+            glUseProgram(state.renderer.blur_shader_program_id);
+   
+            // set the scene texture
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, lighting_frame_buffer.colour_attachment);
+
+            glDrawElements(GL_TRIANGLES, 6 * state.renderer.quads.len, GL_UNSIGNED_INT, 0);
         }
 
         { // imgui render 
@@ -268,8 +310,9 @@ int main() {
             }
 
             if(ImGui::CollapsingHeader("Render passes")) {
-                ImGui::Image(frame_buffer.colour_attachment, ImVec2(360, 240), ImVec2(0, 1), ImVec2(1, 0));
-                ImGui::Image(frame_buffer.depth_attachment, ImVec2(360, 240), ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Image(unlit_frame_buffer.depth_attachment, ImVec2(360, 240), ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Image(unlit_frame_buffer.colour_attachment, ImVec2(360, 240), ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Image(lighting_frame_buffer.colour_attachment, ImVec2(360, 240), ImVec2(0, 1), ImVec2(1, 0));
             }
 
             if(ImGui::CollapsingHeader("Entities")) {
