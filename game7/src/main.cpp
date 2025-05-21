@@ -19,21 +19,27 @@
 struct Entity {
     // meta
     u64 flags;
+    f64 time_created;
 
     // entity
     v3 position;
     v2 size;
     f32 rotation;
     v2 velocity;
-    v4 color;
 
     // rendering
+    v4 color;
     TextureHandle texture;
+
+    // particles
+    f32 particle_decay_rate;
+    f32 particle_rotation_rate;
 };
 
 enum EntityFlags {
-    EF_LIGHT    = 1 << 0,
-    EF_DELETE   = 1 << 1,
+    EF_LIGHT            = 1 << 0,
+    EF_PARTICLE         = 1 << 1,
+    EF_DELETE           = 1 << 2,
 };
 
 struct State {
@@ -373,12 +379,73 @@ void input() {
 }
 
 void update_and_draw(f32 delta_time) {
+    { // spawn particles
+        const f32 particle_x_variance               = 700;
+        const f32 particle_default_rotation         = 10;
+        const f32 particle_rotation_variance        = 30;
+        const f32 particle_default_size             = 16;
+        const f32 particle_size_variance            = 8;
+        const v3 particle_default_velocity          = {20, -80};
+        const v3 particle_velocity_variance         = {10, 25};
+        const v3 particle_emitter_centre            = {-200, 500};
+        const f32 particle_spawn_cooldown_amount    = 0.5;
+
+        static f32 particle_spawn_timer = 0;
+
+        particle_spawn_timer -= delta_time;
+        if (particle_spawn_timer <= 0) {
+            particle_spawn_timer = particle_spawn_cooldown_amount;
+
+            f32 size = particle_default_size + (rand_f32_negative() * particle_size_variance);
+
+            // z is based on size, so smaller == further away
+            f32 particle_z = 0;
+            if(size <= 10) {
+                particle_z = 70; 
+            } else if(size <= 16) {
+                particle_z = 58; 
+            }  else {
+                particle_z = 25;
+            }
+
+            TextureHandle texture = TH_LEAF;
+            if (rand_f32() < 0.15) {
+                texture = TH_LEAF_2;
+            }
+
+            spawn_entity(Entity{
+                .flags = EF_PARTICLE,
+                .position = v3{
+                    rand_f32_negative() * particle_x_variance, 
+                    0, 
+                    particle_z
+                } + particle_emitter_centre,
+                .size = {size, size},
+                .velocity = {
+                    particle_default_velocity.X + (rand_f32_negative() * particle_velocity_variance.X),
+                    particle_default_velocity.Y + (rand_f32_negative() * particle_velocity_variance.Y),
+                },
+                .color = WHITE,
+                .texture = texture,
+                .particle_rotation_rate = particle_default_rotation + (rand_f32_negative() * particle_rotation_variance),
+            });
+        }
+    }
+
     for (int i = 0; i < state.entities.len; i++) {
         Entity* entity = &state.entities[i];
 
+        if (entity->flags & EF_PARTICLE) {
+            entity->rotation += entity->particle_rotation_rate * delta_time;
+
+            if(state.time - entity->time_created > 20) {
+                entity->flags |= EF_DELETE;
+            }
+        }
+
         if (entity->flags & EF_LIGHT) {
             draw_light(&state.renderer, entity->position);
-        } else {
+        }  else {
             draw_texture(&state.renderer, entity->texture, entity->position, entity->size, entity->rotation, entity->color);
         }
     }
@@ -390,7 +457,7 @@ void update_and_draw(f32 delta_time) {
             swap_remove(&state.entities, i);
             i--;
 
-            printf("entity deleted\n");
+            printf("entity deleted, entity count: %llu\n", state.entities.len);
         }
     }
 }
@@ -405,6 +472,8 @@ void physics(f32 delta_time) {
 }
 
 void spawn_entity(Entity entity) {
+    entity.time_created = state.time;
+
     append(&state.entities, entity);
 }
 
@@ -417,8 +486,8 @@ void create_scene() {
 
     f32 floor_top_z = 40;
     f32 floor_middle_z = 20;
-    f32 floor_bottom_z = 1;
-
+    f32 floor_bottom_z = 10;
+    
     { // forest background
         f32 ratio = texture_aspect_ratio(&state.renderer, TH_BACKGROUND_LAYER_1);
         f32 height = 900;
@@ -650,7 +719,7 @@ void create_scene() {
             .color = WHITE,
             .texture = TH_FLOOR,
         });
-    } 
+    }
 }
 
 CollisionIterator new_collision_iterator(Entity *entity) {

@@ -281,6 +281,8 @@ enum TextureHandle {
     TH_BACKGROUND_LAYER_2,
     TH_BACKGROUND_LAYER_3,
     TH_FLOOR,
+    TH_LEAF,
+    TH_LEAF_2,
     TH_COUNT__
 };
 
@@ -1084,6 +1086,10 @@ const char *texture_path(TextureHandle handle) {
             return "resources/textures/background/background_layer_3_big.png";
         case TH_FLOOR: 
             return "resources/textures/background/floor.png";
+        case TH_LEAF: 
+            return "resources/textures/particles/leaf.png";
+        case TH_LEAF_2: 
+            return "resources/textures/particles/leaf_2.png";
         case TH_COUNT__: 
             assert(0);
     }
