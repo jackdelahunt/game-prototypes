@@ -6,11 +6,10 @@
 #include <time.h>
 #include <stdlib.h>
 
-// Total: 12
-// Started: 13:30
+// Total: 12:30
+// Started: 16:30
 //
 // TODO:
-// - forground blurring
 // - leaf particals
 // - maybe animated textures
 // - paralax when moving

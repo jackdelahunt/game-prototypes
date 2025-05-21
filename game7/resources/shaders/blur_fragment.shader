@@ -27,7 +27,17 @@ vec4 box_blur() {
     return vec4(box_blur_colour, 1);
 }
 
-vec4 vingette() {
+vec4 vignette(vec4 start_colour) {
+    float cutoff = 0.7;
+    vec2 ndc_uv = (uv * 2) - 1; // [-1..1]
+
+    float distance = length(ndc_uv - vec2(0));
+    if (distance > cutoff) {
+        float edge_distance = 1 - (distance - cutoff);
+        return vec4(edge_distance, edge_distance, edge_distance, 1) * start_colour;
+    }
+
+    return start_colour;
 }
 
 void main()
@@ -35,10 +45,11 @@ void main()
     float blur_depth_cutoff = 0.2;
     vec4 depth_value = texture(depth_texture, uv);
 
-    if (depth_value.r >= blur_depth_cutoff) {
+    if (depth_value.r < blur_depth_cutoff) {
+        frag_colour = box_blur();
+    } else {
         frag_colour = texture(scene_texture, uv);
-        return;
     }
 
-    frag_colour = box_blur();
+    frag_colour = vignette(frag_colour);
 }
