@@ -420,25 +420,25 @@ bool init_renderer(Renderer *renderer, Window *window) {
         i32 link_status = 0;
         char error_buffer[buffer_size];
     
-        Slice<u8> vertex_shader_source = read_file("./resources/shaders/vertex.shader");
+        Slice<u8> vertex_shader_source = read_file("./resources/shaders/default.vert");
         if (vertex_shader_source.len == 0) {
             printf("failed to load vertex shader");
             return false;
         }
 
-        Slice<u8> fragment_shader_source = read_file("./resources/shaders/default_fragment.shader");
+        Slice<u8> fragment_shader_source = read_file("./resources/shaders/default.frag");
         if (fragment_shader_source.len == 0) {
             printf("failed to load default fragment shader");
             return false;
         }
 
-        Slice<u8> light_fragment_shader_source = read_file("./resources/shaders/lighting_fragment.shader");
+        Slice<u8> light_fragment_shader_source = read_file("./resources/shaders/lighting.frag");
         if (light_fragment_shader_source.len == 0) {
             printf("failed to load light shader");
             return false;
         }
 
-        Slice<u8> blur_fragment_shader_source = read_file("./resources/shaders/blur_fragment.shader");
+        Slice<u8> blur_fragment_shader_source = read_file("./resources/shaders/blur.frag");
         if (blur_fragment_shader_source.len == 0) {
             printf("failed to load blur shader");
             return false;
@@ -548,6 +548,7 @@ bool init_renderer(Renderer *renderer, Window *window) {
     
             glUseProgram(blur_shader_program);
             glUniform1i(glGetUniformLocation(blur_shader_program, "scene_texture"), 0);
+            glUniform1i(glGetUniformLocation(blur_shader_program, "depth_texture"), 1);
         }
 
         glDeleteShader(vertex_shader);

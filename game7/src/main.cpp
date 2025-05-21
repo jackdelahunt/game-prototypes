@@ -7,7 +7,7 @@
 #include <stdlib.h>
 
 // Total: 12
-// Started: 23:30
+// Started: 13:30
 //
 // TODO:
 // - forground blurring
@@ -73,7 +73,7 @@ int main() {
             .far_plane = 100.0f,
         },
         .renderer = {
-            .global_light = {0.25, 0.25, 0.5, 1},
+            .global_light = {0.4, 0.4, 0.6, 1},
             .light_colour = {1, 0.8, 0.6, 1},
         },
     };
@@ -286,9 +286,11 @@ int main() {
     
             glUseProgram(state.renderer.blur_shader_program_id);
    
-            // set the scene texture
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, lighting_frame_buffer.colour_attachment);
+
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, unlit_frame_buffer.depth_attachment);
 
             glDrawElements(GL_TRIANGLES, 6 * state.renderer.quads.len, GL_UNSIGNED_INT, 0);
         }

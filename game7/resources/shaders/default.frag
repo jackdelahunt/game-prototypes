@@ -28,14 +28,20 @@ void main()
 
     // texture
     if (draw_type == 2) {
-        frag_colour = texture(atlas_texture, uv) * colour;
+        vec4 final_colour = texture(atlas_texture, uv) * colour;
+
+        // remove if 0 alpha so the empty pixels in the texture
+        // dont add redundent info to the depth buffer and cover
+        // things they shouldn't
+        if(final_colour.a == 0) {
+            discard;
+        }
+
+        frag_colour = final_colour;
     }
 
     // font
     if (draw_type == 3) {
         frag_colour = texture(font_texture, uv).r * colour;
     }
-
-    // visualise the depth buffer
-    // frag_colour = vec4(vec3(gl_FragCoord.z), 1.0);
 } 
