@@ -197,6 +197,8 @@ bool init_window(Window *window, i32 width, i32 height, string title) {
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 
+    glfwSetWindowAttrib(window->glfw_window, GLFW_RESIZABLE, 0);
+
     glfwSetWindowUserPointer(window->glfw_window, window);
 
     glfwSwapInterval(1);
@@ -273,7 +275,6 @@ struct Camera {
 
 enum TextureHandle {
     TH_FENCE,
-    TH_LAMP,
     TH_ROCK_1,
     TH_ROCK_2,
     TH_SHOP,
@@ -283,6 +284,16 @@ enum TextureHandle {
     TH_FLOOR,
     TH_LEAF,
     TH_LEAF_2,
+    TH_TWINKLE,
+    TH_LAMP_1,
+    TH_LAMP_2,
+    TH_LAMP_3,
+    TH_SHOP_1,
+    TH_SHOP_2,
+    TH_SHOP_3,
+    TH_SHOP_4,
+    TH_SHOP_5,
+    TH_SHOP_6,
     TH_COUNT__
 };
 
@@ -635,6 +646,8 @@ bool load_textures(Renderer *renderer) {
             return false;
         }
 
+        printf("Loaded texture with path \"%s\" [%dx%d] %d bytes\n", path, width, height, width * height * channels);
+
         renderer->textures[i] = {
             .handle = handle,
             .width = width,
@@ -643,8 +656,8 @@ bool load_textures(Renderer *renderer) {
         };
     }
 
-    const i64 ATLAS_WIDTH     = 640;
-    const i64 ATLAS_HEIGHT    = 480;
+    const i64 ATLAS_WIDTH     = 800;
+    const i64 ATLAS_HEIGHT    = 600;
     const i64 BYTES_PER_PIXEL = 4;
     const i64 CHANNELS        = 4;
     const i64 ATLAS_BYTE_SIZE = ATLAS_WIDTH * ATLAS_HEIGHT * BYTES_PER_PIXEL;
@@ -1070,8 +1083,6 @@ const char *texture_path(TextureHandle handle) {
     switch (handle) {
         case TH_FENCE: 
             return "resources/textures/decorations/fence_1.png";
-        case TH_LAMP: 
-            return "resources/textures/decorations/lamp.png";
         case TH_ROCK_1: 
             return "resources/textures/decorations/rock_1.png";
         case TH_ROCK_2: 
@@ -1090,6 +1101,26 @@ const char *texture_path(TextureHandle handle) {
             return "resources/textures/particles/leaf.png";
         case TH_LEAF_2: 
             return "resources/textures/particles/leaf_2.png";
+        case TH_TWINKLE: 
+            return "resources/textures/particles/twinkle.png";
+        case TH_LAMP_1: 
+            return "resources/textures/decorations/lamp/lamp1.png";
+        case TH_LAMP_2: 
+            return "resources/textures/decorations/lamp/lamp2.png";
+        case TH_LAMP_3: 
+            return "resources/textures/decorations/lamp/lamp3.png";
+        case TH_SHOP_1: 
+            return "resources/textures/decorations/shop/shop1.png";
+        case TH_SHOP_2: 
+            return "resources/textures/decorations/shop/shop2.png";
+        case TH_SHOP_3: 
+            return "resources/textures/decorations/shop/shop3.png";
+        case TH_SHOP_4: 
+            return "resources/textures/decorations/shop/shop4.png";
+        case TH_SHOP_5: 
+            return "resources/textures/decorations/shop/shop5.png";
+        case TH_SHOP_6: 
+            return "resources/textures/decorations/shop/shop6.png";
         case TH_COUNT__: 
             assert(0);
     }
@@ -1110,7 +1141,7 @@ void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, 
 //////////////////////////////// @sound ////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 enum SoundHandle {
-    SH_DASH,
+    SH_AMBIENT_FOREST,
     SH_COUNT__
 };
 
@@ -1148,6 +1179,8 @@ bool load_sounds(SoundEngine *sound_engine) {
             printf("failed to load sound: %s\n", path.c());
             return false;
         }
+
+        printf("Loaded sound with path \"%s\"\n", path.c());
     }
 
     return true; 
@@ -1160,8 +1193,8 @@ void play_sound(SoundEngine *sound_engine, SoundHandle handle) {
 
 string sound_path(SoundHandle handle) {
     switch (handle) {
-        case SH_DASH: 
-            return "resources/sounds/dash.wav";
+        case SH_AMBIENT_FOREST: 
+            return "resources/sounds/ambient_forest.wav";
         default: 
             assert(0);
     }

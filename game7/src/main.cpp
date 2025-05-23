@@ -6,14 +6,9 @@
 #include <time.h>
 #include <stdlib.h>
 
-// Total: 12:30
-// Started: 16:30
+// Total: 17:00
+// Started: 15:30
 //
-// TODO:
-// - leaf particals
-// - maybe animated textures
-// - paralax when moving
-
 #define MAX_ENTITIES 2000
 
 struct Entity {
@@ -34,12 +29,19 @@ struct Entity {
     // particles
     f32 particle_decay_rate;
     f32 particle_rotation_rate;
+
+    // animated
+    f32 animation_cycle_amount;
+    f32 animation_cycle;
 };
 
 enum EntityFlags {
     EF_LIGHT            = 1 << 0,
     EF_PARTICLE         = 1 << 1,
-    EF_DELETE           = 1 << 2,
+    EF_ANIMATED_TEXTURE = 1 << 2,
+    EF_LAMP_POST        = 1 << 3,
+    EF_SHOP             = 1 << 4,
+    EF_DELETE           = 1 << 16,
 };
 
 struct State {
@@ -125,26 +127,9 @@ int main() {
         srand(time(NULL));
     } 
 
-    if (true) {
-        create_scene();
-    } else {
-        state.renderer.global_light = WHITE;
+    create_scene();
 
-        spawn_entity(Entity {
-            .position = {0, 0, 0},
-            .size = {300, 300},
-            .color = WHITE,
-            .texture = TH_SHOP
-        });
-
-        spawn_entity(Entity {
-            .position = {200,  0},
-            .size = {300, 300},
-            .color = RED,
-            .texture = TH_SHOP
-        });
- 
-    }
+    play_sound(&state.sound_engine, SH_AMBIENT_FOREST);
 
     FrameBuffer unlit_frame_buffer {
         .width = (u32) state.window.width,
@@ -300,6 +285,7 @@ int main() {
             glDrawElements(GL_TRIANGLES, 6 * state.renderer.quads.len, GL_UNSIGNED_INT, 0);
         }
 
+#ifdef DEBUG
         { // imgui render 
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplGlfw_NewFrame();
@@ -348,6 +334,7 @@ int main() {
             ImGui::RenderPlatformWindowsDefault();
             glfwMakeContextCurrent(current);
         }
+#endif
 
         swap_buffers(&state.window);
     }
@@ -409,11 +396,14 @@ void update_and_draw(f32 delta_time) {
             }
 
             TextureHandle texture = TH_LEAF;
-            if (rand_f32() < 0.15) {
+            if (rand_f32() < 0.2) {
+                texture = TH_TWINKLE;
+                size = 4;
+            } else if (rand_f32() < 0.4) {
                 texture = TH_LEAF_2;
             }
 
-            spawn_entity(Entity{
+            spawn_entity(Entity {
                 .flags = EF_PARTICLE,
                 .position = v3{
                     rand_f32_negative() * particle_x_variance, 
@@ -443,6 +433,48 @@ void update_and_draw(f32 delta_time) {
             }
         }
 
+
+        if (entity->flags & EF_ANIMATED_TEXTURE) {
+            entity->animation_cycle += delta_time;
+            if (entity->animation_cycle > entity->animation_cycle_amount) {
+                entity->animation_cycle = 0;
+            }
+        }
+
+        if (entity->flags & EF_LAMP_POST) {
+            f32 animation_amount = entity->animation_cycle / entity->animation_cycle_amount;
+
+            if (animation_amount < 0.5) {
+                entity->texture = TH_LAMP_1;
+            }
+            else if (animation_amount < 1) {
+                entity->texture = TH_LAMP_2;
+            }
+        }
+
+       if (entity->flags & EF_SHOP) {
+            f32 animation_amount = entity->animation_cycle / entity->animation_cycle_amount;
+
+            if (animation_amount < 0.16) {
+                entity->texture = TH_SHOP_1;
+            }
+            else if (animation_amount < 0.32) {
+                entity->texture = TH_SHOP_2;
+            }
+            else if (animation_amount < 0.5) {
+                entity->texture = TH_SHOP_3;
+            }
+            else if (animation_amount < 0.66) {
+                entity->texture = TH_SHOP_4;
+            }
+            else if (animation_amount < 0.82) {
+                entity->texture = TH_SHOP_5;
+            }
+            else if (animation_amount < 1) {
+                entity->texture = TH_SHOP_6;
+            }
+        }
+
         if (entity->flags & EF_LIGHT) {
             draw_light(&state.renderer, entity->position);
         }  else {
@@ -456,8 +488,6 @@ void update_and_draw(f32 delta_time) {
         if (entity->flags & EF_DELETE) {
             swap_remove(&state.entities, i);
             i--;
-
-            printf("entity deleted, entity count: %llu\n", state.entities.len);
         }
     }
 }
@@ -567,15 +597,18 @@ void create_scene() {
     }
 
     { // shop
-        f32 ratio = texture_aspect_ratio(&state.renderer, TH_SHOP);
-        f32 height = 325;
+        f32 ratio = texture_aspect_ratio(&state.renderer, TH_SHOP_1);
+        f32 height = 420;
         f32 width = height * ratio;
 
         spawn_entity(Entity{
-            .position = {-400, -100, decorations_foreground_z},
+            .flags = EF_ANIMATED_TEXTURE | EF_SHOP,
+            .position = {-400, -40, decorations_foreground_z},
             .size = {width, height},
             .color = WHITE,
-            .texture = TH_SHOP,
+            .texture = TH_SHOP_1,
+            .animation_cycle_amount = 1.5,
+            .animation_cycle = 0,
         });
 
         spawn_entity(Entity{
@@ -591,29 +624,39 @@ void create_scene() {
     } 
     
     { // lamp posts
-        f32 ratio = texture_aspect_ratio(&state.renderer, TH_LAMP);
+        f32 ratio = texture_aspect_ratio(&state.renderer, TH_LAMP_1);
         f32 height = 150;
         f32 width = height * ratio;
+        f32 animation_length = 1.5;
 
         spawn_entity(Entity{
+            .flags = EF_ANIMATED_TEXTURE | EF_LAMP_POST,
             .position = {35, -160, decorations_foreground_z},
             .size = {width, height},
             .color = WHITE,
-            .texture = TH_LAMP,
+            .texture = TH_LAMP_1,
+            .animation_cycle_amount = animation_length,
+            .animation_cycle = 0,
         });
 
         spawn_entity(Entity{
+            .flags = EF_ANIMATED_TEXTURE | EF_LAMP_POST,
             .position = {325, -160, decorations_foreground_z},
             .size = {width, height},
             .color = WHITE,
-            .texture = TH_LAMP,
+            .texture = TH_LAMP_1,
+            .animation_cycle_amount = animation_length,
+            .animation_cycle = 0.5,
         });
 
         spawn_entity(Entity{
+            .flags = EF_ANIMATED_TEXTURE | EF_LAMP_POST,
             .position = {615, -160, decorations_foreground_z},
             .size = {width, height},
             .color = WHITE,
-            .texture = TH_LAMP,
+            .texture = TH_LAMP_1,
+            .animation_cycle_amount = animation_length,
+            .animation_cycle = 0.8,
         });
 
         spawn_entity(Entity{
