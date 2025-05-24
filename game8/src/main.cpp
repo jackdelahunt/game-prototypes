@@ -11,6 +11,15 @@
 //
 #define MAX_ENTITIES 2000
 
+enum TextureHandle {
+    TH_NONE,
+    TH_FACE,
+    TH_FACES,
+    TH_COUNT_,
+};
+
+Texture *textures[TH_COUNT_];
+
 struct Entity {
     // meta
     u64 flags;
@@ -24,7 +33,7 @@ struct Entity {
 
     // rendering
     v4 color;
-    Texture *texture;
+    TextureHandle texture;
 
     // animated
     f32 animation_cycle;
@@ -63,8 +72,7 @@ void create_scene();
 CollisionIterator new_collision_iterator(Entity *entity);
 Entity *next(CollisionIterator *iterator);
 
-Texture *face_texture = NULL;
-Texture *faces_texture = NULL;
+Texture *get_texture(TextureHandle handle);
 
 int main() {
     state = {
@@ -96,15 +104,21 @@ int main() {
         }
 
         { // load and build all textures
-            face_texture = load_texture(&state.renderer, "resources/textures/face.png");
-            if (face_texture == NULL) {
+            Texture *texture = NULL;
+
+            texture = load_texture(&state.renderer, "resources/textures/face.png");
+            if (texture == NULL) {
                 return 1;
             }
 
-            faces_texture = load_animated_texture(&state.renderer, "resources/textures/faces.png", 7, 1);
-            if (face_texture == NULL) {
+            textures[TH_FACE] = texture;
+
+            texture = load_animated_texture(&state.renderer, "resources/textures/faces.png", 7, 3);
+            if (texture == NULL) {
                 return 1;
             }
+
+            textures[TH_FACES] = texture;
        }
 
         ok = build_atlas(&state.renderer);
@@ -378,18 +392,20 @@ void update_and_draw(f32 delta_time) {
             draw_light(&state.renderer, entity->position);
         } 
 
-        if (entity->texture != NULL) {
-            if(entity->texture->type == TextureType::SINGLE) {
-                draw_texture(&state.renderer, entity->texture, entity->position, entity->size, entity->rotation, entity->color);
+        if (entity->texture != TH_NONE) {
+            Texture *texture = get_texture(entity->texture);
+
+            if(texture->type == TextureType::SINGLE) {
+                draw_texture(&state.renderer, texture, entity->position, entity->size, entity->rotation, entity->color);
             }
-            else if(entity->texture->type == TextureType::ANIMATED) {
+            else if(texture->type == TextureType::ANIMATED) {
                 // progress and maybe reset texture animations 
                 entity->animation_cycle += delta_time;
-                if (entity->animation_cycle > entity->texture->animation_length) {
+                if (entity->animation_cycle > texture->animation_length) {
                     entity->animation_cycle = 0;
                 }
     
-                draw_animated_texture(&state.renderer, entity->texture, entity->animation_cycle, entity->position, entity->size, entity->rotation, entity->color);
+                draw_animated_texture(&state.renderer, texture, entity->animation_cycle, entity->position, entity->size, entity->rotation, entity->color);
             }
         }
     }
@@ -422,7 +438,7 @@ void spawn_entity(Entity entity) {
 void create_scene() {
     f32 decorations_foreground_z = 50;
 
-    f32 ratio = texture_aspect_ratio(&state.renderer, face_texture);
+    f32 ratio = texture_aspect_ratio(&state.renderer, get_texture(TH_FACE));
     f32 height = 50;
     f32 width = height * ratio;
 
@@ -430,15 +446,14 @@ void create_scene() {
         .position = {0, 0, decorations_foreground_z},
         .size = {width, height},
         .color = WHITE,
-        .texture = face_texture,
+        .texture = TH_FACE,
     });
 
     spawn_entity(Entity{
         .position = {-100, 0, decorations_foreground_z},
         .size = {width, height},
         .color = WHITE,
-        .texture = faces_texture,
-        .animation_cycle = 0,
+        .texture = TH_FACES,
     });
 
 #if 0
@@ -497,4 +512,13 @@ Entity *next(CollisionIterator *iterator) {
     }
 
     return nullptr;
+}
+
+
+Texture *get_texture(TextureHandle handle) {
+    if(handle == TH_NONE) {
+        return NULL;
+    }
+
+    return textures[handle];
 }
