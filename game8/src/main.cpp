@@ -6,8 +6,8 @@
 #include <time.h>
 #include <stdlib.h>
 
-// Total: 03:15
-// Started: 22:30
+// Total: 05:15
+// Started: 23:00
 //
 #define MAX_ENTITIES 2000
 
@@ -15,6 +15,7 @@ enum TextureHandle {
     TH_NONE,
     TH_FACE,
     TH_FACES,
+    TH_BACKGROUND,
     TH_COUNT_,
 };
 
@@ -51,6 +52,7 @@ struct State {
     Renderer renderer;
     SoundEngine sound_engine;
 
+    f32 light_radius;
     f64 time;
 
     Array<Entity, MAX_ENTITIES> entities;
@@ -83,8 +85,8 @@ int main() {
             .far_plane = 100.0f,
         },
         .renderer = {
-            .global_light = {1, 1, 1, 1},
-            .light_colour = {1, 0.8, 0.6, 1},
+            .global_light = {0.2, 0.2, 0.2, 1},
+            .light_colour = {1, 1, 1, 1},
         },
     };
 
@@ -119,6 +121,13 @@ int main() {
             }
 
             textures[TH_FACES] = texture;
+
+            texture = load_texture(&state.renderer, "resources/textures/background.png");
+            if (texture == NULL) {
+                return 1;
+            }
+
+            textures[TH_BACKGROUND] = texture;
        }
 
         ok = build_atlas(&state.renderer);
@@ -161,17 +170,6 @@ int main() {
         return 1;
     }
 
-    FrameBuffer lighting_frame_buffer {
-        .width = (u32) state.window.width,
-        .height = (u32) state.window.height
-    };
-
-    ok = init_frame_buffer(&lighting_frame_buffer);
-    if (!ok) {
-        printf("failed to init lighting frame buffer\n");
-        return 1;
-    }
-
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
         f64 current_time    = state.time;
         f64 new_time        = glfwGetTime();
@@ -196,8 +194,6 @@ int main() {
         }
 
         { // second render pass - lighting 
-            glBindFramebuffer(GL_FRAMEBUFFER, lighting_frame_buffer.id);
-
             new_frame(&state.renderer, &state.window, state.camera);
 
             v2 uvs[4] = {
@@ -250,58 +246,38 @@ int main() {
                 (i32) state.renderer.lights.len
             );
 
+            glUniform1f(
+                glGetUniformLocation(state.renderer.light_shader_program_id, "aspect_ratio"),
+                (f32) state.window.width / (f32) state.window.height
+            );
+
             for(i64 i = 0; i < state.renderer.lights.len; i++) {
-                const i64 buffer_size = 32;
+                const i64 buffer_size = 64;
                 char buffer[buffer_size] = {};
 
-                sprintf(buffer, "lights[%llu].position", i);
+                { // set light position
+                    sprintf(buffer, "lights[%llu].position", i);
+                    glUniform2f(
+                        glGetUniformLocation(state.renderer.light_shader_program_id, buffer), 
+                        state.renderer.lights[i].position.X,
+                        state.renderer.lights[i].position.Y
+                    );
+                    memset(buffer, 0, buffer_size);
+                }
 
-                glUniform2f(
-                    glGetUniformLocation(state.renderer.light_shader_program_id, buffer), 
-                    state.renderer.lights[i].position.X,
-                    state.renderer.lights[i].position.Y
-                );
+                { // set light radius
+                    sprintf(buffer, "lights[%llu].radius", i);
+                    glUniform1f(
+                        glGetUniformLocation(state.renderer.light_shader_program_id, buffer), 
+                        state.renderer.lights[i].radius
+                    );
+                    memset(buffer, 0, buffer_size);
+                }
             }
     
             glDrawElements(GL_TRIANGLES, 6 * state.renderer.quads.len, GL_UNSIGNED_INT, 0);
 
             reset(&state.renderer.lights);
-
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        }
-
-        { // third render pass- blur
-            new_frame(&state.renderer, &state.window, state.camera);
-
-            v2 uvs[4] = {
-                {0, 1},
-                {1, 1},
-                {1, 0},
-                {0, 0},
-            };
-
-            Quad *quad = push_quad(&state.renderer, {}, {50, 50}, 0, WHITE, uvs, 2);
-            f32 z = 0;
-            quad->vertices[0].position = {-1,  1, z};
-            quad->vertices[1].position = { 1,  1, z};
-            quad->vertices[2].position = { 1, -1, z};
-            quad->vertices[3].position = {-1, -1, z};
-
-            glViewport(0, 0, state.window.width, state.window.height);
-    
-            glBindBuffer(GL_ARRAY_BUFFER, state.renderer.vertex_buffer_id);
-            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * state.renderer.quads.len, state.renderer.quads.data);
-            glBindVertexArray(state.renderer.vertex_array_id);
-    
-            glUseProgram(state.renderer.blur_shader_program_id);
-   
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, lighting_frame_buffer.colour_attachment);
-
-            glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, unlit_frame_buffer.depth_attachment);
-
-            glDrawElements(GL_TRIANGLES, 6 * state.renderer.quads.len, GL_UNSIGNED_INT, 0);
         }
 
 #ifdef DEBUG
@@ -311,6 +287,13 @@ int main() {
             ImGui::NewFrame(); 
 
             ImGui::Begin("Inspector");
+
+            if(ImGui::Button("Reload Shaders")) {
+                delete_shaders(&state.renderer);
+                load_shaders(&state.renderer);
+            }
+
+            ImGui::SliderFloat("Light radius", &state.light_radius, 1, 1000);
 
             if(ImGui::CollapsingHeader("Camera")) {
                 ImGui::SliderFloat("Orthographic size", &state.camera.orthographic_size, 10, 1000);
@@ -324,7 +307,6 @@ int main() {
             if(ImGui::CollapsingHeader("Render passes")) {
                 ImGui::Image(unlit_frame_buffer.depth_attachment, ImVec2(360, 240), ImVec2(0, 1), ImVec2(1, 0));
                 ImGui::Image(unlit_frame_buffer.colour_attachment, ImVec2(360, 240), ImVec2(0, 1), ImVec2(1, 0));
-                ImGui::Image(lighting_frame_buffer.colour_attachment, ImVec2(360, 240), ImVec2(0, 1), ImVec2(1, 0));
             }
 
             if(ImGui::CollapsingHeader("Entities")) {
@@ -389,7 +371,7 @@ void update_and_draw(f32 delta_time) {
         Entity* entity = &state.entities[i]; 
 
         if (entity->flags & EF_LIGHT) {
-            draw_light(&state.renderer, entity->position);
+            draw_light(&state.renderer, entity->position, state.light_radius);
         } 
 
         if (entity->texture != TH_NONE) {
@@ -436,24 +418,35 @@ void spawn_entity(Entity entity) {
 }
 
 void create_scene() {
-    f32 decorations_foreground_z = 50;
+    spawn_entity(Entity{
+        .position = {0, 0, 80},
+        .size = {1920, 1080},
+        .color = WHITE,
+        .texture = TH_BACKGROUND,
+    });
 
     f32 ratio = texture_aspect_ratio(&state.renderer, get_texture(TH_FACE));
     f32 height = 50;
     f32 width = height * ratio;
 
     spawn_entity(Entity{
-        .position = {0, 0, decorations_foreground_z},
+        .position = {0, 0, 30},
         .size = {width, height},
         .color = WHITE,
         .texture = TH_FACE,
     });
 
     spawn_entity(Entity{
-        .position = {-100, 0, decorations_foreground_z},
+        .position = {-width, height, 30},
         .size = {width, height},
         .color = WHITE,
         .texture = TH_FACES,
+    });
+
+    spawn_entity(Entity{
+        .flags = EF_LIGHT,
+        .position = {0, 0, 0},
+        .color = WHITE,
     });
 
 #if 0

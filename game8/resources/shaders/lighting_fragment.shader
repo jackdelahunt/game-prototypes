@@ -2,6 +2,7 @@
 
 struct Light {
     vec2 position;
+    float radius;
 };
 
 in vec2 uv;
@@ -10,14 +11,19 @@ out vec4 frag_colour;
 
 uniform vec4 global_light;
 uniform vec4 light_colour;
+
 uniform sampler2D scene_texture;
+
 uniform int light_count;
 uniform Light lights[20];
 
+uniform float aspect_ratio; // width / height
+
 void main()
 {
-    float cutoff = 0.4;
-    vec2 ndc_uv = (uv * 2) - 1;
+    // convert uv coord to ndc and then scale based on aspect ratio
+    vec2 uv_to_ndc = (uv * 2) - 1;
+    vec2 scaled_ndc = vec2(uv_to_ndc.x * aspect_ratio, uv_to_ndc.y);
 
     vec4 base_colour = texture(scene_texture, uv);
     float total_light_mix_amount = 0;
@@ -25,9 +31,9 @@ void main()
     for(int i = 0; i < light_count; i++) {
         Light light = lights[i];
 
-        float distance = length(ndc_uv - light.position);
-        if (distance < cutoff) {
-            total_light_mix_amount += 1 - (distance / cutoff);
+        float distance = length(scaled_ndc - light.position);
+        if (distance < light.radius) {
+            total_light_mix_amount += 1 - (distance / light.radius);
         }
     }
 

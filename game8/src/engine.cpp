@@ -288,6 +288,7 @@ struct Quad {
 
 struct Light {
     v2 position;
+    f32 radius;
 };
 
 struct Camera {
@@ -352,7 +353,6 @@ struct Renderer {
 
     u32 shader_program_id;
     u32 light_shader_program_id;
-    u32 blur_shader_program_id;
 
     u32 atlas_texture_id;
     u32 font_texture_id;
@@ -374,6 +374,8 @@ v4 GREEN    = {0, 1, 0, 1};
 v4 BLUE     = {0, 0, 1, 1};
 
 bool init_renderer(Renderer *renderer, Window *window);
+bool load_shaders(Renderer *renderer);
+void delete_shaders(Renderer *renderer);
 Texture *load_texture(Renderer *renderer, string path);
 Texture *load_animated_texture(Renderer *renderer, string path, i64 cell_count, f32 animation_length);
 bool build_atlas(Renderer *renderer);
@@ -381,25 +383,25 @@ u32 upload_texture_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
 u32 upload_font_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
 bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel_height);
 
-bool init_frame_buffer(FrameBuffer *frame_buffer);
-
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
 void draw_texture(Renderer *renderer, Texture *texture, v3 position, v2 size, f32 rotation, v4 color);
 void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
-void draw_light(Renderer *renderer, v3 position);
+void draw_light(Renderer *renderer, v3 position, f32 radius);
 void new_frame(Renderer *renderer, Window *window, Camera camera);
 void draw_frame(Renderer *renderer, Window *window);
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], i32 draw_type);
+
+f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
+
+bool init_frame_buffer(FrameBuffer *frame_buffer);
 
 v2 screen_position_to_world_position(v2 screen_position, Camera camera, Window *window);
 v2 screen_position_to_ndc(v2 screen_position, Window *window);
 
 m4 get_view_matrix(Camera camera);
 m4 get_projection_matrix(Camera camera, f32 aspect);
-
-f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
 
 void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, i32 length, const char *message, const void *user_param);
 
@@ -427,6 +429,12 @@ bool init_renderer(Renderer *renderer, Window *window) {
         glClearColor(f, f, f, 1.0f);
     }
 
+    bool ok = load_shaders(renderer);
+    if (!ok) {
+        printf("Error when loading and compiling shaders\n");
+        return false;
+    }
+
     { // init imgui
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
@@ -441,150 +449,7 @@ bool init_renderer(Renderer *renderer, Window *window) {
     
         ImGui_ImplGlfw_InitForOpenGL(window->glfw_window, true);
         ImGui_ImplOpenGL3_Init("#version 460");
-    }
-
-    { // load and compile shaders
-        const i64 buffer_size = 640;
-        i32 compile_status = 0;
-        i32 link_status = 0;
-        char error_buffer[buffer_size];
-    
-        Slice<u8> vertex_shader_source = read_file("./resources/shaders/default_vertex.shader");
-        if (vertex_shader_source.len == 0) {
-            printf("failed to load vertex shader");
-            return false;
-        }
-
-        Slice<u8> fragment_shader_source = read_file("./resources/shaders/default_fragment.shader");
-        if (fragment_shader_source.len == 0) {
-            printf("failed to load default fragment shader");
-            return false;
-        }
-
-        Slice<u8> light_fragment_shader_source = read_file("./resources/shaders/lighting_fragment.shader");
-        if (light_fragment_shader_source.len == 0) {
-            printf("failed to load light shader");
-            return false;
-        }
-
-        Slice<u8> blur_fragment_shader_source = read_file("./resources/shaders/blur_fragment.shader");
-        if (blur_fragment_shader_source.len == 0) {
-            printf("failed to load blur shader");
-            return false;
-        }
-
-        u32 vertex_shader = glCreateShader(GL_VERTEX_SHADER);
-
-        glShaderSource(vertex_shader, 1, (char **) &vertex_shader_source.ptr, NULL);
-        glCompileShader(vertex_shader);
-
-        glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &compile_status);
-        if (compile_status == 0) {
-            glGetShaderInfoLog(vertex_shader, buffer_size, nullptr, &error_buffer[0]);
-            printf("failed to compile vertex shader: %s", error_buffer);
-            return false;
-        }
-
-        u32 fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-
-        glShaderSource(fragment_shader, 1, (char**) &fragment_shader_source.ptr, NULL);
-        glCompileShader(fragment_shader);
-
-        glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &compile_status);
-        if (compile_status == 0) {
-            glGetShaderInfoLog(fragment_shader, buffer_size, nullptr, &error_buffer[0]);
-            printf("failed to compile fragment shader: %s", error_buffer);
-            return false;
-        }
-
-        u32 light_fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-
-        glShaderSource(light_fragment_shader, 1, (char**) &light_fragment_shader_source.ptr, NULL);
-        glCompileShader(light_fragment_shader);
-
-        glGetShaderiv(light_fragment_shader, GL_COMPILE_STATUS, &compile_status);
-        if (compile_status == 0) {
-            glGetShaderInfoLog(light_fragment_shader, buffer_size, nullptr, &error_buffer[0]);
-            printf("failed to compile light shader: %s", error_buffer);
-            return false;
-        }
-
-        u32 blur_fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-
-        glShaderSource(blur_fragment_shader, 1, (char**) &blur_fragment_shader_source.ptr, NULL);
-        glCompileShader(blur_fragment_shader);
-
-        glGetShaderiv(blur_fragment_shader, GL_COMPILE_STATUS, &compile_status);
-        if (compile_status == 0) {
-            glGetShaderInfoLog(blur_fragment_shader, buffer_size, nullptr, &error_buffer[0]);
-            printf("failed to compile blur shader: %s", error_buffer);
-            return false;
-        }
-
-        { // default shader program
-            u32 shader_program = glCreateProgram();
-            glAttachShader(shader_program, vertex_shader);
-            glAttachShader(shader_program, fragment_shader);
-            glLinkProgram(shader_program);
-    
-            glGetProgramiv(shader_program, GL_LINK_STATUS, &link_status);
-            if (link_status == 0) {
-                glGetProgramInfoLog(shader_program, buffer_size, nullptr, &error_buffer[0]);
-                printf("failed to link shader program: %s", error_buffer);
-                return false;
-            }
-    
-            renderer->shader_program_id = shader_program;
-    
-            glUseProgram(shader_program);
-            glUniform1i(glGetUniformLocation(shader_program, "atlas_texture"), 0);
-            glUniform1i(glGetUniformLocation(shader_program, "font_texture"), 1);
-        }
-
-        { // light shader program
-            u32 light_shader_program = glCreateProgram();
-            glAttachShader(light_shader_program, vertex_shader);
-            glAttachShader(light_shader_program, light_fragment_shader);
-            glLinkProgram(light_shader_program);
-    
-            glGetProgramiv(light_shader_program, GL_LINK_STATUS, &link_status);
-            if (link_status == 0) {
-                glGetProgramInfoLog(light_shader_program, buffer_size, nullptr, &error_buffer[0]);
-                printf("failed to link light shader program: %s", error_buffer);
-                return false;
-            }
-    
-            renderer->light_shader_program_id = light_shader_program;
-    
-            glUseProgram(light_shader_program);
-            glUniform1i(glGetUniformLocation(light_shader_program, "scene_texture"), 0);
-        }
-
-        { // blur shader program
-            u32 blur_shader_program = glCreateProgram();
-            glAttachShader(blur_shader_program, vertex_shader);
-            glAttachShader(blur_shader_program, blur_fragment_shader);
-            glLinkProgram(blur_shader_program);
-    
-            glGetProgramiv(blur_shader_program, GL_LINK_STATUS, &link_status);
-            if (link_status == 0) {
-                glGetProgramInfoLog(blur_shader_program, buffer_size, nullptr, &error_buffer[0]);
-                printf("failed to link blur shader program: %s", error_buffer);
-                return false;
-            }
-    
-            renderer->blur_shader_program_id = blur_shader_program;
-    
-            glUseProgram(blur_shader_program);
-            glUniform1i(glGetUniformLocation(blur_shader_program, "scene_texture"), 0);
-            glUniform1i(glGetUniformLocation(blur_shader_program, "depth_texture"), 1);
-        }
-
-        glDeleteShader(vertex_shader);
-        glDeleteShader(fragment_shader);
-        glDeleteShader(light_fragment_shader);
-        glDeleteShader(blur_fragment_shader);
-    }
+    } 
 
     { // vertex array
         u32 vertex_array;
@@ -641,6 +506,121 @@ bool init_renderer(Renderer *renderer, Window *window) {
     }
 
     return true;
+}
+
+bool load_shaders(Renderer *renderer) {
+    const i64 buffer_size = 640;
+    i32 compile_status = 0;
+    i32 link_status = 0;
+    char error_buffer[buffer_size];
+    
+    Slice<u8> vertex_shader_source = read_file("./resources/shaders/default_vertex.shader");
+    if (vertex_shader_source.len == 0) {
+        printf("failed to load vertex shader");
+        return false;
+    }
+
+    Slice<u8> fragment_shader_source = read_file("./resources/shaders/default_fragment.shader");
+    if (fragment_shader_source.len == 0) {
+        printf("failed to load default fragment shader");
+        return false;
+    }
+
+    Slice<u8> light_fragment_shader_source = read_file("./resources/shaders/lighting_fragment.shader");
+    if (light_fragment_shader_source.len == 0) {
+        printf("failed to load light shader");
+        return false;
+    }
+
+    u32 vertex_shader = glCreateShader(GL_VERTEX_SHADER);
+
+    glShaderSource(vertex_shader, 1, (char **) &vertex_shader_source.ptr, NULL);
+    glCompileShader(vertex_shader);
+
+    glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &compile_status);
+    if (compile_status == 0) {
+        glGetShaderInfoLog(vertex_shader, buffer_size, nullptr, &error_buffer[0]);
+        printf("failed to compile vertex shader: %s", error_buffer);
+        return false;
+    }
+
+    u32 fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+
+    glShaderSource(fragment_shader, 1, (char**) &fragment_shader_source.ptr, NULL);
+    glCompileShader(fragment_shader);
+
+    glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &compile_status);
+    if (compile_status == 0) {
+        glGetShaderInfoLog(fragment_shader, buffer_size, nullptr, &error_buffer[0]);
+        printf("failed to compile fragment shader: %s", error_buffer);
+        return false;
+    }
+
+    u32 light_fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+
+    glShaderSource(light_fragment_shader, 1, (char**) &light_fragment_shader_source.ptr, NULL);
+    glCompileShader(light_fragment_shader);
+
+    glGetShaderiv(light_fragment_shader, GL_COMPILE_STATUS, &compile_status);
+    if (compile_status == 0) {
+        glGetShaderInfoLog(light_fragment_shader, buffer_size, nullptr, &error_buffer[0]);
+        printf("failed to compile light shader: %s", error_buffer);
+        return false;
+    }
+
+    { // default shader program
+        u32 shader_program = glCreateProgram();
+        glAttachShader(shader_program, vertex_shader);
+        glAttachShader(shader_program, fragment_shader);
+        glLinkProgram(shader_program);
+ 
+        glGetProgramiv(shader_program, GL_LINK_STATUS, &link_status);
+        if (link_status == 0) {
+            glGetProgramInfoLog(shader_program, buffer_size, nullptr, &error_buffer[0]);
+            printf("failed to link shader program: %s", error_buffer);
+            return false;
+        }
+    
+        renderer->shader_program_id = shader_program;
+ 
+        glUseProgram(shader_program);
+        glUniform1i(glGetUniformLocation(shader_program, "atlas_texture"), 0);
+        glUniform1i(glGetUniformLocation(shader_program, "font_texture"), 1);
+
+        printf("Compiled and linked default shader program\n");
+    }
+
+    { // light shader program
+        u32 light_shader_program = glCreateProgram();
+        glAttachShader(light_shader_program, vertex_shader);
+        glAttachShader(light_shader_program, light_fragment_shader);
+        glLinkProgram(light_shader_program);
+ 
+        glGetProgramiv(light_shader_program, GL_LINK_STATUS, &link_status);
+        if (link_status == 0) {
+            glGetProgramInfoLog(light_shader_program, buffer_size, nullptr, &error_buffer[0]);
+            printf("failed to link light shader program: %s", error_buffer);
+            return false;
+        }
+ 
+        renderer->light_shader_program_id = light_shader_program;
+    
+        glUseProgram(light_shader_program);
+        glUniform1i(glGetUniformLocation(light_shader_program, "scene_texture"), 0);
+
+        printf("Compiled and linked lighting shader program\n");
+    }
+
+    glDeleteShader(vertex_shader);
+    glDeleteShader(fragment_shader);
+    glDeleteShader(light_fragment_shader);
+
+    return true;
+}
+
+void delete_shaders(Renderer *renderer) {
+    glDeleteProgram(renderer->shader_program_id);
+    glDeleteProgram(renderer->light_shader_program_id);
 }
 
 Texture *load_texture(Renderer *renderer, string path) {
@@ -904,37 +884,6 @@ bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel
     return true;
 }
 
-bool init_frame_buffer(FrameBuffer *frame_buffer) {
-    glCreateFramebuffers(1, &frame_buffer->id);
-    glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer->id);
-
-    // create texture that frame buffer will render into as the colour attachment
-    glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->colour_attachment);
-    glBindTexture(GL_TEXTURE_2D, frame_buffer->colour_attachment);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, frame_buffer->width, frame_buffer->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-    // create texture that frame buffer will use as depth buffer
-    glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->depth_attachment);
-    glBindTexture(GL_TEXTURE_2D, frame_buffer->depth_attachment);
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_DEPTH24_STENCIL8, frame_buffer->width, frame_buffer->height);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-    // assign attachments to frame buffer
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frame_buffer->colour_attachment, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, frame_buffer->depth_attachment, 0);
-
-    if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        printf("error when createing frame buffer, was not complete\n");
-        return false;
-    }
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    return true;
-}
-
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color) {
     v2 uvs[4] = {
         {0, 1},
@@ -1069,14 +1018,15 @@ void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 c
     mem_free(glyphs);
 }
 
-void draw_light(Renderer *renderer, v3 position) {
+void draw_light(Renderer *renderer, v3 position, f32 radius) {
+    // create mvp matrix to project world space input to ndc
     m4 model_matrix = HMM_M4D(1.0f);
     model_matrix = HMM_MulM4(model_matrix, HMM_Translate(v3{position.X, position.Y, 0}));
-                
     m4 mvp_matrix = HMM_MulM4(renderer->view_projection_matrix, model_matrix);
 
     Light *light = push(&renderer->lights);
     light->position = HMM_MulM4V4(mvp_matrix, {0, 0, 0, 1}).XY;
+    light->radius = length(HMM_MulM4V4(mvp_matrix, {radius, 0, 0, 1}).XY) * 2;
 }
 
 void new_frame(Renderer *renderer, Window *window, Camera camera) {
@@ -1144,6 +1094,40 @@ Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color
     return quad;
 }
 
+f32 texture_aspect_ratio(Renderer *renderer, Texture *texture) {
+    return (f32) texture->width / (f32) texture->height;
+}
+
+bool init_frame_buffer(FrameBuffer *frame_buffer) {
+    glCreateFramebuffers(1, &frame_buffer->id);
+    glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer->id);
+
+    // create texture that frame buffer will render into as the colour attachment
+    glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->colour_attachment);
+    glBindTexture(GL_TEXTURE_2D, frame_buffer->colour_attachment);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, frame_buffer->width, frame_buffer->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // create texture that frame buffer will use as depth buffer
+    glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->depth_attachment);
+    glBindTexture(GL_TEXTURE_2D, frame_buffer->depth_attachment);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_DEPTH24_STENCIL8, frame_buffer->width, frame_buffer->height);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // assign attachments to frame buffer
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frame_buffer->colour_attachment, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, frame_buffer->depth_attachment, 0);
+
+    if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        printf("error when createing frame buffer, was not complete\n");
+        return false;
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return true;
+}
 
 v2 screen_position_to_world_position(v2 screen_position, Camera camera, Window *window) {
     // TODO: finsh this when needed
@@ -1176,10 +1160,6 @@ m4 get_projection_matrix(Camera camera, f32 aspect) {
          camera.near_plane, 
          camera.far_plane 
     );
-}
-
-f32 texture_aspect_ratio(Renderer *renderer, Texture *texture) {
-    return (f32) texture->width / (f32) texture->height;
 }
 
 v4 alpha(v4 base, f32 alpha) {
