@@ -544,18 +544,13 @@ static inline float HMM_InvSqrtF(float Float)
  * Utility functions
  */
 
-COVERAGE(HMM_Lerp, 1)
-static inline float HMM_Lerp(float A, float Time, float B)
+static inline float lerp(float A, float Time, float B)
 {
-    ASSERT_COVERED(HMM_Lerp);
     return (1.0f - Time) * A + Time * B;
 }
 
-COVERAGE(HMM_Clamp, 1)
-static inline float HMM_Clamp(float Min, float Value, float Max)
+static inline float clamp(float Min, float Value, float Max)
 {
-    ASSERT_COVERED(HMM_Clamp);
-
     float Result = Value;
 
     if (Result < Min)

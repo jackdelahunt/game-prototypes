@@ -1,12 +1,14 @@
 #ifndef ENGINE_CPP
 #define ENGINE_CPP
 
+#include <cassert>
 #include <cstring>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "libs/hmm/hmm.cpp"
 #include "libs/libs.h"
 
 /////////////////////////////////////////////////////////////////////////////
@@ -50,6 +52,14 @@ struct Slice { // TODO: do safety checks in slices
         return Slice<T>(this->ptr + start, end - start);
     }
 
+    T* begin() {
+        return ptr;
+    }
+
+    T* end() {
+        return ptr + len;
+    }
+
     const char *c() {
         return (const char *) this->ptr;
     }
@@ -85,6 +95,14 @@ struct Array {
 
     T& operator[](i64 index) {
         return this->data[index];
+    }
+
+    T* begin() {
+        return data;
+    }
+
+    T* end() {
+        return data + len;
     }
 };
 
@@ -286,14 +304,21 @@ enum class TextureType {
     ANIMATED,
 };
 
+// For Texture.uv:
+// x and y of each corner of the texture in the atlas
+// uv[0] == top left point
+// uv[1] == top right point
+// uv[2] == bottom right point
+// uv[3] == bottom left point
 struct Texture {
     TextureHandle id;
     TextureType type;
-
     i64 width;
     i64 height;
     v2 uvs[4];
     u8 *data;
+
+    f32 animation_length;
     Slice<Texture> sub_textures;
 };
 
@@ -353,7 +378,7 @@ v4 BLUE     = {0, 0, 1, 1};
 
 bool init_renderer(Renderer *renderer, Window *window);
 TextureHandle load_texture(Renderer *renderer, string path);
-TextureHandle load_animated_texture(Renderer *renderer, string path, i64 cell_count);
+TextureHandle load_animated_texture(Renderer *renderer, string path, i64 cell_count, f32 animation_length);
 bool build_atlas(Renderer *renderer);
 u32 upload_texture_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
 u32 upload_font_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
@@ -364,6 +389,7 @@ bool init_frame_buffer(FrameBuffer *frame_buffer);
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
 void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size, f32 rotation, v4 color);
+void draw_animated_texture(Renderer *renderer, TextureHandle handle, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
 void draw_light(Renderer *renderer, v3 position);
 void new_frame(Renderer *renderer, Window *window, Camera camera);
@@ -651,7 +677,7 @@ i64 load_texture(Renderer *renderer, string path) {
     return id;
 }
 
-TextureHandle load_animated_texture(Renderer *renderer, string path, i64 cell_count) {
+TextureHandle load_animated_texture(Renderer *renderer, string path, i64 cell_count, f32 animation_length) {
     TextureHandle handle = load_texture(renderer, path);
     if(handle == -1) {
         return handle;
@@ -659,6 +685,7 @@ TextureHandle load_animated_texture(Renderer *renderer, string path, i64 cell_co
 
     Texture *texture = &renderer->textures.data[handle];
     texture->type = TextureType::ANIMATED;
+    texture->animation_length = animation_length;
     texture->sub_textures = mem_alloc<Texture>(cell_count);
 
     if(texture->width % cell_count != 0) {
@@ -748,6 +775,48 @@ bool build_atlas(Renderer *renderer) {
     }
 
     renderer->atlas_texture_id = texture_id;
+
+    // now that all of the texture uvs are set and the data is copied to the atlas
+    // it is time to figure out the uvs for all sub textures in animated textures
+    // it is enforced that the sub textures equally divide the texture's width as
+    // it is a horizontal strip. The height of each sub texture is then assumed to be
+    // the same as the parent texture
+    for(Texture &texture : renderer->textures) {
+        if(texture.type == TextureType::SINGLE) {
+            continue;
+        }
+
+        i64 sub_texture_count = texture.sub_textures.len;
+        f32 starting_x = texture.uvs[0].X;
+        f32 ending_x = texture.uvs[1].X;
+        f32 step_x = (ending_x - starting_x) / (f32) sub_texture_count;
+        f32 top_y = texture.uvs[0].Y;
+        f32 bottom_y = texture.uvs[2].Y;
+
+        for(i64 i = 0; i < sub_texture_count; i++) {
+            Texture *sub_texture = &texture.sub_textures[i];
+
+            sub_texture->uvs[0] = v2{
+                starting_x + (step_x * (f32) i),
+                top_y
+            };
+
+            sub_texture->uvs[1] = v2{
+                starting_x + (step_x * (f32) (i + 1)), // +1 because this is the right side
+                top_y
+            };
+
+            sub_texture->uvs[2] = v2{
+                starting_x + (step_x * (f32) (i + 1)), // +1 because this is the right side
+                bottom_y
+            };
+
+            sub_texture->uvs[3] = v2{
+                starting_x + (step_x * (f32) i),                 
+                bottom_y
+            };
+        }
+    }
 
 #ifdef DEBUG
     stbi_flip_vertically_on_write(true);
@@ -897,7 +966,27 @@ void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color) {
 
 void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size, f32 rotation, v4 color) {
     Texture *texture = &renderer->textures[handle];
+    assert(texture->type == TextureType::SINGLE);
+
     push_quad(renderer, position, size, rotation, color, texture->uvs, 2);
+}
+
+void draw_animated_texture(Renderer *renderer, TextureHandle handle, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color) {
+    Texture *texture = &renderer->textures[handle];
+    assert(texture->type == TextureType::ANIMATED);
+
+    f32 animation_progress = time_in_animation / texture->animation_length;
+    animation_progress = clamp(0, animation_progress, 1);
+
+    i64 sub_texture_count = texture->sub_textures.len;
+    i64 sub_texture_index = (i64)(animation_progress * sub_texture_count);
+    
+    if (sub_texture_index >= sub_texture_count) {
+        sub_texture_index = sub_texture_count - 1;
+    }
+
+    Texture *sub_texture = &texture->sub_textures[sub_texture_index];
+    push_quad(renderer, position, size, rotation, color, sub_texture->uvs, 2);
 }
 
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color) {

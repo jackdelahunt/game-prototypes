@@ -6,8 +6,8 @@
 #include <time.h>
 #include <stdlib.h>
 
-// Total: 01:30
-// Started: 01:00
+// Total: 03:15
+// Started: 17:00
 //
 #define MAX_ENTITIES 2000
 
@@ -72,7 +72,7 @@ int main() {
     state = {
         .camera = {
             .position = {0, 0, -1},
-            .orthographic_size = 450,
+            .orthographic_size = 200,
             .near_plane = 0.1f,
             .far_plane = 100.0f,
         },
@@ -103,7 +103,7 @@ int main() {
                 return 1;
             }
 
-            faces_texture = load_animated_texture(&state.renderer, "resources/textures/faces.png", 7);
+            faces_texture = load_animated_texture(&state.renderer, "resources/textures/faces.png", 7, 1);
             if (face_texture == -1) {
                 return 1;
             }
@@ -385,7 +385,11 @@ void update_and_draw(f32 delta_time) {
 
         if (entity->flags & EF_LIGHT) {
             draw_light(&state.renderer, entity->position);
-        }  else {
+        } 
+        else if (entity->flags & EF_ANIMATED_TEXTURE) {
+            draw_animated_texture(&state.renderer, entity->texture, entity->animation_cycle, entity->position, entity->size, entity->rotation, entity->color);
+        }
+        else {
             draw_texture(&state.renderer, entity->texture, entity->position, entity->size, entity->rotation, entity->color);
         }
     }
@@ -430,10 +434,13 @@ void create_scene() {
     });
 
     spawn_entity(Entity{
+        .flags = EF_ANIMATED_TEXTURE,
         .position = {-100, 0, decorations_foreground_z},
         .size = {width, height},
         .color = WHITE,
         .texture = faces_texture,
+        .animation_cycle_amount = 1,
+        .animation_cycle = 0,
     });
 
 #if 0
