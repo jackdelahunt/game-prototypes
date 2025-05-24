@@ -6,8 +6,8 @@
 #include <time.h>
 #include <stdlib.h>
 
-// Total: 00:00
-// Started: 23:00
+// Total: 01:30
+// Started: 01:00
 //
 #define MAX_ENTITIES 2000
 
@@ -66,6 +66,7 @@ CollisionIterator new_collision_iterator(Entity *entity);
 Entity *next(CollisionIterator *iterator);
 
 TextureHandle face_texture = 0;
+TextureHandle faces_texture = 0;
 
 int main() {
     state = {
@@ -99,7 +100,11 @@ int main() {
         { // load and build all textures
             face_texture = load_texture(&state.renderer, "resources/textures/face.png");
             if (face_texture == -1) {
-                printf("failed to load fence texture\n");
+                return 1;
+            }
+
+            faces_texture = load_animated_texture(&state.renderer, "resources/textures/faces.png", 7);
+            if (face_texture == -1) {
                 return 1;
             }
        }
@@ -422,6 +427,13 @@ void create_scene() {
         .size = {width, height},
         .color = WHITE,
         .texture = face_texture,
+    });
+
+    spawn_entity(Entity{
+        .position = {-100, 0, decorations_foreground_z},
+        .size = {width, height},
+        .color = WHITE,
+        .texture = faces_texture,
     });
 
 #if 0

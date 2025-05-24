@@ -1,6 +1,7 @@
 #ifndef ENGINE_CPP
 #define ENGINE_CPP
 
+#include <cstring>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -63,7 +64,11 @@ Slice<T> make_slice(T *data, i64 len) {
 
 template <typename T>
 Slice<T> mem_alloc(i64 len) {
-    T *ptr = (T *) malloc(len * sizeof(T));
+    i64 bytes = len * sizeof(T);
+
+    T *ptr = (T *) malloc(bytes);
+    memset(ptr, 0, bytes);
+
     return make_slice(ptr, len);
 }
 
@@ -276,12 +281,20 @@ struct Camera {
 
 typedef i64 TextureHandle;
 
+enum class TextureType {
+    SINGLE,
+    ANIMATED,
+};
+
 struct Texture {
     TextureHandle id;
+    TextureType type;
+
     i64 width;
     i64 height;
     v2 uvs[4];
     u8 *data;
+    Slice<Texture> sub_textures;
 };
 
 struct Atlas {
@@ -340,6 +353,7 @@ v4 BLUE     = {0, 0, 1, 1};
 
 bool init_renderer(Renderer *renderer, Window *window);
 TextureHandle load_texture(Renderer *renderer, string path);
+TextureHandle load_animated_texture(Renderer *renderer, string path, i64 cell_count);
 bool build_atlas(Renderer *renderer);
 u32 upload_texture_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
 u32 upload_font_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
@@ -626,6 +640,7 @@ i64 load_texture(Renderer *renderer, string path) {
 
     Texture texture = Texture {
         .id = id,
+        .type = TextureType::SINGLE,
         .width = width,
         .height = height,
         .data = image_data,
@@ -636,6 +651,33 @@ i64 load_texture(Renderer *renderer, string path) {
     return id;
 }
 
+TextureHandle load_animated_texture(Renderer *renderer, string path, i64 cell_count) {
+    TextureHandle handle = load_texture(renderer, path);
+    if(handle == -1) {
+        return handle;
+    }
+
+    Texture *texture = &renderer->textures.data[handle];
+    texture->type = TextureType::ANIMATED;
+    texture->sub_textures = mem_alloc<Texture>(cell_count);
+
+    if(texture->width % cell_count != 0) {
+        printf("Animated texture \"%s\" has a width of %llu, a cell count of %llu does not fit", path.c(), texture->width, cell_count);
+        return -1;
+    }
+
+    i64 sub_texture_width = texture->width / cell_count;
+    i64 sub_texture_height = texture->height;
+
+    for(i64 i = 0; i < texture->sub_textures.len; i++) {
+        Texture *sub_texture    = &texture->sub_textures[i];
+        sub_texture->type       = TextureType::SINGLE;
+        sub_texture->width      = sub_texture_width;
+        sub_texture->height     = sub_texture_height;
+    }
+
+    return handle;
+}
 
 bool build_atlas(Renderer *renderer) {
     const i64 ATLAS_WIDTH     = 800;
@@ -1073,7 +1115,7 @@ void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, 
 //////////////////////////////// @sound ////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 enum SoundHandle {
-    SH_AMBIENT_FOREST,
+    SH_DASH,
     SH_COUNT__
 };
 
@@ -1125,8 +1167,8 @@ void play_sound(SoundEngine *sound_engine, SoundHandle handle) {
 
 string sound_path(SoundHandle handle) {
     switch (handle) {
-        case SH_AMBIENT_FOREST: 
-            return "resources/sounds/ambient_forest.wav";
+        case SH_DASH: 
+            return "resources/sounds/dash.wav";
         default: 
             assert(0);
     }
