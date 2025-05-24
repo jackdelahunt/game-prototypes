@@ -297,8 +297,6 @@ struct Camera {
     f32 far_plane;
 };
 
-typedef i64 TextureHandle;
-
 enum class TextureType {
     SINGLE,
     ANIMATED,
@@ -311,7 +309,6 @@ enum class TextureType {
 // uv[2] == bottom right point
 // uv[3] == bottom left point
 struct Texture {
-    TextureHandle id;
     TextureType type;
     i64 width;
     i64 height;
@@ -377,8 +374,8 @@ v4 GREEN    = {0, 1, 0, 1};
 v4 BLUE     = {0, 0, 1, 1};
 
 bool init_renderer(Renderer *renderer, Window *window);
-TextureHandle load_texture(Renderer *renderer, string path);
-TextureHandle load_animated_texture(Renderer *renderer, string path, i64 cell_count, f32 animation_length);
+Texture *load_texture(Renderer *renderer, string path);
+Texture *load_animated_texture(Renderer *renderer, string path, i64 cell_count, f32 animation_length);
 bool build_atlas(Renderer *renderer);
 u32 upload_texture_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
 u32 upload_font_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
@@ -388,8 +385,8 @@ bool init_frame_buffer(FrameBuffer *frame_buffer);
 
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
-void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size, f32 rotation, v4 color);
-void draw_animated_texture(Renderer *renderer, TextureHandle handle, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
+void draw_texture(Renderer *renderer, Texture *texture, v3 position, v2 size, f32 rotation, v4 color);
+void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
 void draw_light(Renderer *renderer, v3 position);
 void new_frame(Renderer *renderer, Window *window, Camera camera);
@@ -402,7 +399,7 @@ v2 screen_position_to_ndc(v2 screen_position, Window *window);
 m4 get_view_matrix(Camera camera);
 m4 get_projection_matrix(Camera camera, f32 aspect);
 
-f32 texture_aspect_ratio(Renderer *renderer, TextureHandle handle);
+f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
 
 void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, i32 length, const char *message, const void *user_param);
 
@@ -646,7 +643,7 @@ bool init_renderer(Renderer *renderer, Window *window) {
     return true;
 }
 
-i64 load_texture(Renderer *renderer, string path) {
+Texture *load_texture(Renderer *renderer, string path) {
     i32 width       = 0;
     i32 height      = 0;
     i32 channels    = 0;
@@ -657,40 +654,38 @@ i64 load_texture(Renderer *renderer, string path) {
     image_data = stbi_load(path.c(), &width, &height, &channels, 4);
     if (!image_data) {
         printf("Failed to load texture: %s\n", path.c());
-        return -1;
+        return NULL;
     }
 
     printf("Loaded texture with path \"%s\" [%dx%d] %d bytes\n", path.c(), width, height, width * height * channels);
 
     i64 id = renderer->textures.len;
 
-    Texture texture = Texture {
-        .id = id,
+    Texture *texture = push(&renderer->textures);
+
+    *texture = Texture {
         .type = TextureType::SINGLE,
         .width = width,
         .height = height,
         .data = image_data,
     };
 
-    append(&renderer->textures, texture);
-
-    return id;
+    return texture;
 }
 
-TextureHandle load_animated_texture(Renderer *renderer, string path, i64 cell_count, f32 animation_length) {
-    TextureHandle handle = load_texture(renderer, path);
-    if(handle == -1) {
-        return handle;
+Texture *load_animated_texture(Renderer *renderer, string path, i64 cell_count, f32 animation_length) {
+    Texture *texture = load_texture(renderer, path);
+    if(texture == NULL) {
+        return NULL;
     }
 
-    Texture *texture = &renderer->textures.data[handle];
     texture->type = TextureType::ANIMATED;
     texture->animation_length = animation_length;
     texture->sub_textures = mem_alloc<Texture>(cell_count);
 
     if(texture->width % cell_count != 0) {
         printf("Animated texture \"%s\" has a width of %llu, a cell count of %llu does not fit", path.c(), texture->width, cell_count);
-        return -1;
+        return NULL;
     }
 
     i64 sub_texture_width = texture->width / cell_count;
@@ -703,7 +698,7 @@ TextureHandle load_animated_texture(Renderer *renderer, string path, i64 cell_co
         sub_texture->height     = sub_texture_height;
     }
 
-    return handle;
+    return texture;
 }
 
 bool build_atlas(Renderer *renderer) {
@@ -964,17 +959,13 @@ void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color) {
     push_quad(renderer, position, size, 0, color, uvs, 1);
 }
 
-void draw_texture(Renderer *renderer, TextureHandle handle, v3 position, v2 size, f32 rotation, v4 color) {
-    Texture *texture = &renderer->textures[handle];
+void draw_texture(Renderer *renderer, Texture *texture, v3 position, v2 size, f32 rotation, v4 color) {
     assert(texture->type == TextureType::SINGLE);
 
     push_quad(renderer, position, size, rotation, color, texture->uvs, 2);
 }
 
-void draw_animated_texture(Renderer *renderer, TextureHandle handle, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color) {
-    Texture *texture = &renderer->textures[handle];
-    assert(texture->type == TextureType::ANIMATED);
-
+void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color) {
     f32 animation_progress = time_in_animation / texture->animation_length;
     animation_progress = clamp(0, animation_progress, 1);
 
@@ -1153,6 +1144,7 @@ Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color
     return quad;
 }
 
+
 v2 screen_position_to_world_position(v2 screen_position, Camera camera, Window *window) {
     // TODO: finsh this when needed
     v2 ndc = screen_position_to_ndc(screen_position, window);
@@ -1186,8 +1178,7 @@ m4 get_projection_matrix(Camera camera, f32 aspect) {
     );
 }
 
-f32 texture_aspect_ratio(Renderer *renderer, TextureHandle handle) {
-    Texture *texture = &renderer->textures[(i64) handle];
+f32 texture_aspect_ratio(Renderer *renderer, Texture *texture) {
     return (f32) texture->width / (f32) texture->height;
 }
 

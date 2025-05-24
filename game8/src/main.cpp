@@ -7,7 +7,7 @@
 #include <stdlib.h>
 
 // Total: 03:15
-// Started: 17:00
+// Started: 22:30
 //
 #define MAX_ENTITIES 2000
 
@@ -24,17 +24,15 @@ struct Entity {
 
     // rendering
     v4 color;
-    i64 texture;
+    Texture *texture;
 
     // animated
-    f32 animation_cycle_amount;
     f32 animation_cycle;
 };
 
 enum EntityFlags {
     EF_LIGHT            = 1 << 0,
-    EF_ANIMATED_TEXTURE = 1 << 1,
-    EF_SHOP             = 1 << 2,
+    EF_SHOP             = 1 << 1,
     EF_DELETE           = 1 << 16,
 };
 
@@ -65,8 +63,8 @@ void create_scene();
 CollisionIterator new_collision_iterator(Entity *entity);
 Entity *next(CollisionIterator *iterator);
 
-TextureHandle face_texture = 0;
-TextureHandle faces_texture = 0;
+Texture *face_texture = NULL;
+Texture *faces_texture = NULL;
 
 int main() {
     state = {
@@ -99,12 +97,12 @@ int main() {
 
         { // load and build all textures
             face_texture = load_texture(&state.renderer, "resources/textures/face.png");
-            if (face_texture == -1) {
+            if (face_texture == NULL) {
                 return 1;
             }
 
             faces_texture = load_animated_texture(&state.renderer, "resources/textures/faces.png", 7, 1);
-            if (face_texture == -1) {
+            if (face_texture == NULL) {
                 return 1;
             }
        }
@@ -374,23 +372,25 @@ void input() {
 
 void update_and_draw(f32 delta_time) {
     for (int i = 0; i < state.entities.len; i++) {
-        Entity* entity = &state.entities[i];
-
-        if (entity->flags & EF_ANIMATED_TEXTURE) {
-            entity->animation_cycle += delta_time;
-            if (entity->animation_cycle > entity->animation_cycle_amount) {
-                entity->animation_cycle = 0;
-            }
-        }
+        Entity* entity = &state.entities[i]; 
 
         if (entity->flags & EF_LIGHT) {
             draw_light(&state.renderer, entity->position);
         } 
-        else if (entity->flags & EF_ANIMATED_TEXTURE) {
-            draw_animated_texture(&state.renderer, entity->texture, entity->animation_cycle, entity->position, entity->size, entity->rotation, entity->color);
-        }
-        else {
-            draw_texture(&state.renderer, entity->texture, entity->position, entity->size, entity->rotation, entity->color);
+
+        if (entity->texture != NULL) {
+            if(entity->texture->type == TextureType::SINGLE) {
+                draw_texture(&state.renderer, entity->texture, entity->position, entity->size, entity->rotation, entity->color);
+            }
+            else if(entity->texture->type == TextureType::ANIMATED) {
+                // progress and maybe reset texture animations 
+                entity->animation_cycle += delta_time;
+                if (entity->animation_cycle > entity->texture->animation_length) {
+                    entity->animation_cycle = 0;
+                }
+    
+                draw_animated_texture(&state.renderer, entity->texture, entity->animation_cycle, entity->position, entity->size, entity->rotation, entity->color);
+            }
         }
     }
 
@@ -434,12 +434,10 @@ void create_scene() {
     });
 
     spawn_entity(Entity{
-        .flags = EF_ANIMATED_TEXTURE,
         .position = {-100, 0, decorations_foreground_z},
         .size = {width, height},
         .color = WHITE,
         .texture = faces_texture,
-        .animation_cycle_amount = 1,
         .animation_cycle = 0,
     });
 
