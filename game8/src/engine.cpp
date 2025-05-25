@@ -289,6 +289,8 @@ struct Quad {
 struct Light {
     v2 position;
     f32 radius;
+    v4 colour;
+    f32 intensity;
 };
 
 struct Camera {
@@ -388,7 +390,7 @@ void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
 void draw_texture(Renderer *renderer, Texture *texture, v3 position, v2 size, f32 rotation, v4 color);
 void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
-void draw_light(Renderer *renderer, v3 position, f32 radius);
+void draw_light(Renderer *renderer, v3 position, f32 radius, v4 colour, f32 intensity);
 void new_frame(Renderer *renderer, Window *window, Camera camera);
 void draw_frame(Renderer *renderer, Window *window);
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], i32 draw_type);
@@ -1018,15 +1020,20 @@ void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 c
     mem_free(glyphs);
 }
 
-void draw_light(Renderer *renderer, v3 position, f32 radius) {
+void draw_light(Renderer *renderer, v3 position, f32 radius, v4 colour, f32 intensity) {
     // create mvp matrix to project world space input to ndc
     m4 model_matrix = HMM_M4D(1.0f);
     model_matrix = HMM_MulM4(model_matrix, HMM_Translate(v3{position.X, position.Y, 0}));
     m4 mvp_matrix = HMM_MulM4(renderer->view_projection_matrix, model_matrix);
 
     Light *light = push(&renderer->lights);
-    light->position = HMM_MulM4V4(mvp_matrix, {0, 0, 0, 1}).XY;
-    light->radius = length(HMM_MulM4V4(mvp_matrix, {radius, 0, 0, 1}).XY) * 2;
+
+    *light = Light {
+        .position = HMM_MulM4V4(mvp_matrix, {0, 0, 0, 1}).XY,
+        .radius = length(HMM_MulM4V4(mvp_matrix, {radius, 0, 0, 1}).XY) * 2,
+        .colour = colour,
+        .intensity = intensity
+    };
 }
 
 void new_frame(Renderer *renderer, Window *window, Camera camera) {

@@ -3,6 +3,8 @@
 struct Light {
     vec2 position;
     float radius;
+    vec4 colour;
+    float intensity;
 };
 
 in vec2 uv;
@@ -26,17 +28,24 @@ void main()
     vec2 scaled_ndc = vec2(uv_to_ndc.x * aspect_ratio, uv_to_ndc.y);
 
     vec4 base_colour = texture(scene_texture, uv);
-    float total_light_mix_amount = 0;
+    vec4 accumulated_light = vec4(0);
 
     for(int i = 0; i < light_count; i++) {
         Light light = lights[i];
 
         float distance = length(scaled_ndc - light.position);
         if (distance < light.radius) {
-            total_light_mix_amount += 1 - (distance / light.radius);
+            float influence = 1.0 - (distance / light.radius);
+            accumulated_light += light.colour * influence * light.intensity;
         }
     }
 
-    frag_colour = base_colour * mix(global_light, light_colour, total_light_mix_amount);
+    vec4 total_light = global_light + accumulated_light;
+
+    total_light = clamp(total_light, 0.0, 1.0); // Prevent oversaturation
+    
+    frag_colour = base_colour * total_light;
+
+    // frag_colour = base_colour * mix(global_light, light_colour, total_light_mix_amount);
     // frag_colour = vec4(total_light_mix_amount);
 }

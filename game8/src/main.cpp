@@ -36,13 +36,18 @@ struct Entity {
     v4 color;
     TextureHandle texture;
 
-    // animated
+    // animated texture
     f32 animation_cycle;
+
+    // light
+    v4 light_colour;
+    f32 light_intensity;
+    f32 light_radius;
 };
 
 enum EntityFlags {
     EF_LIGHT            = 1 << 0,
-    EF_SHOP             = 1 << 1,
+    EF_PLAYER           = 1 << 1,
     EF_DELETE           = 1 << 16,
 };
 
@@ -273,6 +278,28 @@ int main() {
                     );
                     memset(buffer, 0, buffer_size);
                 }
+
+                { // set light colour
+                    sprintf(buffer, "lights[%llu].colour", i);
+                    glUniform4f(
+                        glGetUniformLocation(state.renderer.light_shader_program_id, buffer), 
+                        state.renderer.lights[i].colour.R,
+                        state.renderer.lights[i].colour.G,
+                        state.renderer.lights[i].colour.B,
+                        state.renderer.lights[i].colour.A
+                    );
+                    memset(buffer, 0, buffer_size);
+                }
+
+                { // set light intensity
+                    sprintf(buffer, "lights[%llu].intensity", i);
+                    glUniform1f(
+                        glGetUniformLocation(state.renderer.light_shader_program_id, buffer), 
+                        state.renderer.lights[i].intensity
+                    );
+                    memset(buffer, 0, buffer_size);
+                }
+     
             }
     
             glDrawElements(GL_TRIANGLES, 6 * state.renderer.quads.len, GL_UNSIGNED_INT, 0);
@@ -321,6 +348,11 @@ int main() {
                         ImGui::SliderFloat3("position", &entity->position[0], -500, 500);
                         ImGui::InputFloat2("size", &entity->size[0]);
                         ImGui::InputFloat4("colour", &entity->color[0]);
+
+
+                        ImGui::InputFloat4("light_colour", &entity->light_colour[0]);
+                        ImGui::InputFloat("light_radius", &entity->light_radius);
+                        ImGui::InputFloat("light_intensity", &entity->light_intensity);
                     }
                     ImGui::PopID();
                 }
@@ -370,8 +402,32 @@ void update_and_draw(f32 delta_time) {
     for (int i = 0; i < state.entities.len; i++) {
         Entity* entity = &state.entities[i]; 
 
+
+        if (entity->flags & EF_PLAYER) {
+            v2 input = {};
+
+            if (KEYS[GLFW_KEY_W] == InputState::pressed) {
+                input.Y += 1;
+            }
+
+            if (KEYS[GLFW_KEY_S] == InputState::pressed) {
+                input.Y -= 1;
+            }
+
+            if (KEYS[GLFW_KEY_A] == InputState::pressed) {
+                input.X -= 1;
+            }
+
+            if (KEYS[GLFW_KEY_D] == InputState::pressed) {
+                input.X += 1;
+            }
+
+            entity->velocity = input * 50;
+        }
+
         if (entity->flags & EF_LIGHT) {
-            draw_light(&state.renderer, entity->position, state.light_radius);
+            draw_light(&state.renderer, entity->position, entity->light_radius, entity->light_colour, entity->light_intensity);
+            draw_circle(&state.renderer, entity->position, 10, BLUE);
         } 
 
         if (entity->texture != TH_NONE) {
@@ -444,9 +500,11 @@ void create_scene() {
     });
 
     spawn_entity(Entity{
-        .flags = EF_LIGHT,
-        .position = {0, 0, 0},
-        .color = WHITE,
+        .flags = EF_LIGHT | EF_PLAYER,
+        .position = {100, 0, 0},
+        .light_colour = RED,
+        .light_intensity = 0.5,
+        .light_radius = 50
     });
 
 #if 0
