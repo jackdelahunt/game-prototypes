@@ -219,30 +219,30 @@ typedef union v2
 {
     struct
     {
-        float X, Y;
+        float x, y;
     };
 
     struct
     {
-        float U, V;
+        float u, v;
     };
 
     struct
     {
-        float Left, Right;
+        float left, right;
     };
 
     struct
     {
-        float Width, Height;
+        float width, height;
     };
 
-    float Elements[2];
+    float elements[2];
 
 #ifdef __cplusplus
     inline float &operator[](const int &Index)
     {
-        return Elements[Index];
+        return elements[Index];
     }
 #endif
 } v2;
@@ -251,49 +251,49 @@ typedef union v3
 {
     struct
     {
-        float X, Y, Z;
+        float x, y, z;
     };
 
     struct
     {
-        float U, V, W;
+        float u, v, w;
     };
 
     struct
     {
-        float R, G, B;
+        float r, g, b;
     };
 
     struct
     {
-        v2 XY;
+        v2 xy;
         float _Ignored0;
     };
 
     struct
     {
         float _Ignored1;
-        v2 YZ;
+        v2 yz;
     };
 
     struct
     {
-        v2 UV;
+        v2 uv;
         float _Ignored2;
     };
 
     struct
     {
         float _Ignored3;
-        v2 VW;
+        v2 vw;
     };
 
-    float Elements[3];
+    float elements[3];
 
 #ifdef __cplusplus
     inline float &operator[](const int &Index)
     {
-        return Elements[Index];
+        return elements[Index];
     }
 #endif
 } v3;
@@ -304,32 +304,32 @@ typedef union v4
     {
         union
         {
-            v3 XYZ;
+            v3 xyz;
             struct
             {
-                float X, Y, Z;
+                float x, y, z;
             };
         };
 
-        float W;
+        float w;
     };
     struct
     {
         union
         {
-            v3 RGB;
+            v3 rgb;
             struct
             {
-                float R, G, B;
+                float r, g, b;
             };
         };
 
-        float A;
+        float a;
     };
 
     struct
     {
-        v2 XY;
+        v2 xy;
         float _Ignored0;
         float _Ignored1;
     };
@@ -337,7 +337,7 @@ typedef union v4
     struct
     {
         float _Ignored2;
-        v2 YZ;
+        v2 yz;
         float _Ignored3;
     };
 
@@ -345,10 +345,10 @@ typedef union v4
     {
         float _Ignored4;
         float _Ignored5;
-        v2 ZW;
+        v2 zw;
     };
 
-    float Elements[4];
+    float elements[4];
 
 #ifdef HANDMADE_MATH__USE_SSE
     __m128 SSE;
@@ -357,7 +357,7 @@ typedef union v4
 #ifdef __cplusplus
     inline float &operator[](const int &Index)
     {
-        return Elements[Index];
+        return elements[Index];
     }
 #endif
 } v4;
@@ -472,8 +472,8 @@ v2 vector_from_angle(float angle) {
     float angle_radians = angle * HMM_DegToRad;
 
     return v2 {
-        .X = HMM_SINF(angle_radians),
-        .Y = HMM_COSF(angle_radians),
+        .x = HMM_SINF(angle_radians),
+        .y = HMM_COSF(angle_radians),
     };
 }
 
@@ -577,8 +577,8 @@ static inline v2 HMM_V2(float X, float Y)
     ASSERT_COVERED(HMM_V2);
 
     v2 Result;
-    Result.X = X;
-    Result.Y = Y;
+    Result.x = X;
+    Result.y = Y;
 
     return Result;
 }
@@ -589,9 +589,9 @@ static inline v3 HMM_V3(float X, float Y, float Z)
     ASSERT_COVERED(HMM_V3);
 
     v3 Result;
-    Result.X = X;
-    Result.Y = Y;
-    Result.Z = Z;
+    Result.x = X;
+    Result.y = Y;
+    Result.z = Z;
 
     return Result;
 }
@@ -623,7 +623,7 @@ static inline v4 HMM_V4V(v3 vtor, float W)
     v4 Result;
 
 #ifdef HANDMADE_MATH__USE_SSE
-    Result.SSE = _mm_setr_ps(vtor.X, vtor.Y, vtor.Z, W);
+    Result.SSE = _mm_setr_ps(vtor.x, vtor.y, vtor.z, W);
 #else
     Result.XYZ = vtor;
     Result.W = W;
@@ -643,8 +643,8 @@ static inline v2 HMM_AddV2(v2 Left, v2 Right)
     ASSERT_COVERED(HMM_AddV2);
 
     v2 Result;
-    Result.X = Left.X + Right.X;
-    Result.Y = Left.Y + Right.Y;
+    Result.x = Left.x + Right.x;
+    Result.y = Left.y + Right.y;
 
     return Result;
 }
@@ -655,9 +655,9 @@ static inline v3 HMM_AddV3(v3 Left, v3 Right)
     ASSERT_COVERED(HMM_AddV3);
 
     v3 Result;
-    Result.X = Left.X + Right.X;
-    Result.Y = Left.Y + Right.Y;
-    Result.Z = Left.Z + Right.Z;
+    Result.x = Left.x + Right.x;
+    Result.y = Left.y + Right.y;
+    Result.z = Left.z + Right.z;
 
     return Result;
 }
@@ -687,8 +687,8 @@ static inline v2 HMM_SubV2(v2 Left, v2 Right)
     ASSERT_COVERED(HMM_SubV2);
 
     v2 Result;
-    Result.X = Left.X - Right.X;
-    Result.Y = Left.Y - Right.Y;
+    Result.x = Left.x - Right.x;
+    Result.y = Left.y - Right.y;
 
     return Result;
 }
@@ -699,9 +699,9 @@ static inline v3 HMM_SubV3(v3 Left, v3 Right)
     ASSERT_COVERED(HMM_SubV3);
 
     v3 Result;
-    Result.X = Left.X - Right.X;
-    Result.Y = Left.Y - Right.Y;
-    Result.Z = Left.Z - Right.Z;
+    Result.x = Left.x - Right.x;
+    Result.y = Left.y - Right.y;
+    Result.z = Left.z - Right.z;
 
     return Result;
 }
@@ -731,8 +731,8 @@ static inline v2 HMM_MulV2(v2 Left, v2 Right)
     ASSERT_COVERED(HMM_MulV2);
 
     v2 Result;
-    Result.X = Left.X * Right.X;
-    Result.Y = Left.Y * Right.Y;
+    Result.x = Left.x * Right.x;
+    Result.y = Left.y * Right.y;
 
     return Result;
 }
@@ -743,8 +743,8 @@ static inline v2 HMM_MulV2F(v2 Left, float Right)
     ASSERT_COVERED(HMM_MulV2F);
 
     v2 Result;
-    Result.X = Left.X * Right;
-    Result.Y = Left.Y * Right;
+    Result.x = Left.x * Right;
+    Result.y = Left.y * Right;
 
     return Result;
 }
@@ -755,9 +755,9 @@ static inline v3 HMM_MulV3(v3 Left, v3 Right)
     ASSERT_COVERED(HMM_MulV3);
 
     v3 Result;
-    Result.X = Left.X * Right.X;
-    Result.Y = Left.Y * Right.Y;
-    Result.Z = Left.Z * Right.Z;
+    Result.x = Left.x * Right.x;
+    Result.y = Left.y * Right.y;
+    Result.z = Left.z * Right.z;
 
     return Result;
 }
@@ -768,9 +768,9 @@ static inline v3 HMM_MulV3F(v3 Left, float Right)
     ASSERT_COVERED(HMM_MulV3F);
 
     v3 Result;
-    Result.X = Left.X * Right;
-    Result.Y = Left.Y * Right;
-    Result.Z = Left.Z * Right;
+    Result.x = Left.x * Right;
+    Result.y = Left.y * Right;
+    Result.z = Left.z * Right;
 
     return Result;
 }
@@ -820,8 +820,8 @@ static inline v2 HMM_DivV2(v2 Left, v2 Right)
     ASSERT_COVERED(HMM_DivV2);
 
     v2 Result;
-    Result.X = Left.X / Right.X;
-    Result.Y = Left.Y / Right.Y;
+    Result.x = Left.x / Right.x;
+    Result.y = Left.y / Right.y;
 
     return Result;
 }
@@ -832,8 +832,8 @@ static inline v2 HMM_DivV2F(v2 Left, float Right)
     ASSERT_COVERED(HMM_DivV2F);
 
     v2 Result;
-    Result.X = Left.X / Right;
-    Result.Y = Left.Y / Right;
+    Result.x = Left.x / Right;
+    Result.y = Left.y / Right;
 
     return Result;
 }
@@ -844,9 +844,9 @@ static inline v3 HMM_DivV3(v3 Left, v3 Right)
     ASSERT_COVERED(HMM_DivV3);
 
     v3 Result;
-    Result.X = Left.X / Right.X;
-    Result.Y = Left.Y / Right.Y;
-    Result.Z = Left.Z / Right.Z;
+    Result.x = Left.x / Right.x;
+    Result.y = Left.y / Right.y;
+    Result.z = Left.z / Right.z;
 
     return Result;
 }
@@ -857,9 +857,9 @@ static inline v3 HMM_DivV3F(v3 Left, float Right)
     ASSERT_COVERED(HMM_DivV3F);
 
     v3 Result;
-    Result.X = Left.X / Right;
-    Result.Y = Left.Y / Right;
-    Result.Z = Left.Z / Right;
+    Result.x = Left.x / Right;
+    Result.y = Left.y / Right;
+    Result.z = Left.z / Right;
 
     return Result;
 }
@@ -907,35 +907,35 @@ COVERAGE(HMM_EqV2, 1)
 static inline HMM_Bool HMM_EqV2(v2 Left, v2 Right)
 {
     ASSERT_COVERED(HMM_EqV2);
-    return Left.X == Right.X && Left.Y == Right.Y;
+    return Left.x == Right.x && Left.y == Right.y;
 }
 
 COVERAGE(HMM_EqV3, 1)
 static inline HMM_Bool HMM_EqV3(v3 Left, v3 Right)
 {
     ASSERT_COVERED(HMM_EqV3);
-    return Left.X == Right.X && Left.Y == Right.Y && Left.Z == Right.Z;
+    return Left.x == Right.x && Left.y == Right.y && Left.z == Right.z;
 }
 
 COVERAGE(HMM_EqV4, 1)
 static inline HMM_Bool HMM_EqV4(v4 Left, v4 Right)
 {
     ASSERT_COVERED(HMM_EqV4);
-    return Left.X == Right.X && Left.Y == Right.Y && Left.Z == Right.Z && Left.W == Right.W;
+    return Left.x == Right.x && Left.y == Right.y && Left.z == Right.z && Left.w == Right.w;
 }
 
 COVERAGE(HMM_DotV2, 1)
 static inline float HMM_DotV2(v2 Left, v2 Right)
 {
     ASSERT_COVERED(HMM_DotV2);
-    return (Left.X * Right.X) + (Left.Y * Right.Y);
+    return (Left.x * Right.x) + (Left.y * Right.y);
 }
 
 COVERAGE(HMM_DotV3, 1)
 static inline float HMM_DotV3(v3 Left, v3 Right)
 {
     ASSERT_COVERED(HMM_DotV3);
-    return (Left.X * Right.X) + (Left.Y * Right.Y) + (Left.Z * Right.Z);
+    return (Left.x * Right.x) + (Left.y * Right.y) + (Left.z * Right.z);
 }
 
 COVERAGE(HMM_DotV4, 1)
@@ -968,9 +968,9 @@ static inline v3 HMM_Cross(v3 Left, v3 Right)
     ASSERT_COVERED(HMM_Cross);
 
     v3 Result;
-    Result.X = (Left.Y * Right.Z) - (Left.Z * Right.Y);
-    Result.Y = (Left.Z * Right.X) - (Left.X * Right.Z);
-    Result.Z = (Left.X * Right.Y) - (Left.Y * Right.X);
+    Result.x = (Left.y * Right.z) - (Left.z * Right.y);
+    Result.y = (Left.z * Right.x) - (Left.x * Right.z);
+    Result.z = (Left.x * Right.y) - (Left.y * Right.x);
 
     return Result;
 }
@@ -1066,25 +1066,25 @@ static inline v4 HMM_LinearCombineV4M4(v4 Left, m4 Right)
     Result.SSE = _mm_add_ps(Result.SSE, _mm_mul_ps(_mm_shuffle_ps(Left.SSE, Left.SSE, 0xaa), Right.Columns[2].SSE));
     Result.SSE = _mm_add_ps(Result.SSE, _mm_mul_ps(_mm_shuffle_ps(Left.SSE, Left.SSE, 0xff), Right.Columns[3].SSE));
 #else
-    Result.X = Left.Elements[0] * Right.Columns[0].X;
-    Result.Y = Left.Elements[0] * Right.Columns[0].Y;
-    Result.Z = Left.Elements[0] * Right.Columns[0].Z;
-    Result.W = Left.Elements[0] * Right.Columns[0].W;
+    Result.x = Left.Elements[0] * Right.Columns[0].x;
+    Result.y = Left.Elements[0] * Right.Columns[0].y;
+    Result.z = Left.Elements[0] * Right.Columns[0].z;
+    Result.w = Left.Elements[0] * Right.Columns[0].w;
 
-    Result.X += Left.Elements[1] * Right.Columns[1].X;
-    Result.Y += Left.Elements[1] * Right.Columns[1].Y;
-    Result.Z += Left.Elements[1] * Right.Columns[1].Z;
-    Result.W += Left.Elements[1] * Right.Columns[1].W;
+    Result.x += Left.Elements[1] * Right.Columns[1].x;
+    Result.y += Left.Elements[1] * Right.Columns[1].y;
+    Result.z += Left.Elements[1] * Right.Columns[1].z;
+    Result.w += Left.Elements[1] * Right.Columns[1].w;
 
-    Result.X += Left.Elements[2] * Right.Columns[2].X;
-    Result.Y += Left.Elements[2] * Right.Columns[2].Y;
-    Result.Z += Left.Elements[2] * Right.Columns[2].Z;
-    Result.W += Left.Elements[2] * Right.Columns[2].W;
+    Result.x += Left.Elements[2] * Right.Columns[2].x;
+    Result.y += Left.Elements[2] * Right.Columns[2].y;
+    Result.z += Left.Elements[2] * Right.Columns[2].z;
+    Result.w += Left.Elements[2] * Right.Columns[2].w;
 
-    Result.X += Left.Elements[3] * Right.Columns[3].X;
-    Result.Y += Left.Elements[3] * Right.Columns[3].Y;
-    Result.Z += Left.Elements[3] * Right.Columns[3].Z;
-    Result.W += Left.Elements[3] * Right.Columns[3].W;
+    Result.x += Left.Elements[3] * Right.Columns[3].x;
+    Result.y += Left.Elements[3] * Right.Columns[3].y;
+    Result.z += Left.Elements[3] * Right.Columns[3].z;
+    Result.w += Left.Elements[3] * Right.Columns[3].w;
 #endif
 
     return Result;
@@ -1164,11 +1164,11 @@ static inline v2 HMM_MulM2V2(m2 Matrix, v2 vtor)
     
     v2 Result;
 
-    Result.X = vtor.Elements[0] * Matrix.Columns[0].X;
-    Result.Y = vtor.Elements[0] * Matrix.Columns[0].Y;
+    Result.x = vtor.elements[0] * Matrix.Columns[0].x;
+    Result.y = vtor.elements[0] * Matrix.Columns[0].y;
 
-    Result.X += vtor.Elements[1] * Matrix.Columns[1].X;
-    Result.Y += vtor.Elements[1] * Matrix.Columns[1].Y;
+    Result.x += vtor.elements[1] * Matrix.Columns[1].x;
+    Result.y += vtor.elements[1] * Matrix.Columns[1].y;
 
     return Result;    
 }
@@ -1327,17 +1327,17 @@ static inline v3 HMM_MulM3V3(m3 Matrix, v3 vtor)
     
     v3 Result;
 
-    Result.X = vtor.Elements[0] * Matrix.Columns[0].X;
-    Result.Y = vtor.Elements[0] * Matrix.Columns[0].Y;
-    Result.Z = vtor.Elements[0] * Matrix.Columns[0].Z;
+    Result.x = vtor.elements[0] * Matrix.Columns[0].x;
+    Result.y = vtor.elements[0] * Matrix.Columns[0].y;
+    Result.z = vtor.elements[0] * Matrix.Columns[0].z;
 
-    Result.X += vtor.Elements[1] * Matrix.Columns[1].X;
-    Result.Y += vtor.Elements[1] * Matrix.Columns[1].Y;
-    Result.Z += vtor.Elements[1] * Matrix.Columns[1].Z;
+    Result.x += vtor.elements[1] * Matrix.Columns[1].x;
+    Result.y += vtor.elements[1] * Matrix.Columns[1].y;
+    Result.z += vtor.elements[1] * Matrix.Columns[1].z;
 
-    Result.X += vtor.Elements[2] * Matrix.Columns[2].X;
-    Result.Y += vtor.Elements[2] * Matrix.Columns[2].Y;
-    Result.Z += vtor.Elements[2] * Matrix.Columns[2].Z;
+    Result.x += vtor.elements[2] * Matrix.Columns[2].x;
+    Result.y += vtor.elements[2] * Matrix.Columns[2].y;
+    Result.z += vtor.elements[2] * Matrix.Columns[2].z;
     
     return Result;    
 }
@@ -1644,10 +1644,10 @@ static inline float HMM_DeterminantM4(m4 Matrix)
 {
     ASSERT_COVERED(HMM_DeterminantM4);
 
-    v3 C01 = HMM_Cross(Matrix.Columns[0].XYZ, Matrix.Columns[1].XYZ);
-    v3 C23 = HMM_Cross(Matrix.Columns[2].XYZ, Matrix.Columns[3].XYZ);
-    v3 B10 = HMM_SubV3(HMM_MulV3F(Matrix.Columns[0].XYZ, Matrix.Columns[1].W), HMM_MulV3F(Matrix.Columns[1].XYZ, Matrix.Columns[0].W));
-    v3 B32 = HMM_SubV3(HMM_MulV3F(Matrix.Columns[2].XYZ, Matrix.Columns[3].W), HMM_MulV3F(Matrix.Columns[3].XYZ, Matrix.Columns[2].W));
+    v3 C01 = HMM_Cross(Matrix.Columns[0].xyz, Matrix.Columns[1].xyz);
+    v3 C23 = HMM_Cross(Matrix.Columns[2].xyz, Matrix.Columns[3].xyz);
+    v3 B10 = HMM_SubV3(HMM_MulV3F(Matrix.Columns[0].xyz, Matrix.Columns[1].w), HMM_MulV3F(Matrix.Columns[1].xyz, Matrix.Columns[0].w));
+    v3 B32 = HMM_SubV3(HMM_MulV3F(Matrix.Columns[2].xyz, Matrix.Columns[3].w), HMM_MulV3F(Matrix.Columns[3].xyz, Matrix.Columns[2].w));
     
     return HMM_DotV3(C01, B32) + HMM_DotV3(C23, B10);
 }
@@ -1659,10 +1659,10 @@ static inline m4 HMM_InvGeneralM4(m4 Matrix)
 {
     ASSERT_COVERED(HMM_InvGeneralM4);
 
-    v3 C01 = HMM_Cross(Matrix.Columns[0].XYZ, Matrix.Columns[1].XYZ);
-    v3 C23 = HMM_Cross(Matrix.Columns[2].XYZ, Matrix.Columns[3].XYZ);
-    v3 B10 = HMM_SubV3(HMM_MulV3F(Matrix.Columns[0].XYZ, Matrix.Columns[1].W), HMM_MulV3F(Matrix.Columns[1].XYZ, Matrix.Columns[0].W));
-    v3 B32 = HMM_SubV3(HMM_MulV3F(Matrix.Columns[2].XYZ, Matrix.Columns[3].W), HMM_MulV3F(Matrix.Columns[3].XYZ, Matrix.Columns[2].W));
+    v3 C01 = HMM_Cross(Matrix.Columns[0].xyz, Matrix.Columns[1].xyz);
+    v3 C23 = HMM_Cross(Matrix.Columns[2].xyz, Matrix.Columns[3].xyz);
+    v3 B10 = HMM_SubV3(HMM_MulV3F(Matrix.Columns[0].xyz, Matrix.Columns[1].w), HMM_MulV3F(Matrix.Columns[1].xyz, Matrix.Columns[0].w));
+    v3 B32 = HMM_SubV3(HMM_MulV3F(Matrix.Columns[2].xyz, Matrix.Columns[3].w), HMM_MulV3F(Matrix.Columns[3].xyz, Matrix.Columns[2].w));
     
     float InvDeterminant = 1.0f / (HMM_DotV3(C01, B32) + HMM_DotV3(C23, B10));
     C01 = HMM_MulV3F(C01, InvDeterminant);
@@ -1671,10 +1671,10 @@ static inline m4 HMM_InvGeneralM4(m4 Matrix)
     B32 = HMM_MulV3F(B32, InvDeterminant);
 
     m4 Result;
-    Result.Columns[0] = HMM_V4V(HMM_AddV3(HMM_Cross(Matrix.Columns[1].XYZ, B32), HMM_MulV3F(C23, Matrix.Columns[1].W)), -HMM_DotV3(Matrix.Columns[1].XYZ, C23));
-    Result.Columns[1] = HMM_V4V(HMM_SubV3(HMM_Cross(B32, Matrix.Columns[0].XYZ), HMM_MulV3F(C23, Matrix.Columns[0].W)), +HMM_DotV3(Matrix.Columns[0].XYZ, C23));
-    Result.Columns[2] = HMM_V4V(HMM_AddV3(HMM_Cross(Matrix.Columns[3].XYZ, B10), HMM_MulV3F(C01, Matrix.Columns[3].W)), -HMM_DotV3(Matrix.Columns[3].XYZ, C01));
-    Result.Columns[3] = HMM_V4V(HMM_SubV3(HMM_Cross(B10, Matrix.Columns[2].XYZ), HMM_MulV3F(C01, Matrix.Columns[2].W)), +HMM_DotV3(Matrix.Columns[2].XYZ, C01));
+    Result.Columns[0] = HMM_V4V(HMM_AddV3(HMM_Cross(Matrix.Columns[1].xyz, B32), HMM_MulV3F(C23, Matrix.Columns[1].w)), -HMM_DotV3(Matrix.Columns[1].xyz, C23));
+    Result.Columns[1] = HMM_V4V(HMM_SubV3(HMM_Cross(B32, Matrix.Columns[0].xyz), HMM_MulV3F(C23, Matrix.Columns[0].w)), +HMM_DotV3(Matrix.Columns[0].xyz, C23));
+    Result.Columns[2] = HMM_V4V(HMM_AddV3(HMM_Cross(Matrix.Columns[3].xyz, B10), HMM_MulV3F(C01, Matrix.Columns[3].w)), -HMM_DotV3(Matrix.Columns[3].xyz, C01));
+    Result.Columns[3] = HMM_V4V(HMM_SubV3(HMM_Cross(B10, Matrix.Columns[2].xyz), HMM_MulV3F(C01, Matrix.Columns[2].w)), +HMM_DotV3(Matrix.Columns[2].xyz, C01));
         
     return HMM_TransposeM4(Result);
 }
@@ -1879,9 +1879,9 @@ static inline m4 HMM_Translate(v3 Translation)
     ASSERT_COVERED(HMM_Translate);
 
     m4 Result = HMM_M4D(1.0f);
-    Result.Elements[3][0] = Translation.X;
-    Result.Elements[3][1] = Translation.Y;
-    Result.Elements[3][2] = Translation.Z;
+    Result.Elements[3][0] = Translation.x;
+    Result.Elements[3][1] = Translation.y;
+    Result.Elements[3][2] = Translation.z;
 
     return Result;
 }
@@ -1912,17 +1912,17 @@ static inline m4 HMM_Rotate_RH(float Angle, v3 Axis)
     float CosTheta = HMM_CosF(Angle);
     float CosValue = 1.0f - CosTheta;
 
-    Result.Elements[0][0] = (Axis.X * Axis.X * CosValue) + CosTheta;
-    Result.Elements[0][1] = (Axis.X * Axis.Y * CosValue) + (Axis.Z * SinTheta);
-    Result.Elements[0][2] = (Axis.X * Axis.Z * CosValue) - (Axis.Y * SinTheta);
+    Result.Elements[0][0] = (Axis.x * Axis.x * CosValue) + CosTheta;
+    Result.Elements[0][1] = (Axis.x * Axis.y * CosValue) + (Axis.z * SinTheta);
+    Result.Elements[0][2] = (Axis.x * Axis.z * CosValue) - (Axis.y * SinTheta);
 
-    Result.Elements[1][0] = (Axis.Y * Axis.X * CosValue) - (Axis.Z * SinTheta);
-    Result.Elements[1][1] = (Axis.Y * Axis.Y * CosValue) + CosTheta;
-    Result.Elements[1][2] = (Axis.Y * Axis.Z * CosValue) + (Axis.X * SinTheta);
+    Result.Elements[1][0] = (Axis.y * Axis.x * CosValue) - (Axis.z * SinTheta);
+    Result.Elements[1][1] = (Axis.y * Axis.y * CosValue) + CosTheta;
+    Result.Elements[1][2] = (Axis.y * Axis.z * CosValue) + (Axis.x * SinTheta);
 
-    Result.Elements[2][0] = (Axis.Z * Axis.X * CosValue) + (Axis.Y * SinTheta);
-    Result.Elements[2][1] = (Axis.Z * Axis.Y * CosValue) - (Axis.X * SinTheta);
-    Result.Elements[2][2] = (Axis.Z * Axis.Z * CosValue) + CosTheta;
+    Result.Elements[2][0] = (Axis.z * Axis.x * CosValue) + (Axis.y * SinTheta);
+    Result.Elements[2][1] = (Axis.z * Axis.y * CosValue) - (Axis.x * SinTheta);
+    Result.Elements[2][2] = (Axis.z * Axis.z * CosValue) + CosTheta;
 
     return Result;
 }
@@ -1948,9 +1948,9 @@ static inline m4 HMM_Scale(v3 Scale)
     ASSERT_COVERED(HMM_Scale);
 
     m4 Result = HMM_M4D(1.0f);
-    Result.Elements[0][0] = Scale.X;
-    Result.Elements[1][1] = Scale.Y;
-    Result.Elements[2][2] = Scale.Z;
+    Result.Elements[0][0] = Scale.x;
+    Result.Elements[1][1] = Scale.y;
+    Result.Elements[2][2] = Scale.z;
 
     return Result;
 }
@@ -1972,19 +1972,19 @@ static inline m4 _HMM_LookAt(v3 F,  v3 S, v3 U,  v3 Eye)
 {
     m4 Result;
 
-    Result.Elements[0][0] = S.X;
-    Result.Elements[0][1] = U.X;
-    Result.Elements[0][2] = -F.X;
+    Result.Elements[0][0] = S.x;
+    Result.Elements[0][1] = U.x;
+    Result.Elements[0][2] = -F.x;
     Result.Elements[0][3] = 0.0f;
 
-    Result.Elements[1][0] = S.Y;
-    Result.Elements[1][1] = U.Y;
-    Result.Elements[1][2] = -F.Y;
+    Result.Elements[1][0] = S.y;
+    Result.Elements[1][1] = U.y;
+    Result.Elements[1][2] = -F.y;
     Result.Elements[1][3] = 0.0f;
 
-    Result.Elements[2][0] = S.Z;
-    Result.Elements[2][1] = U.Z;
-    Result.Elements[2][2] = -F.Z;
+    Result.Elements[2][0] = S.z;
+    Result.Elements[2][1] = U.z;
+    Result.Elements[2][2] = -F.z;
     Result.Elements[2][3] = 0.0f;
 
     Result.Elements[3][0] = -HMM_DotV3(S, Eye);
@@ -2026,9 +2026,9 @@ static inline m4 HMM_InvLookAt(m4 Matrix)
     m4 Result;
 
     m3 Rotation = {0};
-    Rotation.Columns[0] = Matrix.Columns[0].XYZ;
-    Rotation.Columns[1] = Matrix.Columns[1].XYZ;
-    Rotation.Columns[2] = Matrix.Columns[2].XYZ;
+    Rotation.Columns[0] = Matrix.Columns[0].xyz;
+    Rotation.Columns[1] = Matrix.Columns[1].xyz;
+    Rotation.Columns[2] = Matrix.Columns[2].xyz;
     Rotation = HMM_TransposeM3(Rotation);
 
     Result.Columns[0] = HMM_V4V(Rotation.Columns[0], 0.0f);
@@ -2258,7 +2258,7 @@ static inline HMM_Quat HMM_NormQ(HMM_Quat Quat)
     /* NOTE(lcf): Take advantage of SSE implementation in HMM_NormV4 */
     v4 v = {Quat.X, Quat.Y, Quat.Z, Quat.W};
     v = norm(v);
-    HMM_Quat Result = {v.X, v.Y, v.Z, v.W};
+    HMM_Quat Result = {v.x, v.y, v.z, v.w};
 
     return Result;
 }
@@ -3559,8 +3559,8 @@ static inline v2 operator-(v2 In)
     ASSERT_COVERED(HMM_UnaryMinusV2);
 
     v2 Result;
-    Result.X = -In.X;
-    Result.Y = -In.Y;
+    Result.x = -In.x;
+    Result.y = -In.y;
 
     return Result;
 }
@@ -3571,9 +3571,9 @@ static inline v3 operator-(v3 In)
     ASSERT_COVERED(HMM_UnaryMinusV3);
 
     v3 Result;
-    Result.X = -In.X;
-    Result.Y = -In.Y;
-    Result.Z = -In.Z;
+    Result.x = -In.x;
+    Result.y = -In.y;
+    Result.z = -In.z;
 
     return Result;
 }

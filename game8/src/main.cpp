@@ -256,8 +256,8 @@ int main() {
                     sprintf(buffer, "lights[%llu].position", i);
                     glUniform2f(
                         glGetUniformLocation(state.renderer.light_shader_program_id, buffer), 
-                        state.renderer.lights[i].position.X,
-                        state.renderer.lights[i].position.Y
+                        state.renderer.lights[i].position.x,
+                        state.renderer.lights[i].position.y
                     );
                     memset(buffer, 0, buffer_size);
                 }
@@ -275,10 +275,10 @@ int main() {
                     sprintf(buffer, "lights[%llu].colour", i);
                     glUniform4f(
                         glGetUniformLocation(state.renderer.light_shader_program_id, buffer), 
-                        state.renderer.lights[i].colour.R,
-                        state.renderer.lights[i].colour.G,
-                        state.renderer.lights[i].colour.B,
-                        state.renderer.lights[i].colour.A
+                        state.renderer.lights[i].colour.r,
+                        state.renderer.lights[i].colour.g,
+                        state.renderer.lights[i].colour.b,
+                        state.renderer.lights[i].colour.a
                     );
                     memset(buffer, 0, buffer_size);
                 }
@@ -398,19 +398,19 @@ void update_and_draw(f32 delta_time) {
             v2 input = {};
 
             if (KEYS[GLFW_KEY_W] == InputState::pressed) {
-                input.Y += 1;
+                input.y += 1;
             }
 
             if (KEYS[GLFW_KEY_S] == InputState::pressed) {
-                input.Y -= 1;
+                input.y -= 1;
             }
 
             if (KEYS[GLFW_KEY_A] == InputState::pressed) {
-                input.X -= 1;
+                input.x -= 1;
             }
 
             if (KEYS[GLFW_KEY_D] == InputState::pressed) {
-                input.X += 1;
+                input.x += 1;
             }
 
             entity->velocity = input * 300;
@@ -474,8 +474,8 @@ void physics(f32 delta_time) {
     for (int i = 0; i < state.entities.len; i++) {
         Entity* entity = &state.entities[i];
 
-        entity->position.X += entity->velocity.X * delta_time;
-        entity->position.Y += entity->velocity.Y * delta_time;
+        entity->position.x += entity->velocity.x * delta_time;
+        entity->position.y += entity->velocity.y * delta_time;
     }
 }
 
@@ -563,8 +563,8 @@ Entity *next(CollisionIterator *iterator) {
         iterator->index++;
 
         { // basic aabb collision
-            v2 distance = other->position.XY - entity->position.XY;
-            v2 distance_abs = v2{abs(distance.X), abs(distance.Y)};
+            v2 distance = other->position.xy - entity->position.xy;
+            v2 distance_abs = v2{abs(distance.x), abs(distance.y)};
             v2 distance_for_collision = (entity->size + other->size) * v2{0.5, 0.5};
 
             bool collision = distance_for_collision[0] >= distance_abs[0] && distance_for_collision[1] >= distance_abs[1];

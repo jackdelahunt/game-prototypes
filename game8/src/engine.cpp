@@ -428,10 +428,10 @@ bool init_renderer(Renderer *renderer, Window *window) {
 
 
         glClearColor(
-            renderer->clear_colour.R,
-            renderer->clear_colour.G,
-            renderer->clear_colour.B,
-            renderer->clear_colour.A
+            renderer->clear_colour.r,
+            renderer->clear_colour.g,
+            renderer->clear_colour.b,
+            renderer->clear_colour.a
         );
     }
 
@@ -767,12 +767,12 @@ bool build_atlas(Renderer *renderer) {
             continue;
         }
 
-        i64 sub_texture_count = texture.sub_textures.len;
-        f32 starting_x = texture.uvs[0].X;
-        f32 ending_x = texture.uvs[1].X;
-        f32 step_x = (ending_x - starting_x) / (f32) sub_texture_count;
-        f32 top_y = texture.uvs[0].Y;
-        f32 bottom_y = texture.uvs[2].Y;
+        i64 sub_texture_count   = texture.sub_textures.len;
+        f32 starting_x          = texture.uvs[0].x;
+        f32 ending_x            = texture.uvs[1].x;
+        f32 step_x              = (ending_x - starting_x) / (f32) sub_texture_count;
+        f32 top_y               = texture.uvs[0].y;
+        f32 bottom_y            = texture.uvs[2].y;
 
         for(i64 i = 0; i < sub_texture_count; i++) {
             Texture *sub_texture = &texture.sub_textures[i];
@@ -1013,12 +1013,12 @@ void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 c
 
         v2 scaled_position = glyph->position * scale;
         v2 scaled_size = glyph->size * scale;
-        v2 translated_position = scaled_position + pivot_point_translation + position.XY;
+        v2 translated_position = scaled_position + pivot_point_translation + position.xy;
 
         // quad needs position to be centre of quad so just convert that here
         v2 quad_centered_position = translated_position + (scaled_size * 0.5f);
 
-        push_quad(renderer, v3{quad_centered_position.X, quad_centered_position.Y, 0}, scaled_size, 0, color, glyph->uvs, 3);
+        push_quad(renderer, v3{quad_centered_position.x, quad_centered_position.y, 0}, scaled_size, 0, color, glyph->uvs, 3);
    }
 
     mem_free(glyphs);
@@ -1030,8 +1030,8 @@ void draw_light(Renderer *renderer, v3 position, f32 radius, v4 colour, f32 inte
     // light data is sent to the GPU in NDC so using view projection 
     // matrix for the transformation
     *light = Light {
-        .position = HMM_MulM4V4(renderer->view_projection_matrix, v4{position.X, position.Y, position.Z, 1}).XY,
-        .radius = length(HMM_MulM4V4(renderer->view_projection_matrix, {radius, 0, 0, 0}).XY) * 2,
+        .position = HMM_MulM4V4(renderer->view_projection_matrix, v4{position.x, position.y, position.z, 1}).xy,
+        .radius = length(HMM_MulM4V4(renderer->view_projection_matrix, {radius, 0, 0, 0}).xy) * 2,
         .colour = colour,
         .intensity = intensity
     };
@@ -1072,17 +1072,17 @@ Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color
 
     m4 model_matrix = HMM_M4D(1.0f);
     model_matrix = HMM_MulM4(model_matrix, HMM_Translate(position));
-    model_matrix = HMM_MulM4(model_matrix, HMM_Scale({size.X, size.Y, 1}));
+    model_matrix = HMM_MulM4(model_matrix, HMM_Scale({size.x, size.y, 1}));
     model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation * HMM_DegToRad, {0, 0, 1}));
                 
     m4 mvp_matrix = HMM_MulM4(renderer->view_projection_matrix, model_matrix);
 
     Quad *quad = push(&renderer->quads);
                
-    quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).XYZ;
-    quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).XYZ;
-    quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right).XYZ;
-    quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left).XYZ;
+    quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left).xyz;
+    quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right).xyz;
+    quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right).xyz;
+    quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left).xyz;
                 
     quad->vertices[0].colour = color;
     quad->vertices[1].colour = color;
@@ -1145,8 +1145,8 @@ v2 screen_position_to_world_position(v2 screen_position, Camera camera, Window *
 
 v2 screen_position_to_ndc(v2 screen_position, Window *window) {
     return {
-        (screen_position.X / window->width) * 2 - 1,
-        (screen_position.Y / window->height) * 2 - 1,
+        (screen_position.x / window->width) * 2 - 1,
+        (screen_position.y / window->height) * 2 - 1,
     };
 }
 
@@ -1154,7 +1154,7 @@ v2 screen_position_to_ndc(v2 screen_position, Window *window) {
 m4 get_view_matrix(Camera camera) {
     return HMM_LookAt_LH(
         camera.position, 
-        {camera.position.X, camera.position.Y, camera.position.Z + 1}, 
+        {camera.position.x, camera.position.y, camera.position.z + 1}, 
         {0, 1, 0}
     );
 }
@@ -1171,7 +1171,7 @@ m4 get_projection_matrix(Camera camera, f32 aspect) {
 }
 
 v4 alpha(v4 base, f32 alpha) {
-    return {base.R, base.G, base.B, alpha};
+    return {base.r, base.g, base.b, alpha};
 }
 
 void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, i32 length, const char *message, const void *user_param) {
