@@ -337,7 +337,7 @@ struct Font {
 
 struct Renderer {
     v4 global_light;
-    v4 light_colour;
+    v4 clear_colour;
 
     Array<Quad, MAX_QUADS> quads;
     Array<Light, MAX_LIGHTS> lights;
@@ -427,8 +427,12 @@ bool init_renderer(Renderer *renderer, Window *window) {
         glDepthFunc(GL_LESS);
 
 
-        float f = 0.1f;
-        glClearColor(f, f, f, 1.0f);
+        glClearColor(
+            renderer->clear_colour.R,
+            renderer->clear_colour.G,
+            renderer->clear_colour.B,
+            renderer->clear_colour.A
+        );
     }
 
     bool ok = load_shaders(renderer);
@@ -1021,16 +1025,13 @@ void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 c
 }
 
 void draw_light(Renderer *renderer, v3 position, f32 radius, v4 colour, f32 intensity) {
-    // create mvp matrix to project world space input to ndc
-    m4 model_matrix = HMM_M4D(1.0f);
-    model_matrix = HMM_MulM4(model_matrix, HMM_Translate(v3{position.X, position.Y, 0}));
-    m4 mvp_matrix = HMM_MulM4(renderer->view_projection_matrix, model_matrix);
-
     Light *light = push(&renderer->lights);
 
+    // light data is sent to the GPU in NDC so using view projection 
+    // matrix for the transformation
     *light = Light {
-        .position = HMM_MulM4V4(mvp_matrix, {0, 0, 0, 1}).XY,
-        .radius = length(HMM_MulM4V4(mvp_matrix, {radius, 0, 0, 1}).XY) * 2,
+        .position = HMM_MulM4V4(renderer->view_projection_matrix, v4{position.X, position.Y, position.Z, 1}).XY,
+        .radius = length(HMM_MulM4V4(renderer->view_projection_matrix, {radius, 0, 0, 0}).XY) * 2,
         .colour = colour,
         .intensity = intensity
     };

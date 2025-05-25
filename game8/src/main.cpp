@@ -7,7 +7,7 @@
 #include <stdlib.h>
 
 // Total: 05:15
-// Started: 23:00
+// Started: 12:30
 //
 #define MAX_ENTITIES 2000
 
@@ -90,8 +90,8 @@ int main() {
             .far_plane = 100.0f,
         },
         .renderer = {
-            .global_light = {0.2, 0.2, 0.2, 1},
-            .light_colour = {1, 1, 1, 1},
+            .global_light = {0.7, 0.7, 0.7, 1},
+            .clear_colour = {1, 1, 1, 1},
         },
     };
 
@@ -238,14 +238,6 @@ int main() {
                 state.renderer.global_light[3]
             );
 
-            glUniform4f(
-                glGetUniformLocation(state.renderer.light_shader_program_id, "light_colour"),
-                state.renderer.light_colour[0],
-                state.renderer.light_colour[1],
-                state.renderer.light_colour[2],
-                state.renderer.light_colour[3]
-            );
-
             glUniform1i(
                 glGetUniformLocation(state.renderer.light_shader_program_id, "light_count"),
                 (i32) state.renderer.lights.len
@@ -328,7 +320,6 @@ int main() {
 
             if(ImGui::CollapsingHeader("Rendering")) {
                 ImGui::InputFloat4("Global light", &state.renderer.global_light[0]);
-                ImGui::InputFloat4("Lights", &state.renderer.light_colour[0]);
             }
 
             if(ImGui::CollapsingHeader("Render passes")) {
@@ -422,12 +413,12 @@ void update_and_draw(f32 delta_time) {
                 input.X += 1;
             }
 
-            entity->velocity = input * 50;
+            entity->velocity = input * 300;
         }
 
         if (entity->flags & EF_LIGHT) {
             draw_light(&state.renderer, entity->position, entity->light_radius, entity->light_colour, entity->light_intensity);
-            draw_circle(&state.renderer, entity->position, 10, BLUE);
+            draw_circle(&state.renderer, entity->position, 5, BLUE);
         } 
 
         if (entity->texture != TH_NONE) {
@@ -447,6 +438,27 @@ void update_and_draw(f32 delta_time) {
             }
         }
     }
+
+    { // draw grid lines
+        i64 grid_region_width = 2000;
+        i64 grid_region_height = 2000;
+        f32 line_step = 100;
+        f32 line_thickness = 1;
+        v4 grid_colour = BLACK;
+
+        // horizontal lines
+        for(i64 y = (-grid_region_height) / 2; y <= grid_region_height / 2; y += line_step) {
+            draw_rectangle(&state.renderer, {0, (f32) y, 90}, {(f32) grid_region_width, line_thickness}, grid_colour);
+        }
+
+        // vertical lines
+        for(i64 x = (-grid_region_width) / 2; x <= grid_region_width / 2; x += line_step) {
+            draw_rectangle(&state.renderer, {(f32) x, 0, 90}, {line_thickness, (f32) grid_region_height}, grid_colour);
+        }
+
+        // draw_circle(&state.renderer, {0, 0, 1}, 3, alpha(BLUE, 0.5));
+    }
+
 
     for (int i = 0; i < state.entities.len; i++) {
         Entity* entity = &state.entities[i];
@@ -474,12 +486,12 @@ void spawn_entity(Entity entity) {
 }
 
 void create_scene() {
-    spawn_entity(Entity{
-        .position = {0, 0, 80},
-        .size = {1920, 1080},
-        .color = WHITE,
-        .texture = TH_BACKGROUND,
-    });
+    // spawn_entity(Entity{
+        // .position = {0, 0, 80},
+        // .size = {1920, 1080},
+        // .color = WHITE,
+        // .texture = TH_BACKGROUND,
+    // });
 
     f32 ratio = texture_aspect_ratio(&state.renderer, get_texture(TH_FACE));
     f32 height = 50;
@@ -502,8 +514,8 @@ void create_scene() {
     spawn_entity(Entity{
         .flags = EF_LIGHT | EF_PLAYER,
         .position = {100, 0, 0},
-        .light_colour = RED,
-        .light_intensity = 0.5,
+        .light_colour = GREEN,
+        .light_intensity = 1,
         .light_radius = 50
     });
 

@@ -12,7 +12,6 @@ in vec2 uv;
 out vec4 frag_colour;
 
 uniform vec4 global_light;
-uniform vec4 light_colour;
 
 uniform sampler2D scene_texture;
 
@@ -32,8 +31,10 @@ void main()
 
     for(int i = 0; i < light_count; i++) {
         Light light = lights[i];
+        vec2 scaled_position = light.position * vec2(aspect_ratio, 1);
 
-        float distance = length(scaled_ndc - light.position);
+        float distance = length(scaled_ndc - scaled_position);
+
         if (distance < light.radius) {
             float influence = 1.0 - (distance / light.radius);
             accumulated_light += light.colour * influence * light.intensity;
@@ -41,11 +42,7 @@ void main()
     }
 
     vec4 total_light = global_light + accumulated_light;
-
-    total_light = clamp(total_light, 0.0, 1.0); // Prevent oversaturation
+    total_light = clamp(total_light, 0.0, 1.0); // prevent oversaturation
     
     frag_colour = base_colour * total_light;
-
-    // frag_colour = base_colour * mix(global_light, light_colour, total_light_mix_amount);
-    // frag_colour = vec4(total_light_mix_amount);
 }
