@@ -688,8 +688,8 @@ Texture *load_animated_texture(Renderer *renderer, string path, i64 cell_count, 
 }
 
 bool build_atlas(Renderer *renderer) {
-    const i64 ATLAS_WIDTH     = 800;
-    const i64 ATLAS_HEIGHT    = 600;
+    const i64 ATLAS_WIDTH     = 200;
+    const i64 ATLAS_HEIGHT    = 200;
     const i64 BYTES_PER_PIXEL = 4;
     const i64 CHANNELS        = 4;
     const i64 ATLAS_BYTE_SIZE = ATLAS_WIDTH * ATLAS_HEIGHT * BYTES_PER_PIXEL;

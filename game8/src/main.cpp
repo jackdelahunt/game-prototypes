@@ -9,13 +9,17 @@
 // Total: 05:15
 // Started: 12:30
 //
+// Lighting TODO:
+// - normal mapping
+// - bloom
 #define MAX_ENTITIES 2000
 
 enum TextureHandle {
     TH_NONE,
     TH_FACE,
     TH_FACES,
-    TH_BACKGROUND,
+    TH_SWORD,
+    TH_SWORD_NORMAL,
     TH_COUNT_,
 };
 
@@ -48,6 +52,7 @@ struct Entity {
 enum EntityFlags {
     EF_LIGHT            = 1 << 0,
     EF_PLAYER           = 1 << 1,
+    EF_ALT_PLAYER       = 1 << 2,
     EF_DELETE           = 1 << 16,
 };
 
@@ -57,7 +62,6 @@ struct State {
     Renderer renderer;
     SoundEngine sound_engine;
 
-    f32 light_radius;
     f64 time;
 
     Array<Entity, MAX_ENTITIES> entities;
@@ -85,7 +89,7 @@ int main() {
     state = {
         .camera = {
             .position = {0, 0, -1},
-            .orthographic_size = 200,
+            .orthographic_size = 400,
             .near_plane = 0.1f,
             .far_plane = 100.0f,
         },
@@ -127,13 +131,21 @@ int main() {
 
             textures[TH_FACES] = texture;
 
-            texture = load_texture(&state.renderer, "resources/textures/background.png");
+            texture = load_texture(&state.renderer, "resources/textures/sword.png");
             if (texture == NULL) {
                 return 1;
             }
 
-            textures[TH_BACKGROUND] = texture;
-       }
+            textures[TH_SWORD] = texture;
+
+            texture = load_texture(&state.renderer, "resources/textures/sword_normal.png");
+            if (texture == NULL) {
+                return 1;
+            }
+
+            textures[TH_SWORD_NORMAL] = texture;
+     
+      }
 
         ok = build_atlas(&state.renderer);
         if (!ok) {
@@ -312,8 +324,6 @@ int main() {
                 load_shaders(&state.renderer);
             }
 
-            ImGui::SliderFloat("Light radius", &state.light_radius, 1, 1000);
-
             if(ImGui::CollapsingHeader("Camera")) {
                 ImGui::SliderFloat("Orthographic size", &state.camera.orthographic_size, 10, 1000);
             }
@@ -322,7 +332,7 @@ int main() {
                 ImGui::InputFloat4("Global light", &state.renderer.global_light[0]);
             }
 
-            if(ImGui::CollapsingHeader("Render passes")) {
+            if(ImGui::CollapsingHeader("Render outputs")) {
                 ImGui::Image(unlit_frame_buffer.depth_attachment, ImVec2(360, 240), ImVec2(0, 1), ImVec2(1, 0));
                 ImGui::Image(unlit_frame_buffer.colour_attachment, ImVec2(360, 240), ImVec2(0, 1), ImVec2(1, 0));
             }
@@ -393,6 +403,7 @@ void update_and_draw(f32 delta_time) {
     for (int i = 0; i < state.entities.len; i++) {
         Entity* entity = &state.entities[i]; 
 
+        f32 player_speed = 300;
 
         if (entity->flags & EF_PLAYER) {
             v2 input = {};
@@ -413,12 +424,33 @@ void update_and_draw(f32 delta_time) {
                 input.x += 1;
             }
 
-            entity->velocity = input * 300;
+            entity->velocity = input * player_speed;
+        }
+
+        if (entity->flags & EF_ALT_PLAYER) {
+            v2 input = {};
+
+            if (KEYS[GLFW_KEY_UP] == InputState::pressed) {
+                input.y += 1;
+            }
+
+            if (KEYS[GLFW_KEY_DOWN] == InputState::pressed) {
+                input.y -= 1;
+            }
+
+            if (KEYS[GLFW_KEY_LEFT] == InputState::pressed) {
+                input.x -= 1;
+            }
+
+            if (KEYS[GLFW_KEY_RIGHT] == InputState::pressed) {
+                input.x += 1;
+            }
+
+            entity->velocity = input * player_speed;
         }
 
         if (entity->flags & EF_LIGHT) {
             draw_light(&state.renderer, entity->position, entity->light_radius, entity->light_colour, entity->light_intensity);
-            draw_circle(&state.renderer, entity->position, 5, BLUE);
         } 
 
         if (entity->texture != TH_NONE) {
@@ -486,66 +518,39 @@ void spawn_entity(Entity entity) {
 }
 
 void create_scene() {
-    // spawn_entity(Entity{
-        // .position = {0, 0, 80},
-        // .size = {1920, 1080},
-        // .color = WHITE,
-        // .texture = TH_BACKGROUND,
-    // });
+    { // faces entity
+        f32 ratio = texture_aspect_ratio(&state.renderer, get_texture(TH_FACE));
+        f32 height = 50;
+        f32 width = height * ratio;
+    
+        spawn_entity(Entity{
+            .position = {-200, -200, 30},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_FACES,
+        });
+    }
 
-    f32 ratio = texture_aspect_ratio(&state.renderer, get_texture(TH_FACE));
-    f32 height = 50;
-    f32 width = height * ratio;
-
-    spawn_entity(Entity{
-        .position = {0, 0, 30},
-        .size = {width, height},
-        .color = WHITE,
-        .texture = TH_FACE,
-    });
-
-    spawn_entity(Entity{
-        .position = {-width, height, 30},
-        .size = {width, height},
-        .color = WHITE,
-        .texture = TH_FACES,
-    });
+    { // sword entity
+        f32 ratio = texture_aspect_ratio(&state.renderer, get_texture(TH_SWORD));
+        f32 height = 100;
+        f32 width = height * ratio;
+    
+        spawn_entity(Entity{
+            .position = {0, 0, 10},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_SWORD,
+        });
+    }
 
     spawn_entity(Entity{
         .flags = EF_LIGHT | EF_PLAYER,
-        .position = {100, 0, 0},
-        .light_colour = GREEN,
+        .position = {-150, 0, 0},
+        .light_colour = BLUE,
         .light_intensity = 1,
-        .light_radius = 50
+        .light_radius = 150
     });
-
-#if 0
-    { // shop
-        f32 ratio = texture_aspect_ratio(&state.renderer, TH_SHOP_1);
-        f32 height = 420;
-        f32 width = height * ratio;
-
-        spawn_entity(Entity{
-            .flags = EF_ANIMATED_TEXTURE | EF_SHOP,
-            .position = {-400, -40, decorations_foreground_z},
-            .size = {width, height},
-            .color = WHITE,
-            .texture = TH_SHOP_1,
-            .animation_cycle_amount = 1.5,
-            .animation_cycle = 0,
-        });
-
-        spawn_entity(Entity{
-            .flags = EF_LIGHT,
-            .position = {-560, -175},
-        });
-
-        spawn_entity(Entity{
-            .flags = EF_LIGHT,
-            .position = {-240, -175},
-        });
-    } 
-#endif
 }
 
 CollisionIterator new_collision_iterator(Entity *entity) {
