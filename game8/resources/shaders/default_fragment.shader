@@ -2,15 +2,19 @@
 
 in vec4 colour;
 in vec2 uv;
+in vec2 normal_uv;
 flat in int draw_type;
 
-out vec4 frag_colour;
+layout(location = 0) out vec4 frag_colour;
+layout(location = 1) out vec4 normal_colour;
 
 uniform sampler2D atlas_texture;
 uniform sampler2D font_texture;
 
 void main()
 {
+    normal_colour = vec4(0, 0, 1, 1);
+
     // rectangle
     if (draw_type == 0) {
         frag_colour = colour;
@@ -26,6 +30,7 @@ void main()
         frag_colour = colour;
     }
 
+
     // texture
     if (draw_type == 2) {
         vec4 final_colour = texture(atlas_texture, uv) * colour;
@@ -38,6 +43,7 @@ void main()
         }
 
         frag_colour = final_colour;
+        normal_colour = texture(atlas_texture, normal_uv);
     }
 
     // font

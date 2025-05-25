@@ -1,13 +1,14 @@
 #include "libs/libs.h"
 #include "engine.cpp"
 
+#include <cassert>
 #include <cstdio>
 #include <cstring>
 #include <time.h>
 #include <stdlib.h>
 
-// Total: 05:15
-// Started: 12:30
+// Total: 11:30
+// Started: 19:00
 //
 // Lighting TODO:
 // - normal mapping
@@ -20,6 +21,8 @@ enum TextureHandle {
     TH_FACES,
     TH_SWORD,
     TH_SWORD_NORMAL,
+    TH_GOLD,
+    TH_GOLD_NORMAL,
     TH_COUNT_,
 };
 
@@ -89,12 +92,12 @@ int main() {
     state = {
         .camera = {
             .position = {0, 0, -1},
-            .orthographic_size = 400,
+            .orthographic_size = 150,
             .near_plane = 0.1f,
             .far_plane = 100.0f,
         },
         .renderer = {
-            .global_light = {0.7, 0.7, 0.7, 1},
+            .global_light = {0.6, 0.6, 0.6, 1},
             .clear_colour = {1, 1, 1, 1},
         },
     };
@@ -143,8 +146,21 @@ int main() {
                 return 1;
             }
 
-            textures[TH_SWORD_NORMAL] = texture;
-     
+            textures[TH_SWORD_NORMAL] = texture; 
+
+            texture = load_texture(&state.renderer, "resources/textures/gold.png");
+            if (texture == NULL) {
+                return 1;
+            }
+
+            textures[TH_GOLD] = texture;
+    
+            texture = load_texture(&state.renderer, "resources/textures/gold_normal.png");
+            if (texture == NULL) {
+                return 1;
+            }
+
+            textures[TH_GOLD_NORMAL] = texture;
       }
 
         ok = build_atlas(&state.renderer);
@@ -220,7 +236,7 @@ int main() {
                 {0, 0},
             };
 
-            Quad *quad = push_quad(&state.renderer, {}, {50, 50}, 0, WHITE, uvs, 2);
+            Quad *quad = push_quad(&state.renderer, {}, {50, 50}, 0, WHITE, uvs, {}, 2);
             f32 z = 0;
             quad->vertices[0].position = {-1,  1, z};
             quad->vertices[1].position = { 1,  1, z};
@@ -235,9 +251,15 @@ int main() {
     
             glUseProgram(state.renderer.light_shader_program_id);
    
-            // set the scene texture
+            // set the input texture
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, unlit_frame_buffer.colour_attachment);
+
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, unlit_frame_buffer.normals_attachment);
+
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, unlit_frame_buffer.depth_attachment);
 
             // set all uniforms used in the lights shader, using sprintf to get
             // the location of each value in the lights array that is why it looks
@@ -311,7 +333,6 @@ int main() {
             reset(&state.renderer.lights);
         }
 
-#ifdef DEBUG
         { // imgui render 
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplGlfw_NewFrame();
@@ -333,8 +354,16 @@ int main() {
             }
 
             if(ImGui::CollapsingHeader("Render outputs")) {
-                ImGui::Image(unlit_frame_buffer.depth_attachment, ImVec2(360, 240), ImVec2(0, 1), ImVec2(1, 0));
-                ImGui::Image(unlit_frame_buffer.colour_attachment, ImVec2(360, 240), ImVec2(0, 1), ImVec2(1, 0));
+                ImVec2 image_size(360 * 1.77, 360);
+
+                ImGui::Text("Depth buffer");
+                ImGui::Image(unlit_frame_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+
+                ImGui::Text("Normal buffer");
+                ImGui::Image(unlit_frame_buffer.normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+
+                ImGui::Text("Colour buffer");
+                ImGui::Image(unlit_frame_buffer.colour_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
             }
 
             if(ImGui::CollapsingHeader("Entities")) {
@@ -349,7 +378,6 @@ int main() {
                         ImGui::SliderFloat3("position", &entity->position[0], -500, 500);
                         ImGui::InputFloat2("size", &entity->size[0]);
                         ImGui::InputFloat4("colour", &entity->color[0]);
-
 
                         ImGui::InputFloat4("light_colour", &entity->light_colour[0]);
                         ImGui::InputFloat("light_radius", &entity->light_radius);
@@ -368,7 +396,6 @@ int main() {
             ImGui::RenderPlatformWindowsDefault();
             glfwMakeContextCurrent(current);
         }
-#endif
 
         swap_buffers(&state.window);
     }
@@ -451,13 +478,24 @@ void update_and_draw(f32 delta_time) {
 
         if (entity->flags & EF_LIGHT) {
             draw_light(&state.renderer, entity->position, entity->light_radius, entity->light_colour, entity->light_intensity);
+            draw_circle(&state.renderer, entity->position, 5, WHITE);
         } 
 
         if (entity->texture != TH_NONE) {
             Texture *texture = get_texture(entity->texture);
 
             if(texture->type == TextureType::SINGLE) {
-                draw_texture(&state.renderer, texture, entity->position, entity->size, entity->rotation, entity->color);
+                Texture *normal_texture = NULL;
+
+                if(entity->texture == TH_GOLD) {
+                    normal_texture = get_texture(TH_GOLD_NORMAL);
+                } else if(entity->texture == TH_SWORD) {
+                    normal_texture = get_texture(TH_SWORD_NORMAL);
+                } else {
+                    assert(0);
+                }
+
+                draw_texture(&state.renderer, texture, normal_texture, entity->position, entity->size, entity->rotation, entity->color);
             }
             else if(texture->type == TextureType::ANIMATED) {
                 // progress and maybe reset texture animations 
@@ -518,7 +556,7 @@ void spawn_entity(Entity entity) {
 }
 
 void create_scene() {
-    { // faces entity
+    if(false) { // faces entity
         f32 ratio = texture_aspect_ratio(&state.renderer, get_texture(TH_FACE));
         f32 height = 50;
         f32 width = height * ratio;
@@ -537,10 +575,23 @@ void create_scene() {
         f32 width = height * ratio;
     
         spawn_entity(Entity{
-            .position = {0, 0, 10},
+            .position = {100, 0, 10},
             .size = {width, height},
             .color = WHITE,
             .texture = TH_SWORD,
+        });
+    }
+
+    { // gold entity
+        f32 ratio = texture_aspect_ratio(&state.renderer, get_texture(TH_GOLD));
+        f32 height = 100;
+        f32 width = height * ratio;
+    
+        spawn_entity(Entity{
+            .position = {-100, 0, 10},
+            .size = {width, height},
+            .color = WHITE,
+            .texture = TH_GOLD,
         });
     }
 
@@ -548,6 +599,14 @@ void create_scene() {
         .flags = EF_LIGHT | EF_PLAYER,
         .position = {-150, 0, 0},
         .light_colour = BLUE,
+        .light_intensity = 1,
+        .light_radius = 150
+    });
+
+    spawn_entity(Entity{
+        .flags = EF_LIGHT | EF_ALT_PLAYER,
+        .position = {150, 0, 0},
+        .light_colour = RED,
         .light_intensity = 1,
         .light_radius = 150
     });

@@ -279,6 +279,7 @@ struct Vertex {
     v3 position;
     v4 colour;
     v2 uv;
+    v2 normal_uv;
     i32 draw_type;
 };
 
@@ -367,6 +368,7 @@ struct FrameBuffer {
 
     u32 colour_attachment;
     u32 depth_attachment;
+    u32 normals_attachment;
 };
 
 v4 WHITE      = {1, 1, 1, 1};
@@ -387,13 +389,13 @@ bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel
 
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
-void draw_texture(Renderer *renderer, Texture *texture, v3 position, v2 size, f32 rotation, v4 color);
+void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color);
 void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
 void draw_light(Renderer *renderer, v3 position, f32 radius, v4 colour, f32 intensity);
 void new_frame(Renderer *renderer, Window *window, Camera camera);
 void draw_frame(Renderer *renderer, Window *window);
-Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], i32 draw_type);
+Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], i32 draw_type);
 
 f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
 
@@ -503,12 +505,14 @@ bool init_renderer(Renderer *renderer, Window *window) {
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, position));   // position
         glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, colour));     // colour
         glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, uv));         // uv
-        glVertexAttribIPointer(3, 1, GL_INT, sizeof(Vertex), (void *) offsetof(Vertex, draw_type));             // draw_type
+        glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, normal_uv));  // normal_uv
+        glVertexAttribIPointer(4, 1, GL_INT, sizeof(Vertex), (void *) offsetof(Vertex, draw_type));             // draw_type
 
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
         glEnableVertexAttribArray(2);
         glEnableVertexAttribArray(3);
+        glEnableVertexAttribArray(4);
     }
 
     return true;
@@ -613,6 +617,8 @@ bool load_shaders(Renderer *renderer) {
     
         glUseProgram(light_shader_program);
         glUniform1i(glGetUniformLocation(light_shader_program, "scene_texture"), 0);
+        glUniform1i(glGetUniformLocation(light_shader_program, "normals_texture"), 1);
+        glUniform1i(glGetUniformLocation(light_shader_program, "depth_texture"), 2);
 
         printf("Compiled and linked lighting shader program\n");
     }
@@ -898,7 +904,7 @@ void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color) {
         {0, 0},
     };
 
-    push_quad(renderer, position, size, 0, color, uvs, 0);
+    push_quad(renderer, position, size, 0, color, uvs, {}, 0);
 }
 
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color) {
@@ -911,13 +917,13 @@ void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color) {
         {0, 0},
     };
 
-    push_quad(renderer, position, size, 0, color, uvs, 1);
+    push_quad(renderer, position, size, 0, color, uvs, {}, 1);
 }
 
-void draw_texture(Renderer *renderer, Texture *texture, v3 position, v2 size, f32 rotation, v4 color) {
+void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color) {
     assert(texture->type == TextureType::SINGLE);
 
-    push_quad(renderer, position, size, rotation, color, texture->uvs, 2);
+    push_quad(renderer, position, size, rotation, color, texture->uvs, normal_texture->uvs, 2);
 }
 
 void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color) {
@@ -932,7 +938,7 @@ void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_ani
     }
 
     Texture *sub_texture = &texture->sub_textures[sub_texture_index];
-    push_quad(renderer, position, size, rotation, color, sub_texture->uvs, 2);
+    push_quad(renderer, position, size, rotation, color, sub_texture->uvs, {}, 2);
 }
 
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color) {
@@ -1018,7 +1024,7 @@ void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 c
         // quad needs position to be centre of quad so just convert that here
         v2 quad_centered_position = translated_position + (scaled_size * 0.5f);
 
-        push_quad(renderer, v3{quad_centered_position.x, quad_centered_position.y, 0}, scaled_size, 0, color, glyph->uvs, 3);
+        push_quad(renderer, v3{quad_centered_position.x, quad_centered_position.y, 0}, scaled_size, 0, color, glyph->uvs, {}, 3);
    }
 
     mem_free(glyphs);
@@ -1064,7 +1070,7 @@ void draw_frame(Renderer *renderer, Window *window) {
     } 
 }
 
-Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], i32 draw_type) {
+Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], i32 draw_type) {
     const v4 top_left      = {-0.5,   0.5, 0, 1};
     const v4 top_right     = { 0.5,   0.5, 0, 1};
     const v4 bottom_right  = { 0.5,  -0.5, 0, 1};
@@ -1093,6 +1099,13 @@ Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color
     quad->vertices[1].uv = uvs[1];
     quad->vertices[2].uv = uvs[2];
     quad->vertices[3].uv = uvs[3];
+
+    if (normal_uvs != NULL) {
+        quad->vertices[0].normal_uv = normal_uvs[0];
+        quad->vertices[1].normal_uv = normal_uvs[1];
+        quad->vertices[2].normal_uv = normal_uvs[2];
+        quad->vertices[3].normal_uv = normal_uvs[3];
+    }
 
     quad->vertices[0].draw_type = draw_type;
     quad->vertices[1].draw_type = draw_type;
@@ -1124,9 +1137,22 @@ bool init_frame_buffer(FrameBuffer *frame_buffer) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
+    // create texture that frame buffer will use as normal buffer
+    glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->normals_attachment);
+    glBindTexture(GL_TEXTURE_2D, frame_buffer->normals_attachment);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, frame_buffer->width, frame_buffer->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
     // assign attachments to frame buffer
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frame_buffer->colour_attachment, 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, frame_buffer->depth_attachment, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, frame_buffer->normals_attachment, 0);
+
+    // when using more then one colour attachment, need to set all colour buffers the
+    // frame buffer can write too, if not the normal buffer will not be write too
+    GLenum draw_buffers[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+    glDrawBuffers(2, draw_buffers);
 
     if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         printf("error when createing frame buffer, was not complete\n");
