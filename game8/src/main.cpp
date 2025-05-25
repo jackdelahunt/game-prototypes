@@ -1,13 +1,12 @@
 #include "libs/libs.h"
 #include "engine.cpp"
 
-#include <cassert>
 #include <cstdio>
 #include <cstring>
 #include <time.h>
 #include <stdlib.h>
 
-// Total: 11:30
+// Total: 12:15
 // Started: 19:00
 //
 // Lighting TODO:
@@ -28,6 +27,15 @@ enum TextureHandle {
 
 Texture *textures[TH_COUNT_];
 
+enum SpriteHandle {
+    SH_NONE,
+    SH_SWORD,
+    SH_GOLD,
+    SH_COUNT_,
+};
+
+Sprite *sprites[SH_COUNT_];
+
 struct Entity {
     // meta
     u64 flags;
@@ -41,7 +49,7 @@ struct Entity {
 
     // rendering
     v4 color;
-    TextureHandle texture;
+    SpriteHandle sprite;
 
     // animated texture
     f32 animation_cycle;
@@ -86,13 +94,13 @@ void create_scene();
 CollisionIterator new_collision_iterator(Entity *entity);
 Entity *next(CollisionIterator *iterator);
 
-Texture *get_texture(TextureHandle handle);
+Sprite *get_sprite(SpriteHandle handle);
 
 int main() {
     state = {
         .camera = {
             .position = {0, 0, -1},
-            .orthographic_size = 150,
+            .orthographic_size = 300,
             .near_plane = 0.1f,
             .far_plane = 100.0f,
         },
@@ -133,35 +141,25 @@ int main() {
             }
 
             textures[TH_FACES] = texture;
+        }
 
-            texture = load_texture(&state.renderer, "resources/textures/sword.png");
-            if (texture == NULL) {
+        { // load and build all sprites
+            Sprite *sprite = NULL;
+
+            sprite = load_sprite(&state.renderer, "resources/textures/gold.png", "resources/textures/gold_normal.png");
+            if (sprite == NULL) {
                 return 1;
             }
 
-            textures[TH_SWORD] = texture;
+            sprites[SH_GOLD] = sprite;
 
-            texture = load_texture(&state.renderer, "resources/textures/sword_normal.png");
-            if (texture == NULL) {
+            sprite = load_sprite(&state.renderer, "resources/textures/sword.png", "resources/textures/sword_normal.png");
+            if (sprite == NULL) {
                 return 1;
             }
 
-            textures[TH_SWORD_NORMAL] = texture; 
-
-            texture = load_texture(&state.renderer, "resources/textures/gold.png");
-            if (texture == NULL) {
-                return 1;
-            }
-
-            textures[TH_GOLD] = texture;
-    
-            texture = load_texture(&state.renderer, "resources/textures/gold_normal.png");
-            if (texture == NULL) {
-                return 1;
-            }
-
-            textures[TH_GOLD_NORMAL] = texture;
-      }
+            sprites[SH_SWORD] = sprite;
+        }
 
         ok = build_atlas(&state.renderer);
         if (!ok) {
@@ -340,6 +338,8 @@ int main() {
 
             ImGui::Begin("Inspector");
 
+            ImGui::Text("FPS: %f", 1.0f / delta_time);
+
             if(ImGui::Button("Reload Shaders")) {
                 delete_shaders(&state.renderer);
                 load_shaders(&state.renderer);
@@ -481,31 +481,9 @@ void update_and_draw(f32 delta_time) {
             draw_circle(&state.renderer, entity->position, 5, WHITE);
         } 
 
-        if (entity->texture != TH_NONE) {
-            Texture *texture = get_texture(entity->texture);
-
-            if(texture->type == TextureType::SINGLE) {
-                Texture *normal_texture = NULL;
-
-                if(entity->texture == TH_GOLD) {
-                    normal_texture = get_texture(TH_GOLD_NORMAL);
-                } else if(entity->texture == TH_SWORD) {
-                    normal_texture = get_texture(TH_SWORD_NORMAL);
-                } else {
-                    assert(0);
-                }
-
-                draw_texture(&state.renderer, texture, normal_texture, entity->position, entity->size, entity->rotation, entity->color);
-            }
-            else if(texture->type == TextureType::ANIMATED) {
-                // progress and maybe reset texture animations 
-                entity->animation_cycle += delta_time;
-                if (entity->animation_cycle > texture->animation_length) {
-                    entity->animation_cycle = 0;
-                }
-    
-                draw_animated_texture(&state.renderer, texture, entity->animation_cycle, entity->position, entity->size, entity->rotation, entity->color);
-            }
+        if (entity->sprite != SH_NONE) {
+            Sprite *sprite = get_sprite(entity->sprite);
+            draw_sprite(&state.renderer, sprite, entity->position, entity->size, entity->rotation, entity->color);
         }
     }
 
@@ -556,42 +534,21 @@ void spawn_entity(Entity entity) {
 }
 
 void create_scene() {
-    if(false) { // faces entity
-        f32 ratio = texture_aspect_ratio(&state.renderer, get_texture(TH_FACE));
-        f32 height = 50;
-        f32 width = height * ratio;
-    
-        spawn_entity(Entity{
-            .position = {-200, -200, 30},
-            .size = {width, height},
-            .color = WHITE,
-            .texture = TH_FACES,
-        });
-    }
-
     { // sword entity
-        f32 ratio = texture_aspect_ratio(&state.renderer, get_texture(TH_SWORD));
-        f32 height = 100;
-        f32 width = height * ratio;
-    
         spawn_entity(Entity{
             .position = {100, 0, 10},
-            .size = {width, height},
+            .size = {100, 100},
             .color = WHITE,
-            .texture = TH_SWORD,
+            .sprite = SH_SWORD,
         });
     }
 
     { // gold entity
-        f32 ratio = texture_aspect_ratio(&state.renderer, get_texture(TH_GOLD));
-        f32 height = 100;
-        f32 width = height * ratio;
-    
         spawn_entity(Entity{
             .position = {-100, 0, 10},
-            .size = {width, height},
+            .size = {100, 100},
             .color = WHITE,
-            .texture = TH_GOLD,
+            .sprite = SH_GOLD,
         });
     }
 
@@ -642,10 +599,10 @@ Entity *next(CollisionIterator *iterator) {
 }
 
 
-Texture *get_texture(TextureHandle handle) {
-    if(handle == TH_NONE) {
+Sprite *get_sprite(SpriteHandle handle) {
+    if(handle == SH_NONE) {
         return NULL;
     }
 
-    return textures[handle];
+    return sprites[handle];
 }

@@ -224,7 +224,7 @@ bool init_window(Window *window, i32 width, i32 height, string title) {
 
     glfwSetWindowUserPointer(window->glfw_window, window);
 
-    glfwSwapInterval(1);
+    glfwSwapInterval(0); // 0 -> no vsync, 1 -> vsync
 
     glfwSetKeyCallback(window->glfw_window, glfw_key_callback);
     glfwSetCursorPosCallback(window->glfw_window, glfw_mouse_move_callback);
@@ -273,6 +273,7 @@ void glfw_mouse_move_callback(GLFWwindow* window, f64 x, f64 y) {
 /////////////////////////////////////////////////////////////////////////////
 #define MAX_QUADS 2000
 #define MAX_LIGHTS 20
+#define MAX_SPRITES 256
 #define MAX_TEXTURES 256
 
 struct Vertex {
@@ -323,6 +324,11 @@ struct Texture {
     Slice<Texture> sub_textures;
 };
 
+struct Sprite {
+    Texture *albedo;
+    Texture *normal;
+};
+
 struct Atlas {
     i64 width;
     i64 height;
@@ -345,7 +351,9 @@ struct Renderer {
 
     m4 view_projection_matrix;
 
+    Array<Sprite, MAX_SPRITES> sprites;
     Array<Texture, MAX_TEXTURES> textures;
+
     Atlas atlas;
 
     Font font;
@@ -380,6 +388,7 @@ v4 BLUE     = {0, 0, 1, 1};
 bool init_renderer(Renderer *renderer, Window *window);
 bool load_shaders(Renderer *renderer);
 void delete_shaders(Renderer *renderer);
+Sprite *load_sprite(Renderer *renderer, string albedo_path, string normal_path);
 Texture *load_texture(Renderer *renderer, string path);
 Texture *load_animated_texture(Renderer *renderer, string path, i64 cell_count, f32 animation_length);
 bool build_atlas(Renderer *renderer);
@@ -389,6 +398,7 @@ bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel
 
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
+void draw_sprite(Renderer *renderer, Sprite *sprite, v3 position, v2 size, f32 rotation, v4 color);
 void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color);
 void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
@@ -633,6 +643,19 @@ bool load_shaders(Renderer *renderer) {
 void delete_shaders(Renderer *renderer) {
     glDeleteProgram(renderer->shader_program_id);
     glDeleteProgram(renderer->light_shader_program_id);
+}
+
+Sprite *load_sprite(Renderer *renderer, string albedo_path, string normal_path) {
+    Texture *albedo = load_texture(renderer, albedo_path);
+    Texture *normal = load_texture(renderer, normal_path);
+
+    Sprite *sprite = push(&renderer->sprites);
+    *sprite = Sprite {
+        .albedo = albedo,
+        .normal = normal
+    };
+
+    return sprite;
 }
 
 Texture *load_texture(Renderer *renderer, string path) {
@@ -918,6 +941,10 @@ void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color) {
     };
 
     push_quad(renderer, position, size, 0, color, uvs, {}, 1);
+}
+
+void draw_sprite(Renderer *renderer, Sprite *sprite, v3 position, v2 size, f32 rotation, v4 color) {
+    push_quad(renderer, position, size, rotation, color, sprite->albedo->uvs, sprite->normal->uvs, 2);
 }
 
 void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color) {
