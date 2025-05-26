@@ -7,7 +7,7 @@
 #include <stdlib.h>
 
 // Total: 16:30
-// Started: 11:00
+// Started: 18:30
 //
 // Lighting TODO:
 // - bloom
@@ -28,11 +28,13 @@ Texture *textures[TH_COUNT_];
 
 enum SpriteHandle {
     SH_NONE,
-    SH_SWORD,
-    SH_GOLD,
-    SH_STONE,
-    SH_STONE_FLOOR,
-    SH_PILLAR,
+    SH_FLOOR_1,
+    SH_FLOOR_2,
+    SH_FLOOR_3,
+    SH_WALL_1,
+    SH_WALL_2,
+    SH_ROCK_1,
+    SH_ROCK_2,
     SH_COUNT_,
 };
 
@@ -107,7 +109,7 @@ int main() {
             .far_plane = 100.0f,
         },
         .renderer = {
-            .global_light = {0.2, 0.2, 0.2, 1},
+            .global_light = {0.3, 0.3, 0.6, 1},
             .clear_colour = {0.2, 0.2, 0.2, 1},
         },
     };
@@ -127,61 +129,58 @@ int main() {
             return 1;
         }
 
-        { // load and build all textures
-            Texture *texture = NULL;
-
-            texture = load_texture(&state.renderer, "resources/textures/face.png");
-            if (texture == NULL) {
-                return 1;
-            }
-
-            textures[TH_FACE] = texture;
-
-            texture = load_animated_texture(&state.renderer, "resources/textures/faces.png", 7, 3);
-            if (texture == NULL) {
-                return 1;
-            }
-
-            textures[TH_FACES] = texture;
-        }
-
         { // load and build all sprites
             Sprite *sprite = NULL;
 
-            sprite = load_sprite(&state.renderer, "resources/textures/gold.png", "resources/textures/gold_normal.png");
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/tiles/floor_1.png", "resources/textures/caves/tiles/floor_1_normal.png");
             if (sprite == NULL) {
                 return 1;
             }
 
-            sprites[SH_GOLD] = sprite;
+            sprites[SH_FLOOR_1] = sprite;
 
-            sprite = load_sprite(&state.renderer, "resources/textures/sword.png", "resources/textures/sword_normal.png");
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/tiles/floor_2.png", "resources/textures/caves/tiles/floor_2_normal.png");
             if (sprite == NULL) {
                 return 1;
             }
 
-            sprites[SH_SWORD] = sprite;
+            sprites[SH_FLOOR_2] = sprite;
 
-            sprite = load_sprite(&state.renderer, "resources/textures/stone/stone.png", "resources/textures/stone/stone_normal.png");
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/tiles/floor_3.png", "resources/textures/caves/tiles/floor_3_normal.png");
             if (sprite == NULL) {
                 return 1;
             }
 
-            sprites[SH_STONE] = sprite;
+            sprites[SH_FLOOR_3] = sprite;
 
-            sprite = load_sprite(&state.renderer, "resources/textures/stone/stone_floor.png", "resources/textures/stone/stone_floor_normal.png");
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/tiles/wall_1.png", "");
             if (sprite == NULL) {
                 return 1;
             }
 
-            sprites[SH_STONE_FLOOR] = sprite;
+            sprites[SH_WALL_1] = sprite;
 
-            sprite = load_sprite(&state.renderer, "resources/textures/pillars/pillar.png", "resources/textures/pillars/pillar_normal.png");
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/tiles/wall_2.png", "");
             if (sprite == NULL) {
                 return 1;
             }
 
-            sprites[SH_PILLAR] = sprite;
+            sprites[SH_WALL_2] = sprite;
+
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/props/rock_1.png", "resources/textures/caves/props/rock_1_normal.png");
+            if (sprite == NULL) {
+                return 1;
+            }
+
+            sprites[SH_ROCK_1] = sprite;
+
+
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/props/rock_2.png", "");
+            if (sprite == NULL) {
+                return 1;
+            }
+
+            sprites[SH_ROCK_2] = sprite;
         }
 
         ok = build_atlas(&state.renderer);
@@ -429,61 +428,37 @@ void spawn_entity(Entity entity) {
 }
 
 void create_scene() {
-    { // floor
-        f32 ratio = texture_aspect_ratio(&state.renderer, get_sprite(SH_STONE_FLOOR)->albedo);
-        f32 height = 150;
-        f32 width = height * ratio;
+    f32 ratio = texture_aspect_ratio(&state.renderer, get_sprite(SH_ROCK_1)->albedo);
+    f32 height = 150;
+    f32 width = height * ratio;
     
-        spawn_entity(Entity{
-            .position = {-width, 0, 10},
-            .size = {width, height},
-            .color = WHITE,
-            .sprite = SH_STONE_FLOOR,
-        });
-    
-        spawn_entity(Entity{
-            .position = {0, 0, 10},
-            .size = {width, height},
-            .color = WHITE,
-            .sprite = SH_STONE_FLOOR,
-        });
-    
-        spawn_entity(Entity{
-            .position = {width, 0, 10},
-            .size = {width, height},
-            .color = WHITE,
-            .sprite = SH_STONE_FLOOR,
-        });
-    }
+    spawn_entity(Entity{
+        .position = {0, 0, 10},
+        .size = {width, height},
+        .color = WHITE,
+        .sprite = SH_ROCK_1,
+    });
 
-    { // pillars
-        f32 ratio = texture_aspect_ratio(&state.renderer, get_sprite(SH_PILLAR)->albedo);
-        f32 height = 200;
-        f32 width = height * ratio;
-        f32 y = 150;
-        f32 z = 5;
-    
-        spawn_entity(Entity{
-            .position = {-width, y, z},
-            .size = {width, height},
-            .color = WHITE,
-            .sprite = SH_PILLAR,
-        });
-    
-        spawn_entity(Entity{
-            .position = {0, y, z},
-            .size = {width, height},
-            .color = WHITE,
-            .sprite = SH_PILLAR,
-        });
-    
-        spawn_entity(Entity{
-            .position = {width, y, z},
-            .size = {width, height},
-            .color = WHITE,
-            .sprite = SH_PILLAR,
-        });
-    }
+    spawn_entity(Entity{
+        .position = {-100, 0, 10},
+        .size = {40, 40},
+        .color = WHITE,
+        .sprite = SH_FLOOR_1,
+    });
+
+    spawn_entity(Entity{
+        .position = {-140, 0, 10},
+        .size = {40, 40},
+        .color = WHITE,
+        .sprite = SH_FLOOR_2,
+    });
+
+    spawn_entity(Entity{
+        .position = {-180, 0, 10},
+        .size = {40, 40},
+        .color = WHITE,
+        .sprite = SH_FLOOR_3,
+    });
 
     spawn_entity(Entity{
         .flags = EF_LIGHT | EF_PLAYER,

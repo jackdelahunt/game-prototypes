@@ -364,6 +364,8 @@ struct Renderer {
     Array<Sprite, MAX_SPRITES> sprites;
     Array<Texture, MAX_TEXTURES> textures;
 
+    Texture *default_normal;
+
     Atlas atlas;
 
     Font font;
@@ -545,6 +547,16 @@ bool init_renderer(Renderer *renderer, Window *window) {
         }
     }
 
+    { // load default normal texture
+        Texture *texture = load_texture(renderer, "resources/textures/defaults/normal.png");
+        if (texture == NULL) {
+            printf("failed to load default texture\n");
+            return false;
+        }
+
+        renderer->default_normal = texture;
+    }
+
     return true;
 }
 
@@ -667,7 +679,11 @@ void delete_shaders(Renderer *renderer) {
 
 Sprite *load_sprite(Renderer *renderer, string albedo_path, string normal_path) {
     Texture *albedo = load_texture(renderer, albedo_path);
-    Texture *normal = load_texture(renderer, normal_path);
+    Texture *normal = NULL;
+
+    if (normal_path.len != 0) {
+        normal = load_texture(renderer, normal_path);
+    }
 
     Sprite *sprite = push(&renderer->sprites);
     *sprite = Sprite {
@@ -964,7 +980,15 @@ void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color) {
 }
 
 void draw_sprite(Renderer *renderer, Sprite *sprite, v3 position, v2 size, f32 rotation, v4 color) {
-    push_quad(renderer, position, size, rotation, color, sprite->albedo->uvs, sprite->normal->uvs, 2);
+    v2 *normal_uvs = NULL; // need to use pointer here because stupid C reasons
+
+    if (sprite->normal == NULL) {
+        normal_uvs = renderer->default_normal->uvs;
+    } else  {
+        normal_uvs = sprite->normal->uvs;
+    }
+
+    push_quad(renderer, position, size, rotation, color, sprite->albedo->uvs, normal_uvs, 2);
 }
 
 void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color) {
