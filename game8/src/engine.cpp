@@ -224,7 +224,7 @@ bool init_window(Window *window, i32 width, i32 height, string title) {
 
     glfwSetWindowUserPointer(window->glfw_window, window);
 
-    glfwSwapInterval(0); // 0 -> no vsync, 1 -> vsync
+    glfwSwapInterval(1); // 0 -> no vsync, 1 -> vsync
 
     glfwSetKeyCallback(window->glfw_window, glfw_key_callback);
     glfwSetCursorPosCallback(window->glfw_window, glfw_mouse_move_callback);
@@ -383,9 +383,12 @@ struct Renderer {
 
 v4 WHITE      = {1, 1, 1, 1};
 v4 BLACK      = {0, 0, 0, 1};
+
 v4 RED      = {1, 0, 0, 1};
 v4 GREEN    = {0, 1, 0, 1};
 v4 BLUE     = {0, 0, 1, 1};
+
+v4 ORANGE   = {1, 0.64, 0.1, 1};
 
 bool init_renderer(Renderer *renderer, Window *window);
 bool load_shaders(Renderer *renderer);
@@ -734,8 +737,8 @@ Texture *load_animated_texture(Renderer *renderer, string path, i64 cell_count, 
 }
 
 bool build_atlas(Renderer *renderer) {
-    const i64 ATLAS_WIDTH     = 200;
-    const i64 ATLAS_HEIGHT    = 200;
+    const i64 ATLAS_WIDTH     = 1000;
+    const i64 ATLAS_HEIGHT    = 1000;
     const i64 BYTES_PER_PIXEL = 4;
     const i64 CHANNELS        = 4;
     const i64 ATLAS_BYTE_SIZE = ATLAS_WIDTH * ATLAS_HEIGHT * BYTES_PER_PIXEL;

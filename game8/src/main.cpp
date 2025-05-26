@@ -6,11 +6,10 @@
 #include <time.h>
 #include <stdlib.h>
 
-// Total: 12:30
+// Total: 16:30
 // Started: 11:00
 //
 // Lighting TODO:
-// - normal mapping
 // - bloom
 #define MAX_ENTITIES 2000
 
@@ -31,6 +30,9 @@ enum SpriteHandle {
     SH_NONE,
     SH_SWORD,
     SH_GOLD,
+    SH_STONE,
+    SH_STONE_FLOOR,
+    SH_PILLAR,
     SH_COUNT_,
 };
 
@@ -99,8 +101,8 @@ Sprite *get_sprite(SpriteHandle handle);
 int main() {
     state = {
         .camera = {
-            .position = {0, 0, -1},
-            .orthographic_size = 200,
+            .position = {0, 110, -1},
+            .orthographic_size = 180,
             .near_plane = 0.1f,
             .far_plane = 100.0f,
         },
@@ -159,6 +161,27 @@ int main() {
             }
 
             sprites[SH_SWORD] = sprite;
+
+            sprite = load_sprite(&state.renderer, "resources/textures/stone/stone.png", "resources/textures/stone/stone_normal.png");
+            if (sprite == NULL) {
+                return 1;
+            }
+
+            sprites[SH_STONE] = sprite;
+
+            sprite = load_sprite(&state.renderer, "resources/textures/stone/stone_floor.png", "resources/textures/stone/stone_floor_normal.png");
+            if (sprite == NULL) {
+                return 1;
+            }
+
+            sprites[SH_STONE_FLOOR] = sprite;
+
+            sprite = load_sprite(&state.renderer, "resources/textures/pillars/pillar.png", "resources/textures/pillars/pillar_normal.png");
+            if (sprite == NULL) {
+                return 1;
+            }
+
+            sprites[SH_PILLAR] = sprite;
         }
 
         ok = build_atlas(&state.renderer);
@@ -222,6 +245,7 @@ int main() {
             }
 
             if(ImGui::CollapsingHeader("Camera")) {
+                ImGui::SliderFloat3("position", &state.camera.position[0], -500, 500);
                 ImGui::SliderFloat("Orthographic size", &state.camera.orthographic_size, 10, 1000);
             }
 
@@ -405,38 +429,68 @@ void spawn_entity(Entity entity) {
 }
 
 void create_scene() {
-    { // sword entity
+    { // floor
+        f32 ratio = texture_aspect_ratio(&state.renderer, get_sprite(SH_STONE_FLOOR)->albedo);
+        f32 height = 150;
+        f32 width = height * ratio;
+    
         spawn_entity(Entity{
-            .position = {100, 0, 10},
-            .size = {100, 100},
+            .position = {-width, 0, 10},
+            .size = {width, height},
             .color = WHITE,
-            .sprite = SH_SWORD,
+            .sprite = SH_STONE_FLOOR,
+        });
+    
+        spawn_entity(Entity{
+            .position = {0, 0, 10},
+            .size = {width, height},
+            .color = WHITE,
+            .sprite = SH_STONE_FLOOR,
+        });
+    
+        spawn_entity(Entity{
+            .position = {width, 0, 10},
+            .size = {width, height},
+            .color = WHITE,
+            .sprite = SH_STONE_FLOOR,
         });
     }
 
-    { // gold entity
+    { // pillars
+        f32 ratio = texture_aspect_ratio(&state.renderer, get_sprite(SH_PILLAR)->albedo);
+        f32 height = 200;
+        f32 width = height * ratio;
+        f32 y = 150;
+        f32 z = 5;
+    
         spawn_entity(Entity{
-            .position = {-100, 0, 10},
-            .size = {100, 100},
+            .position = {-width, y, z},
+            .size = {width, height},
             .color = WHITE,
-            .sprite = SH_GOLD,
+            .sprite = SH_PILLAR,
+        });
+    
+        spawn_entity(Entity{
+            .position = {0, y, z},
+            .size = {width, height},
+            .color = WHITE,
+            .sprite = SH_PILLAR,
+        });
+    
+        spawn_entity(Entity{
+            .position = {width, y, z},
+            .size = {width, height},
+            .color = WHITE,
+            .sprite = SH_PILLAR,
         });
     }
 
     spawn_entity(Entity{
         .flags = EF_LIGHT | EF_PLAYER,
         .position = {-150, 0, 0},
-        .light_colour = WHITE,
+        .light_colour = ORANGE,
         .light_intensity = 1,
-        .light_radius = 150
-    });
-
-    spawn_entity(Entity{
-        .flags = EF_LIGHT | EF_ALT_PLAYER,
-        .position = {150, 0, 0},
-        .light_colour = RED,
-        .light_intensity = 1,
-        .light_radius = 150
+        .light_radius = 400
     });
 }
 
