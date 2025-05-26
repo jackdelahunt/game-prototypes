@@ -342,6 +342,16 @@ struct Font {
     u8 *bitmap_data;
 };
 
+struct FrameBuffer {
+    u32 id;
+    i64 width;
+    i64 height;
+
+    u32 colour_attachment;
+    u32 depth_attachment;
+    u32 normals_attachment;
+};
+
 struct Renderer {
     v4 global_light;
     v4 clear_colour;
@@ -358,6 +368,8 @@ struct Renderer {
 
     Font font;
 
+    FrameBuffer unlit_frame_buffer;
+
     u32 vertex_array_id;
     u32 vertex_buffer_id;
     u32 index_buffer_id;
@@ -367,16 +379,6 @@ struct Renderer {
 
     u32 atlas_texture_id;
     u32 font_texture_id;
-};
-
-struct FrameBuffer {
-    u32 id;
-    u32 width;
-    u32 height;
-
-    u32 colour_attachment;
-    u32 depth_attachment;
-    u32 normals_attachment;
 };
 
 v4 WHITE      = {1, 1, 1, 1};
@@ -404,8 +406,10 @@ void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_ani
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
 void draw_light(Renderer *renderer, v3 position, f32 radius, v4 colour, f32 intensity);
 void new_frame(Renderer *renderer, Window *window, Camera camera);
-void draw_frame(Renderer *renderer, Window *window);
+void draw_frame(Renderer *renderer, Window *window, Camera camera);
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], i32 draw_type);
+void new_imgui_frame();
+void draw_imgui_frame();
 
 f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
 
@@ -523,6 +527,19 @@ bool init_renderer(Renderer *renderer, Window *window) {
         glEnableVertexAttribArray(2);
         glEnableVertexAttribArray(3);
         glEnableVertexAttribArray(4);
+    }
+
+    { // init frame buffer
+         renderer->unlit_frame_buffer = FrameBuffer {
+            .width =  window->width,
+            .height =  window->height
+        };
+    
+        bool ok = init_frame_buffer(&renderer->unlit_frame_buffer);
+        if (!ok) {
+            printf("failed to init unlit frame buffer\n");
+            return false;
+        }
     }
 
     return true;
@@ -1072,13 +1089,13 @@ void draw_light(Renderer *renderer, v3 position, f32 radius, v4 colour, f32 inte
 
 void new_frame(Renderer *renderer, Window *window, Camera camera) {
     reset(&renderer->quads);
-
     renderer->view_projection_matrix = HMM_MulM4(get_projection_matrix(camera, (f32) window->width / (f32) window->height), get_view_matrix(camera)); 
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
-void draw_frame(Renderer *renderer, Window *window) {
-    { // update the quad buffer and draw
+void draw_frame(Renderer *renderer, Window *window, Camera camera) {
+    { // first render pass - unlit scene
+        glBindFramebuffer(GL_FRAMEBUFFER, renderer->unlit_frame_buffer.id);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glViewport(0, 0, window->width, window->height);
 
         glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
@@ -1094,8 +1111,116 @@ void draw_frame(Renderer *renderer, Window *window) {
         glBindTexture(GL_TEXTURE_2D, renderer->font_texture_id);
 
         glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
-    } 
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    { // second render pass - lighting 
+        reset(&renderer->quads);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glViewport(0, 0, window->width, window->height);
+
+        v2 uvs[4] = {
+            {0, 1},
+            {1, 1},
+            {1, 0},
+            {0, 0},
+        };
+          
+        Quad *quad = push_quad(renderer, {}, {50, 50}, 0, WHITE, uvs, {}, 2);
+        f32 z = 0;
+        quad->vertices[0].position = {-1,  1, z};
+        quad->vertices[1].position = { 1,  1, z};
+        quad->vertices[2].position = { 1, -1, z};
+        quad->vertices[3].position = {-1, -1, z};
+    
+        glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.data);
+        glBindVertexArray(renderer->vertex_array_id);
+ 
+        glUseProgram(renderer->light_shader_program_id);
+ 
+        // set the input texture
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, renderer->unlit_frame_buffer.colour_attachment);
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, renderer->unlit_frame_buffer.normals_attachment);
+
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, renderer->unlit_frame_buffer.depth_attachment);
+
+        // set all uniforms used in the lights shader, using sprintf to get
+        // the location of each value in the lights array that is why it looks
+        // really weird and long winded
+        glUniform4f(
+            glGetUniformLocation(renderer->light_shader_program_id, "global_light"),
+            renderer->global_light[0],
+            renderer->global_light[1],
+            renderer->global_light[2],
+            renderer->global_light[3]
+        );
+
+        glUniform1i(
+            glGetUniformLocation(renderer->light_shader_program_id, "light_count"),
+            (i32) renderer->lights.len
+        );
+
+        glUniform1f(
+            glGetUniformLocation(renderer->light_shader_program_id, "aspect_ratio"),
+            (f32) window->width / (f32) window->height
+        );
+
+        for(i64 i = 0; i < renderer->lights.len; i++) {
+            const i64 buffer_size = 64;
+            char buffer[buffer_size] = {};
+
+            { // set light position
+                sprintf(buffer, "lights[%llu].position", i);
+                glUniform2f(
+                    glGetUniformLocation(renderer->light_shader_program_id, buffer), 
+                    renderer->lights[i].position.x,
+                    renderer->lights[i].position.y
+                );
+                memset(buffer, 0, buffer_size);
+            }
+
+            { // set light radius
+                sprintf(buffer, "lights[%llu].radius", i);
+                glUniform1f(
+                    glGetUniformLocation(renderer->light_shader_program_id, buffer), 
+                    renderer->lights[i].radius
+                );
+                memset(buffer, 0, buffer_size);
+            }
+
+            { // set light colour
+                sprintf(buffer, "lights[%llu].colour", i);
+                glUniform4f(
+                    glGetUniformLocation(renderer->light_shader_program_id, buffer), 
+                    renderer->lights[i].colour.r,
+                    renderer->lights[i].colour.g,
+                    renderer->lights[i].colour.b,
+                    renderer->lights[i].colour.a
+                );
+                memset(buffer, 0, buffer_size);
+            }
+
+            { // set light intensity
+                sprintf(buffer, "lights[%llu].intensity", i);
+                glUniform1f(
+                    glGetUniformLocation(renderer->light_shader_program_id, buffer), 
+                    renderer->lights[i].intensity
+                );
+                memset(buffer, 0, buffer_size);
+            }
+ 
+        }
+ 
+        glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
+        reset(&renderer->lights);
+    }
 }
+
 
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], i32 draw_type) {
     const v4 top_left      = {-0.5,   0.5, 0, 1};
@@ -1140,6 +1265,22 @@ Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color
     quad->vertices[3].draw_type = draw_type;
 
     return quad;
+}
+
+
+void new_imgui_frame() {
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame(); 
+}
+
+void draw_imgui_frame() {
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    GLFWwindow *current = glfwGetCurrentContext();
+    ImGui::UpdatePlatformWindows();
+    ImGui::RenderPlatformWindowsDefault();
+    glfwMakeContextCurrent(current);
 }
 
 f32 texture_aspect_ratio(Renderer *renderer, Texture *texture) {

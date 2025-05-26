@@ -6,8 +6,8 @@
 #include <time.h>
 #include <stdlib.h>
 
-// Total: 12:15
-// Started: 19:00
+// Total: 12:30
+// Started: 11:00
 //
 // Lighting TODO:
 // - normal mapping
@@ -100,13 +100,13 @@ int main() {
     state = {
         .camera = {
             .position = {0, 0, -1},
-            .orthographic_size = 300,
+            .orthographic_size = 200,
             .near_plane = 0.1f,
             .far_plane = 100.0f,
         },
         .renderer = {
-            .global_light = {0.6, 0.6, 0.6, 1},
-            .clear_colour = {1, 1, 1, 1},
+            .global_light = {0.2, 0.2, 0.2, 1},
+            .clear_colour = {0.2, 0.2, 0.2, 1},
         },
     };
 
@@ -188,18 +188,7 @@ int main() {
         srand(time(NULL));
     } 
 
-    create_scene();
-
-    FrameBuffer unlit_frame_buffer {
-        .width = (u32) state.window.width,
-        .height = (u32) state.window.height
-    };
-
-    bool ok = init_frame_buffer(&unlit_frame_buffer);
-    if (!ok) {
-        printf("failed to init unlit frame buffer\n");
-        return 1;
-    }
+    create_scene(); 
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
         f64 current_time    = state.time;
@@ -207,134 +196,21 @@ int main() {
         f32 delta_time      = (f32) (new_time - current_time);
         state.time          = new_time;
 
-        input();
-
         if (KEYS[GLFW_KEY_ESCAPE] == InputState::down) {
             glfwSetWindowShouldClose(state.window.glfw_window, GLFW_TRUE);
         }
 
-        { // first render pass - unlit scene
-            glBindFramebuffer(GL_FRAMEBUFFER, unlit_frame_buffer.id);
-            new_frame(&state.renderer, &state.window, state.camera);
-    
-            update_and_draw(delta_time);
-            physics(delta_time); 
-    
-            draw_frame(&state.renderer, &state.window);
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        }
+        new_frame(&state.renderer, &state.window, state.camera);
 
-        { // second render pass - lighting 
-            new_frame(&state.renderer, &state.window, state.camera);
+        input(); 
+        update_and_draw(delta_time);
+        physics(delta_time); 
 
-            v2 uvs[4] = {
-                {0, 1},
-                {1, 1},
-                {1, 0},
-                {0, 0},
-            };
 
-            Quad *quad = push_quad(&state.renderer, {}, {50, 50}, 0, WHITE, uvs, {}, 2);
-            f32 z = 0;
-            quad->vertices[0].position = {-1,  1, z};
-            quad->vertices[1].position = { 1,  1, z};
-            quad->vertices[2].position = { 1, -1, z};
-            quad->vertices[3].position = {-1, -1, z};
-
-            glViewport(0, 0, state.window.width, state.window.height);
-    
-            glBindBuffer(GL_ARRAY_BUFFER, state.renderer.vertex_buffer_id);
-            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * state.renderer.quads.len, state.renderer.quads.data);
-            glBindVertexArray(state.renderer.vertex_array_id);
-    
-            glUseProgram(state.renderer.light_shader_program_id);
-   
-            // set the input texture
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, unlit_frame_buffer.colour_attachment);
-
-            glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, unlit_frame_buffer.normals_attachment);
-
-            glActiveTexture(GL_TEXTURE2);
-            glBindTexture(GL_TEXTURE_2D, unlit_frame_buffer.depth_attachment);
-
-            // set all uniforms used in the lights shader, using sprintf to get
-            // the location of each value in the lights array that is why it looks
-            // really weird and long winded
-            glUniform4f(
-                glGetUniformLocation(state.renderer.light_shader_program_id, "global_light"),
-                state.renderer.global_light[0],
-                state.renderer.global_light[1],
-                state.renderer.global_light[2],
-                state.renderer.global_light[3]
-            );
-
-            glUniform1i(
-                glGetUniformLocation(state.renderer.light_shader_program_id, "light_count"),
-                (i32) state.renderer.lights.len
-            );
-
-            glUniform1f(
-                glGetUniformLocation(state.renderer.light_shader_program_id, "aspect_ratio"),
-                (f32) state.window.width / (f32) state.window.height
-            );
-
-            for(i64 i = 0; i < state.renderer.lights.len; i++) {
-                const i64 buffer_size = 64;
-                char buffer[buffer_size] = {};
-
-                { // set light position
-                    sprintf(buffer, "lights[%llu].position", i);
-                    glUniform2f(
-                        glGetUniformLocation(state.renderer.light_shader_program_id, buffer), 
-                        state.renderer.lights[i].position.x,
-                        state.renderer.lights[i].position.y
-                    );
-                    memset(buffer, 0, buffer_size);
-                }
-
-                { // set light radius
-                    sprintf(buffer, "lights[%llu].radius", i);
-                    glUniform1f(
-                        glGetUniformLocation(state.renderer.light_shader_program_id, buffer), 
-                        state.renderer.lights[i].radius
-                    );
-                    memset(buffer, 0, buffer_size);
-                }
-
-                { // set light colour
-                    sprintf(buffer, "lights[%llu].colour", i);
-                    glUniform4f(
-                        glGetUniformLocation(state.renderer.light_shader_program_id, buffer), 
-                        state.renderer.lights[i].colour.r,
-                        state.renderer.lights[i].colour.g,
-                        state.renderer.lights[i].colour.b,
-                        state.renderer.lights[i].colour.a
-                    );
-                    memset(buffer, 0, buffer_size);
-                }
-
-                { // set light intensity
-                    sprintf(buffer, "lights[%llu].intensity", i);
-                    glUniform1f(
-                        glGetUniformLocation(state.renderer.light_shader_program_id, buffer), 
-                        state.renderer.lights[i].intensity
-                    );
-                    memset(buffer, 0, buffer_size);
-                }
-     
-            }
-    
-            glDrawElements(GL_TRIANGLES, 6 * state.renderer.quads.len, GL_UNSIGNED_INT, 0);
-
-            reset(&state.renderer.lights);
-        }
+        draw_frame(&state.renderer, &state.window, state.camera); 
 
         { // imgui render 
-            ImGui_ImplOpenGL3_NewFrame();
-            ImGui_ImplGlfw_NewFrame();
-            ImGui::NewFrame(); 
+            new_imgui_frame();
 
             ImGui::Begin("Inspector");
 
@@ -357,13 +233,13 @@ int main() {
                 ImVec2 image_size(360 * 1.77, 360);
 
                 ImGui::Text("Depth buffer");
-                ImGui::Image(unlit_frame_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Image(state.renderer.unlit_frame_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
 
                 ImGui::Text("Normal buffer");
-                ImGui::Image(unlit_frame_buffer.normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Image(state.renderer.unlit_frame_buffer.normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
 
                 ImGui::Text("Colour buffer");
-                ImGui::Image(unlit_frame_buffer.colour_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Image(state.renderer.unlit_frame_buffer.colour_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
             }
 
             if(ImGui::CollapsingHeader("Entities")) {
@@ -389,12 +265,7 @@ int main() {
 
             ImGui::End();
 
-            ImGui::Render();
-            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-            GLFWwindow *current = glfwGetCurrentContext();
-            ImGui::UpdatePlatformWindows();
-            ImGui::RenderPlatformWindowsDefault();
-            glfwMakeContextCurrent(current);
+            draw_imgui_frame();
         }
 
         swap_buffers(&state.window);
@@ -555,7 +426,7 @@ void create_scene() {
     spawn_entity(Entity{
         .flags = EF_LIGHT | EF_PLAYER,
         .position = {-150, 0, 0},
-        .light_colour = BLUE,
+        .light_colour = WHITE,
         .light_intensity = 1,
         .light_radius = 150
     });
