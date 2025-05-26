@@ -1,13 +1,13 @@
 #include "libs/libs.h"
 #include "engine.cpp"
 
-#include <cstdio>
-#include <cstring>
+#include <stdio.h>
+#include <string.h>
 #include <time.h>
 #include <stdlib.h>
 
-// Total: 16:30
-// Started: 18:30
+// Total: 19:30
+// Started: 22:30
 //
 // Lighting TODO:
 // - bloom
@@ -485,7 +485,7 @@ Entity *next(CollisionIterator *iterator) {
 
         { // basic aabb collision
             v2 distance = other->position.xy - entity->position.xy;
-            v2 distance_abs = v2{abs(distance.x), abs(distance.y)};
+            v2 distance_abs = v2{ABS(distance.x), ABS(distance.y)};
             v2 distance_for_collision = (entity->size + other->size) * v2{0.5, 0.5};
 
             bool collision = distance_for_collision[0] >= distance_abs[0] && distance_for_collision[1] >= distance_abs[1];
