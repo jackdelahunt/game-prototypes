@@ -54,8 +54,8 @@ void main()
         if (distance < light.radius) {
             float influence = 1.0 - (distance / light.radius);
 
-            vec3 norm_light_direction = normalize(vec3(light_direction, 0));
-            float NdotL = max(dot(normal, norm_light_direction), 0.1);
+            vec3 norm_light_direction = normalize(vec3(light_direction, 1));
+            float NdotL = max(dot(normal, norm_light_direction), 0);
 
             accumulated_light += light.colour * influence * light.intensity * NdotL;
         }

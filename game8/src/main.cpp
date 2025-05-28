@@ -16,7 +16,7 @@
 #include <filesystem>
 
 // Total: 26:00
-// Started: 16:00 
+// Started: 19:00 
 //
 // Lighting TODO:
 // - bloom
@@ -51,6 +51,9 @@ enum SpriteHandle {
     SH_BACKGROUND_1,
     SH_BACKGROUND_2,
     SH_BACKGROUND_3,
+    SH_CORNER_1,
+    SH_CORNER_2,
+    SH_SPIKE,
     SH_COUNT_,
 };
 
@@ -70,7 +73,10 @@ enum Prefab {
     PF_BACKGROUND_1,
     PF_BACKGROUND_2,
     PF_BACKGROUND_3,
+    PF_CORNER_1,
+    PF_CORNER_2,
     PF_LIGHT,
+    PF_SPIKE,
     PF_COUNT_,
 };
 
@@ -153,13 +159,13 @@ Sprite *get_sprite(SpriteHandle handle);
 int main() {
     state = State {
         .camera = {
-            .position = {0, 250, -1},
-            .orthographic_size = 500,
+            .position = {0, 150, -1},
+            .orthographic_size = 300,
             .near_plane = 0.1f,
             .far_plane = 100.0f,
         },
         .renderer = {
-            .global_light = {0.2, 0.2, 0.6, 1},
+            .global_light = {0.15, 0.15, 0.3, 1},
             .clear_colour = {0.2, 0.2, 0.2, 1},
         },
         .editor = {
@@ -273,6 +279,29 @@ int main() {
             }
 
             sprites[SH_BACKGROUND_3] = sprite;
+
+
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/tiles/corner_1.png", "");
+            if (sprite == NULL) {
+                return 1;
+            }
+
+            sprites[SH_CORNER_1] = sprite;
+
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/tiles/corner_2.png", "");
+            if (sprite == NULL) {
+                return 1;
+            }
+
+            sprites[SH_CORNER_2] = sprite;
+
+
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/props/spike.png", "");
+            if (sprite == NULL) {
+                return 1;
+            }
+
+            sprites[SH_SPIKE] = sprite;
         }
 
         ok = build_atlas(&state.renderer);
@@ -399,6 +428,17 @@ void update_and_draw(f32 delta_time) {
         if(state.editor.selected_entity != NULL && KEYS[GLFW_KEY_DELETE] == InputState::down) {
             state.editor.selected_entity->flags |= EF_DELETE;
             state.editor.selected_entity = NULL;
+        }
+    }
+
+    { // rotate selected entity
+        if(state.editor.selected_entity != NULL && KEYS[GLFW_KEY_R] == InputState::down) {
+
+            if(KEYS[GLFW_KEY_LEFT_SHIFT] == InputState::pressed) {
+                state.editor.selected_entity->rotation -= 90;
+            } else {
+                state.editor.selected_entity->rotation += 90;
+            }
         }
     }
 
@@ -642,8 +682,22 @@ void draw_editor(f32 delta_time) {
             selected_prefab = PF_BACKGROUND_3;
         }
 
+        if(ImGui::Button("Corner 1")) {
+            selected_prefab = PF_CORNER_1;
+        }
+
+        ImGui::SameLine();
+
+        if(ImGui::Button("Corner 2")) {
+            selected_prefab = PF_CORNER_2;
+        }
+
         if(ImGui::Button("Light")) {
             selected_prefab = PF_LIGHT;
+        }
+
+        if(ImGui::Button("Spike")) {
+            selected_prefab = PF_SPIKE;
         }
 
         if (selected_prefab != PF_NONE) {
@@ -656,8 +710,9 @@ void draw_editor(f32 delta_time) {
     if(state.editor.selected_entity != NULL && ImGui::CollapsingHeader("Entity Editor")) {
         Entity *entity = state.editor.selected_entity;
 
-        ImGui::SliderFloat3("position", &entity->position[0], -500, 500);
+        ImGui::InputFloat3("position", &entity->position[0]);
         ImGui::InputFloat2("size", &entity->size[0]);
+        ImGui::InputFloat("rotation", &entity->rotation);
         ImGui::InputFloat4("colour", &entity->color[0]);
         ImGui::InputFloat4("light_colour", &entity->light_colour[0]);
         ImGui::InputFloat("light_radius", &entity->light_radius);
@@ -764,7 +819,7 @@ Entity create_prefab(Prefab prefab) {
         };
         case PF_BACKGROUND_1: {
             f32 ratio = texture_aspect_ratio(&state.renderer, get_sprite(SH_BACKGROUND_1)->albedo);
-            f32 height = 1000;
+            f32 height = 600;
             f32 width = height * ratio;
 
              return Entity {
@@ -775,7 +830,7 @@ Entity create_prefab(Prefab prefab) {
         };
         case PF_BACKGROUND_2: {
             f32 ratio = texture_aspect_ratio(&state.renderer, get_sprite(SH_BACKGROUND_2)->albedo);
-            f32 height = 1000;
+            f32 height = 600;
             f32 width = height * ratio;
 
              return Entity {
@@ -786,7 +841,7 @@ Entity create_prefab(Prefab prefab) {
         };
         case PF_BACKGROUND_3: {
             f32 ratio = texture_aspect_ratio(&state.renderer, get_sprite(SH_BACKGROUND_3)->albedo);
-            f32 height = 1000;
+            f32 height = 600;
             f32 width = height * ratio;
 
              return Entity {
@@ -795,13 +850,34 @@ Entity create_prefab(Prefab prefab) {
                 .sprite = SH_BACKGROUND_3,
             };
         };
+        case PF_CORNER_1: {
+             return Entity {
+                .size = {50, 50},
+                .color = WHITE,
+                .sprite = SH_CORNER_1,
+            };
+        };
+        case PF_CORNER_2: {
+             return Entity {
+                .size = {50, 50},
+                .color = WHITE,
+                .sprite = SH_CORNER_2,
+            };
+        };
         case PF_LIGHT: {
              return Entity {
-                .flags = EF_LIGHT,
+                .flags = EF_LIGHT | EF_PLAYER,
                 .size = {20, 20},
                 .light_colour = WHITE,
                 .light_intensity = 1,
                 .light_radius = 300,
+            };
+        };
+        case PF_SPIKE: {
+             return Entity {
+                .size = {50, 33},
+                .color = WHITE,
+                .sprite = SH_SPIKE
             };
         };
         default:
