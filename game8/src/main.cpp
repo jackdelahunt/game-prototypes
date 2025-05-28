@@ -15,8 +15,8 @@
 #include <string>
 #include <filesystem>
 
-// Total: 24:30
-// Started: 12:30 
+// Total: 26:00
+// Started: 16:00 
 //
 // Lighting TODO:
 // - bloom
@@ -44,8 +44,13 @@ enum SpriteHandle {
     SH_FLOOR_3,
     SH_WALL_1,
     SH_WALL_2,
+    SH_WALL_3,
+    SH_WALL_4,
     SH_ROCK_1,
     SH_ROCK_2,
+    SH_BACKGROUND_1,
+    SH_BACKGROUND_2,
+    SH_BACKGROUND_3,
     SH_COUNT_,
 };
 
@@ -58,8 +63,14 @@ enum Prefab {
     PF_FLOOR_3,
     PF_WALL_1,
     PF_WALL_2,
+    PF_WALL_3,
+    PF_WALL_4,
     PF_ROCK_1,
     PF_ROCK_2,
+    PF_BACKGROUND_1,
+    PF_BACKGROUND_2,
+    PF_BACKGROUND_3,
+    PF_LIGHT,
     PF_COUNT_,
 };
 
@@ -90,6 +101,7 @@ struct Editor {
     Entity *selected_entity;
     bool snap_to_grid;
     v2 grid_size;
+    v2 selection_range;
 };
 
 enum EntityFlags {
@@ -141,18 +153,19 @@ Sprite *get_sprite(SpriteHandle handle);
 int main() {
     state = State {
         .camera = {
-            .position = {0, 110, -1},
-            .orthographic_size = 430,
+            .position = {0, 250, -1},
+            .orthographic_size = 500,
             .near_plane = 0.1f,
             .far_plane = 100.0f,
         },
         .renderer = {
-            .global_light = {0.8, 0.8, 1, 1},
+            .global_light = {0.2, 0.2, 0.6, 1},
             .clear_colour = {0.2, 0.2, 0.2, 1},
         },
         .editor = {
             .snap_to_grid = true,
-            .grid_size = {50, 50}
+            .grid_size = {50, 50},
+            .selection_range = {0, 20},
         }
     };
 
@@ -209,6 +222,20 @@ int main() {
 
             sprites[SH_WALL_2] = sprite;
 
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/tiles/wall_3.png", "");
+            if (sprite == NULL) {
+                return 1;
+            }
+
+            sprites[SH_WALL_3] = sprite;
+
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/tiles/wall_4.png", "");
+            if (sprite == NULL) {
+                return 1;
+            }
+
+            sprites[SH_WALL_4] = sprite;
+
             sprite = load_sprite(&state.renderer, "resources/textures/caves/props/rock_1.png", "resources/textures/caves/props/rock_1_normal.png");
             if (sprite == NULL) {
                 return 1;
@@ -223,6 +250,29 @@ int main() {
             }
 
             sprites[SH_ROCK_2] = sprite;
+
+
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/backgrounds/background_1.png", "");
+            if (sprite == NULL) {
+                return 1;
+            }
+
+            sprites[SH_BACKGROUND_1] = sprite;
+
+
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/backgrounds/background_2.png", "");
+            if (sprite == NULL) {
+                return 1;
+            }
+
+            sprites[SH_BACKGROUND_2] = sprite;
+
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/backgrounds/background_3.png", "");
+            if (sprite == NULL) {
+                return 1;
+            }
+
+            sprites[SH_BACKGROUND_3] = sprite;
         }
 
         ok = build_atlas(&state.renderer);
@@ -309,15 +359,18 @@ void input() {
 }
 
 void update_and_draw(f32 delta_time) {
-
     // check to see for a new selected entity
     if(MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::down) {
         v2 world_position = screen_position_to_world_position(MOUSE.position, state.camera, &state.window);
-        
+
         for (int i = 0; i < state.entities.len; i++) {
             Entity* entity = &state.entities[i];
             if (entity == state.editor.selected_entity) {
                 continue; // means it gives a chance to select an entity that is overlapping
+            }
+
+            if (entity->position.z < state.editor.selection_range.x || entity->position.z > state.editor.selection_range.y) {
+                continue;
             }
 
             f32 low_x = entity->position.x - (entity->size.x * 0.5);
@@ -333,61 +386,70 @@ void update_and_draw(f32 delta_time) {
         }
     }
 
-    for (int i = 0; i < state.entities.len; i++) {
-        Entity* entity = &state.entities[i];
+    { // duplicate selected entity
+        if(KEYS[GLFW_KEY_SPACE] == InputState::down) {
+            printf("new entity\n");
+            Entity copy = *state.editor.selected_entity;
+            copy.position += {copy.size.x, 0, 0};
+            state.editor.selected_entity = spawn_entity(copy);
+        }
+    }
+        
+    { // delete selected entity
+        if(state.editor.selected_entity != NULL && KEYS[GLFW_KEY_DELETE] == InputState::down) {
+            state.editor.selected_entity->flags |= EF_DELETE;
+            state.editor.selected_entity = NULL;
+        }
+    }
 
-        // do editor updates on this selected entity
-        if (entity == state.editor.selected_entity) {
-            { // update position, with or without grid
-                v2 input = {};
+    { // update position of selected entity, with or without grid
     
-                // if we are using grid then you just want to press it once
-                // to move but if not you can hold it down
-                InputState input_type;
-                if(state.editor.snap_to_grid) {
-                    input_type = InputState::down;
-                } else {
-                    input_type = InputState::pressed;
-                }
-    
-                if (KEYS[GLFW_KEY_UP] == input_type) {
-                    input.y += 1;
-                }
-    
-                if (KEYS[GLFW_KEY_DOWN] == input_type) {
-                    input.y -= 1;
-                }
-    
-                if (KEYS[GLFW_KEY_LEFT] == input_type) {
-                    input.x -= 1;
-                }
-    
-                if (KEYS[GLFW_KEY_RIGHT] == input_type) {
-                    input.x += 1;
-                }
-    
-                if (length(input) != 0) {
-                    if(state.editor.snap_to_grid) {
-                        v2 grid_index = v2{entity->position.x, entity->position.y} / state.editor.grid_size;
-                        grid_index.x = truncf(grid_index.x);
-                        grid_index.y = truncf(grid_index.y);
-    
-                        grid_index += input;
-                        v2 new_position = grid_index * state.editor.grid_size;
-                        entity->position = v3{new_position.x, new_position.y, entity->position.z};
-                    } else {
-                        entity->position += v3{input.x, input.y, 0} * 10;
-                    }
-                }
-            }
+        // if we are using grid then you just want to press it once
+        // to move but if not you can hold it down
+        InputState input_type;
+        if(state.editor.snap_to_grid) {
+            input_type = InputState::down;
+        } else {
+            input_type = InputState::pressed;
+        }
+   
+        v2 input = {};
 
-            {
-                if(KEYS[GLFW_KEY_DELETE] == InputState::down) {
-                    entity->flags |= EF_DELETE;
-                    state.editor.selected_entity = NULL;
-                }
+        if (KEYS[GLFW_KEY_UP] == input_type) {
+            input.y += 1;
+        }
+    
+        if (KEYS[GLFW_KEY_DOWN] == input_type) {
+            input.y -= 1;
+        }
+    
+        if (KEYS[GLFW_KEY_LEFT] == input_type) {
+            input.x -= 1;
+        }
+    
+        if (KEYS[GLFW_KEY_RIGHT] == input_type) {
+            input.x += 1;
+        }
+
+        Entity *entity = state.editor.selected_entity;
+    
+        if (length(input) != 0) {
+            if(state.editor.snap_to_grid) {
+                v2 grid_index = v2{entity->position.x, entity->position.y} / state.editor.grid_size;
+                grid_index.x = truncf(grid_index.x);
+                grid_index.y = truncf(grid_index.y); 
+
+                grid_index += input;
+                v2 new_position = grid_index * state.editor.grid_size;
+                entity->position = v3{new_position.x, new_position.y, entity->position.z};
+            } else {
+                entity->position += v3{input.x, input.y, 0} * 10;
             }
         }
+    }
+
+    for (int i = 0; i < state.entities.len; i++) {
+        Entity* entity = &state.entities[i];
 
         f32 player_speed = 300;
 
@@ -432,7 +494,7 @@ void update_and_draw(f32 delta_time) {
         }
     }
 
-    { // draw grid lines
+    if (false) { // draw grid lines
         i64 grid_region_width = 2000;
         i64 grid_region_height = 2000;
         f32 line_thickness = 1;
@@ -476,6 +538,10 @@ void draw_editor(f32 delta_time) {
     ImGui::Text("FPS: %f", 1.0f / delta_time);
 
     { // top level buttons
+        if(ImGui::Button("Deselect Entity")) {
+            state.editor.selected_entity = NULL;
+        }
+
         if(ImGui::Button("Reload Shaders")) {
             delete_shaders(&state.renderer);
             load_shaders(&state.renderer);
@@ -506,6 +572,7 @@ void draw_editor(f32 delta_time) {
         }
 
         ImGui::InputFloat2("Grid size", &state.editor.grid_size[0]);
+        ImGui::InputFloat2("selection range", &state.editor.selection_range[0]);
     }
 
     if(ImGui::CollapsingHeader("Settings")) {
@@ -540,6 +607,16 @@ void draw_editor(f32 delta_time) {
             selected_prefab = PF_WALL_2;
         }
 
+        ImGui::SameLine();
+        if(ImGui::Button("Wall 3")) {
+            selected_prefab = PF_WALL_3;
+        }
+
+        ImGui::SameLine();
+        if(ImGui::Button("Wall 4")) {
+            selected_prefab = PF_WALL_4;
+        }
+
         if(ImGui::Button("Rock 1")) {
             selected_prefab = PF_ROCK_1;
         }
@@ -547,6 +624,26 @@ void draw_editor(f32 delta_time) {
         ImGui::SameLine();
         if(ImGui::Button("Rock 2")) {
             selected_prefab = PF_ROCK_2;
+        }
+
+        if(ImGui::Button("Background 1")) {
+            selected_prefab = PF_BACKGROUND_1;
+        }
+
+        ImGui::SameLine();
+
+        if(ImGui::Button("Background 2")) {
+            selected_prefab = PF_BACKGROUND_2;
+        }
+
+        ImGui::SameLine();
+
+        if(ImGui::Button("Background 3")) {
+            selected_prefab = PF_BACKGROUND_3;
+        }
+
+        if(ImGui::Button("Light")) {
+            selected_prefab = PF_LIGHT;
         }
 
         if (selected_prefab != PF_NONE) {
@@ -565,6 +662,7 @@ void draw_editor(f32 delta_time) {
         ImGui::InputFloat4("light_colour", &entity->light_colour[0]);
         ImGui::InputFloat("light_radius", &entity->light_radius);
         ImGui::InputFloat("light_intensity", &entity->light_intensity);
+        ImGui::InputInt("sprite", (i32 *) &entity->sprite);
     }
 
     if(ImGui::CollapsingHeader("Render outputs")) {
@@ -628,6 +726,20 @@ Entity create_prefab(Prefab prefab) {
                 .sprite = SH_WALL_2,
             };
         };
+        case PF_WALL_3: {
+             return Entity {
+                .size = {50, 50},
+                .color = WHITE,
+                .sprite = SH_WALL_3,
+            };
+        };
+        case PF_WALL_4: {
+             return Entity {
+                .size = {50, 50},
+                .color = WHITE,
+                .sprite = SH_WALL_4,
+            };
+        };
         case PF_ROCK_1: {
             f32 ratio = texture_aspect_ratio(&state.renderer, get_sprite(SH_ROCK_1)->albedo);
             f32 height = 120;
@@ -648,6 +760,48 @@ Entity create_prefab(Prefab prefab) {
                 .size = {width, height},
                 .color = WHITE,
                 .sprite = SH_ROCK_2,
+            };
+        };
+        case PF_BACKGROUND_1: {
+            f32 ratio = texture_aspect_ratio(&state.renderer, get_sprite(SH_BACKGROUND_1)->albedo);
+            f32 height = 1000;
+            f32 width = height * ratio;
+
+             return Entity {
+                .size = {width, height},
+                .color = WHITE,
+                .sprite = SH_BACKGROUND_1,
+            };
+        };
+        case PF_BACKGROUND_2: {
+            f32 ratio = texture_aspect_ratio(&state.renderer, get_sprite(SH_BACKGROUND_2)->albedo);
+            f32 height = 1000;
+            f32 width = height * ratio;
+
+             return Entity {
+                .size = {width, height},
+                .color = WHITE,
+                .sprite = SH_BACKGROUND_2,
+            };
+        };
+        case PF_BACKGROUND_3: {
+            f32 ratio = texture_aspect_ratio(&state.renderer, get_sprite(SH_BACKGROUND_3)->albedo);
+            f32 height = 1000;
+            f32 width = height * ratio;
+
+             return Entity {
+                .size = {width, height},
+                .color = WHITE,
+                .sprite = SH_BACKGROUND_3,
+            };
+        };
+        case PF_LIGHT: {
+             return Entity {
+                .flags = EF_LIGHT,
+                .size = {20, 20},
+                .light_colour = WHITE,
+                .light_intensity = 1,
+                .light_radius = 300,
             };
         };
         default:

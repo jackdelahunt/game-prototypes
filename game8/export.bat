@@ -19,3 +19,13 @@ aseprite.exe -b --layer "Normal" "resources\textures\caves\tiles\wall_1.aseprite
 
 aseprite.exe -b --layer "Albedo" "resources\textures\caves\tiles\wall_2.aseprite" --save-as "resources\textures\caves\tiles\wall_2.png"
 aseprite.exe -b --layer "Normal" "resources\textures\caves\tiles\wall_2.aseprite" --save-as "resources\textures\caves\tiles\wall_2_normal.png"
+
+aseprite.exe -b --layer "Albedo" "resources\textures\caves\tiles\wall_3.aseprite" --save-as "resources\textures\caves\tiles\wall_3.png"
+
+aseprite.exe -b --layer "Albedo" "resources\textures\caves\tiles\wall_4.aseprite" --save-as "resources\textures\caves\tiles\wall_4.png"
+
+aseprite.exe -b --layer "Albedo" "resources\textures\caves\backgrounds\background_1.aseprite" --save-as "resources\textures\caves\backgrounds\background_1.png"
+
+aseprite.exe -b --layer "Albedo" "resources\textures\caves\backgrounds\background_2.aseprite" --save-as "resources\textures\caves\backgrounds\background_2.png"
+
+aseprite.exe -b --layer "Albedo" "resources\textures\caves\backgrounds\background_3.aseprite" --save-as "resources\textures\caves\backgrounds\background_3.png"
