@@ -54,6 +54,8 @@ enum SpriteHandle {
     SH_CORNER_1,
     SH_CORNER_2,
     SH_SPIKE,
+    SH_ORE_1,
+    SH_ORE_2,
     SH_COUNT_,
 };
 
@@ -77,6 +79,8 @@ enum Prefab {
     PF_CORNER_2,
     PF_LIGHT,
     PF_SPIKE,
+    PF_ORE_1,
+    PF_ORE_2,
     PF_COUNT_,
 };
 
@@ -214,21 +218,21 @@ int main() {
 
             sprites[SH_FLOOR_3] = sprite;
 
-            sprite = load_sprite(&state.renderer, "resources/textures/caves/tiles/wall_1.png", "");
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/tiles/wall_1.png", "resources/textures/caves/tiles/wall_1_normal.png");
             if (sprite == NULL) {
                 return 1;
             }
 
             sprites[SH_WALL_1] = sprite;
 
-            sprite = load_sprite(&state.renderer, "resources/textures/caves/tiles/wall_2.png", "");
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/tiles/wall_2.png", "resources/textures/caves/tiles/wall_2_normal.png");
             if (sprite == NULL) {
                 return 1;
             }
 
             sprites[SH_WALL_2] = sprite;
 
-            sprite = load_sprite(&state.renderer, "resources/textures/caves/tiles/wall_3.png", "");
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/tiles/wall_3.png", "resources/textures/caves/tiles/wall_3_normal.png");
             if (sprite == NULL) {
                 return 1;
             }
@@ -302,6 +306,20 @@ int main() {
             }
 
             sprites[SH_SPIKE] = sprite;
+
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/tiles/ore_1.png", "resources/textures/caves/tiles/ore_1_normal.png");
+            if (sprite == NULL) {
+                return 1;
+            }
+
+            sprites[SH_ORE_1] = sprite;
+
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/tiles/ore_2.png", "resources/textures/caves/tiles/ore_2_normal.png");
+            if (sprite == NULL) {
+                return 1;
+            }
+
+            sprites[SH_ORE_2] = sprite;
         }
 
         ok = build_atlas(&state.renderer);
@@ -517,7 +535,6 @@ void update_and_draw(f32 delta_time) {
 
         if (entity->flags & EF_LIGHT) {
             draw_light(&state.renderer, entity->position, entity->light_radius, entity->light_colour, entity->light_intensity);
-            draw_circle(&state.renderer, entity->position, 5, WHITE);
         } 
 
         if (entity->sprite != SH_NONE) {
@@ -700,6 +717,15 @@ void draw_editor(f32 delta_time) {
             selected_prefab = PF_SPIKE;
         }
 
+        if(ImGui::Button("Ore 1")) {
+            selected_prefab = PF_ORE_1;
+        }
+
+        ImGui::SameLine();
+        if(ImGui::Button("Ore 2")) {
+            selected_prefab = PF_ORE_2;
+        }
+
         if (selected_prefab != PF_NONE) {
             Entity new_entity = create_prefab(selected_prefab);
             new_entity.position = v3 {state.camera.position.x, state.camera.position.y, 10};
@@ -878,6 +904,28 @@ Entity create_prefab(Prefab prefab) {
                 .size = {50, 33},
                 .color = WHITE,
                 .sprite = SH_SPIKE
+            };
+        };
+        case PF_ORE_1: {
+             return Entity {
+                .flags = EF_LIGHT,
+                .size = {50, 50},
+                .color = WHITE,
+                .sprite = SH_ORE_1,
+                .light_colour = GREEN,
+                .light_intensity = 1,
+                .light_radius = 90,
+            };
+        };
+        case PF_ORE_2: {
+             return Entity {
+                .flags = EF_LIGHT,
+                .size = {50, 50},
+                .color = WHITE,
+                .sprite = SH_ORE_2,
+                .light_colour = RED,
+                .light_intensity = 1,
+                .light_radius = 90,
             };
         };
         default:
