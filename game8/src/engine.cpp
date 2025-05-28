@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "libs/hmm/hmm.cpp"
 #include "libs/libs.h"
 
 /////////////////////////////////////////////////////////////////////////////
@@ -190,12 +189,14 @@ Array<InputState, 348> KEYS = {};
 
 struct {
     v2 position;
+    Array<InputState, 8> buttons;
 } MOUSE;
 
 bool init_window(i32 width, i32 height, string title);
 void swap_buffers(Window *window);
 void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
 void glfw_mouse_move_callback(GLFWwindow* window, f64 x, f64 y);
+void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 mods);
 void glfw_error_callback(int error_code, const char* description);
 
 bool init_window(Window *window, i32 width, i32 height, string title) {
@@ -233,6 +234,7 @@ bool init_window(Window *window, i32 width, i32 height, string title) {
 
     glfwSetKeyCallback(window->glfw_window, glfw_key_callback);
     glfwSetCursorPosCallback(window->glfw_window, glfw_mouse_move_callback);
+    glfwSetMouseButtonCallback(window->glfw_window, glfw_mouse_button_callback);
 
     return true;
 }
@@ -271,6 +273,20 @@ void glfw_mouse_move_callback(GLFWwindow* window, f64 x, f64 y) {
         x_32,
         (-y_32) + win_ptr->height,
     };
+}
+
+void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 mods) {
+     switch (action) {
+         case GLFW_RELEASE:	{
+            MOUSE.buttons[button] = InputState::up;
+            break;
+        }
+        case GLFW_PRESS: {
+            MOUSE.buttons[button] = InputState::down;
+            break;
+        }
+        case GLFW_REPEAT: break;
+    } 
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -434,6 +450,7 @@ m4 get_projection_matrix(Camera camera, f32 aspect);
 void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, i32 length, const char *message, const void *user_param);
 
 v4 alpha(v4 base, f32 alpha);
+v4 brightness(v4 base, f32 brightness);
 
 bool init_renderer(Renderer *renderer, Window *window) {
     { // init opengl
@@ -1364,9 +1381,21 @@ bool init_frame_buffer(FrameBuffer *frame_buffer) {
 }
 
 v2 screen_position_to_world_position(v2 screen_position, Camera camera, Window *window) {
-    // TODO: finsh this when needed
+    // pretty muched copied from odin engine,
+    // haven't tweaked it because I am just happy 
+    // it works. Maybe can find a way to not pass
+    // in window or camera
+    // - 28/05/25
+    
     v2 ndc = screen_position_to_ndc(screen_position, window);
-    return ndc;
+    f32 aspect_ratio = (f32) window->width / (f32) window->height;
+
+    m4 inverse_vp = HMM_InvGeneralM4(get_projection_matrix(camera, aspect_ratio) * get_view_matrix(camera));
+
+    v4 world_position = inverse_vp * v4{ndc.x, ndc.y, 0, 1};
+    world_position /= world_position.w;
+
+    return v2{world_position.x, world_position.y};
 }
 
 v2 screen_position_to_ndc(v2 screen_position, Window *window) {
@@ -1398,6 +1427,17 @@ m4 get_projection_matrix(Camera camera, f32 aspect) {
 
 v4 alpha(v4 base, f32 alpha) {
     return {base.r, base.g, base.b, alpha};
+}
+
+v4 brightness(v4 base, f32 brightness) {
+    v4 result;
+
+    result.r = clamp(base.r * brightness, 0.0f, 1.0f);
+    result.g = clamp(base.g * brightness, 0.0f, 1.0f);
+    result.b = clamp(base.b * brightness, 0.0f, 1.0f);
+    result.a = base.a;
+
+    return result;
 }
 
 void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, i32 length, const char *message, const void *user_param) {

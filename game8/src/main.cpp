@@ -1,7 +1,7 @@
-#include "libs/imgui/imgui.h"
 #include "libs/libs.h"
 #include "engine.cpp"
 
+#include <cmath>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -15,7 +15,7 @@
 #include <string>
 #include <filesystem>
 
-// Total: 21:30
+// Total: 24:30
 // Started: 12:30 
 //
 // Lighting TODO:
@@ -51,6 +51,18 @@ enum SpriteHandle {
 
 Sprite *sprites[SH_COUNT_];
 
+enum Prefab {
+    PF_NONE,
+    PF_FLOOR_1,
+    PF_FLOOR_2,
+    PF_FLOOR_3,
+    PF_WALL_1,
+    PF_WALL_2,
+    PF_ROCK_1,
+    PF_ROCK_2,
+    PF_COUNT_,
+};
+
 struct Entity {
     // meta
     u64 flags;
@@ -74,10 +86,15 @@ struct Entity {
     f32 light_radius;
 };
 
+struct Editor {
+    Entity *selected_entity;
+    bool snap_to_grid;
+    v2 grid_size;
+};
+
 enum EntityFlags {
     EF_LIGHT            = 1 << 0,
     EF_PLAYER           = 1 << 1,
-    EF_ALT_PLAYER       = 1 << 2,
     EF_DELETE           = 1 << 16,
 };
 
@@ -86,6 +103,7 @@ struct State {
     Window window;
     Renderer renderer;
     SoundEngine sound_engine;
+    Editor editor;
 
     f64 time;
 
@@ -100,10 +118,10 @@ struct CollisionIterator {
 void input();
 void update_and_draw(f32 delta_time);
 void physics(f32 delta_time);
+void draw_editor(f32 delta_time);
 
-void spawn_entity(Entity entity);
-
-void create_scene();
+Entity *spawn_entity(Entity entity);
+Entity create_prefab(Prefab prefab);
 
 void to_json(json& j, const Entity& entity);
 void from_json(const json& j, Entity& entity);
@@ -124,14 +142,18 @@ int main() {
     state = State {
         .camera = {
             .position = {0, 110, -1},
-            .orthographic_size = 180,
+            .orthographic_size = 430,
             .near_plane = 0.1f,
             .far_plane = 100.0f,
         },
         .renderer = {
-            .global_light = {0.3, 0.3, 0.6, 1},
+            .global_light = {0.8, 0.8, 1, 1},
             .clear_colour = {0.2, 0.2, 0.2, 1},
         },
+        .editor = {
+            .snap_to_grid = true,
+            .grid_size = {50, 50}
+        }
     };
 
     { // init engine stuff
@@ -230,7 +252,7 @@ int main() {
         srand(time(NULL));
     } 
 
-    create_scene(); 
+    load_scene(&state);
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
         f64 current_time    = state.time;
@@ -248,80 +270,8 @@ int main() {
         update_and_draw(delta_time);
         physics(delta_time); 
 
-
         draw_frame(&state.renderer, &state.window, state.camera); 
-
-        { // imgui render 
-            new_imgui_frame();
-
-            ImGui::Begin("Inspector");
-
-            ImGui::Text("FPS: %f", 1.0f / delta_time);
-
-            if(ImGui::Button("Reload Shaders")) {
-                delete_shaders(&state.renderer);
-                load_shaders(&state.renderer);
-            }
-
-            ImGui::SameLine();
-
-            if(ImGui::Button("Save scene")) {
-                save_scene(&state);
-            }
-
-            ImGui::SameLine();
-
-            if(ImGui::Button("Load scene")) {
-                load_scene(&state);
-            }
-
-            if(ImGui::CollapsingHeader("Camera")) {
-                ImGui::SliderFloat3("position", &state.camera.position[0], -500, 500);
-                ImGui::SliderFloat("Orthographic size", &state.camera.orthographic_size, 10, 1000);
-            }
-
-            if(ImGui::CollapsingHeader("Rendering")) {
-                ImGui::InputFloat4("Global light", &state.renderer.global_light[0]);
-            }
-
-            if(ImGui::CollapsingHeader("Render outputs")) {
-                ImVec2 image_size(360 * 1.77, 360);
-
-                ImGui::Text("Depth buffer");
-                ImGui::Image(state.renderer.unlit_frame_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
-
-                ImGui::Text("Normal buffer");
-                ImGui::Image(state.renderer.unlit_frame_buffer.normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
-
-                ImGui::Text("Colour buffer");
-                ImGui::Image(state.renderer.unlit_frame_buffer.colour_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
-            }
-
-            if(ImGui::CollapsingHeader("Entities")) {
-                for(i64 i = 0; i < state.entities.len; i++) {
-                    ImGui::PushID(i);
-                    Entity *entity = &state.entities.data[i];
-
-                    char name_buffer[32] = {};
-                    sprintf(name_buffer, "Entity: %llu", i);
-
-                    if (ImGui::CollapsingHeader(name_buffer)) {
-                        ImGui::SliderFloat3("position", &entity->position[0], -500, 500);
-                        ImGui::InputFloat2("size", &entity->size[0]);
-                        ImGui::InputFloat4("colour", &entity->color[0]);
-
-                        ImGui::InputFloat4("light_colour", &entity->light_colour[0]);
-                        ImGui::InputFloat("light_radius", &entity->light_radius);
-                        ImGui::InputFloat("light_intensity", &entity->light_intensity);
-                    }
-                    ImGui::PopID();
-                }
-            }
-
-            ImGui::End();
-
-            draw_imgui_frame();
-        }
+        draw_editor(delta_time); 
 
         swap_buffers(&state.window);
     }
@@ -349,12 +299,95 @@ void input() {
         }
     }
 
+    for (int i = 0; i < MOUSE.buttons.size; i++) {
+        if (MOUSE.buttons[i] == InputState::down) {
+            MOUSE.buttons[i] = InputState::pressed;
+        }
+    }
+
     glfwPollEvents();
 }
 
 void update_and_draw(f32 delta_time) {
+
+    // check to see for a new selected entity
+    if(MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::down) {
+        v2 world_position = screen_position_to_world_position(MOUSE.position, state.camera, &state.window);
+        
+        for (int i = 0; i < state.entities.len; i++) {
+            Entity* entity = &state.entities[i];
+            if (entity == state.editor.selected_entity) {
+                continue; // means it gives a chance to select an entity that is overlapping
+            }
+
+            f32 low_x = entity->position.x - (entity->size.x * 0.5);
+            f32 high_x = entity->position.x + (entity->size.x * 0.5);
+            f32 low_y = entity->position.y - (entity->size.y * 0.5);
+            f32 high_y = entity->position.y + (entity->size.y * 0.5);
+
+            if ((world_position.x >= low_x && world_position.x <= high_x) &&
+                (world_position.y >= low_y && world_position.y <= high_y)) {
+                state.editor.selected_entity = entity;
+                break;
+            }
+        }
+    }
+
     for (int i = 0; i < state.entities.len; i++) {
-        Entity* entity = &state.entities[i]; 
+        Entity* entity = &state.entities[i];
+
+        // do editor updates on this selected entity
+        if (entity == state.editor.selected_entity) {
+            { // update position, with or without grid
+                v2 input = {};
+    
+                // if we are using grid then you just want to press it once
+                // to move but if not you can hold it down
+                InputState input_type;
+                if(state.editor.snap_to_grid) {
+                    input_type = InputState::down;
+                } else {
+                    input_type = InputState::pressed;
+                }
+    
+                if (KEYS[GLFW_KEY_UP] == input_type) {
+                    input.y += 1;
+                }
+    
+                if (KEYS[GLFW_KEY_DOWN] == input_type) {
+                    input.y -= 1;
+                }
+    
+                if (KEYS[GLFW_KEY_LEFT] == input_type) {
+                    input.x -= 1;
+                }
+    
+                if (KEYS[GLFW_KEY_RIGHT] == input_type) {
+                    input.x += 1;
+                }
+    
+                if (length(input) != 0) {
+                    if(state.editor.snap_to_grid) {
+                        v2 grid_index = v2{entity->position.x, entity->position.y} / state.editor.grid_size;
+                        grid_index.x = truncf(grid_index.x);
+                        grid_index.y = truncf(grid_index.y);
+    
+                        grid_index += input;
+                        v2 new_position = grid_index * state.editor.grid_size;
+                        entity->position = v3{new_position.x, new_position.y, entity->position.z};
+                    } else {
+                        entity->position += v3{input.x, input.y, 0} * 10;
+                    }
+                }
+            }
+
+            {
+                if(KEYS[GLFW_KEY_DELETE] == InputState::down) {
+                    entity->flags |= EF_DELETE;
+                    state.editor.selected_entity = NULL;
+                }
+            }
+        }
 
         f32 player_speed = 300;
 
@@ -380,28 +413,6 @@ void update_and_draw(f32 delta_time) {
             entity->velocity = input * player_speed;
         }
 
-        if (entity->flags & EF_ALT_PLAYER) {
-            v2 input = {};
-
-            if (KEYS[GLFW_KEY_UP] == InputState::pressed) {
-                input.y += 1;
-            }
-
-            if (KEYS[GLFW_KEY_DOWN] == InputState::pressed) {
-                input.y -= 1;
-            }
-
-            if (KEYS[GLFW_KEY_LEFT] == InputState::pressed) {
-                input.x -= 1;
-            }
-
-            if (KEYS[GLFW_KEY_RIGHT] == InputState::pressed) {
-                input.x += 1;
-            }
-
-            entity->velocity = input * player_speed;
-        }
-
         if (entity->flags & EF_LIGHT) {
             draw_light(&state.renderer, entity->position, entity->light_radius, entity->light_colour, entity->light_intensity);
             draw_circle(&state.renderer, entity->position, 5, WHITE);
@@ -409,28 +420,33 @@ void update_and_draw(f32 delta_time) {
 
         if (entity->sprite != SH_NONE) {
             Sprite *sprite = get_sprite(entity->sprite);
-            draw_sprite(&state.renderer, sprite, entity->position, entity->size, entity->rotation, entity->color);
+
+            // highlight green as selected entity
+            v4 draw_colour = entity->color;
+            if (entity == state.editor.selected_entity) {
+                draw_colour = GREEN;
+                draw_circle(&state.renderer, entity->position, 5, alpha(RED, 0.4));
+            }
+
+            draw_sprite(&state.renderer, sprite, entity->position, entity->size, entity->rotation, draw_colour);
         }
     }
 
     { // draw grid lines
         i64 grid_region_width = 2000;
         i64 grid_region_height = 2000;
-        f32 line_step = 100;
         f32 line_thickness = 1;
         v4 grid_colour = BLACK;
 
         // horizontal lines
-        for(i64 y = (-grid_region_height) / 2; y <= grid_region_height / 2; y += line_step) {
+        for(i64 y = (-grid_region_height) / 2; y <= grid_region_height / 2; y += (i64) state.editor.grid_size.y) {
             draw_rectangle(&state.renderer, {0, (f32) y, 90}, {(f32) grid_region_width, line_thickness}, grid_colour);
         }
 
         // vertical lines
-        for(i64 x = (-grid_region_width) / 2; x <= grid_region_width / 2; x += line_step) {
+        for(i64 x = (-grid_region_width) / 2; x <= grid_region_width / 2; x += (i64) state.editor.grid_size.x) {
             draw_rectangle(&state.renderer, {(f32) x, 0, 90}, {line_thickness, (f32) grid_region_height}, grid_colour);
         }
-
-        // draw_circle(&state.renderer, {0, 0, 1}, 3, alpha(BLUE, 0.5));
     }
 
 
@@ -453,50 +469,190 @@ void physics(f32 delta_time) {
     }
 }
 
-void spawn_entity(Entity entity) {
-    append(&state.entities, entity);
+void draw_editor(f32 delta_time) {
+    new_imgui_frame();
+    ImGui::Begin("Editor");
+
+    ImGui::Text("FPS: %f", 1.0f / delta_time);
+
+    { // top level buttons
+        if(ImGui::Button("Reload Shaders")) {
+            delete_shaders(&state.renderer);
+            load_shaders(&state.renderer);
+        }
+    
+        ImGui::SameLine();
+        if(ImGui::Button("Save scene")) {
+            save_scene(&state);
+        }
+    
+        ImGui::SameLine();
+        if(ImGui::Button("Load scene")) {
+            load_scene(&state);
+        }
+    }
+
+    ImGui::Separator();
+
+    { // grid settings 
+        ImGui::Checkbox("Snap to grid", &state.editor.snap_to_grid);
+
+        ImGui::SameLine();
+
+        if(ImGui::Button("Use entity size")) {
+            if (state.editor.selected_entity != NULL) {
+                state.editor.grid_size = state.editor.selected_entity->size;
+            }
+        }
+
+        ImGui::InputFloat2("Grid size", &state.editor.grid_size[0]);
+    }
+
+    if(ImGui::CollapsingHeader("Settings")) {
+        ImGui::SliderFloat3("Camera position", &state.camera.position[0], -500, 500);
+        ImGui::SliderFloat("Orthographic size", &state.camera.orthographic_size, 10, 1000);
+        ImGui::InputFloat4("Global light", &state.renderer.global_light[0]);
+    }
+
+    if(ImGui::CollapsingHeader("Prefabs")) {
+        Prefab selected_prefab = PF_NONE;
+                
+        if(ImGui::Button("Floor 1")) {
+            selected_prefab = PF_FLOOR_1;
+        }
+
+        ImGui::SameLine();
+        if(ImGui::Button("Floor 2")) {
+            selected_prefab = PF_FLOOR_2;
+        }
+
+        ImGui::SameLine();
+        if(ImGui::Button("Floor 3")) {
+            selected_prefab = PF_FLOOR_3;
+        }
+
+        if(ImGui::Button("Wall 1")) {
+            selected_prefab = PF_WALL_1;
+        }
+
+        ImGui::SameLine();
+        if(ImGui::Button("Wall 2")) {
+            selected_prefab = PF_WALL_2;
+        }
+
+        if(ImGui::Button("Rock 1")) {
+            selected_prefab = PF_ROCK_1;
+        }
+
+        ImGui::SameLine();
+        if(ImGui::Button("Rock 2")) {
+            selected_prefab = PF_ROCK_2;
+        }
+
+        if (selected_prefab != PF_NONE) {
+            Entity new_entity = create_prefab(selected_prefab);
+            new_entity.position = v3 {state.camera.position.x, state.camera.position.y, 10};
+            state.editor.selected_entity = spawn_entity(new_entity);
+        }
+    }
+
+    if(state.editor.selected_entity != NULL && ImGui::CollapsingHeader("Entity Editor")) {
+        Entity *entity = state.editor.selected_entity;
+
+        ImGui::SliderFloat3("position", &entity->position[0], -500, 500);
+        ImGui::InputFloat2("size", &entity->size[0]);
+        ImGui::InputFloat4("colour", &entity->color[0]);
+        ImGui::InputFloat4("light_colour", &entity->light_colour[0]);
+        ImGui::InputFloat("light_radius", &entity->light_radius);
+        ImGui::InputFloat("light_intensity", &entity->light_intensity);
+    }
+
+    if(ImGui::CollapsingHeader("Render outputs")) {
+        ImVec2 image_size(360 * 1.77, 360);
+
+        ImGui::Text("Depth buffer");
+        ImGui::Image(state.renderer.unlit_frame_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+
+        ImGui::Text("Normal buffer");
+        ImGui::Image(state.renderer.unlit_frame_buffer.normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+
+        ImGui::Text("Colour buffer");
+        ImGui::Image(state.renderer.unlit_frame_buffer.colour_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+    }
+
+    ImGui::End();
+    draw_imgui_frame();
 }
 
-void create_scene() {
-    f32 ratio = texture_aspect_ratio(&state.renderer, get_sprite(SH_ROCK_1)->albedo);
-    f32 height = 150;
-    f32 width = height * ratio;
-    
-    spawn_entity(Entity{
-        .position = {0, 0, 10},
-        .size = {width, height},
-        .color = WHITE,
-        .sprite = SH_ROCK_1,
-    });
+Entity *spawn_entity(Entity entity) {
+    Entity *ptr = push(&state.entities);
+    *ptr = entity;
 
-    spawn_entity(Entity{
-        .position = {-100, 0, 10},
-        .size = {40, 40},
-        .color = WHITE,
-        .sprite = SH_FLOOR_1,
-    });
+    return ptr;
+}
 
-    spawn_entity(Entity{
-        .position = {-140, 0, 10},
-        .size = {40, 40},
-        .color = WHITE,
-        .sprite = SH_FLOOR_2,
-    });
+Entity create_prefab(Prefab prefab) {
+    switch (prefab) {
+        case PF_FLOOR_1: {
+             return Entity {
+                .size = {50, 50},
+                .color = WHITE,
+                .sprite = SH_FLOOR_1,
+            };
+        };
+        case PF_FLOOR_2: {
+             return Entity {
+                .size = {50, 50},
+                .color = WHITE,
+                .sprite = SH_FLOOR_2,
+            };
+        };
+        case PF_FLOOR_3: {
+             return Entity {
+                .size = {50, 50},
+                .color = WHITE,
+                .sprite = SH_FLOOR_3,
+            };
+        };
+        case PF_WALL_1: {
+             return Entity {
+                .size = {50, 50},
+                .color = WHITE,
+                .sprite = SH_WALL_1,
+            };
+        };
+        case PF_WALL_2: {
+             return Entity {
+                .size = {50, 50},
+                .color = WHITE,
+                .sprite = SH_WALL_2,
+            };
+        };
+        case PF_ROCK_1: {
+            f32 ratio = texture_aspect_ratio(&state.renderer, get_sprite(SH_ROCK_1)->albedo);
+            f32 height = 120;
+            f32 width = height * ratio;
 
-    spawn_entity(Entity{
-        .position = {-180, 0, 10},
-        .size = {40, 40},
-        .color = WHITE,
-        .sprite = SH_FLOOR_3,
-    });
+             return Entity {
+                .size = {width, height},
+                .color = WHITE,
+                .sprite = SH_ROCK_1,
+            };
+        };
+        case PF_ROCK_2: {
+            f32 ratio = texture_aspect_ratio(&state.renderer, get_sprite(SH_ROCK_2)->albedo);
+            f32 height = 120;
+            f32 width = height * ratio;
 
-    spawn_entity(Entity{
-        .flags = EF_LIGHT | EF_PLAYER,
-        .position = {-150, 0, 0},
-        .light_colour = ORANGE,
-        .light_intensity = 1,
-        .light_radius = 400
-    });
+             return Entity {
+                .size = {width, height},
+                .color = WHITE,
+                .sprite = SH_ROCK_2,
+            };
+        };
+        default:
+            return {};
+    }
 }
 
 bool file_exists(const char *path) {
