@@ -1,3 +1,4 @@
+#include "libs/imgui/imgui.h"
 #include "libs/libs.h"
 #include "engine.cpp"
 
@@ -5,13 +6,17 @@
 #include <string.h>
 #include <time.h>
 #include <stdlib.h>
+
+// cursed c++ headers to get saving working
 #include <vector>
 #include <iostream>
 #include <fstream>
+#include <sstream>
+#include <string>
 #include <filesystem>
 
-// Total: 19:30
-// Started: 15:00 
+// Total: 21:30
+// Started: 12:30 
 //
 // Lighting TODO:
 // - bloom
@@ -49,7 +54,6 @@ Sprite *sprites[SH_COUNT_];
 struct Entity {
     // meta
     u64 flags;
-    f64 time_created;
 
     // entity
     v3 position;
@@ -106,8 +110,10 @@ void from_json(const json& j, Entity& entity);
 
 bool file_exists(const char *path);
 bool copy_file(const char *path, const char *new_path);
+std::string read_entire_file(const char *path);
 void backup_scene();
-bool save_scene(State *state);
+void save_scene(State *state);
+void load_scene(State *state);
 
 CollisionIterator new_collision_iterator(Entity *entity);
 Entity *next(CollisionIterator *iterator);
@@ -257,8 +263,16 @@ int main() {
                 load_shaders(&state.renderer);
             }
 
+            ImGui::SameLine();
+
             if(ImGui::Button("Save scene")) {
                 save_scene(&state);
+            }
+
+            ImGui::SameLine();
+
+            if(ImGui::Button("Load scene")) {
+                load_scene(&state);
             }
 
             if(ImGui::CollapsingHeader("Camera")) {
@@ -440,8 +454,6 @@ void physics(f32 delta_time) {
 }
 
 void spawn_entity(Entity entity) {
-    entity.time_created = state.time;
-
     append(&state.entities, entity);
 }
 
@@ -506,6 +518,16 @@ bool copy_file(const char *path, const char *new_path) {
     return src && dst;
 }
 
+std::string read_entire_file(const char *path) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        return ""; // Could also throw or handle error differently
+    }
+
+    std::ostringstream ss;
+    ss << file.rdbuf();
+    return ss.str();
+}
 
 void backup_scene() {
     if (!file_exists(DEFAULT_SAVE_FILE)) {
@@ -513,7 +535,7 @@ void backup_scene() {
     }
 
     char backup_path[128];
-    sprintf(backup_path, "resources/saves/backups/scene_%llu.json", rand_i64() * 2);
+    sprintf(backup_path, "resources/saves/backups/scene_%llu.json", rand_i64());
 
     bool saved_backup = copy_file(DEFAULT_SAVE_FILE, backup_path);
     if (saved_backup) {
@@ -521,7 +543,7 @@ void backup_scene() {
     }
 }
 
-bool save_scene(State *state) {
+void save_scene(State *state) {
     backup_scene(); 
 
     std::vector<Entity> entities_copy(state->entities.len);
@@ -535,11 +557,40 @@ bool save_scene(State *state) {
 
     { // save to file
         std::ofstream file(DEFAULT_SAVE_FILE);
-        file << j.dump(2);
+
+        std::string output = j.dump(2);
+        i64 bytes = output.size();
+
+        file << output;
         file.close();
+
+        printf("Created save to \"%s\" [%llu bytes]\n", DEFAULT_SAVE_FILE, bytes);
+    }
+}
+
+
+void load_scene(State *state) {
+    std::string saved_data = read_entire_file(DEFAULT_SAVE_FILE);
+    if (saved_data.size() == 0) {
+        printf("Could not load scene file at \"%s\"\n", DEFAULT_SAVE_FILE);
+        return;
     }
 
-    return true;
+    json j = json::parse(saved_data, nullptr, false);
+    if (j.is_discarded() || !j.contains("entities")) {
+        printf("Failed to parse scene JSON or 'entities' not found.\n");
+        return;
+    }
+
+    std::vector<Entity> loaded_entities = j["entities"].get<std::vector<Entity>>();
+
+    // Assuming state->entities is a resizable container or has assign function
+    state->entities.len = loaded_entities.size();
+    for (size_t i = 0; i < loaded_entities.size(); ++i) {
+        state->entities[i] = loaded_entities[i];
+    }
+
+    printf("Loaded scene from \"%s\" with %llu entities\n", DEFAULT_SAVE_FILE, (u64)loaded_entities.size());
 }
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(v2, x, y)
@@ -549,7 +600,6 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(v4, x, y, z, w)
 void to_json(json& j, const Entity& entity) {
     j = json{
         {"flags",           entity.flags},
-        {"time_created",    entity.time_created},
         {"position",        entity.position},
         {"size",            entity.size},
         {"rotation",        entity.rotation},
@@ -566,7 +616,6 @@ void to_json(json& j, const Entity& entity) {
 
 void from_json(const json& j, Entity& entity) {
     j.at("flags").get_to(entity.flags);
-    j.at("time_created").get_to(entity.time_created);
     j.at("position").get_to(entity.position);
     j.at("size").get_to(entity.size);
     j.at("rotation").get_to(entity.rotation);
