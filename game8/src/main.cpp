@@ -5,13 +5,19 @@
 #include <string.h>
 #include <time.h>
 #include <stdlib.h>
+#include <vector>
+#include <iostream>
+#include <fstream>
+#include <filesystem>
 
 // Total: 19:30
-// Started: 22:30
+// Started: 15:00 
 //
 // Lighting TODO:
 // - bloom
 #define MAX_ENTITIES 2000
+
+#define DEFAULT_SAVE_FILE "resources/saves/scene.json"
 
 enum TextureHandle {
     TH_NONE,
@@ -95,13 +101,21 @@ void spawn_entity(Entity entity);
 
 void create_scene();
 
+void to_json(json& j, const Entity& entity);
+void from_json(const json& j, Entity& entity);
+
+bool file_exists(const char *path);
+bool copy_file(const char *path, const char *new_path);
+void backup_scene();
+bool save_scene(State *state);
+
 CollisionIterator new_collision_iterator(Entity *entity);
 Entity *next(CollisionIterator *iterator);
 
 Sprite *get_sprite(SpriteHandle handle);
 
 int main() {
-    state = {
+    state = State {
         .camera = {
             .position = {0, 110, -1},
             .orthographic_size = 180,
@@ -241,6 +255,10 @@ int main() {
             if(ImGui::Button("Reload Shaders")) {
                 delete_shaders(&state.renderer);
                 load_shaders(&state.renderer);
+            }
+
+            if(ImGui::Button("Save scene")) {
+                save_scene(&state);
             }
 
             if(ImGui::CollapsingHeader("Camera")) {
@@ -467,6 +485,98 @@ void create_scene() {
         .light_intensity = 1,
         .light_radius = 400
     });
+}
+
+bool file_exists(const char *path) {
+    return std::filesystem::exists(path) && std::filesystem::is_regular_file(path);
+}
+
+bool copy_file(const char *path, const char *new_path) {
+    if (!file_exists(path)) {
+        return false;
+    }
+
+    std::ifstream src(path, std::ios::binary);
+    std::ofstream dst(new_path, std::ios::binary);
+
+    if (!src || !dst) return false;
+
+    dst << src.rdbuf();
+
+    return src && dst;
+}
+
+
+void backup_scene() {
+    if (!file_exists(DEFAULT_SAVE_FILE)) {
+        return;
+    }
+
+    char backup_path[128];
+    sprintf(backup_path, "resources/saves/backups/scene_%llu.json", rand_i64() * 2);
+
+    bool saved_backup = copy_file(DEFAULT_SAVE_FILE, backup_path);
+    if (saved_backup) {
+        printf("Created backup save to \"%s\"\n", backup_path);
+    }
+}
+
+bool save_scene(State *state) {
+    backup_scene(); 
+
+    std::vector<Entity> entities_copy(state->entities.len);
+
+    for(i64 i = 0; i < state->entities.len; i++) {
+        entities_copy[i] = state->entities[i];
+    }
+
+    json j;
+    j["entities"] = entities_copy;
+
+    { // save to file
+        std::ofstream file(DEFAULT_SAVE_FILE);
+        file << j.dump(2);
+        file.close();
+    }
+
+    return true;
+}
+
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(v2, x, y)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(v3, x, y, z)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(v4, x, y, z, w)
+
+void to_json(json& j, const Entity& entity) {
+    j = json{
+        {"flags",           entity.flags},
+        {"time_created",    entity.time_created},
+        {"position",        entity.position},
+        {"size",            entity.size},
+        {"rotation",        entity.rotation},
+        {"velocity",        entity.velocity},
+        {"color",           entity.color},
+        {"sprite",          entity.sprite},
+        {"animation_cycle", entity.animation_cycle},
+        {"light_colour",    entity.light_colour},
+        {"light_intensity", entity.light_intensity},
+        {"light_radius",    entity.light_radius},
+    };
+}
+
+
+void from_json(const json& j, Entity& entity) {
+    j.at("flags").get_to(entity.flags);
+    j.at("time_created").get_to(entity.time_created);
+    j.at("position").get_to(entity.position);
+    j.at("size").get_to(entity.size);
+    j.at("rotation").get_to(entity.rotation);
+    j.at("velocity").get_to(entity.velocity);
+    j.at("color").get_to(entity.color);
+    j.at("sprite").get_to(entity.sprite);
+    j.at("animation_cycle").get_to(entity.animation_cycle);
+    j.at("light_colour").get_to(entity.light_colour);
+    j.at("light_intensity").get_to(entity.light_intensity);
+    j.at("light_radius").get_to(entity.light_radius);
 }
 
 CollisionIterator new_collision_iterator(Entity *entity) {
