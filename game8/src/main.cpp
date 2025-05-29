@@ -16,15 +16,17 @@
 #include <filesystem>
 
 // Total: 26:00
-// Started: 19:00 
+// Started: 13:00 
 //
 // Lighting TODO:
 // - bloom
 
+#define ALLOW_EDITOR
 #define MAX_ENTITIES 2000
 #define DEFAULT_SAVE_FILE "resources/saves/scene.json"
 f32 CAMERA_START_X = 0;
 f32 CAMERA_END_X = 820;
+f32 BASE_WATER_LEVEL = 0.335;
 
 enum TextureHandle {
     TH_NONE,
@@ -61,6 +63,7 @@ enum SpriteHandle {
     SH_GEM_1,
     SH_GEM_2,
     SH_BAT,
+    SH_WATER,
     SH_COUNT_,
 };
 
@@ -89,6 +92,7 @@ enum Prefab {
     PF_GEM_1,
     PF_GEM_2,
     PF_BAT,
+    PF_WATER,
     PF_COUNT_,
 };
 
@@ -129,6 +133,7 @@ enum EntityFlags {
     EF_RED_ORE          = 1 << 3,
     EF_ANIMATED_SPRITE  = 1 << 4,
     EF_FLIPPED_SPRITE   = 1 << 5,
+    EF_WATER            = 1 << 6,
     EF_DELETE           = 1 << 16,
 };
 
@@ -183,6 +188,7 @@ int main() {
         .renderer = {
             .global_light = {0.15, 0.15, 0.3, 1},
             .clear_colour = {0.2, 0.2, 0.2, 1},
+            .water_level = BASE_WATER_LEVEL,
         },
         .editor = {
             .snap_to_grid = true,
@@ -354,6 +360,13 @@ int main() {
             }
 
             sprites[SH_BAT] = sprite;
+
+            sprite = load_sprite(&state.renderer, "resources/textures/water/water.png", "");
+            if (sprite == NULL) {
+                return 1;
+            }
+
+            sprites[SH_WATER] = sprite;
         }
 
         ok = build_atlas(&state.renderer);
@@ -402,7 +415,10 @@ int main() {
         physics(delta_time); 
 
         draw_frame(&state.renderer, &state.window, state.camera); 
+
+#ifdef ALLOW_EDITOR
         draw_editor(delta_time); 
+#endif
 
         swap_buffers(&state.window);
     }
@@ -440,6 +456,7 @@ void input() {
 }
 
 void update_and_draw(f32 delta_time) {
+#ifdef ALLOW_EDITOR
     // check to see for a new selected entity
     if(MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::down) {
         v2 world_position = screen_position_to_world_position(MOUSE.position, state.camera, &state.window);
@@ -539,6 +556,12 @@ void update_and_draw(f32 delta_time) {
             }
         }
     }
+#endif
+
+    { // water level movement
+        f32 t = sin(state.time); 
+        state.renderer.water_level = BASE_WATER_LEVEL + (0.002 * t);
+    }
 
     for (int i = 0; i < state.entities.len; i++) {
         Entity* entity = &state.entities[i];
@@ -552,10 +575,10 @@ void update_and_draw(f32 delta_time) {
                 t = (cos(state.time) + 1) * 0.5;
             }
 
-            f32 a =  (0.6 + (0.4 * t));
+            f32 a =  (0.5 + (0.5 * t));
 
-            entity->light_intensity = a;
-            entity->light_radius = a * 100;
+            entity->light_intensity = a + 0.2;
+            entity->light_radius = a * 120;
         }
 
         if (entity->flags & EF_PLAYER) {
@@ -590,6 +613,10 @@ void update_and_draw(f32 delta_time) {
             else if (entity->velocity.x > 0) {
                 entity->flags &= ~EF_FLIPPED_SPRITE;
             }
+
+
+            entity->position.x = clamp(-560, entity->position.x, 1400);
+            entity->position.y = clamp(-190, entity->position.y, 465);
         }
 
         if (entity->flags & EF_ANIMATED_SPRITE) {
@@ -605,7 +632,10 @@ void update_and_draw(f32 delta_time) {
             draw_light(&state.renderer, entity->position, entity->light_radius, entity->light_colour, entity->light_intensity);
         } 
 
-        if (entity->sprite != SH_NONE) {
+        // cursed but it works lululu
+        if (entity->flags & EF_WATER) {
+            draw_water(&state.renderer, get_sprite(entity->sprite), entity->position, entity->size, entity->rotation, entity->color);
+        } else if (entity->sprite != SH_NONE) {
             Sprite *sprite = get_sprite(entity->sprite);
 
             // highlight green as selected entity
@@ -712,6 +742,7 @@ void draw_editor(f32 delta_time) {
         ImGui::SliderFloat3("Camera position", &state.camera.position[0], -500, 2000);
         ImGui::SliderFloat("Orthographic size", &state.camera.orthographic_size, 10, 2000);
         ImGui::InputFloat4("Global light", &state.renderer.global_light[0]);
+        ImGui::SliderFloat("Water Level", &state.renderer.water_level, 0, 1);
     }
 
     if(ImGui::CollapsingHeader("Prefabs")) {
@@ -815,6 +846,10 @@ void draw_editor(f32 delta_time) {
             selected_prefab = PF_BAT;
         }
 
+        if(ImGui::Button("Water")) {
+            selected_prefab = PF_WATER;
+        }
+
         if (selected_prefab != PF_NONE) {
             Entity new_entity = create_prefab(selected_prefab);
             new_entity.position = v3 {state.camera.position.x, state.camera.position.y, 10};
@@ -844,8 +879,14 @@ void draw_editor(f32 delta_time) {
         ImGui::Text("Normal buffer");
         ImGui::Image(state.renderer.unlit_frame_buffer.normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
 
+        ImGui::Text("Water buffer");
+        ImGui::Image(state.renderer.unlit_frame_buffer.water_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+
         ImGui::Text("Colour buffer");
         ImGui::Image(state.renderer.unlit_frame_buffer.colour_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+
+        ImGui::Text("Light buffer");
+        ImGui::Image(state.renderer.lighting_frame_buffer.colour_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
     }
 
     ImGui::End();
@@ -981,7 +1022,7 @@ Entity create_prefab(Prefab prefab) {
         };
         case PF_LIGHT: {
              return Entity {
-                .flags = EF_LIGHT | EF_PLAYER,
+                .flags = EF_LIGHT,
                 .size = {20, 20},
                 .light_colour = WHITE,
                 .light_intensity = 1,
@@ -1048,6 +1089,14 @@ Entity create_prefab(Prefab prefab) {
                 .light_colour = WHITE,
                 .light_intensity = 0.8,
                 .light_radius = 200,
+            };
+        };
+        case PF_WATER: {
+             return Entity {
+                .flags = EF_WATER,
+                .size = {50, 50},
+                .color = WHITE,
+                .sprite = SH_WATER,
             };
         };
         default:

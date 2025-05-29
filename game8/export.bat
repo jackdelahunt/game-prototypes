@@ -49,3 +49,5 @@ aseprite.exe -b --layer "Normal" "resources\textures\caves\props\gem_1.aseprite"
 
 aseprite.exe -b --layer "Albedo" "resources\textures\caves\props\gem_2.aseprite" --save-as "resources\textures\caves\props\gem_2.png"
 aseprite.exe -b --layer "Normal" "resources\textures\caves\props\gem_2.aseprite" --save-as "resources\textures\caves\props\gem_2_normal.png"
+
+aseprite.exe -b --layer "Albedo" "resources\textures\water\water.aseprite" --save-as "resources\textures\water\water.png"

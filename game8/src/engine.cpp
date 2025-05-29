@@ -323,6 +323,14 @@ struct Camera {
     f32 far_plane;
 };
 
+enum class DrawType {
+    RECTANGLE   = 0,
+    CIRCLE      = 1,
+    TEXTURE     = 2,
+    TEXT        = 3,
+    WATER       = 4
+};
+
 enum class TextureType {
     SINGLE,
     ANIMATED,
@@ -371,11 +379,13 @@ struct FrameBuffer {
     u32 colour_attachment;
     u32 depth_attachment;
     u32 normals_attachment;
+    u32 water_attachment;
 };
 
 struct Renderer {
     v4 global_light;
     v4 clear_colour;
+    f32 water_level;
 
     Array<Quad, MAX_QUADS> quads;
     Array<Light, MAX_LIGHTS> lights;
@@ -392,6 +402,7 @@ struct Renderer {
     Font font;
 
     FrameBuffer unlit_frame_buffer;
+    FrameBuffer lighting_frame_buffer;
 
     u32 vertex_array_id;
     u32 vertex_buffer_id;
@@ -399,6 +410,7 @@ struct Renderer {
 
     u32 shader_program_id;
     u32 light_shader_program_id;
+    u32 water_shader_program_id;
 
     u32 atlas_texture_id;
     u32 font_texture_id;
@@ -431,11 +443,12 @@ void draw_sprite(Renderer *renderer, Sprite *sprite, v3 position, v2 size, f32 r
 void draw_animated_sprite(Renderer *renderer, Sprite *sprite, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color, bool flipped);
 void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color);
 void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
+void draw_water(Renderer *renderer, Sprite *sprite, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
 void draw_light(Renderer *renderer, v3 position, f32 radius, v4 colour, f32 intensity);
 void new_frame(Renderer *renderer, Window *window, Camera camera);
 void draw_frame(Renderer *renderer, Window *window, Camera camera);
-Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], i32 draw_type);
+Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
 void new_imgui_frame();
 void draw_imgui_frame();
 
@@ -558,7 +571,7 @@ bool init_renderer(Renderer *renderer, Window *window) {
         glEnableVertexAttribArray(4);
     }
 
-    { // init frame buffer
+    { // init frame buffers
          renderer->unlit_frame_buffer = FrameBuffer {
             .width =  window->width,
             .height =  window->height
@@ -567,6 +580,17 @@ bool init_renderer(Renderer *renderer, Window *window) {
         bool ok = init_frame_buffer(&renderer->unlit_frame_buffer);
         if (!ok) {
             printf("failed to init unlit frame buffer\n");
+            return false;
+        }
+
+        renderer->lighting_frame_buffer = FrameBuffer {
+            .width =  window->width,
+            .height =  window->height
+        };
+    
+        ok = init_frame_buffer(&renderer->lighting_frame_buffer);
+        if (!ok) {
+            printf("failed to init lighting frame buffer\n");
             return false;
         }
     }
@@ -608,6 +632,12 @@ bool load_shaders(Renderer *renderer) {
         return false;
     }
 
+    Slice<u8> water_fragment_shader_source = read_file("./resources/shaders/water_fragment.shader");
+    if (water_fragment_shader_source.len == 0) {
+        printf("failed to load water shader");
+        return false;
+    }
+
     u32 vertex_shader = glCreateShader(GL_VERTEX_SHADER);
 
     glShaderSource(vertex_shader, 1, (char **) &vertex_shader_source.ptr, NULL);
@@ -641,6 +671,18 @@ bool load_shaders(Renderer *renderer) {
     if (compile_status == 0) {
         glGetShaderInfoLog(light_fragment_shader, buffer_size, nullptr, &error_buffer[0]);
         printf("failed to compile light shader: %s", error_buffer);
+        return false;
+    }
+
+    u32 water_fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+
+    glShaderSource(water_fragment_shader, 1, (char**) &water_fragment_shader_source.ptr, NULL);
+    glCompileShader(water_fragment_shader);
+
+    glGetShaderiv(water_fragment_shader, GL_COMPILE_STATUS, &compile_status);
+    if (compile_status == 0) {
+        glGetShaderInfoLog(water_fragment_shader, buffer_size, nullptr, &error_buffer[0]);
+        printf("failed to compile water shader: %s", error_buffer);
         return false;
     }
 
@@ -689,9 +731,32 @@ bool load_shaders(Renderer *renderer) {
         printf("Compiled and linked lighting shader program\n");
     }
 
+    { // water shader program
+        u32 water_shader_program = glCreateProgram();
+        glAttachShader(water_shader_program, vertex_shader);
+        glAttachShader(water_shader_program, water_fragment_shader);
+        glLinkProgram(water_shader_program);
+ 
+        glGetProgramiv(water_shader_program, GL_LINK_STATUS, &link_status);
+        if (link_status == 0) {
+            glGetProgramInfoLog(water_shader_program, buffer_size, nullptr, &error_buffer[0]);
+            printf("failed to link water shader program: %s", error_buffer);
+            return false;
+        }
+ 
+        renderer->water_shader_program_id = water_shader_program;
+    
+        glUseProgram(water_shader_program);
+        glUniform1i(glGetUniformLocation(water_shader_program, "scene_texture"), 0);
+        glUniform1i(glGetUniformLocation(water_shader_program, "water_texture"), 1);
+
+        printf("Compiled and linked lighting shader program\n");
+    }
+
     glDeleteShader(vertex_shader);
     glDeleteShader(fragment_shader);
     glDeleteShader(light_fragment_shader);
+    glDeleteShader(water_fragment_shader);
 
     return true;
 }
@@ -1000,7 +1065,7 @@ void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color) {
         {0, 0},
     };
 
-    push_quad(renderer, position, size, 0, color, uvs, {}, 0);
+    push_quad(renderer, position, size, 0, color, uvs, {}, DrawType::RECTANGLE);
 }
 
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color) {
@@ -1013,7 +1078,7 @@ void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color) {
         {0, 0},
     };
 
-    push_quad(renderer, position, size, 0, color, uvs, {}, 1);
+    push_quad(renderer, position, size, 0, color, uvs, {}, DrawType::CIRCLE);
 }
 
 void draw_sprite(Renderer *renderer, Sprite *sprite, v3 position, v2 size, f32 rotation, v4 color) {
@@ -1025,7 +1090,7 @@ void draw_sprite(Renderer *renderer, Sprite *sprite, v3 position, v2 size, f32 r
         normal_uvs = sprite->normal->uvs;
     }
 
-    push_quad(renderer, position, size, rotation, color, sprite->albedo->uvs, normal_uvs, 2);
+    push_quad(renderer, position, size, rotation, color, sprite->albedo->uvs, normal_uvs, DrawType::TEXTURE);
 }
 
 void draw_animated_sprite(Renderer *renderer, Sprite *sprite, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color, bool flipped) {
@@ -1050,17 +1115,17 @@ void draw_animated_sprite(Renderer *renderer, Sprite *sprite, f32 time_in_animat
     };
 
     if (flipped) {
-        push_quad(renderer, position, size, rotation, color, flipped_uvs, renderer->default_normal->uvs, 2);
+        push_quad(renderer, position, size, rotation, color, flipped_uvs, renderer->default_normal->uvs, DrawType::TEXTURE);
     }
     else {
-        push_quad(renderer, position, size, rotation, color, sub_texture->uvs, renderer->default_normal->uvs, 2);
+        push_quad(renderer, position, size, rotation, color, sub_texture->uvs, renderer->default_normal->uvs, DrawType::TEXTURE);
     }
 }
 
 void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color) {
     assert(texture->type == TextureType::SINGLE);
 
-    push_quad(renderer, position, size, rotation, color, texture->uvs, normal_texture->uvs, 2);
+    push_quad(renderer, position, size, rotation, color, texture->uvs, normal_texture->uvs, DrawType::TEXTURE);
 }
 
 void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color) {
@@ -1075,7 +1140,24 @@ void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_ani
     }
 
     Texture *sub_texture = &texture->sub_textures[sub_texture_index];
-    push_quad(renderer, position, size, rotation, color, sub_texture->uvs, {}, 2);
+    push_quad(renderer, position, size, rotation, color, sub_texture->uvs, {}, DrawType::TEXTURE);
+}
+
+void draw_water(Renderer *renderer, Sprite *sprite, v3 position, v2 size, f32 rotation, v4 color) {
+    // this is the same as drawing a sprite but here just need to set a differant draw
+    // type for it, the sprite will get drawn as normal but also will allow
+    // for water reflections over the sprite in final render, probably not a good
+    // way to do this but I am just hacking it in for now
+    // - 29/05/25
+    
+    v2 *normal_uvs = NULL; 
+    if (sprite->normal == NULL) {
+        normal_uvs = renderer->default_normal->uvs;
+    } else  {
+        normal_uvs = sprite->normal->uvs;
+    }
+
+    push_quad(renderer, position, size, rotation, color, sprite->albedo->uvs, normal_uvs, DrawType::WATER);
 }
 
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color) {
@@ -1161,7 +1243,7 @@ void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 c
         // quad needs position to be centre of quad so just convert that here
         v2 quad_centered_position = translated_position + (scaled_size * 0.5f);
 
-        push_quad(renderer, v3{quad_centered_position.x, quad_centered_position.y, 0}, scaled_size, 0, color, glyph->uvs, {}, 3);
+        push_quad(renderer, v3{quad_centered_position.x, quad_centered_position.y, 0}, scaled_size, 0, color, glyph->uvs, {}, DrawType::TEXT);
    }
 
     mem_free(glyphs);
@@ -1208,6 +1290,7 @@ void draw_frame(Renderer *renderer, Window *window, Camera camera) {
     }
 
     { // second render pass - lighting 
+        glBindFramebuffer(GL_FRAMEBUFFER, renderer->lighting_frame_buffer.id);
         reset(&renderer->quads);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glViewport(0, 0, window->width, window->height);
@@ -1219,7 +1302,7 @@ void draw_frame(Renderer *renderer, Window *window, Camera camera) {
             {0, 0},
         };
           
-        Quad *quad = push_quad(renderer, {}, {50, 50}, 0, WHITE, uvs, {}, 2);
+        Quad *quad = push_quad(renderer, {}, {50, 50}, 0, WHITE, uvs, {}, DrawType::TEXTURE);
         f32 z = 0;
         quad->vertices[0].position = {-1,  1, z};
         quad->vertices[1].position = { 1,  1, z};
@@ -1311,11 +1394,52 @@ void draw_frame(Renderer *renderer, Window *window, Camera camera) {
  
         glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
         reset(&renderer->lights);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    { // third render pass - water
+        reset(&renderer->quads);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glViewport(0, 0, window->width, window->height);
+
+        v2 uvs[4] = {
+            {0, 1},
+            {1, 1},
+            {1, 0},
+            {0, 0},
+        };
+          
+        Quad *quad = push_quad(renderer, {}, {50, 50}, 0, WHITE, uvs, {}, DrawType::TEXTURE);
+        f32 z = 0;
+        quad->vertices[0].position = {-1,  1, z};
+        quad->vertices[1].position = { 1,  1, z};
+        quad->vertices[2].position = { 1, -1, z};
+        quad->vertices[3].position = {-1, -1, z};
+    
+        glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.data);
+        glBindVertexArray(renderer->vertex_array_id);
+ 
+        glUseProgram(renderer->water_shader_program_id);
+ 
+        // set the input texture
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, renderer->lighting_frame_buffer.colour_attachment);
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, renderer->unlit_frame_buffer.water_attachment);
+
+       glUniform1f(
+            glGetUniformLocation(renderer->water_shader_program_id, "water_level"),
+            renderer->water_level 
+        );
+
+        glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
     }
 }
 
 
-Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], i32 draw_type) {
+Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type) {
     const v4 top_left      = {-0.5,   0.5, 0, 1};
     const v4 top_right     = { 0.5,   0.5, 0, 1};
     const v4 bottom_right  = { 0.5,  -0.5, 0, 1};
@@ -1352,10 +1476,10 @@ Quad *push_quad(Renderer *renderer, v3 position, v2 size, f32 rotation, v4 color
         quad->vertices[3].normal_uv = normal_uvs[3];
     }
 
-    quad->vertices[0].draw_type = draw_type;
-    quad->vertices[1].draw_type = draw_type;
-    quad->vertices[2].draw_type = draw_type;
-    quad->vertices[3].draw_type = draw_type;
+    quad->vertices[0].draw_type = (i32) draw_type;
+    quad->vertices[1].draw_type = (i32) draw_type;
+    quad->vertices[2].draw_type = (i32) draw_type;
+    quad->vertices[3].draw_type = (i32) draw_type;
 
     return quad;
 }
@@ -1405,15 +1529,23 @@ bool init_frame_buffer(FrameBuffer *frame_buffer) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
+    // create texture that frame buffer will use as water buffer
+    glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->water_attachment);
+    glBindTexture(GL_TEXTURE_2D, frame_buffer->water_attachment);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, frame_buffer->width, frame_buffer->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
     // assign attachments to frame buffer
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frame_buffer->colour_attachment, 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, frame_buffer->depth_attachment, 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, frame_buffer->normals_attachment, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, frame_buffer->water_attachment, 0);
 
     // when using more then one colour attachment, need to set all colour buffers the
     // frame buffer can write too, if not the normal buffer will not be write too
-    GLenum draw_buffers[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
-    glDrawBuffers(2, draw_buffers);
+    GLenum draw_buffers[3] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2};
+    glDrawBuffers(3, draw_buffers);
 
     if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         printf("error when createing frame buffer, was not complete\n");
