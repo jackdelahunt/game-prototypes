@@ -20,9 +20,11 @@
 //
 // Lighting TODO:
 // - bloom
-#define MAX_ENTITIES 2000
 
+#define MAX_ENTITIES 2000
 #define DEFAULT_SAVE_FILE "resources/saves/scene.json"
+f32 CAMERA_START_X = 0;
+f32 CAMERA_END_X = 820;
 
 enum TextureHandle {
     TH_NONE,
@@ -56,6 +58,8 @@ enum SpriteHandle {
     SH_SPIKE,
     SH_ORE_1,
     SH_ORE_2,
+    SH_GEM_1,
+    SH_GEM_2,
     SH_COUNT_,
 };
 
@@ -81,6 +85,8 @@ enum Prefab {
     PF_SPIKE,
     PF_ORE_1,
     PF_ORE_2,
+    PF_GEM_1,
+    PF_GEM_2,
     PF_COUNT_,
 };
 
@@ -117,6 +123,8 @@ struct Editor {
 enum EntityFlags {
     EF_LIGHT            = 1 << 0,
     EF_PLAYER           = 1 << 1,
+    EF_GREEN_ORE        = 1 << 2,
+    EF_RED_ORE          = 1 << 3,
     EF_DELETE           = 1 << 16,
 };
 
@@ -163,7 +171,7 @@ Sprite *get_sprite(SpriteHandle handle);
 int main() {
     state = State {
         .camera = {
-            .position = {0, 150, -1},
+            .position = {CAMERA_START_X, 150, -1},
             .orthographic_size = 300,
             .near_plane = 0.1f,
             .far_plane = 100.0f,
@@ -284,7 +292,6 @@ int main() {
 
             sprites[SH_BACKGROUND_3] = sprite;
 
-
             sprite = load_sprite(&state.renderer, "resources/textures/caves/tiles/corner_1.png", "");
             if (sprite == NULL) {
                 return 1;
@@ -300,7 +307,7 @@ int main() {
             sprites[SH_CORNER_2] = sprite;
 
 
-            sprite = load_sprite(&state.renderer, "resources/textures/caves/props/spike.png", "");
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/props/spike.png", "resources/textures/caves/props/spike_normal.png");
             if (sprite == NULL) {
                 return 1;
             }
@@ -320,6 +327,21 @@ int main() {
             }
 
             sprites[SH_ORE_2] = sprite;
+
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/props/gem_1.png", "");
+            if (sprite == NULL) {
+                return 1;
+            }
+
+            sprites[SH_GEM_1] = sprite;
+
+
+            sprite = load_sprite(&state.renderer, "resources/textures/caves/props/gem_2.png", "");
+            if (sprite == NULL) {
+                return 1;
+            }
+
+            sprites[SH_GEM_2] = sprite;
         }
 
         ok = build_atlas(&state.renderer);
@@ -511,7 +533,28 @@ void update_and_draw(f32 delta_time) {
 
         f32 player_speed = 300;
 
+
+        if (entity->flags & EF_GREEN_ORE || entity->flags & EF_RED_ORE) {
+            f32 t; // 0 -> 1
+
+            if(entity->flags & EF_GREEN_ORE) {
+                t = (sin(state.time) + 1) * 0.5; 
+            } else {
+                t = (cos(state.time) + 1) * 0.5;
+            }
+
+            f32 a =  (0.6 + (0.4 * t));
+
+            entity->light_intensity = a;
+            entity->light_radius = a * 100;
+        }
+
         if (entity->flags & EF_PLAYER) {
+
+            { // update camera position
+                state.camera.position.x = clamp(CAMERA_START_X, entity->position.x, CAMERA_END_X);
+            }
+
             v2 input = {};
 
             if (KEYS[GLFW_KEY_W] == InputState::pressed) {
@@ -633,8 +676,8 @@ void draw_editor(f32 delta_time) {
     }
 
     if(ImGui::CollapsingHeader("Settings")) {
-        ImGui::SliderFloat3("Camera position", &state.camera.position[0], -500, 500);
-        ImGui::SliderFloat("Orthographic size", &state.camera.orthographic_size, 10, 1000);
+        ImGui::SliderFloat3("Camera position", &state.camera.position[0], -500, 2000);
+        ImGui::SliderFloat("Orthographic size", &state.camera.orthographic_size, 10, 2000);
         ImGui::InputFloat4("Global light", &state.renderer.global_light[0]);
     }
 
@@ -724,6 +767,15 @@ void draw_editor(f32 delta_time) {
         ImGui::SameLine();
         if(ImGui::Button("Ore 2")) {
             selected_prefab = PF_ORE_2;
+        }
+
+        if(ImGui::Button("Gem 1")) {
+            selected_prefab = PF_GEM_1;
+        }
+
+        ImGui::SameLine();
+        if(ImGui::Button("Gem 2")) {
+            selected_prefab = PF_GEM_2;
         }
 
         if (selected_prefab != PF_NONE) {
@@ -912,7 +964,7 @@ Entity create_prefab(Prefab prefab) {
                 .size = {50, 50},
                 .color = WHITE,
                 .sprite = SH_ORE_1,
-                .light_colour = GREEN,
+                .light_colour = v4{0.15, 0.4, 1, 1},
                 .light_intensity = 1,
                 .light_radius = 90,
             };
@@ -926,6 +978,28 @@ Entity create_prefab(Prefab prefab) {
                 .light_colour = RED,
                 .light_intensity = 1,
                 .light_radius = 90,
+            };
+        };
+        case PF_GEM_1: {
+             return Entity {
+                .flags = EF_LIGHT,
+                .size = {50, 50},
+                .color = WHITE,
+                .sprite = SH_GEM_1,
+                .light_colour = v4{0.3, 0.5, 1, 1},
+                .light_intensity = 1,
+                .light_radius = 50,
+            };
+        };
+        case PF_GEM_2: {
+             return Entity {
+                .flags = EF_LIGHT,
+                .size = {50, 50},
+                .color = WHITE,
+                .sprite = SH_GEM_2,
+                .light_colour = RED,
+                .light_intensity = 1,
+                .light_radius = 50,
             };
         };
         default:

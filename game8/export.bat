@@ -6,6 +6,7 @@ aseprite.exe -b --layer "Normal" "resources\textures\caves\props\rock_1.aseprite
 aseprite.exe -b --layer "Albedo" "resources\textures\caves\props\rock_2.aseprite" --save-as "resources\textures\caves\props\rock_2.png"
 
 aseprite.exe -b --layer "Albedo" "resources\textures\caves\props\spike.aseprite" --save-as "resources\textures\caves\props\spike.png"
+aseprite.exe -b --layer "Normal" "resources\textures\caves\props\spike.aseprite" --save-as "resources\textures\caves\props\spike_normal.png"
 
 aseprite.exe -b --layer "Albedo" "resources\textures\caves\tiles\floor_1.aseprite" --save-as "resources\textures\caves\tiles\floor_1.png"
 aseprite.exe -b --layer "Normal" "resources\textures\caves\tiles\floor_1.aseprite" --save-as "resources\textures\caves\tiles\floor_1_normal.png"
@@ -42,3 +43,9 @@ aseprite.exe -b --layer "Normal" "resources\textures\caves\tiles\ore_1.aseprite"
 
 aseprite.exe -b --layer "Albedo" "resources\textures\caves\tiles\ore_2.aseprite" --save-as "resources\textures\caves\tiles\ore_2.png"
 aseprite.exe -b --layer "Normal" "resources\textures\caves\tiles\ore_2.aseprite" --save-as "resources\textures\caves\tiles\ore_2_normal.png"
+
+aseprite.exe -b --layer "Albedo" "resources\textures\caves\props\gem_1.aseprite" --save-as "resources\textures\caves\props\gem_1.png"
+aseprite.exe -b --layer "Normal" "resources\textures\caves\props\gem_1.aseprite" --save-as "resources\textures\caves\props\gem_1_normal.png"
+
+aseprite.exe -b --layer "Albedo" "resources\textures\caves\props\gem_2.aseprite" --save-as "resources\textures\caves\props\gem_2.png"
+aseprite.exe -b --layer "Normal" "resources\textures\caves\props\gem_2.aseprite" --save-as "resources\textures\caves\props\gem_2_normal.png"
