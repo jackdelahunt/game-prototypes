@@ -15,7 +15,7 @@
 #include <string>
 #include <filesystem>
 
-// Total: 26:00
+// Total: 29:30
 // Started: 13:00 
 //
 // Lighting TODO:
@@ -186,7 +186,7 @@ int main() {
             .far_plane = 100.0f,
         },
         .renderer = {
-            .global_light = {0.15, 0.15, 0.3, 1},
+            .global_light = {0.2, 0.2, 0.4, 1},
             .clear_colour = {0.2, 0.2, 0.2, 1},
             .water_level = BASE_WATER_LEVEL,
         },
