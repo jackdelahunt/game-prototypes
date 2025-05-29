@@ -417,6 +417,7 @@ bool init_renderer(Renderer *renderer, Window *window);
 bool load_shaders(Renderer *renderer);
 void delete_shaders(Renderer *renderer);
 Sprite *load_sprite(Renderer *renderer, string albedo_path, string normal_path);
+Sprite *load_animated_sprite(Renderer *renderer, string albedo_path, i64 cell_count, f32 animation_length);
 Texture *load_texture(Renderer *renderer, string path);
 Texture *load_animated_texture(Renderer *renderer, string path, i64 cell_count, f32 animation_length);
 bool build_atlas(Renderer *renderer);
@@ -427,6 +428,7 @@ bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
 void draw_sprite(Renderer *renderer, Sprite *sprite, v3 position, v2 size, f32 rotation, v4 color);
+void draw_animated_sprite(Renderer *renderer, Sprite *sprite, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color, bool flipped);
 void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color);
 void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
@@ -711,6 +713,19 @@ Sprite *load_sprite(Renderer *renderer, string albedo_path, string normal_path) 
     *sprite = Sprite {
         .albedo = albedo,
         .normal = normal
+    };
+
+    return sprite;
+}
+
+
+Sprite *load_animated_sprite(Renderer *renderer, string albedo_path, i64 cell_count, f32 animation_length) {
+    Texture *albedo = load_animated_texture(renderer, albedo_path, cell_count, animation_length);
+
+    Sprite *sprite = push(&renderer->sprites);
+    *sprite = Sprite {
+        .albedo = albedo,
+        .normal = NULL
     };
 
     return sprite;
@@ -1011,6 +1026,35 @@ void draw_sprite(Renderer *renderer, Sprite *sprite, v3 position, v2 size, f32 r
     }
 
     push_quad(renderer, position, size, rotation, color, sprite->albedo->uvs, normal_uvs, 2);
+}
+
+void draw_animated_sprite(Renderer *renderer, Sprite *sprite, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color, bool flipped) {
+    f32 animation_progress = time_in_animation / sprite->albedo->animation_length;
+    animation_progress = clamp(0, animation_progress, 1);
+
+    i64 sub_texture_count = sprite->albedo->sub_textures.len;
+    i64 sub_texture_index = (i64)(animation_progress * sub_texture_count);
+    
+    if (sub_texture_index >= sub_texture_count) {
+        sub_texture_index = sub_texture_count - 1;
+    }
+
+    Texture *sub_texture = &sprite->albedo->sub_textures[sub_texture_index];
+
+    // this is cursed but it is just to get the bat to be able to flip direction
+    v2 flipped_uvs[4] = {
+        sub_texture->uvs[1],
+        sub_texture->uvs[0],
+        sub_texture->uvs[3],
+        sub_texture->uvs[2],
+    };
+
+    if (flipped) {
+        push_quad(renderer, position, size, rotation, color, flipped_uvs, renderer->default_normal->uvs, 2);
+    }
+    else {
+        push_quad(renderer, position, size, rotation, color, sub_texture->uvs, renderer->default_normal->uvs, 2);
+    }
 }
 
 void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color) {

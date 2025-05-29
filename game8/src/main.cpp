@@ -60,6 +60,7 @@ enum SpriteHandle {
     SH_ORE_2,
     SH_GEM_1,
     SH_GEM_2,
+    SH_BAT,
     SH_COUNT_,
 };
 
@@ -87,6 +88,7 @@ enum Prefab {
     PF_ORE_2,
     PF_GEM_1,
     PF_GEM_2,
+    PF_BAT,
     PF_COUNT_,
 };
 
@@ -125,6 +127,8 @@ enum EntityFlags {
     EF_PLAYER           = 1 << 1,
     EF_GREEN_ORE        = 1 << 2,
     EF_RED_ORE          = 1 << 3,
+    EF_ANIMATED_SPRITE  = 1 << 4,
+    EF_FLIPPED_SPRITE   = 1 << 5,
     EF_DELETE           = 1 << 16,
 };
 
@@ -342,6 +346,14 @@ int main() {
             }
 
             sprites[SH_GEM_2] = sprite;
+
+
+            sprite = load_animated_sprite(&state.renderer, "resources/textures/bat/bat.png", 4, 1);
+            if (sprite == NULL) {
+                return 1;
+            }
+
+            sprites[SH_BAT] = sprite;
         }
 
         ok = build_atlas(&state.renderer);
@@ -531,9 +543,6 @@ void update_and_draw(f32 delta_time) {
     for (int i = 0; i < state.entities.len; i++) {
         Entity* entity = &state.entities[i];
 
-        f32 player_speed = 300;
-
-
         if (entity->flags & EF_GREEN_ORE || entity->flags & EF_RED_ORE) {
             f32 t; // 0 -> 1
 
@@ -573,7 +582,23 @@ void update_and_draw(f32 delta_time) {
                 input.x += 1;
             }
 
-            entity->velocity = input * player_speed;
+            entity->velocity = input * 250;
+
+            if (entity->velocity.x < 0) {
+                entity->flags |= EF_FLIPPED_SPRITE;
+            }
+            else if (entity->velocity.x > 0) {
+                entity->flags &= ~EF_FLIPPED_SPRITE;
+            }
+        }
+
+        if (entity->flags & EF_ANIMATED_SPRITE) {
+            entity->animation_cycle += delta_time;
+
+            Sprite *sprite = get_sprite(entity->sprite);
+            if(entity->animation_cycle >= sprite->albedo->animation_length) {
+                entity->animation_cycle = 0;
+            }
         }
 
         if (entity->flags & EF_LIGHT) {
@@ -590,11 +615,19 @@ void update_and_draw(f32 delta_time) {
                 draw_circle(&state.renderer, entity->position, 5, alpha(RED, 0.4));
             }
 
-            draw_sprite(&state.renderer, sprite, entity->position, entity->size, entity->rotation, draw_colour);
+            if(sprite->albedo->type == TextureType::ANIMATED) {
+                bool flipped = entity->flags & EF_FLIPPED_SPRITE;
+
+                draw_animated_sprite(&state.renderer, sprite, entity->animation_cycle, entity->position, entity->size, entity->rotation, draw_colour, flipped);
+            }
+            else {
+                draw_sprite(&state.renderer, sprite, entity->position, entity->size, entity->rotation, draw_colour);
+            }
         }
     }
 
-    if (false) { // draw grid lines
+#if 0
+    { // draw grid lines
         i64 grid_region_width = 2000;
         i64 grid_region_height = 2000;
         f32 line_thickness = 1;
@@ -610,7 +643,7 @@ void update_and_draw(f32 delta_time) {
             draw_rectangle(&state.renderer, {(f32) x, 0, 90}, {line_thickness, (f32) grid_region_height}, grid_colour);
         }
     }
-
+#endif
 
     for (int i = 0; i < state.entities.len; i++) {
         Entity* entity = &state.entities[i];
@@ -776,6 +809,10 @@ void draw_editor(f32 delta_time) {
         ImGui::SameLine();
         if(ImGui::Button("Gem 2")) {
             selected_prefab = PF_GEM_2;
+        }
+
+        if(ImGui::Button("Bat")) {
+            selected_prefab = PF_BAT;
         }
 
         if (selected_prefab != PF_NONE) {
@@ -1000,6 +1037,17 @@ Entity create_prefab(Prefab prefab) {
                 .light_colour = RED,
                 .light_intensity = 1,
                 .light_radius = 50,
+            };
+        };
+        case PF_BAT: {
+             return Entity {
+                .flags = EF_LIGHT | EF_ANIMATED_SPRITE | EF_PLAYER,
+                .size = {50, 50},
+                .color = WHITE,
+                .sprite = SH_BAT,
+                .light_colour = WHITE,
+                .light_intensity = 0.8,
+                .light_radius = 200,
             };
         };
         default:
