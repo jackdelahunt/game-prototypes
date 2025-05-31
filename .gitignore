@@ -15,3 +15,4 @@ zig-out/
 **/*.vscode
 game5/resources/levels/backups
 game8/resources/saves/backups
+game9/resources/saves/backups

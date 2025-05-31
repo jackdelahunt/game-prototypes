@@ -1,0 +1,1414 @@
+#ifndef ENGINE_CPP
+#define ENGINE_CPP
+
+#include <cassert>
+#include <cstring>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "libs/libs.h"
+#include "ack.cpp"
+
+/////////////////////////////////////////////////////////////////////////////
+//////////////////////////////// @window ////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////
+struct Window {
+    i32 width;
+    i32 height;
+    string title;
+    GLFWwindow *glfw_window;
+};
+
+enum class InputState {
+    up,
+    down,
+    pressed
+};
+
+Array<InputState, 348> KEYS = {};
+
+struct {
+    v2 position;
+    Array<InputState, 8> buttons;
+} MOUSE;
+
+bool init_window(i32 width, i32 height, string title);
+void swap_buffers(Window *window);
+void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
+void glfw_mouse_move_callback(GLFWwindow* window, f64 x, f64 y);
+void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 mods);
+void glfw_error_callback(int error_code, const char* description);
+
+bool init_window(Window *window, i32 width, i32 height, string title) {
+    *window = Window {
+        .width = width,
+        .height = height,
+        .title = title
+    };
+
+    if (glfwInit() == 0) {
+        printf("failed to init glfw\n");
+        return false;
+    }
+
+    window->glfw_window = glfwCreateWindow(width, height, title.c(), 0, 0);
+    if (window->glfw_window == nullptr) {
+        printf("failed to create window\n");
+        return false;
+    }
+
+    glfwMakeContextCurrent(window->glfw_window);
+
+    glfwSetErrorCallback(glfw_error_callback);
+
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
+
+    glfwSetWindowAttrib(window->glfw_window, GLFW_RESIZABLE, 0);
+
+    glfwSetWindowUserPointer(window->glfw_window, window);
+
+    glfwSwapInterval(1); // 0 -> no vsync, 1 -> vsync
+
+    glfwSetKeyCallback(window->glfw_window, glfw_key_callback);
+    glfwSetCursorPosCallback(window->glfw_window, glfw_mouse_move_callback);
+    glfwSetMouseButtonCallback(window->glfw_window, glfw_mouse_button_callback);
+
+    return true;
+}
+
+void swap_buffers(Window *window) {
+    glfwSwapBuffers(window->glfw_window);
+}
+
+void glfw_error_callback(int error_code, const char* description) {
+    printf("glfw error: [%d]: %s", error_code, description);
+}
+
+void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    switch (action) {
+         case GLFW_RELEASE:	{
+            KEYS[key] = InputState::up;
+            break;
+        }
+        case GLFW_PRESS: {
+            KEYS[key] = InputState::down;
+            break;
+        }
+        case GLFW_REPEAT: break;
+    }
+}
+
+void glfw_mouse_move_callback(GLFWwindow* window, f64 x, f64 y) {
+    // changing y position from glfw so the bottem left is the origin
+    // by default glfw is top left as origin - 18/03/25
+    Window *win_ptr = (Window *) glfwGetWindowUserPointer(window);
+
+    f32 x_32 = (f32) x;
+    f32 y_32 = (f32) y;
+
+    MOUSE.position = v2{
+        x_32,
+        (-y_32) + win_ptr->height,
+    };
+}
+
+void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 mods) {
+     switch (action) {
+         case GLFW_RELEASE:	{
+            MOUSE.buttons[button] = InputState::up;
+            break;
+        }
+        case GLFW_PRESS: {
+            MOUSE.buttons[button] = InputState::down;
+            break;
+        }
+        case GLFW_REPEAT: break;
+    } 
+}
+
+/////////////////////////////////////////////////////////////////////////////
+//////////////////////////////// @renderer //////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////
+#define MAX_QUADS 2000
+#define MAX_LIGHTS 20
+#define MAX_SPRITES 256
+#define MAX_TEXTURES 256
+
+struct Vertex {
+    v4 position;
+    v4 colour;
+    v2 uv;
+    v2 normal_uv;
+    i32 draw_type;
+};
+
+struct Quad {
+    Vertex vertices[4];
+};
+
+struct Light {
+    v2 position;
+    f32 radius;
+    v4 colour;
+    f32 intensity;
+};
+
+struct Camera {
+    f32 fov;
+    v3 position;
+    v3 rotation;
+    f32 orthographic_size;
+    f32 near_plane;
+    f32 far_plane;
+};
+
+enum class DrawType {
+    RECTANGLE   = 0,
+    CIRCLE      = 1,
+    TEXTURE     = 2,
+    TEXT        = 3,
+};
+
+enum class TextureType {
+    SINGLE,
+    ANIMATED,
+};
+
+// For Texture.uv:
+// x and y of each corner of the texture in the atlas
+// uv[0] == top left point
+// uv[1] == top right point
+// uv[2] == bottom right point
+// uv[3] == bottom left point
+struct Texture {
+    TextureType type;
+    i64 width;
+    i64 height;
+    v2 uvs[4];
+    u8 *data;
+
+    f32 animation_length;
+    Slice<Texture> sub_textures;
+};
+
+struct Sprite {
+    Texture *albedo;
+    Texture *normal;
+};
+
+struct Atlas {
+    i64 width;
+    i64 height;
+    u8 *data;
+};
+
+struct Font {
+    i64 width;
+    i64 height;
+    Array<stbtt_bakedchar, 96> characters;
+    u8 *bitmap_data;
+};
+
+struct FrameBuffer {
+    u32 id;
+    i64 width;
+    i64 height;
+
+    u32 colour_attachment;
+    u32 depth_attachment;
+    u32 normals_attachment;
+};
+
+struct Shader {
+    u32 id;
+};
+
+struct Renderer {
+    v4 global_light;
+    v4 clear_colour;
+
+    Array<Quad, MAX_QUADS> quads;
+    Array<Light, MAX_LIGHTS> lights;
+
+    m4 view_projection_matrix;
+
+    Array<Sprite, MAX_SPRITES> sprites;
+    Array<Texture, MAX_TEXTURES> textures;
+
+    Texture *default_normal;
+
+    Atlas atlas;
+
+    Font font;
+
+    FrameBuffer unlit_frame_buffer;
+
+    u32 vertex_array_id;
+    u32 vertex_buffer_id;
+    u32 index_buffer_id;
+
+    Shader default_shader;
+    Shader lighting_shader;
+
+    u32 atlas_texture_id;
+    u32 font_texture_id;
+};
+
+v4 WHITE            = {1, 1, 1, 1};
+v4 BLACK            = {0, 0, 0, 1};
+
+v4 RED              = {1, 0, 0, 1};
+v4 GREEN            = {0, 1, 0, 1};
+v4 BLUE             = {0, 0, 1, 1};
+
+v4 ORANGE           = {1, 0.64, 0.1, 1};
+v4 CORNFLOUR_BLUE   = {0.35, 0.80, 0.80, 1};
+// rgb(48, 231, 231)
+
+bool init_renderer(Renderer *renderer, Window *window);
+bool load_shaders(Renderer *renderer);
+void delete_shaders(Renderer *renderer);
+Sprite *load_sprite(Renderer *renderer, string albedo_path, string normal_path);
+Sprite *load_animated_sprite(Renderer *renderer, string albedo_path, i64 cell_count, f32 animation_length);
+Texture *load_texture(Renderer *renderer, string path);
+Texture *load_animated_texture(Renderer *renderer, string path, i64 cell_count, f32 animation_length);
+bool build_atlas(Renderer *renderer);
+u32 upload_texture_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
+u32 upload_font_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
+bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel_height);
+
+void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
+void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
+void draw_sprite(Renderer *renderer, Sprite *sprite, v3 position, v2 size, f32 rotation, v4 color);
+void draw_animated_sprite(Renderer *renderer, Sprite *sprite, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
+void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color);
+void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
+void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
+void draw_light(Renderer *renderer, v3 position, f32 radius, v4 colour, f32 intensity);
+void new_frame(Renderer *renderer, Window *window, Camera camera);
+void draw_frame(Renderer *renderer, Window *window, Camera camera);
+Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
+void push_cube(Renderer *renderer, v3 position);
+void new_imgui_frame();
+void draw_imgui_frame();
+
+f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
+
+bool init_frame_buffer(FrameBuffer *frame_buffer);
+
+bool init_shader(Shader *shader, string vertex_shader_path, string fragment_shader_path);
+void assign_texture_slot(Shader *shader, string texture_name, i32 slot);
+
+v2 screen_position_to_world_position(v2 screen_position, Camera camera, Window *window);
+v2 screen_position_to_ndc(v2 screen_position, Window *window);
+
+m4 get_view_matrix(Camera camera);
+m4 get_projection_matrix(Camera camera, f32 aspect);
+
+void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, i32 length, const char *message, const void *user_param);
+
+v4 alpha(v4 base, f32 alpha);
+v4 brightness(v4 base, f32 brightness);
+
+bool init_renderer(Renderer *renderer, Window *window) {
+    { // init opengl
+        GLenum result = glewInit();
+        if (result != GLEW_OK) {
+            return false;
+        }
+
+        glDebugMessageCallback(opengl_error_callback, NULL);
+
+        // alpha blend settings
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        // depth buffer settings
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+
+
+        glClearColor(
+            renderer->clear_colour.r,
+            renderer->clear_colour.g,
+            renderer->clear_colour.b,
+            renderer->clear_colour.a
+        );
+    }
+
+    bool ok = load_shaders(renderer);
+    if (!ok) {
+        printf("Error when loading and compiling shaders\n");
+        return false;
+    }
+
+    { // init imgui
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+    
+        ImGui::StyleColorsLight();
+    
+        ImGuiIO& io = ImGui::GetIO();
+    
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+        io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+    
+        ImGui_ImplGlfw_InitForOpenGL(window->glfw_window, true);
+        ImGui_ImplOpenGL3_Init("#version 460");
+    } 
+
+    { // vertex array
+        u32 vertex_array;
+        glGenVertexArrays(1, &vertex_array);
+        glBindVertexArray(vertex_array);
+
+        renderer->vertex_array_id = vertex_array;
+    }
+
+    { // vertex buffer
+        u32 vertex_buffer;
+        glGenBuffers(1, &vertex_buffer);
+        glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(Quad) * MAX_QUADS, renderer->quads.data, GL_DYNAMIC_DRAW);
+
+        renderer->vertex_buffer_id = vertex_buffer;
+    }
+
+    { // index buffer
+        const i64 index_buffer_length = MAX_QUADS * 6;
+        u32 indices[index_buffer_length];
+
+        i64 i = 0;
+        while (i < index_buffer_length) {
+            // vertex offset pattern to draw a quad
+            // { 0, 1, 2,  0, 2, 3 }
+            indices[i + 0] = ((i/6)*4 + 0);
+            indices[i + 1] = ((i/6)*4 + 1);
+            indices[i + 2] = ((i/6)*4 + 2);
+            indices[i + 3] = ((i/6)*4 + 0);
+            indices[i + 4] = ((i/6)*4 + 2);
+            indices[i + 5] = ((i/6)*4 + 3);
+            i += 6;
+        }
+
+        u32 index_buffer;
+        glGenBuffers(1, &index_buffer);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u32) * index_buffer_length, indices, GL_STATIC_DRAW);
+
+        renderer->index_buffer_id = index_buffer;
+    }
+
+    { // vertex attributes
+        glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, position));   // position
+        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, colour));     // colour
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, uv));         // uv
+        glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, normal_uv));  // normal_uv
+        glVertexAttribIPointer(4, 1, GL_INT, sizeof(Vertex), (void *) offsetof(Vertex, draw_type));             // draw_type
+
+        glEnableVertexAttribArray(0);
+        glEnableVertexAttribArray(1);
+        glEnableVertexAttribArray(2);
+        glEnableVertexAttribArray(3);
+        glEnableVertexAttribArray(4);
+    }
+
+    { // init frame buffers
+         renderer->unlit_frame_buffer = FrameBuffer {
+            .width =  window->width,
+            .height =  window->height
+        };
+    
+        bool ok = init_frame_buffer(&renderer->unlit_frame_buffer);
+        if (!ok) {
+            printf("failed to init unlit frame buffer\n");
+            return false;
+        }
+    }
+
+    { // load default normal texture
+        Texture *texture = load_texture(renderer, "resources/textures/defaults/normal.png");
+        if (texture == NULL) {
+            printf("failed to load default texture\n");
+            return false;
+        }
+
+        renderer->default_normal = texture;
+    }
+
+    return true;
+}
+
+bool load_shaders(Renderer *renderer) {
+    bool ok = init_shader(&renderer->default_shader, "resources/shaders/default_vertex.shader", "resources/shaders/default_fragment.shader");
+    if (!ok) {
+        printf("Error when creating default shader program\n");
+        return false;
+    }
+
+    assign_texture_slot(&renderer->default_shader, "atlas_texture", 0);
+    assign_texture_slot(&renderer->default_shader, "font_texture", 1);
+
+    ok = init_shader(&renderer->lighting_shader, "resources/shaders/default_vertex.shader", "resources/shaders/lighting_fragment.shader");
+    if (!ok) {
+        printf("Error when creating lighting shader program\n");
+        return false;
+    }
+
+    assign_texture_slot(&renderer->lighting_shader, "scene_texture", 0);
+    assign_texture_slot(&renderer->lighting_shader, "normals_texture", 1);
+    assign_texture_slot(&renderer->lighting_shader, "depth_texture", 2);
+
+    return true;
+}
+
+void delete_shaders(Renderer *renderer) {
+    glDeleteProgram(renderer->default_shader.id);
+    glDeleteProgram(renderer->lighting_shader.id);
+}
+
+Sprite *load_sprite(Renderer *renderer, string albedo_path, string normal_path) {
+    Texture *albedo = load_texture(renderer, albedo_path);
+    Texture *normal = NULL;
+
+    if (normal_path.len != 0) {
+        normal = load_texture(renderer, normal_path);
+    }
+
+    Sprite *sprite = push(&renderer->sprites);
+    *sprite = Sprite {
+        .albedo = albedo,
+        .normal = normal
+    };
+
+    return sprite;
+}
+
+
+Sprite *load_animated_sprite(Renderer *renderer, string albedo_path, i64 cell_count, f32 animation_length) {
+    Texture *albedo = load_animated_texture(renderer, albedo_path, cell_count, animation_length);
+
+    Sprite *sprite = push(&renderer->sprites);
+    *sprite = Sprite {
+        .albedo = albedo,
+        .normal = NULL
+    };
+
+    return sprite;
+}
+
+Texture *load_texture(Renderer *renderer, string path) {
+    i32 width       = 0;
+    i32 height      = 0;
+    i32 channels    = 0;
+    u8 *image_data  = nullptr;
+
+    stbi_set_flip_vertically_on_load(true);
+
+    image_data = stbi_load(path.c(), &width, &height, &channels, 4);
+    if (!image_data) {
+        printf("Failed to load texture: %s\n", path.c());
+        return NULL;
+    }
+
+    printf("Loaded texture with path \"%s\" [%dx%d] %d bytes\n", path.c(), width, height, width * height * channels);
+
+    i64 id = renderer->textures.len;
+
+    Texture *texture = push(&renderer->textures);
+
+    *texture = Texture {
+        .type = TextureType::SINGLE,
+        .width = width,
+        .height = height,
+        .data = image_data,
+    };
+
+    return texture;
+}
+
+Texture *load_animated_texture(Renderer *renderer, string path, i64 cell_count, f32 animation_length) {
+    Texture *texture = load_texture(renderer, path);
+    if(texture == NULL) {
+        return NULL;
+    }
+
+    texture->type = TextureType::ANIMATED;
+    texture->animation_length = animation_length;
+    texture->sub_textures = mem_alloc<Texture>(cell_count);
+
+    if(texture->width % cell_count != 0) {
+        printf("Animated texture \"%s\" has a width of %llu, a cell count of %llu does not fit", path.c(), texture->width, cell_count);
+        return NULL;
+    }
+
+    i64 sub_texture_width = texture->width / cell_count;
+    i64 sub_texture_height = texture->height;
+
+    for(i64 i = 0; i < texture->sub_textures.len; i++) {
+        Texture *sub_texture    = &texture->sub_textures[i];
+        sub_texture->type       = TextureType::SINGLE;
+        sub_texture->width      = sub_texture_width;
+        sub_texture->height     = sub_texture_height;
+    }
+
+    return texture;
+}
+
+bool build_atlas(Renderer *renderer) {
+    const i64 ATLAS_WIDTH     = 1500;
+    const i64 ATLAS_HEIGHT    = 1500;
+    const i64 BYTES_PER_PIXEL = 4;
+    const i64 CHANNELS        = 4;
+    const i64 ATLAS_BYTE_SIZE = ATLAS_WIDTH * ATLAS_HEIGHT * BYTES_PER_PIXEL;
+
+    stbrp_context rp_context;
+    i64 rect_count    = renderer->textures.len;
+    u8 *atlas_data    = (u8 *) malloc(ATLAS_BYTE_SIZE);
+    stbrp_rect *rects = (stbrp_rect *) malloc(sizeof(stbrp_rect) * rect_count);
+    stbrp_node *nodes = (stbrp_node *) malloc(sizeof(stbrp_node) * ATLAS_WIDTH);
+
+    // fill in default atlas data
+    i64 i = 0;
+    while (i < ATLAS_BYTE_SIZE) {
+        atlas_data[i]       = 255;  // r
+        atlas_data[i + 1]   = 0;    // g
+        atlas_data[i + 2]   = 255;  // b
+        atlas_data[i + 3]   = 255;  // a
+ 
+        i += 4;
+    }
+
+    stbrp_init_target(&rp_context, ATLAS_WIDTH, ATLAS_HEIGHT, nodes, ATLAS_WIDTH);
+
+    for(i64 i = 0; i < renderer->textures.len; i++) {
+        Texture *texture = &renderer->textures[i];
+        rects[i] = stbrp_rect {
+            .id = (i32) i,
+            .w  = (i32) texture->width,
+            .h  = (i32) texture->height,
+        };
+    }
+
+    i64 status = stbrp_pack_rects(&rp_context, rects, rect_count);
+    if (status == 0) {
+        printf("error packing textures into atlas\n");
+        return false;
+    }
+
+    for(int i = 0; i < rect_count; i++) {
+        stbrp_rect *rect = &rects[i];
+        Texture *texture = &renderer->textures[rect->id];
+
+        f32 bottom_y_uv = (f32) rect->y             / (f32) ATLAS_HEIGHT;
+        f32 top_y_uv    = (f32) (rect->y + rect->h) / (f32) ATLAS_HEIGHT;
+        f32 left_x_uv   = (f32) rect->x             / (f32) ATLAS_WIDTH;
+        f32 right_x_uv  = (f32) (rect->x + rect->w) / (f32) ATLAS_WIDTH;
+
+        texture->uvs[0] = {left_x_uv, top_y_uv};
+        texture->uvs[1] = {right_x_uv, top_y_uv};
+        texture->uvs[2] = {right_x_uv, bottom_y_uv};
+        texture->uvs[3] = {left_x_uv, bottom_y_uv};
+
+        for (i64 row = 0; row < rect->h; row++) {
+            u8 *source_row = texture->data + (row * rect->w * BYTES_PER_PIXEL);
+            u8 *dest_row = atlas_data + (((rect->y + row) * ATLAS_WIDTH + rect->x) * BYTES_PER_PIXEL);
+            memcpy(dest_row, source_row, rect->w * BYTES_PER_PIXEL);
+        }
+    }
+
+    u32 texture_id = upload_texture_to_gpu(renderer, ATLAS_WIDTH, ATLAS_HEIGHT, atlas_data);
+    if (texture_id == 0) {
+        printf("error sending atlas texture GPU\n");
+        return false;
+    }
+
+    renderer->atlas_texture_id = texture_id;
+
+    // now that all of the texture uvs are set and the data is copied to the atlas
+    // it is time to figure out the uvs for all sub textures in animated textures
+    // it is enforced that the sub textures equally divide the texture's width as
+    // it is a horizontal strip. The height of each sub texture is then assumed to be
+    // the same as the parent texture
+    for(Texture &texture : renderer->textures) {
+        if(texture.type == TextureType::SINGLE) {
+            continue;
+        }
+
+        i64 sub_texture_count   = texture.sub_textures.len;
+        f32 starting_x          = texture.uvs[0].x;
+        f32 ending_x            = texture.uvs[1].x;
+        f32 step_x              = (ending_x - starting_x) / (f32) sub_texture_count;
+        f32 top_y               = texture.uvs[0].y;
+        f32 bottom_y            = texture.uvs[2].y;
+
+        for(i64 i = 0; i < sub_texture_count; i++) {
+            Texture *sub_texture = &texture.sub_textures[i];
+
+            sub_texture->uvs[0] = v2{
+                starting_x + (step_x * (f32) i),
+                top_y
+            };
+
+            sub_texture->uvs[1] = v2{
+                starting_x + (step_x * (f32) (i + 1)), // +1 because this is the right side
+                top_y
+            };
+
+            sub_texture->uvs[2] = v2{
+                starting_x + (step_x * (f32) (i + 1)), // +1 because this is the right side
+                bottom_y
+            };
+
+            sub_texture->uvs[3] = v2{
+                starting_x + (step_x * (f32) i),                 
+                bottom_y
+            };
+        }
+    }
+
+#ifdef DEBUG
+    stbi_flip_vertically_on_write(true);
+    i64 atlas_write_status = stbi_write_png("build/atlas.png", ATLAS_WIDTH, ATLAS_HEIGHT, 4, atlas_data, ATLAS_WIDTH * BYTES_PER_PIXEL);
+    if (atlas_write_status == 0) {
+        printf("error writing atlas to build folder\n");
+        return false;
+    }
+#endif
+
+    free(atlas_data);
+    free(rects);
+    free(nodes);
+
+    return true; 
+}
+
+u32 upload_texture_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data) {
+    u32 texture_id = 0;
+    glGenTextures(1, &texture_id);
+
+    glBindTexture(GL_TEXTURE_2D, texture_id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    // border param might fix texture bleeding
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+
+    return texture_id;
+}
+
+u32 upload_font_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data) {
+    u32 texture_id = 0;
+    glGenTextures(1, &texture_id);
+
+    glBindTexture(GL_TEXTURE_2D, texture_id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // border param might fix texture bleeding
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, data);
+
+    return texture_id;
+}
+
+bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel_height) {
+    Font font = Font{
+        .width = width,
+        .height = height,
+        .characters = {},
+        .bitmap_data = (u8 *) malloc(width * height),
+    };
+
+    Slice<u8> font_data = read_file(path.c());
+    if (font_data.len == 0) {
+        printf("failed to load font \"%s\"\n", path.c());
+        return false;
+    }
+
+    i64 bake_result = stbtt_BakeFontBitmap((const u8*)font_data.c(), 0, pixel_height, font.bitmap_data, font.width, font.height, 32, font.characters.size, font.characters.data);
+    if (bake_result <= 0) {
+        printf("failed to bake font \"%s\"\n", path.c());
+        return false;
+    }
+
+
+#ifdef DEBUG
+    { // write debug image out
+        stbi_flip_vertically_on_write(false);
+
+        i64 write_result = stbi_write_png("build/font.png", font.width, font.height, 1, font.bitmap_data, font.width);
+        if (write_result == 0) {
+            printf("error writing font to build folder\n");
+            return false;
+        }
+    }
+#endif
+
+    renderer->font_texture_id = upload_font_to_gpu(renderer, font.width, font.height, font.bitmap_data);
+    assert(renderer->font_texture_id != 0);
+
+    renderer->font = font;
+
+    return true;
+}
+
+void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color) {
+    v2 uvs[4] = {
+        {0, 1},
+        {1, 1},
+        {1, 0},
+        {0, 0},
+    };
+
+    push_quad(renderer, position, size, {}, color, uvs, {}, DrawType::RECTANGLE);
+}
+
+void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color) {
+    v2 size = {radius * 2, radius * 2};
+
+    v2 uvs[4] = {
+        {0, 1},
+        {1, 1},
+        {1, 0},
+        {0, 0},
+    };
+
+    push_quad(renderer, position, size, {}, color, uvs, {}, DrawType::CIRCLE);
+}
+
+void draw_sprite(Renderer *renderer, Sprite *sprite, v3 position, v2 size, f32 rotation, v4 color) {
+    v2 *normal_uvs = NULL; // need to use pointer here because stupid C reasons
+
+    if (sprite->normal == NULL) {
+        normal_uvs = renderer->default_normal->uvs;
+    } else  {
+        normal_uvs = sprite->normal->uvs;
+    }
+
+    push_quad(renderer, position, size, {0, 0, rotation}, color, sprite->albedo->uvs, normal_uvs, DrawType::TEXTURE);
+}
+
+void draw_animated_sprite(Renderer *renderer, Sprite *sprite, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color) {
+    f32 animation_progress = time_in_animation / sprite->albedo->animation_length;
+    animation_progress = clamp(0, animation_progress, 1);
+
+    i64 sub_texture_count = sprite->albedo->sub_textures.len;
+    i64 sub_texture_index = (i64)(animation_progress * sub_texture_count);
+    
+    if (sub_texture_index >= sub_texture_count) {
+        sub_texture_index = sub_texture_count - 1;
+    }
+
+    Texture *sub_texture = &sprite->albedo->sub_textures[sub_texture_index];
+
+    push_quad(renderer, position, size, {0, 0, rotation}, color, sub_texture->uvs, renderer->default_normal->uvs, DrawType::TEXTURE);
+}
+
+void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color) {
+    assert(texture->type == TextureType::SINGLE);
+
+    push_quad(renderer, position, size, {0, 0, rotation}, color, texture->uvs, normal_texture->uvs, DrawType::TEXTURE);
+}
+
+void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color) {
+    f32 animation_progress = time_in_animation / texture->animation_length;
+    animation_progress = clamp(0, animation_progress, 1);
+
+    i64 sub_texture_count = texture->sub_textures.len;
+    i64 sub_texture_index = (i64)(animation_progress * sub_texture_count);
+    
+    if (sub_texture_index >= sub_texture_count) {
+        sub_texture_index = sub_texture_count - 1;
+    }
+
+    Texture *sub_texture = &texture->sub_textures[sub_texture_index];
+    push_quad(renderer, position, size, {0, 0, rotation}, color, sub_texture->uvs, {}, DrawType::TEXTURE);
+}
+
+void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color) {
+    if (text.len == 0) {
+        return;
+    }
+
+    struct Glyph {
+        v2 position;
+        v2 size;
+        v2 uvs[4];
+    };
+
+    Slice<Glyph> glyphs = mem_alloc<Glyph>(text.len);
+
+    f32 total_text_width = 0;
+    f32 text_height = 0;
+
+    for (i64 i = 0; i < text.len; i++) {
+        char c = text[i];
+
+        f32 advanced_x = 0;
+        f32 advanced_y = 0;
+        stbtt_aligned_quad aligned_quad = {};
+
+        // this is the the data for the aligned_quad we're given, with y+ going down
+        //	   x0, y0       x1, y0
+        //     s0, t0       s1, t0
+        //	    o tl        o tr
+                        
+                        
+        //     x0, y1      x1, y1
+        //     s0, t1      s1, t1
+        //	    o bl        o br
+        // 
+        // x, and y and expected vertex positions
+        // s and t are texture uv position
+ 
+        stbtt_GetBakedQuad(renderer->font.characters.data, renderer->font.width, renderer->font.height, c - 32, &advanced_x, &advanced_y, &aligned_quad, false);
+
+        f32 bottom_y = -aligned_quad.y1;
+        f32 top_y = -aligned_quad.y0;
+
+        f32 height = top_y - bottom_y;
+        f32 width = aligned_quad.x1 - aligned_quad.x0;
+
+        if (height > text_height) {
+            text_height = height;
+        }
+
+        v2 top_left_uv     = v2{aligned_quad.s0, aligned_quad.t0};
+        v2 top_right_uv    = v2{aligned_quad.s1, aligned_quad.t0};
+        v2 bottom_right_uv = v2{aligned_quad.s1, aligned_quad.t1};
+        v2 bottom_left_uv  = v2{aligned_quad.s0, aligned_quad.t1};
+
+        glyphs[i] = {
+            .position = {total_text_width, bottom_y},
+            .size = {width, height},
+            .uvs = {top_left_uv, top_right_uv, bottom_right_uv, bottom_left_uv}
+        };
+
+        // if the character is not the last then add the advanced x to the total width
+        // because this includes the with of the character and also the kerning gap added
+        // for the next character, if it is the last one then just take the width and have
+        // no extra gap at the end - 20/01/25
+        if (i < text.len - 1) {
+            total_text_width += advanced_x;
+        } else {
+            total_text_width += width;
+        }
+    }
+
+    v2 pivot_point_translation = {};
+    f32 scale = font_size / text_height;
+
+    for (i64 i = 0; i < glyphs.len; i++) {
+        Glyph *glyph = &glyphs[i];
+
+        v2 scaled_position = glyph->position * scale;
+        v2 scaled_size = glyph->size * scale;
+        v2 translated_position = scaled_position + pivot_point_translation + position.xy;
+
+        // quad needs position to be centre of quad so just convert that here
+        v2 quad_centered_position = translated_position + (scaled_size * 0.5f);
+
+        push_quad(renderer, v3{quad_centered_position.x, quad_centered_position.y, 0}, scaled_size, {}, color, glyph->uvs, {}, DrawType::TEXT);
+   }
+
+    mem_free(glyphs);
+}
+
+void draw_light(Renderer *renderer, v3 position, f32 radius, v4 colour, f32 intensity) {
+    Light *light = push(&renderer->lights);
+
+    // light data is sent to the GPU in NDC so using view projection 
+    // matrix for the transformation
+    *light = Light {
+        .position = HMM_MulM4V4(renderer->view_projection_matrix, v4{position.x, position.y, position.z, 1}).xy,
+        .radius = length(HMM_MulM4V4(renderer->view_projection_matrix, {radius, 0, 0, 0}).xy) * 2,
+        .colour = colour,
+        .intensity = intensity
+    };
+}
+
+void new_frame(Renderer *renderer, Window *window, Camera camera) {
+    reset(&renderer->quads);
+    renderer->view_projection_matrix = HMM_MulM4(
+        get_projection_matrix(camera, (f32) window->width / (f32) window->height),
+        get_view_matrix(camera)
+    ); 
+}
+
+void draw_frame(Renderer *renderer, Window *window, Camera camera) {
+    { // first render pass - unlit scene
+        glBindFramebuffer(GL_FRAMEBUFFER, renderer->unlit_frame_buffer.id);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glViewport(0, 0, window->width, window->height);
+
+        glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.data);
+        glBindVertexArray(renderer->vertex_array_id);
+
+        glUseProgram(renderer->default_shader.id);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, renderer->font_texture_id);
+
+        glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    { // second render pass - lighting 
+        reset(&renderer->quads);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glViewport(0, 0, window->width, window->height);
+
+        v2 uvs[4] = {
+            {0, 1},
+            {1, 1},
+            {1, 0},
+            {0, 0},
+        };
+          
+        Quad *quad = push_quad(renderer, {}, {50, 50}, {}, WHITE, uvs, {}, DrawType::TEXTURE);
+        f32 z = 0;
+        quad->vertices[0].position = {-1,  1, z};
+        quad->vertices[1].position = { 1,  1, z};
+        quad->vertices[2].position = { 1, -1, z};
+        quad->vertices[3].position = {-1, -1, z};
+    
+        glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.data);
+        glBindVertexArray(renderer->vertex_array_id);
+ 
+        glUseProgram(renderer->lighting_shader.id);
+ 
+        // set the input texture
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, renderer->unlit_frame_buffer.colour_attachment);
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, renderer->unlit_frame_buffer.normals_attachment);
+
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, renderer->unlit_frame_buffer.depth_attachment);
+
+        // set all uniforms used in the lights shader, using sprintf to get
+        // the location of each value in the lights array that is why it looks
+        // really weird and long winded
+        glUniform4f(
+            glGetUniformLocation(renderer->lighting_shader.id, "global_light"),
+            renderer->global_light[0],
+            renderer->global_light[1],
+            renderer->global_light[2],
+            renderer->global_light[3]
+        );
+
+        glUniform1i(
+            glGetUniformLocation(renderer->lighting_shader.id, "light_count"),
+            (i32) renderer->lights.len
+        );
+
+        glUniform1f(
+            glGetUniformLocation(renderer->lighting_shader.id, "aspect_ratio"),
+            (f32) window->width / (f32) window->height
+        );
+
+        for(i64 i = 0; i < renderer->lights.len; i++) {
+            const i64 buffer_size = 64;
+            char buffer[buffer_size] = {};
+
+            { // set light position
+                sprintf(buffer, "lights[%llu].position", i);
+                glUniform2f(
+                    glGetUniformLocation(renderer->lighting_shader.id, buffer), 
+                    renderer->lights[i].position.x,
+                    renderer->lights[i].position.y
+                );
+                memset(buffer, 0, buffer_size);
+            }
+
+            { // set light radius
+                sprintf(buffer, "lights[%llu].radius", i);
+                glUniform1f(
+                    glGetUniformLocation(renderer->lighting_shader.id, buffer), 
+                    renderer->lights[i].radius
+                );
+                memset(buffer, 0, buffer_size);
+            }
+
+            { // set light colour
+                sprintf(buffer, "lights[%llu].colour", i);
+                glUniform4f(
+                    glGetUniformLocation(renderer->lighting_shader.id, buffer), 
+                    renderer->lights[i].colour.r,
+                    renderer->lights[i].colour.g,
+                    renderer->lights[i].colour.b,
+                    renderer->lights[i].colour.a
+                );
+                memset(buffer, 0, buffer_size);
+            }
+
+            { // set light intensity
+                sprintf(buffer, "lights[%llu].intensity", i);
+                glUniform1f(
+                    glGetUniformLocation(renderer->lighting_shader.id, buffer), 
+                    renderer->lights[i].intensity
+                );
+                memset(buffer, 0, buffer_size);
+            }
+ 
+        }
+ 
+        glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
+        reset(&renderer->lights);
+    }
+}
+
+
+Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type) {
+    const v4 top_left      = {-0.5,   0.5, 0, 1};
+    const v4 top_right     = { 0.5,   0.5, 0, 1};
+    const v4 bottom_right  = { 0.5,  -0.5, 0, 1};
+    const v4 bottom_left   = {-0.5,  -0.5, 0, 1};
+
+    m4 model_matrix = HMM_M4D(1.0f);
+    model_matrix = HMM_MulM4(model_matrix, HMM_Translate(position));
+    // model_matrix = HMM_MulM4(model_matrix, HMM_Scale({size.x, size.y, 1}));
+    // model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.x * HMM_DegToRad, {1, 0, 0}));
+    // model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.y * HMM_DegToRad, {0, 1, 0}));
+    // model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.z * HMM_DegToRad, {0, 0, 1}));
+                
+    m4 mvp_matrix = HMM_MulM4(renderer->view_projection_matrix, model_matrix);
+
+    Quad *quad = push(&renderer->quads);
+
+    quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left);
+    quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right);
+    quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right);
+    quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left);
+                
+    quad->vertices[0].colour = color;
+    quad->vertices[1].colour = color;
+    quad->vertices[2].colour = color;
+    quad->vertices[3].colour = color;
+
+    printf("0] x: %f, y: %f, z: %f, w: %f\n", quad->vertices[0].position.x, quad->vertices[0].position.y, quad->vertices[0].position.z, quad->vertices[0].position.w);
+    printf("1] x: %f, y: %f, z: %f, w: %f\n", quad->vertices[1].position.x, quad->vertices[1].position.y, quad->vertices[1].position.z, quad->vertices[1].position.w);
+    printf("2] x: %f, y: %f, z: %f, w: %f\n", quad->vertices[2].position.x, quad->vertices[2].position.y, quad->vertices[2].position.z, quad->vertices[2].position.w);
+    printf("3] x: %f, y: %f, z: %f, w: %f\n", quad->vertices[3].position.x, quad->vertices[3].position.y, quad->vertices[3].position.z, quad->vertices[3].position.w);
+    
+    quad->vertices[0].uv = uvs[0];
+    quad->vertices[1].uv = uvs[1];
+    quad->vertices[2].uv = uvs[2];
+    quad->vertices[3].uv = uvs[3];
+
+    if (normal_uvs != NULL) {
+        quad->vertices[0].normal_uv = normal_uvs[0];
+        quad->vertices[1].normal_uv = normal_uvs[1];
+        quad->vertices[2].normal_uv = normal_uvs[2];
+        quad->vertices[3].normal_uv = normal_uvs[3];
+    }
+
+    quad->vertices[0].draw_type = (i32) draw_type;
+    quad->vertices[1].draw_type = (i32) draw_type;
+    quad->vertices[2].draw_type = (i32) draw_type;
+    quad->vertices[3].draw_type = (i32) draw_type;
+
+    return quad;
+}
+
+void push_cube(Renderer *renderer, v3 position) {
+    v2 uvs[4] = {
+        {0, 1},
+        {1, 1},
+        {1, 0},
+        {0, 0},
+    };
+
+    const f32 CUBE_SIZE = 1;
+    const v2 V_CUBE_SIZE = {CUBE_SIZE, CUBE_SIZE};
+
+    push_quad(renderer, position - v3{0, 0, 10}, V_CUBE_SIZE, {0, -90, 0}, RED, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // left
+    push_quad(renderer, position, V_CUBE_SIZE, {0, 0, 0}, WHITE, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // front
+}
+
+
+void new_imgui_frame() {
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame(); 
+}
+
+void draw_imgui_frame() {
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    GLFWwindow *current = glfwGetCurrentContext();
+    ImGui::UpdatePlatformWindows();
+    ImGui::RenderPlatformWindowsDefault();
+    glfwMakeContextCurrent(current);
+}
+
+f32 texture_aspect_ratio(Renderer *renderer, Texture *texture) {
+    return (f32) texture->width / (f32) texture->height;
+}
+
+bool init_frame_buffer(FrameBuffer *frame_buffer) {
+    glCreateFramebuffers(1, &frame_buffer->id);
+    glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer->id);
+
+    // create texture that frame buffer will render into as the colour attachment
+    glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->colour_attachment);
+    glBindTexture(GL_TEXTURE_2D, frame_buffer->colour_attachment);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, frame_buffer->width, frame_buffer->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // create texture that frame buffer will use as depth buffer
+    glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->depth_attachment);
+    glBindTexture(GL_TEXTURE_2D, frame_buffer->depth_attachment);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_DEPTH24_STENCIL8, frame_buffer->width, frame_buffer->height);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // create texture that frame buffer will use as normal buffer
+    glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->normals_attachment);
+    glBindTexture(GL_TEXTURE_2D, frame_buffer->normals_attachment);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, frame_buffer->width, frame_buffer->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // assign attachments to frame buffer
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frame_buffer->colour_attachment, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, frame_buffer->depth_attachment, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, frame_buffer->normals_attachment, 0);
+
+    // when using more then one colour attachment, need to set all colour buffers the
+    // frame buffer can write too, if not the normal buffer will not be write too
+    GLenum draw_buffers[3] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2};
+    glDrawBuffers(3, draw_buffers);
+
+    if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        printf("error when createing frame buffer, was not complete\n");
+        return false;
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return true;
+}
+
+bool init_shader(Shader *shader, string vertex_shader_path, string fragment_shader_path) {
+    const i64 buffer_size = 640;
+    i32 compile_status = 0;
+    i32 link_status = 0;
+    char error_buffer[buffer_size];
+    
+    string vertex_shader_source = read_file(vertex_shader_path);
+    if (vertex_shader_source.len == 0) {
+        printf("failed to load vertex shader");
+        return false;
+    }
+
+    string fragment_shader_source = read_file(fragment_shader_path);
+    if (fragment_shader_source.len == 0) {
+        printf("failed to load default fragment shader");
+        return false;
+    }
+
+    u32 vertex_shader = glCreateShader(GL_VERTEX_SHADER);
+
+    glShaderSource(vertex_shader, 1, (char **) &vertex_shader_source.ptr, NULL);
+    glCompileShader(vertex_shader);
+
+    glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &compile_status);
+    if (compile_status == 0) {
+        glGetShaderInfoLog(vertex_shader, buffer_size, nullptr, &error_buffer[0]);
+        printf("failed to compile vertex shader: %s", error_buffer);
+        return false;
+    }
+
+    u32 fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+
+    glShaderSource(fragment_shader, 1, (char**) &fragment_shader_source.ptr, NULL);
+    glCompileShader(fragment_shader);
+
+    glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &compile_status);
+    if (compile_status == 0) {
+        glGetShaderInfoLog(fragment_shader, buffer_size, nullptr, &error_buffer[0]);
+        printf("failed to compile fragment shader: %s", error_buffer);
+        return false;
+    }
+
+    u32 shader_program = glCreateProgram();
+
+    glAttachShader(shader_program, vertex_shader);
+    glAttachShader(shader_program, fragment_shader);
+    glLinkProgram(shader_program); 
+
+    glGetProgramiv(shader_program, GL_LINK_STATUS, &link_status);
+
+    if (link_status == 0) {
+        glGetProgramInfoLog(shader_program, buffer_size, nullptr, &error_buffer[0]);
+        printf("failed to link shader program: %s", error_buffer);
+        return false;
+    }
+ 
+    shader->id = shader_program; 
+
+    printf("Compiled and linked shader program\n");
+
+    return true;
+}
+
+void assign_texture_slot(Shader *shader, string texture_name, i32 slot) {
+    glUseProgram(shader->id);
+    glUniform1i(glGetUniformLocation(shader->id, texture_name.c()), slot);
+    glUseProgram(0);
+}
+
+v2 screen_position_to_world_position(v2 screen_position, Camera camera, Window *window) {
+    // pretty muched copied from odin engine,
+    // haven't tweaked it because I am just happy 
+    // it works. Maybe can find a way to not pass
+    // in window or camera
+    // - 28/05/25
+    
+    v2 ndc = screen_position_to_ndc(screen_position, window);
+    f32 aspect_ratio = (f32) window->width / (f32) window->height;
+
+    m4 inverse_vp = HMM_InvGeneralM4(get_projection_matrix(camera, aspect_ratio) * get_view_matrix(camera));
+
+    v4 world_position = inverse_vp * v4{ndc.x, ndc.y, 0, 1};
+    world_position /= world_position.w;
+
+    return v2{world_position.x, world_position.y};
+}
+
+v2 screen_position_to_ndc(v2 screen_position, Window *window) {
+    return {
+        (screen_position.x / window->width) * 2 - 1,
+        (screen_position.y / window->height) * 2 - 1,
+    };
+}
+
+m4 get_view_matrix(Camera camera) {
+    m4 view_matrix = HMM_LookAt_LH(
+        camera.position, 
+        {camera.position.x, camera.position.y, camera.position.z + 1}, 
+        {0, 1, 0}
+    );
+
+    return view_matrix;
+}
+
+m4 get_projection_matrix(Camera camera, f32 aspect) {
+#if 0 
+    return HMM_Orthographic_LH_NO(
+        -camera.orthographic_size * aspect,  // left
+         camera.orthographic_size * aspect,  // right
+        -camera.orthographic_size,           // bottom
+         camera.orthographic_size,           // top
+         camera.near_plane, 
+         camera.far_plane 
+    );
+#endif
+
+    return HMM_Perspective_LH_NO(camera.fov * HMM_DegToRad, aspect, camera.near_plane, camera.far_plane);
+}
+
+v4 alpha(v4 base, f32 alpha) {
+    return {base.r, base.g, base.b, alpha};
+}
+
+v4 brightness(v4 base, f32 brightness) {
+    v4 result;
+
+    result.r = clamp(base.r * brightness, 0.0f, 1.0f);
+    result.g = clamp(base.g * brightness, 0.0f, 1.0f);
+    result.b = clamp(base.b * brightness, 0.0f, 1.0f);
+    result.a = base.a;
+
+    return result;
+}
+
+void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, i32 length, const char *message, const void *user_param) {
+    printf("OpenGL error: %s", message);
+}
+
+
+////////////////////////////////////////////////////////////////////////////
+//////////////////////////////// @sound ////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+enum SoundHandle {
+    SH_DASH,
+    SH_COUNT__
+};
+
+struct SoundEngine {
+    ma_engine engine;
+
+    Array<ma_sound, SH_COUNT__> sounds;
+};
+
+bool init_sound_engine(SoundEngine *sound_engine);
+bool load_sounds(SoundEngine *sound_engine);
+void play_sound(SoundEngine *sound_engine, SoundHandle handle);
+
+string sound_path(SoundHandle handle);
+
+bool init_sound_engine(SoundEngine *sound_engine) {
+    ma_result result = ma_engine_init(NULL, &sound_engine->engine);
+    if (result != MA_SUCCESS) {
+        printf("failed to init sound engine\n");
+        return false;
+    }
+
+    return true;
+}
+
+bool load_sounds(SoundEngine *sound_engine) {
+    for (i64 i = 0; i < sound_engine->sounds.size; i++) {
+        SoundHandle handle = (SoundHandle) i;
+
+        string path = sound_path(handle);
+        ma_sound *sound = &sound_engine->sounds[i];
+
+        ma_result result = ma_sound_init_from_file(&sound_engine->engine, path.c(), 0, NULL, NULL, sound);
+        if (result != MA_SUCCESS) {
+            printf("failed to load sound: %s\n", path.c());
+            return false;
+        }
+
+        printf("Loaded sound with path \"%s\"\n", path.c());
+    }
+
+    return true; 
+}
+
+void play_sound(SoundEngine *sound_engine, SoundHandle handle) {
+    ma_sound *sound = &sound_engine->sounds[handle];
+    ma_sound_start(sound);
+}
+
+string sound_path(SoundHandle handle) {
+    switch (handle) {
+        case SH_DASH: 
+            return "resources/sounds/dash.wav";
+        default: 
+            assert(0);
+    }
+
+    return {};
+}
+
+#endif
