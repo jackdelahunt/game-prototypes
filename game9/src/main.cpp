@@ -16,6 +16,10 @@
 // Total: 04:00
 // Started: 13:00
 
+// Performance (20 * 20 * 20):
+// start                            == ~21 fps - 48,000 quads
+// dont draw unless touching air    == ~78 fps - 13,008 quads
+
 #define ALLOW_EDITOR 1
 #define MAX_ENTITIES 2000
 #define DEFAULT_SAVE_FILE "resources/saves/scene.json"
@@ -65,12 +69,29 @@ enum EntityFlags {
     EF_DELETE           = 1 << 16,
 };
 
+#define CHUNK_WIDTH 20
+#define CHUNK_HEIGHT 20
+#define CHUNK_DEPTH 20
+
+enum class BlockType {
+    AIR,
+    BRICK
+};
+
+struct Chunk {
+    Slice<BlockType> blocks;
+};
+
 struct State {
     Camera camera;
     Window window;
     Renderer renderer;
     SoundEngine sound_engine;
     Editor editor;
+
+    i64 quads_last_frame;
+
+    Chunk chunk;
 
     f64 time;
 
@@ -85,6 +106,12 @@ struct CollisionIterator {
 void update_and_draw(f32 delta_time);
 void physics(f32 delta_time);
 void draw_editor(f32 delta_time);
+
+Chunk new_chunk();
+void draw_chunk(Chunk *chunk);
+v3 block_index_to_chunk_position(i64 index);
+i64 chunk_position_to_block_index(i64 x, i64 y, i64 z);
+BlockType get_block_neighbour(Chunk *chunk, i64 x, i64 y, i64 z, i64 x_offset, i64 y_offset, i64 z_offset);
 
 Entity *spawn_entity(Entity entity);
 
@@ -118,7 +145,8 @@ int main() {
             .snap_to_grid = true,
             .grid_size = {50, 50},
             .selection_range = {0, 20},
-        }
+        },
+        .chunk = new_chunk()
     };
 
     { // init engine stuff
@@ -174,6 +202,10 @@ int main() {
         srand(time(NULL));
     }
 
+    for (i64 i = 0; i < state.chunk.blocks.len; i++) {
+        state.chunk.blocks[i] = BlockType::BRICK;
+    }
+
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
         f64 current_time    = state.time;
         f64 new_time        = glfwGetTime();
@@ -184,6 +216,7 @@ int main() {
             glfwSetWindowShouldClose(state.window.glfw_window, GLFW_TRUE);
         }
 
+        state.quads_last_frame = state.renderer.quads.len;
         new_frame(&state.renderer, &state.window, state.camera);
 
         poll_inputs(); 
@@ -255,16 +288,7 @@ void update_and_draw(f32 delta_time) {
         }
     }
 
-    i64 size = 10;
-
-    for(i64 y = 0; y < size; y++) {
-        for(i64 z = 0; z < size; z++) {
-            for(i64 x = 0; x < size; x++) {
-                push_cube(&state.renderer, {(f32) x, (f32) y, (f32) z}, get_sprite(SH_BRICK));
-            }
-        }
-    }
-
+    draw_chunk(&state.chunk);
 
 #if ALLOW_EDITOR
     // check to see for a new selected entity
@@ -424,6 +448,8 @@ void draw_editor(f32 delta_time) {
     new_imgui_frame();
     ImGui::Begin("Editor");
 
+    ImGui::Text("Quads: %llu", state.quads_last_frame);
+    ImGui::SameLine();
     ImGui::Text("FPS: %f", 1.0f / delta_time);
 
     { // top level buttons
@@ -500,6 +526,69 @@ void draw_editor(f32 delta_time) {
 
     ImGui::End();
     draw_imgui_frame();
+}
+
+Chunk new_chunk() {
+    return Chunk {
+        .blocks = mem_alloc<BlockType>(CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_DEPTH)
+    };
+}
+
+void draw_chunk(Chunk *chunk) {
+    for(i64 i = 0; i < chunk->blocks.len; i++) {
+        if(chunk->blocks[i] == BlockType::AIR) {
+            continue;
+        }
+
+        v3 position = block_index_to_chunk_position(i);
+
+        BlockType up = get_block_neighbour(chunk, (i64) position.x, (i64) position.y, (i64) position.z, 0, 1, 0);
+        BlockType down = get_block_neighbour(chunk, (i64) position.x, (i64) position.y, (i64) position.z, 0, -1, 0);
+        BlockType left = get_block_neighbour(chunk, (i64) position.x, (i64) position.y, (i64) position.z, -1, 0, 0);
+        BlockType right = get_block_neighbour(chunk, (i64) position.x, (i64) position.y, (i64) position.z, 1, 0, 0);
+        BlockType front = get_block_neighbour(chunk, (i64) position.x, (i64) position.y, (i64) position.z, 0, 0, -1);
+        BlockType back = get_block_neighbour(chunk, (i64) position.x, (i64) position.y, (i64) position.z, 0, 0, 1);
+
+        if (
+            up == BlockType::AIR ||
+            down == BlockType::AIR ||
+            left == BlockType::AIR ||
+            right == BlockType::AIR ||
+            front == BlockType::AIR ||
+            back == BlockType::AIR
+        ) {
+            push_cube(&state.renderer, position, get_sprite(SH_BRICK));
+        }
+    }
+}
+
+v3 block_index_to_chunk_position(i64 index) {
+    i64 z = index % CHUNK_DEPTH;
+    i64 y = (index / CHUNK_DEPTH) % CHUNK_HEIGHT;
+    i64 x = index / (CHUNK_HEIGHT * CHUNK_WIDTH);
+
+    return {(f32) x, (f32) y, (f32) z};
+}
+
+i64 chunk_position_to_block_index(i64 x, i64 y, i64 z) {
+    return x + (CHUNK_WIDTH * y) + (CHUNK_WIDTH * CHUNK_HEIGHT * z);
+}
+
+BlockType get_block_neighbour(Chunk *chunk, i64 x, i64 y, i64 z, i64 x_offset, i64 y_offset, i64 z_offset) {
+    i64 neighbour_x = x + x_offset;
+    i64 neighbour_y = y + y_offset;
+    i64 neighbour_z = z + z_offset;
+
+    if(neighbour_x < 0 || neighbour_y < 0 || neighbour_z < 0) {
+        return BlockType::AIR;
+    }
+
+    if(neighbour_x >= CHUNK_WIDTH || neighbour_y >= CHUNK_HEIGHT || neighbour_z >= CHUNK_DEPTH) {
+        return BlockType::AIR;
+    }
+
+    i64 neighbour_index = chunk_position_to_block_index(neighbour_x, neighbour_y, neighbour_z);
+    return chunk->blocks[neighbour_index];
 }
 
 Entity *spawn_entity(Entity entity) {
