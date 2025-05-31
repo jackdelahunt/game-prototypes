@@ -13,12 +13,13 @@
 #include <fstream>
 #include <string>
 
-// Total: 04:00
+// Total: 09:00
 // Started: 13:00
 
 // Performance (20 * 20 * 20):
-// start                            == ~21 fps - 48,000 quads
-// dont draw unless touching air    == ~78 fps - 13,008 quads
+// start                            == ~21 fps  - 48,000 quads
+// no block unless touching air     == ~78 fps  - 13,008 quads
+// no face unless touching air      == ~350 fps - 2,400 quads
 
 #define ALLOW_EDITOR 1
 #define MAX_ENTITIES 2000
@@ -69,9 +70,9 @@ enum EntityFlags {
     EF_DELETE           = 1 << 16,
 };
 
-#define CHUNK_WIDTH 20
-#define CHUNK_HEIGHT 20
-#define CHUNK_DEPTH 20
+#define CHUNK_WIDTH 100
+#define CHUNK_HEIGHT 100
+#define CHUNK_DEPTH 100
 
 enum class BlockType {
     AIR,
@@ -93,6 +94,11 @@ struct State {
 
     Chunk chunk;
 
+    struct {
+        f32 cutoff;
+        f32 frequency;
+    } noise;
+
     f64 time;
 
     StackArray<Entity, MAX_ENTITIES> entities;
@@ -109,6 +115,7 @@ void draw_editor(f32 delta_time);
 
 Chunk new_chunk();
 void draw_chunk(Chunk *chunk);
+void generate_blocks(Chunk *chunk);
 v3 block_index_to_chunk_position(i64 index);
 i64 chunk_position_to_block_index(i64 x, i64 y, i64 z);
 BlockType get_block_neighbour(Chunk *chunk, i64 x, i64 y, i64 z, i64 x_offset, i64 y_offset, i64 z_offset);
@@ -146,7 +153,11 @@ int main() {
             .grid_size = {50, 50},
             .selection_range = {0, 20},
         },
-        .chunk = new_chunk()
+        .chunk = new_chunk(),
+        .noise = {
+            .cutoff = 0.7,
+            .frequency = 0.05
+        },
     };
 
     { // init engine stuff
@@ -202,9 +213,7 @@ int main() {
         srand(time(NULL));
     }
 
-    for (i64 i = 0; i < state.chunk.blocks.len; i++) {
-        state.chunk.blocks[i] = BlockType::BRICK;
-    }
+    generate_blocks(&state.chunk);
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
         f64 current_time    = state.time;
@@ -277,12 +286,12 @@ void update_and_draw(f32 delta_time) {
     }
 
     if (state.window.mouse_captured) { // update camera rotation (looking at)
-        f32 sensitivity = 10;
+        f32 sensitivity = 0.3;
 
         v2 mouse_input = MOUSE.delta;
 
         if(length(mouse_input) != 0) {
-            state.camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity * delta_time;
+            state.camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
 
             state.camera.rotation.x = clamp(-90, state.camera.rotation.x, 90);
         }
@@ -475,7 +484,16 @@ void draw_editor(f32 delta_time) {
 
     ImGui::Separator();
 
-    { // grid settings 
+    if(ImGui::CollapsingHeader("Noise")) {
+        ImGui::SliderFloat("Cutoff", &state.noise.cutoff, 0, 1);
+        ImGui::SliderFloat("Frequency", &state.noise.frequency, 0, 0.4);
+
+        if(ImGui::Button("Regenerate")) {
+            generate_blocks(&state.chunk);
+        }
+    }
+
+    if(ImGui::CollapsingHeader("Grid")) {
         ImGui::Checkbox("Snap to grid", &state.editor.snap_to_grid);
 
         ImGui::SameLine();
@@ -535,12 +553,16 @@ Chunk new_chunk() {
 }
 
 void draw_chunk(Chunk *chunk) {
+    Sprite *sprite = get_sprite(SH_BRICK);
+
     for(i64 i = 0; i < chunk->blocks.len; i++) {
         if(chunk->blocks[i] == BlockType::AIR) {
             continue;
         }
 
         v3 position = block_index_to_chunk_position(i);
+
+        v4 colour = {position.x / (f32) CHUNK_WIDTH, position.y / (f32) CHUNK_HEIGHT, position.z / (f32) CHUNK_DEPTH, 1};
 
         BlockType up = get_block_neighbour(chunk, (i64) position.x, (i64) position.y, (i64) position.z, 0, 1, 0);
         BlockType down = get_block_neighbour(chunk, (i64) position.x, (i64) position.y, (i64) position.z, 0, -1, 0);
@@ -549,23 +571,66 @@ void draw_chunk(Chunk *chunk) {
         BlockType front = get_block_neighbour(chunk, (i64) position.x, (i64) position.y, (i64) position.z, 0, 0, -1);
         BlockType back = get_block_neighbour(chunk, (i64) position.x, (i64) position.y, (i64) position.z, 0, 0, 1);
 
-        if (
-            up == BlockType::AIR ||
-            down == BlockType::AIR ||
-            left == BlockType::AIR ||
-            right == BlockType::AIR ||
-            front == BlockType::AIR ||
-            back == BlockType::AIR
-        ) {
-            push_cube(&state.renderer, position, get_sprite(SH_BRICK));
+        const v2 CUBE_SIZE = {1, 1};
+    
+
+        if (up == BlockType::AIR) {
+            push_quad(&state.renderer, position + v3{0, 0.5, 0}, CUBE_SIZE, {-90, 0, 0}, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE); // top
+        }
+
+        if (down == BlockType::AIR) {
+            push_quad(&state.renderer, position + v3{0, -0.5, 0}, CUBE_SIZE, {90, 0, 0}, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE); // bottom
+        }
+
+        if (left == BlockType::AIR) {
+            push_quad(&state.renderer, position + v3{-0.5,    0,    0}, CUBE_SIZE, {  0, -90, 0}, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE); // left
+        }
+
+
+        if (right == BlockType::AIR) {
+            push_quad(&state.renderer, position + v3{ 0.5,    0,    0}, CUBE_SIZE, {  0,  90, 0}, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE); // right
+        }
+
+
+        if (front == BlockType::AIR) {
+            push_quad(&state.renderer, position + v3{   0,    0, -0.5}, CUBE_SIZE, {  0,   0, 0}, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE); // front
+        }
+
+
+        if (back == BlockType::AIR) {
+            push_quad(&state.renderer, position + v3{   0,    0,  0.5}, CUBE_SIZE, {  0, 180, 0}, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE); // back
+        }
+    }
+}
+
+void generate_blocks(Chunk *chunk) {
+    memset(chunk->blocks.ptr, 0, sizeof(BlockType) * chunk->blocks.len);
+
+    FastNoiseLite noise;
+    noise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
+    noise.SetFrequency(state.noise.frequency);
+
+    i64 index = 0;
+
+    for (i64 z = 0; z < CHUNK_DEPTH; z++) {
+        for (i64 y = 0; y < CHUNK_HEIGHT; y++) {
+            for (i64 x = 0; x < CHUNK_WIDTH; x++) {
+                f32 n = noise.GetNoise((f32) x, (f32) y, (f32) z);
+                    
+                if (n > state.noise.cutoff) {
+                    chunk->blocks[index] = BlockType::BRICK;
+                }
+
+                index++;
+            }
         }
     }
 }
 
 v3 block_index_to_chunk_position(i64 index) {
-    i64 z = index % CHUNK_DEPTH;
+    i64 x = index % CHUNK_WIDTH;
     i64 y = (index / CHUNK_DEPTH) % CHUNK_HEIGHT;
-    i64 x = index / (CHUNK_HEIGHT * CHUNK_WIDTH);
+    i64 z = index / (CHUNK_HEIGHT * CHUNK_DEPTH);
 
     return {(f32) x, (f32) y, (f32) z};
 }

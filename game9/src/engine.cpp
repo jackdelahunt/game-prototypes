@@ -32,8 +32,8 @@ enum class InputState {
 StackArray<InputState, 348> KEYS = {};
 
 struct {
-    v2 position;
-    v2 delta;
+    v2 position = {};
+    v2 delta = {};
     StackArray<InputState, 8> buttons;
 } MOUSE;
 
@@ -77,7 +77,7 @@ bool init_window(Window *window, i32 width, i32 height, string title) {
 
     glfwSetWindowUserPointer(window->glfw_window, window);
 
-    glfwSwapInterval(1); // 0 -> no vsync, 1 -> vsync
+    glfwSwapInterval(0); // 0 -> no vsync, 1 -> vsync
 
     glfwSetKeyCallback(window->glfw_window, glfw_key_callback);
     glfwSetCursorPosCallback(window->glfw_window, glfw_mouse_move_callback);
