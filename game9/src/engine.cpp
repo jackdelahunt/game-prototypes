@@ -17,7 +17,10 @@ struct Window {
     i32 width;
     i32 height;
     string title;
+
     GLFWwindow *glfw_window;
+
+    bool mouse_captured;
 };
 
 enum class InputState {
@@ -26,14 +29,17 @@ enum class InputState {
     pressed
 };
 
-Array<InputState, 348> KEYS = {};
+StackArray<InputState, 348> KEYS = {};
 
 struct {
     v2 position;
-    Array<InputState, 8> buttons;
+    v2 delta;
+    StackArray<InputState, 8> buttons;
 } MOUSE;
 
 bool init_window(i32 width, i32 height, string title);
+void set_mouse_captured(Window *window, bool captured);
+void poll_inputs();
 void swap_buffers(Window *window);
 void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
 void glfw_mouse_move_callback(GLFWwindow* window, f64 x, f64 y);
@@ -80,6 +86,51 @@ bool init_window(Window *window, i32 width, i32 height, string title) {
     return true;
 }
 
+
+void set_mouse_captured(Window *window, bool captured) {
+    window->mouse_captured = captured;
+
+    i32 glfw_mode = captured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL;
+    glfwSetInputMode(window->glfw_window, GLFW_CURSOR, glfw_mode);
+}
+
+void poll_inputs() {
+    // this will set the state of things to up or down
+    // to keep track of what is already down, we can go through
+    // every key before this and set it to pressed, if is still
+    // down we dont get and event and it stays pressed, if we get
+    // an event for that key it will be to set it to up so the
+    // pressed we accidentlly set is changed, this is not the best
+    // - 24/01/25
+    //
+    // copied from odin engine so maybe need to look into this more
+    // - 03/03/25
+    
+    for (int i = 0; i < KEYS.size; i++) {
+        if (KEYS[i] == InputState::down) {
+            KEYS[i] = InputState::pressed;
+        }
+    }
+
+    for (int i = 0; i < MOUSE.buttons.size; i++) {
+        if (MOUSE.buttons[i] == InputState::down) {
+            MOUSE.buttons[i] = InputState::pressed;
+        }
+    }
+
+
+    // update mouse delta position, cant do this in the callback because
+    // if there is no movement then the delta is stuck with a non zero
+    // vector, so doing this before we check for events we know if there is
+    // a change
+    // - 31/05/25
+    v2 last_mouse_position = MOUSE.position;
+
+    glfwPollEvents();
+
+    MOUSE.delta = MOUSE.position - last_mouse_position;
+}
+
 void swap_buffers(Window *window) {
     glfwSwapBuffers(window->glfw_window);
 }
@@ -107,12 +158,9 @@ void glfw_mouse_move_callback(GLFWwindow* window, f64 x, f64 y) {
     // by default glfw is top left as origin - 18/03/25
     Window *win_ptr = (Window *) glfwGetWindowUserPointer(window);
 
-    f32 x_32 = (f32) x;
-    f32 y_32 = (f32) y;
-
     MOUSE.position = v2{
-        x_32,
-        (-y_32) + win_ptr->height,
+        (f32) x,
+        ((f32) -y) + win_ptr->height,
     };
 }
 
@@ -133,7 +181,7 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 /////////////////////////////////////////////////////////////////////////////
 //////////////////////////////// @renderer //////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
-#define MAX_QUADS 2000
+#define MAX_QUADS 200000
 #define MAX_LIGHTS 20
 #define MAX_SPRITES 256
 #define MAX_TEXTURES 256
@@ -209,7 +257,7 @@ struct Atlas {
 struct Font {
     i64 width;
     i64 height;
-    Array<stbtt_bakedchar, 96> characters;
+    StackArray<stbtt_bakedchar, 96> characters;
     u8 *bitmap_data;
 };
 
@@ -231,13 +279,13 @@ struct Renderer {
     v4 global_light;
     v4 clear_colour;
 
-    Array<Quad, MAX_QUADS> quads;
-    Array<Light, MAX_LIGHTS> lights;
+    FixedArray<Quad> quads;
+    StackArray<Light, MAX_LIGHTS> lights;
 
     m4 view_projection_matrix;
 
-    Array<Sprite, MAX_SPRITES> sprites;
-    Array<Texture, MAX_TEXTURES> textures;
+    StackArray<Sprite, MAX_SPRITES> sprites;
+    StackArray<Texture, MAX_TEXTURES> textures;
 
     Texture *default_normal;
 
@@ -267,7 +315,10 @@ v4 BLUE             = {0, 0, 1, 1};
 
 v4 ORANGE           = {1, 0.64, 0.1, 1};
 v4 CORNFLOUR_BLUE   = {0.35, 0.80, 0.80, 1};
-// rgb(48, 231, 231)
+
+v3 get_forward_direction(Camera camera);
+v3 get_right_direction(Camera camera);
+v3 get_up_direction(Camera camera);
 
 bool init_renderer(Renderer *renderer, Window *window);
 bool load_shaders(Renderer *renderer);
@@ -292,7 +343,7 @@ void draw_light(Renderer *renderer, v3 position, f32 radius, v4 colour, f32 inte
 void new_frame(Renderer *renderer, Window *window, Camera camera);
 void draw_frame(Renderer *renderer, Window *window, Camera camera);
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
-void push_cube(Renderer *renderer, v3 position);
+void push_cube(Renderer *renderer, v3 position, Sprite *sprite);
 void new_imgui_frame();
 void draw_imgui_frame();
 
@@ -309,12 +360,39 @@ v2 screen_position_to_ndc(v2 screen_position, Window *window);
 m4 get_view_matrix(Camera camera);
 m4 get_projection_matrix(Camera camera, f32 aspect);
 
-void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, i32 length, const char *message, const void *user_param);
-
 v4 alpha(v4 base, f32 alpha);
 v4 brightness(v4 base, f32 brightness);
 
+void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, i32 length, const char *message, const void *user_param);
+
+void print(v2 vector);
+void print(v3 vector);
+void print(v4 vector);
+
+v3 get_forward_direction(Camera camera) {
+    // pitch    - x
+    // yaw      - y
+    // roll     - z
+    v3 direction {
+        .x = sin(camera.rotation.y * HMM_DegToRad) * cos(camera.rotation.x * HMM_DegToRad),
+        .y = sin(camera.rotation.x * HMM_DegToRad),
+        .z = cos(camera.rotation.y * HMM_DegToRad) * cos(camera.rotation.x * HMM_DegToRad)
+    };
+
+    return norm(direction);
+}
+
+v3 get_right_direction(Camera camera) {
+    return HMM_Cross(get_up_direction(camera), get_forward_direction(camera));
+}
+
+v3 get_up_direction(Camera camera) {
+    return {0, 1, 0};
+}
+
 bool init_renderer(Renderer *renderer, Window *window) {
+    renderer->quads = new_fixed_array<Quad>(MAX_QUADS);
+
     { // init opengl
         GLenum result = glewInit();
         if (result != GLEW_OK) {
@@ -331,6 +409,8 @@ bool init_renderer(Renderer *renderer, Window *window) {
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
 
+        // enable back face culling
+        glEnable(GL_CULL_FACE);
 
         glClearColor(
             renderer->clear_colour.r,
@@ -374,34 +454,42 @@ bool init_renderer(Renderer *renderer, Window *window) {
         u32 vertex_buffer;
         glGenBuffers(1, &vertex_buffer);
         glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(Quad) * MAX_QUADS, renderer->quads.data, GL_DYNAMIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(Quad) * MAX_QUADS, renderer->quads.slice.ptr, GL_DYNAMIC_DRAW);
 
         renderer->vertex_buffer_id = vertex_buffer;
     }
 
     { // index buffer
         const i64 index_buffer_length = MAX_QUADS * 6;
-        u32 indices[index_buffer_length];
+        Slice<u32> indices = mem_alloc<u32>(index_buffer_length);
 
         i64 i = 0;
         while (i < index_buffer_length) {
+            // updated order of indices to be CCW as that is the default
+            // for opengl and we want to use back face culling now that
+            // we are rendering in 3d
+            // 31/05/25
+
             // vertex offset pattern to draw a quad
-            // { 0, 1, 2,  0, 2, 3 }
+            // { 0, 1, 2,  0, 2, 3 } -> CW winding 
+            // { 0, 2, 1,  0, 3, 2 } -> CCW winding
             indices[i + 0] = ((i/6)*4 + 0);
-            indices[i + 1] = ((i/6)*4 + 1);
-            indices[i + 2] = ((i/6)*4 + 2);
+            indices[i + 1] = ((i/6)*4 + 2);
+            indices[i + 2] = ((i/6)*4 + 1);
             indices[i + 3] = ((i/6)*4 + 0);
-            indices[i + 4] = ((i/6)*4 + 2);
-            indices[i + 5] = ((i/6)*4 + 3);
+            indices[i + 4] = ((i/6)*4 + 3);
+            indices[i + 5] = ((i/6)*4 + 2);
             i += 6;
         }
 
         u32 index_buffer;
         glGenBuffers(1, &index_buffer);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u32) * index_buffer_length, indices, GL_STATIC_DRAW);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u32) * index_buffer_length, indices.ptr, GL_STATIC_DRAW);
 
         renderer->index_buffer_id = index_buffer;
+
+        mem_free(indices);
     }
 
     { // vertex attributes
@@ -561,8 +649,8 @@ Texture *load_animated_texture(Renderer *renderer, string path, i64 cell_count, 
 }
 
 bool build_atlas(Renderer *renderer) {
-    const i64 ATLAS_WIDTH     = 1500;
-    const i64 ATLAS_HEIGHT    = 1500;
+    const i64 ATLAS_WIDTH     = 480;
+    const i64 ATLAS_HEIGHT    = 480;
     const i64 BYTES_PER_PIXEL = 4;
     const i64 CHANNELS        = 4;
     const i64 ATLAS_BYTE_SIZE = ATLAS_WIDTH * ATLAS_HEIGHT * BYTES_PER_PIXEL;
@@ -948,12 +1036,12 @@ void new_frame(Renderer *renderer, Window *window, Camera camera) {
 
 void draw_frame(Renderer *renderer, Window *window, Camera camera) {
     { // first render pass - unlit scene
-        glBindFramebuffer(GL_FRAMEBUFFER, renderer->unlit_frame_buffer.id);
+        // glBindFramebuffer(GL_FRAMEBUFFER, renderer->unlit_frame_buffer.id);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glViewport(0, 0, window->width, window->height);
 
         glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.data);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
         glBindVertexArray(renderer->vertex_array_id);
 
         glUseProgram(renderer->default_shader.id);
@@ -965,113 +1053,7 @@ void draw_frame(Renderer *renderer, Window *window, Camera camera) {
         glBindTexture(GL_TEXTURE_2D, renderer->font_texture_id);
 
         glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    }
-
-    { // second render pass - lighting 
-        reset(&renderer->quads);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glViewport(0, 0, window->width, window->height);
-
-        v2 uvs[4] = {
-            {0, 1},
-            {1, 1},
-            {1, 0},
-            {0, 0},
-        };
-          
-        Quad *quad = push_quad(renderer, {}, {50, 50}, {}, WHITE, uvs, {}, DrawType::TEXTURE);
-        f32 z = 0;
-        quad->vertices[0].position = {-1,  1, z};
-        quad->vertices[1].position = { 1,  1, z};
-        quad->vertices[2].position = { 1, -1, z};
-        quad->vertices[3].position = {-1, -1, z};
-    
-        glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.data);
-        glBindVertexArray(renderer->vertex_array_id);
- 
-        glUseProgram(renderer->lighting_shader.id);
- 
-        // set the input texture
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, renderer->unlit_frame_buffer.colour_attachment);
-
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, renderer->unlit_frame_buffer.normals_attachment);
-
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, renderer->unlit_frame_buffer.depth_attachment);
-
-        // set all uniforms used in the lights shader, using sprintf to get
-        // the location of each value in the lights array that is why it looks
-        // really weird and long winded
-        glUniform4f(
-            glGetUniformLocation(renderer->lighting_shader.id, "global_light"),
-            renderer->global_light[0],
-            renderer->global_light[1],
-            renderer->global_light[2],
-            renderer->global_light[3]
-        );
-
-        glUniform1i(
-            glGetUniformLocation(renderer->lighting_shader.id, "light_count"),
-            (i32) renderer->lights.len
-        );
-
-        glUniform1f(
-            glGetUniformLocation(renderer->lighting_shader.id, "aspect_ratio"),
-            (f32) window->width / (f32) window->height
-        );
-
-        for(i64 i = 0; i < renderer->lights.len; i++) {
-            const i64 buffer_size = 64;
-            char buffer[buffer_size] = {};
-
-            { // set light position
-                sprintf(buffer, "lights[%llu].position", i);
-                glUniform2f(
-                    glGetUniformLocation(renderer->lighting_shader.id, buffer), 
-                    renderer->lights[i].position.x,
-                    renderer->lights[i].position.y
-                );
-                memset(buffer, 0, buffer_size);
-            }
-
-            { // set light radius
-                sprintf(buffer, "lights[%llu].radius", i);
-                glUniform1f(
-                    glGetUniformLocation(renderer->lighting_shader.id, buffer), 
-                    renderer->lights[i].radius
-                );
-                memset(buffer, 0, buffer_size);
-            }
-
-            { // set light colour
-                sprintf(buffer, "lights[%llu].colour", i);
-                glUniform4f(
-                    glGetUniformLocation(renderer->lighting_shader.id, buffer), 
-                    renderer->lights[i].colour.r,
-                    renderer->lights[i].colour.g,
-                    renderer->lights[i].colour.b,
-                    renderer->lights[i].colour.a
-                );
-                memset(buffer, 0, buffer_size);
-            }
-
-            { // set light intensity
-                sprintf(buffer, "lights[%llu].intensity", i);
-                glUniform1f(
-                    glGetUniformLocation(renderer->lighting_shader.id, buffer), 
-                    renderer->lights[i].intensity
-                );
-                memset(buffer, 0, buffer_size);
-            }
- 
-        }
- 
-        glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
-        reset(&renderer->lights);
+        // glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 }
 
@@ -1082,12 +1064,23 @@ Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color,
     const v4 bottom_right  = { 0.5,  -0.5, 0, 1};
     const v4 bottom_left   = {-0.5,  -0.5, 0, 1};
 
+    // After looking at how unity does their rotations I am doing the oppisite.
+    // In unity, when looking down the negative of an axis towards origin, 
+    // increasing the rotation of that axis means it rotates to the right. 
+    // For me it was when looking in the positive of that axis.
+    //
+    // After trying it I think I rather my approach so I am keeping it, maybe
+    // this will change. If in the future I am confused, always remember that
+    // when looking from the origin, down an axis, a positive rotation means
+    // it rotates to the right
+    // - 31/05/25
+
     m4 model_matrix = HMM_M4D(1.0f);
     model_matrix = HMM_MulM4(model_matrix, HMM_Translate(position));
-    // model_matrix = HMM_MulM4(model_matrix, HMM_Scale({size.x, size.y, 1}));
-    // model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.x * HMM_DegToRad, {1, 0, 0}));
-    // model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.y * HMM_DegToRad, {0, 1, 0}));
-    // model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.z * HMM_DegToRad, {0, 0, 1}));
+    model_matrix = HMM_MulM4(model_matrix, HMM_Scale({size.x, size.y, 1}));
+    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.x * HMM_DegToRad, {1, 0, 0}));
+    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.y * HMM_DegToRad, {0, 1, 0}));
+    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.z * HMM_DegToRad, {0, 0, 1}));
                 
     m4 mvp_matrix = HMM_MulM4(renderer->view_projection_matrix, model_matrix);
 
@@ -1103,11 +1096,6 @@ Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color,
     quad->vertices[2].colour = color;
     quad->vertices[3].colour = color;
 
-    printf("0] x: %f, y: %f, z: %f, w: %f\n", quad->vertices[0].position.x, quad->vertices[0].position.y, quad->vertices[0].position.z, quad->vertices[0].position.w);
-    printf("1] x: %f, y: %f, z: %f, w: %f\n", quad->vertices[1].position.x, quad->vertices[1].position.y, quad->vertices[1].position.z, quad->vertices[1].position.w);
-    printf("2] x: %f, y: %f, z: %f, w: %f\n", quad->vertices[2].position.x, quad->vertices[2].position.y, quad->vertices[2].position.z, quad->vertices[2].position.w);
-    printf("3] x: %f, y: %f, z: %f, w: %f\n", quad->vertices[3].position.x, quad->vertices[3].position.y, quad->vertices[3].position.z, quad->vertices[3].position.w);
-    
     quad->vertices[0].uv = uvs[0];
     quad->vertices[1].uv = uvs[1];
     quad->vertices[2].uv = uvs[2];
@@ -1128,21 +1116,16 @@ Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color,
     return quad;
 }
 
-void push_cube(Renderer *renderer, v3 position) {
-    v2 uvs[4] = {
-        {0, 1},
-        {1, 1},
-        {1, 0},
-        {0, 0},
-    };
+void push_cube(Renderer *renderer, v3 position, Sprite *sprite) {
+    const v2 CUBE_SIZE = {1, 1};
 
-    const f32 CUBE_SIZE = 1;
-    const v2 V_CUBE_SIZE = {CUBE_SIZE, CUBE_SIZE};
-
-    push_quad(renderer, position - v3{0, 0, 10}, V_CUBE_SIZE, {0, -90, 0}, RED, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // left
-    push_quad(renderer, position, V_CUBE_SIZE, {0, 0, 0}, WHITE, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // front
+    push_quad(renderer, position + v3{-0.5,    0,    0}, CUBE_SIZE, {  0, -90, 0}, WHITE, sprite->albedo->uvs, renderer->default_normal->uvs, DrawType::TEXTURE); // left
+    push_quad(renderer, position + v3{   0,    0, -0.5}, CUBE_SIZE, {  0,   0, 0}, WHITE, sprite->albedo->uvs, renderer->default_normal->uvs, DrawType::TEXTURE); // front
+    push_quad(renderer, position + v3{ 0.5,    0,    0}, CUBE_SIZE, {  0,  90, 0}, WHITE, sprite->albedo->uvs, renderer->default_normal->uvs, DrawType::TEXTURE); // right
+    push_quad(renderer, position + v3{   0,  0.5,    0}, CUBE_SIZE, {-90,   0, 0}, WHITE, sprite->albedo->uvs, renderer->default_normal->uvs, DrawType::TEXTURE); // top
+    push_quad(renderer, position + v3{   0, -0.5,    0}, CUBE_SIZE, { 90,   0, 0}, WHITE, sprite->albedo->uvs, renderer->default_normal->uvs, DrawType::TEXTURE); // bottom
+    push_quad(renderer, position + v3{   0,    0,  0.5}, CUBE_SIZE, {  0, 180, 0}, WHITE, sprite->albedo->uvs, renderer->default_normal->uvs, DrawType::TEXTURE); // back
 }
-
 
 void new_imgui_frame() {
     ImGui_ImplOpenGL3_NewFrame();
@@ -1302,9 +1285,11 @@ v2 screen_position_to_ndc(v2 screen_position, Window *window) {
 }
 
 m4 get_view_matrix(Camera camera) {
+    v3 forward = get_forward_direction(camera);
+
     m4 view_matrix = HMM_LookAt_LH(
         camera.position, 
-        {camera.position.x, camera.position.y, camera.position.z + 1}, 
+        camera.position + forward, 
         {0, 1, 0}
     );
 
@@ -1345,6 +1330,17 @@ void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, 
     printf("OpenGL error: %s", message);
 }
 
+void print(v2 vector) {
+    printf("{x: %f, y: %f}\n", vector.x, vector.y);
+}
+
+void print(v3 vector) {
+    printf("{x: %f, y: %f, z: %f}\n", vector.x, vector.y, vector.z);
+}
+
+void print(v4 vector) {
+    printf("{x: %f, y: %f, z: %f, w: %f}\n", vector.x, vector.y, vector.z, vector.w);
+}
 
 ////////////////////////////////////////////////////////////////////////////
 //////////////////////////////// @sound ////////////////////////////////////
@@ -1357,7 +1353,7 @@ enum SoundHandle {
 struct SoundEngine {
     ma_engine engine;
 
-    Array<ma_sound, SH_COUNT__> sounds;
+    StackArray<ma_sound, SH_COUNT__> sounds;
 };
 
 bool init_sound_engine(SoundEngine *sound_engine);

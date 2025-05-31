@@ -13,10 +13,10 @@
 #include <fstream>
 #include <string>
 
-// Total: 01:00
-// Started: 19:00
+// Total: 04:00
+// Started: 13:00
 
-#define ALLOW_EDITOR
+#define ALLOW_EDITOR 1
 #define MAX_ENTITIES 2000
 #define DEFAULT_SAVE_FILE "resources/saves/scene.json"
 
@@ -74,7 +74,7 @@ struct State {
 
     f64 time;
 
-    Array<Entity, MAX_ENTITIES> entities;
+    StackArray<Entity, MAX_ENTITIES> entities;
 } state = {};
 
 struct CollisionIterator {
@@ -82,7 +82,6 @@ struct CollisionIterator {
     i64 index;
 };
 
-void input();
 void update_and_draw(f32 delta_time);
 void physics(f32 delta_time);
 void draw_editor(f32 delta_time);
@@ -105,7 +104,8 @@ int main() {
     state = State {
         .camera = {
             .fov = 90,
-            .position = {0, 0, -1},
+            .position = {0, 0, 0},
+            .rotation = {0, 0, 0},
             .orthographic_size = 5,
             .near_plane = 0.1f,
             .far_plane = 1000.0f,
@@ -172,7 +172,7 @@ int main() {
         } 
 
         srand(time(NULL));
-    } 
+    }
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
         f64 current_time    = state.time;
@@ -186,13 +186,13 @@ int main() {
 
         new_frame(&state.renderer, &state.window, state.camera);
 
-        input(); 
+        poll_inputs(); 
         update_and_draw(delta_time);
         physics(delta_time); 
 
         draw_frame(&state.renderer, &state.window, state.camera); 
 
-#ifdef ALLOW_EDITOR
+#if ALLOW_EDITOR
         draw_editor(delta_time); 
 #endif
 
@@ -204,66 +204,69 @@ int main() {
     return 0;
 }
 
-void input() {
-    // this will set the state of things to up or down
-    // to keep track of what is already down, we can go through
-    // every key before this and set it to pressed, if is still
-    // down we dont get and event and it stays pressed, if we get
-    // an event for that key it will be to set it to up so the
-    // pressed we accidentlly set is changed, this is not the best
-    // - 24/01/25
-    //
-    // copied from odin engine so maybe need to look into this more
-    // - 03/03/25
-    
-    for (int i = 0; i < KEYS.size; i++) {
-        if (KEYS[i] == InputState::down) {
-            KEYS[i] = InputState::pressed;
-        }
-    }
-
-    for (int i = 0; i < MOUSE.buttons.size; i++) {
-        if (MOUSE.buttons[i] == InputState::down) {
-            MOUSE.buttons[i] = InputState::pressed;
-        }
-    }
-
-    glfwPollEvents();
-}
-
 void update_and_draw(f32 delta_time) {
-
-    v2 input = {};
-
-    if (KEYS[GLFW_KEY_W] == InputState::pressed) {
-        input.y += 1;
+    { // toggle mouse capture
+        if (KEYS[GLFW_KEY_F1] == InputState::down) {
+            set_mouse_captured(&state.window, !state.window.mouse_captured);
+        }
     }
 
-    if (KEYS[GLFW_KEY_S] == InputState::pressed) {
-        input.y -= 1;
-    }
-
-    if (KEYS[GLFW_KEY_A] == InputState::pressed) {
-        input.x -= 1;
-    }
-
-    if (KEYS[GLFW_KEY_D] == InputState::pressed) {
-        input.x += 1;
-    }
-
-    state.camera.position += v3{input.x, 0, input.y} * delta_time * 10;
-
-    if (KEYS[GLFW_KEY_LEFT] == InputState::down) {
-        state.camera.rotation.y -= 45;
-    }
-
-    if (KEYS[GLFW_KEY_RIGHT] == InputState::down) {
-        state.camera.rotation.y += 45;
-    }
+    { // update camera position
+        v2 input = {};
     
-    push_cube(&state.renderer, {0, 0, 10});
+        if (KEYS[GLFW_KEY_W] == InputState::pressed) {
+            input.y += 1;
+        }
+    
+        if (KEYS[GLFW_KEY_S] == InputState::pressed) {
+            input.y -= 1;
+        }
+    
+        if (KEYS[GLFW_KEY_A] == InputState::pressed) {
+            input.x -= 1;
+        }
+    
+        if (KEYS[GLFW_KEY_D] == InputState::pressed) {
+            input.x += 1;
+        }
+    
+        const f32 move_speed = 10;
+        v3 forward = get_forward_direction(state.camera);
+        v3 right = get_right_direction(state.camera);
+    
+        if(input.y != 0) {
+            state.camera.position += forward * (input.y * move_speed * delta_time);
+        }
+    
+        if(input.x != 0) {
+            state.camera.position += right * (input.x * move_speed * delta_time);
+        }
+    }
 
-#ifdef ALLOW_EDITOR
+    if (state.window.mouse_captured) { // update camera rotation (looking at)
+        f32 sensitivity = 10;
+
+        v2 mouse_input = MOUSE.delta;
+
+        if(length(mouse_input) != 0) {
+            state.camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity * delta_time;
+
+            state.camera.rotation.x = clamp(-90, state.camera.rotation.x, 90);
+        }
+    }
+
+    i64 size = 10;
+
+    for(i64 y = 0; y < size; y++) {
+        for(i64 z = 0; z < size; z++) {
+            for(i64 x = 0; x < size; x++) {
+                push_cube(&state.renderer, {(f32) x, (f32) y, (f32) z}, get_sprite(SH_BRICK));
+            }
+        }
+    }
+
+
+#if ALLOW_EDITOR
     // check to see for a new selected entity
     if(MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::down) {
         v2 world_position = screen_position_to_world_position(MOUSE.position, state.camera, &state.window);
@@ -461,9 +464,10 @@ void draw_editor(f32 delta_time) {
         ImGui::InputFloat2("selection range", &state.editor.selection_range[0]);
     }
 
-    if(ImGui::CollapsingHeader("Settings")) {
+    if(ImGui::CollapsingHeader("Camera")) {
         ImGui::SliderFloat("FOV", &state.camera.fov, 1, 360);
-        ImGui::SliderFloat3("Camera position", &state.camera.position[0], -500, 2000);
+        ImGui::SliderFloat3("Camera position", &state.camera.position[0], -50, 50);
+        ImGui::SliderFloat3("Camera rotation", &state.camera.rotation[0], -360, 360);
         ImGui::SliderFloat("Orthographic size", &state.camera.orthographic_size, 10, 2000);
         ImGui::InputFloat4("Global light", &state.renderer.global_light[0]);
     }

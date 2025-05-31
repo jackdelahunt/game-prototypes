@@ -85,8 +85,64 @@ void mem_free(Slice<T> slice) {
     free(slice.ptr);
 }
 
+template <typename T>
+struct FixedArray {
+    Slice<T> slice;
+    i64 len;
+
+    T& operator[](i64 index) {
+        return this->slice[index];
+    }
+
+    T* begin() {
+        return &slice[0];
+    }
+
+    T* end() {
+        return &slice[len];
+    }
+};
+
+template <typename T>
+FixedArray<T> new_fixed_array(i64 size) {
+    return FixedArray<T> {
+        .slice = mem_alloc<T>(size),
+        .len = 0
+    };
+}
+
+template <typename T>
+void append(FixedArray<T> *array, T value) {
+    assert(array->len < array->slice.len);
+
+    array->slice[array->len] = value;
+    array->len += 1;
+}
+
+template <typename T>
+T* push(FixedArray<T> *array) {
+    assert(array->len < array->slice.len);
+
+    T *ptr = &array->slice[array->len];
+    array->len++;
+    return ptr;
+}
+
+template <typename T>
+void reset(FixedArray<T> *array) {
+    array->len = 0;
+}
+
+template <typename T>
+void swap_remove(FixedArray<T> *array, i64 index) {
+    assert(index < array->len);
+
+    array->slice[index] = array->slice[array->len - 1];
+    array->len -= 1;
+}
+
 template <typename T, i64 N>
-struct Array {
+struct StackArray {
     T data[N];
     i64 size = N;
     i64 len;
@@ -105,7 +161,7 @@ struct Array {
 };
 
 template <typename T, i64 N>
-void append(Array<T, N> *array, T value) {
+void append(StackArray<T, N> *array, T value) {
     assert(array->len < N);
 
     array->data[array->len] = value;
@@ -113,7 +169,7 @@ void append(Array<T, N> *array, T value) {
 }
 
 template <typename T, i64 N>
-T* push(Array<T, N> *array) {
+T* push(StackArray<T, N> *array) {
     assert(array->len < N);
 
     T *ptr = &array->data[array->len];
@@ -122,12 +178,12 @@ T* push(Array<T, N> *array) {
 }
 
 template <typename T, i64 N>
-void reset(Array<T, N> *array) {
+void reset(StackArray<T, N> *array) {
     array->len = 0;
 }
 
 template <typename T, i64 N>
-void swap_remove(Array<T, N> *array, i64 index) {
+void swap_remove(StackArray<T, N> *array, i64 index) {
     assert(index < array->len);
 
     array->data[index] = array->data[array->len - 1];
