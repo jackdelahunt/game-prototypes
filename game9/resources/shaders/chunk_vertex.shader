@@ -15,7 +15,7 @@ uniform mat4 mvp;
 
 void main()
 {
-    gl_Position = a_position;
+    gl_Position = mvp * a_position;
 
     colour = a_colour;
     uv = a_uv;

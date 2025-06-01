@@ -21,6 +21,11 @@
 // no block unless touching air     == ~78 fps  - 13,008 quads
 // no face unless touching air      == ~350 fps - 2,400 quads
 
+// Profilling (150 * 150 * 150)
+// .cutoff = 0.31, .frequency = 0.05
+// profile_1 = ~17 fps
+// profile_2 = ~35 fps
+
 #define ALLOW_EDITOR 1
 #define MAX_ENTITIES 2000
 #define DEFAULT_SAVE_FILE "resources/saves/scene.json"
@@ -70,9 +75,9 @@ enum EntityFlags {
     EF_DELETE           = 1 << 16,
 };
 
-#define CHUNK_WIDTH 100
-#define CHUNK_HEIGHT 100
-#define CHUNK_DEPTH 100
+#define CHUNK_WIDTH 150
+#define CHUNK_HEIGHT 150
+#define CHUNK_DEPTH 150
 
 enum class BlockType {
     AIR,
@@ -155,7 +160,7 @@ int main() {
             .selection_range = {0, 20},
         },
         .noise = {
-            .cutoff = 0.7,
+            .cutoff = 0.31,
             .frequency = 0.05
         },
     };
@@ -163,7 +168,7 @@ int main() {
     { // init engine stuff
         bool ok = false;
 
-        ok = init_window(&state.window, 1920, 1080, "game8");
+        ok = init_window(&state.window, 1920, 1080, "game9");
         if (!ok) {
             printf("failed to init window\n");
             return 1;
@@ -215,6 +220,9 @@ int main() {
 
     state.chunk = new_chunk(); // can only happen after renderer has started
     generate_blocks(&state.chunk);
+    draw_chunk(&state.chunk);
+    glBindBuffer(GL_ARRAY_BUFFER, state.renderer.vertex_buffer_id);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * state.renderer.quads.len, state.renderer.quads.slice.ptr);
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
         f64 current_time    = state.time;
@@ -238,7 +246,8 @@ int main() {
         // update_mesh(&state.chunk.mesh);
 
         // draw_mesh(&state.renderer, &state.chunk.mesh); 
-        draw_frame(&state.renderer, &state.window, state.camera); 
+        // draw_frame(&state.renderer, &state.window, state.camera); 
+        draw_frame_abs(&state.renderer, &state.window, state.camera); 
 
 #if ALLOW_EDITOR
         draw_editor(delta_time); 
@@ -302,8 +311,6 @@ void update_and_draw(f32 delta_time) {
             state.camera.rotation.x = clamp(-90, state.camera.rotation.x, 90);
         }
     }
-
-    draw_chunk(&state.chunk);
 
 #if ALLOW_EDITOR
     // check to see for a new selected entity
@@ -463,9 +470,14 @@ void draw_editor(f32 delta_time) {
     new_imgui_frame();
     ImGui::Begin("Editor");
 
-    ImGui::Text("Quads: %llu", state.quads_last_frame);
-    ImGui::SameLine();
-    ImGui::Text("FPS: %f", 1.0f / delta_time);
+    { // top info text
+        v3 direction = get_forward_direction(state.camera);
+        ImGui::Text("Looking: {%.2f, %.2f, %.2f}", direction.x, direction.y ,direction.z);
+    
+        ImGui::Text("Quads: %llu", state.quads_last_frame);
+        ImGui::SameLine();
+        ImGui::Text("FPS: %f", 1.0f / delta_time);
+    }
 
     { // top level buttons
         if(ImGui::Button("Deselect Entity")) {
@@ -485,6 +497,24 @@ void draw_editor(f32 delta_time) {
         ImGui::SameLine();
         if(ImGui::Button("Load scene")) {
             load_scene(&state);
+        }
+
+        if(ImGui::Button("Normal mode")) {
+            draw_wireframe(false);
+        }
+
+        ImGui::SameLine();
+        if(ImGui::Button("Wireframe mode")) {
+            draw_wireframe(true);
+        }
+
+        if(ImGui::Button("Vsync on")) {
+            vsync(true);
+        }
+
+        ImGui::SameLine();
+        if(ImGui::Button("Vsync off")) {
+            vsync(false);
         }
     }
 
@@ -582,6 +612,7 @@ void draw_chunk(Chunk *chunk) {
 
         const v2 CUBE_SIZE = {1, 1};
 
+#if 0
         if (up == BlockType::AIR) {
             push_quad(&state.renderer, position + v3{0, 0.5, 0}, CUBE_SIZE, {-90, 0, 0}, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE); // top
         }
@@ -608,7 +639,9 @@ void draw_chunk(Chunk *chunk) {
         if (back == BlockType::AIR) {
             push_quad(&state.renderer, position + v3{   0,    0,  0.5}, CUBE_SIZE, {  0, 180, 0}, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE); // back
         }
-#if 0
+#endif
+
+#if 1
     // const v4 top_left      = {-0.5,   0.5, 0, 1};
     // const v4 top_right     = { 0.5,   0.5, 0, 1};
     // const v4 bottom_right  = { 0.5,  -0.5, 0, 1};
@@ -619,10 +652,10 @@ void draw_chunk(Chunk *chunk) {
         v3 front_bottom_right   = {0.5, -0.5, -0.5};
         v3 front_bottom_left    = {-0.5, -0.5, -0.5};
 
-        v3 back_top_left       = {-0.5, 0.5, -0.5};
-        v3 back_top_right      = {0.5, 0.5, -0.5};
-        v3 back_bottom_right   = {0.5, -0.5, -0.5};
-        v3 back_bottom_left    = {-0.5, -0.5, -0.5};
+        v3 back_top_left       = {-0.5, 0.5, 0.5};
+        v3 back_top_right      = {0.5, 0.5, 0.5};
+        v3 back_bottom_right   = {0.5, -0.5, 0.5};
+        v3 back_bottom_left    = {-0.5, -0.5, 0.5};
 
         if (up == BlockType::AIR) {
             v3 positions[4] = {
@@ -632,7 +665,7 @@ void draw_chunk(Chunk *chunk) {
                 position + front_top_left
             };
 
-            push_quad(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            push_quad_abs(&state.renderer, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
         }
 
         if (down == BlockType::AIR) {
@@ -643,18 +676,18 @@ void draw_chunk(Chunk *chunk) {
                 position + back_bottom_left
             };
 
-            push_quad(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            push_quad_abs(&state.renderer, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
         }
 
         if (left == BlockType::AIR) {
             v3 positions[4] = {
-                position + back_top_right,
+                position + back_top_left,
                 position + front_top_left,
-                position + front_bottom_right,
+                position + front_bottom_left,
                 position + back_bottom_left
             };
 
-            push_quad(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            push_quad_abs(&state.renderer, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
         }
 
 
@@ -666,7 +699,7 @@ void draw_chunk(Chunk *chunk) {
                 position + front_bottom_right
             };
 
-            push_quad(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            push_quad_abs(&state.renderer, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
         }
 
 
@@ -675,22 +708,22 @@ void draw_chunk(Chunk *chunk) {
                 position + front_top_left,
                 position + front_top_right,
                 position + front_bottom_right,
-                position + front_bottom_right
+                position + front_bottom_left
             };
 
-            push_quad(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            push_quad_abs(&state.renderer, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
         }
 
 
         if (back == BlockType::AIR) {
             v3 positions[4] = {
-                position + back_top_left,
                 position + back_top_right,
-                position + back_bottom_right,
+                position + back_top_left,
+                position + back_bottom_left,
                 position + back_bottom_right
             };
 
-            push_quad(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            push_quad_abs(&state.renderer, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
         }
 #endif
     }
