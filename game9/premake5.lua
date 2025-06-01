@@ -1,5 +1,5 @@
 workspace "Engine"
-    configurations { "Debug", "Release" }
+    configurations { "Debug", "Release", "Profile" }
     location "build"	
 
 project "game9"
@@ -13,7 +13,6 @@ project "game9"
     system "Windows"
     architecture "x86_64"
 
-    profile "On"
     flags { "MultiProcessorCompile" }
 
     files {
@@ -45,4 +44,10 @@ project "game9"
 
     filter "configurations:Release"
     targetdir "build/bin/release"
+    optimize "On"
+
+    filter "configurations:Profile"
+    targetdir "build/bin/profile"
+    profile "On"
+    symbols "On"
     optimize "On"

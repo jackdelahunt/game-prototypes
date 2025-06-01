@@ -10,6 +10,15 @@
 #include "libs/libs.h"
 #include "ack.cpp"
 
+#define ASSERT(x) if (!(x)) __debugbreak();
+
+#define GL_CALL(x) \
+    clear_gl_errors(); \
+    x;\
+    ASSERT(check_gl_errors());
+
+#define GL_VERIFY() ASSERT(check_gl_errors());
+
 /////////////////////////////////////////////////////////////////////////////
 //////////////////////////////// @window ////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
@@ -189,7 +198,7 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 /////////////////////////////////////////////////////////////////////////////
 //////////////////////////////// @renderer //////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
-#define MAX_QUADS 500000
+#define MAX_QUADS 300000
 #define MAX_LIGHTS 20
 #define MAX_SPRITES 256
 #define MAX_TEXTURES 256
@@ -338,7 +347,7 @@ v3 get_forward_direction(Camera camera);
 v3 get_right_direction(Camera camera);
 v3 get_up_direction(Camera camera);
 
-ChunkMesh new_chunk_mesh(v3 position, i64 size);
+ChunkMesh new_chunk_mesh(v3 position, i64 quad_count);
 Quad *push_quad(Renderer *renderer, ChunkMesh *mesh, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
 Quad *push_quad_abs(ChunkMesh *mesh, v3 positions[4], v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
 void draw_mesh(Renderer *renderer, ChunkMesh *mesh);
@@ -391,6 +400,9 @@ m4 get_projection_matrix(Camera camera, f32 aspect);
 v4 alpha(v4 base, f32 alpha);
 v4 brightness(v4 base, f32 brightness);
 
+void clear_gl_errors();
+bool check_gl_errors();
+
 void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, i32 length, const char *message, const void *user_param);
 
 void print(v2 vector);
@@ -418,10 +430,10 @@ v3 get_up_direction(Camera camera) {
     return {0, 1, 0};
 }
 
-ChunkMesh new_chunk_mesh(v3 position, i64 size) {
+ChunkMesh new_chunk_mesh(v3 position, i64 quad_count) {
     ChunkMesh mesh = ChunkMesh {
         .position = position,
-        .quads = new_fixed_array<Quad>(size),
+        .quads = new_fixed_array<Quad>(quad_count),
     };
 
     { // vertex array
@@ -488,9 +500,9 @@ ChunkMesh new_chunk_mesh(v3 position, i64 size) {
         glEnableVertexAttribArray(4);
     }
 
+    glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
 
     return mesh;
 }
@@ -595,20 +607,20 @@ Quad *push_quad_abs(ChunkMesh *mesh, v3 positions[4], v4 color, v2 uvs[4], v2 no
 }
 
 void draw_mesh(Renderer *renderer, ChunkMesh *mesh) {
-    glBindBuffer(GL_ARRAY_BUFFER, mesh->vertex_buffer_id);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * mesh->quads.len, mesh->quads.slice.ptr);
-
-    glBindVertexArray(mesh->vertex_array_id);
-    glUseProgram(renderer->default_shader.id);
+    glUseProgram(renderer->chunk_shader.id);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
 
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, renderer->font_texture_id);
+    glUniformMatrix4fv(
+        glGetUniformLocation(renderer->chunk_shader.id, "mvp"),
+        1,
+        false,
+        (f32 *) &renderer->view_projection_matrix.Columns[0]
+    );
 
-    i32 offset = 0;
-    glDrawElements(GL_TRIANGLES, 6 * mesh->quads.len, GL_UNSIGNED_INT, &offset);
+    GL_CALL(glBindVertexArray(mesh->vertex_array_id));
+    GL_CALL(glDrawElements(GL_TRIANGLES, 6 * mesh->quads.len, GL_UNSIGNED_INT, 0));
 }
 
 void reset_mesh(ChunkMesh *mesh) {
@@ -729,6 +741,10 @@ bool init_renderer(Renderer *renderer, Window *window) {
         glEnableVertexAttribArray(2);
         glEnableVertexAttribArray(3);
         glEnableVertexAttribArray(4);
+
+        glBindVertexArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     }
 
     { // init frame buffers
@@ -1607,6 +1623,22 @@ v4 brightness(v4 base, f32 brightness) {
     result.a = base.a;
 
     return result;
+}
+
+void clear_gl_errors() {
+    while (glGetError() != GL_NO_ERROR);
+}
+
+bool check_gl_errors() {
+    GLenum error = glGetError();
+    bool no_errors = true;
+
+    while (error != GL_NO_ERROR) {
+        printf("[OpenGL ERROR]: %d\n", error);
+        no_errors = false;
+    }
+
+    return no_errors;
 }
 
 void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, i32 length, const char *message, const void *user_param) {
