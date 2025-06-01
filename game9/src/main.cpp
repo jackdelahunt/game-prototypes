@@ -85,7 +85,7 @@ enum class BlockType {
 };
 
 struct Chunk {
-    ChunkMesh mesh;
+    Mesh mesh;
     Slice<BlockType> blocks;
 };
 
@@ -221,8 +221,7 @@ int main() {
     state.chunk = new_chunk(); // can only happen after renderer has started
     generate_blocks(&state.chunk);
     draw_chunk(&state.chunk);
-    glBindBuffer(GL_ARRAY_BUFFER, state.chunk.mesh.vertex_buffer_id);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * state.chunk.mesh.quads.len, state.chunk.mesh.quads.slice.ptr);
+    upload_mesh(&state.chunk.mesh);
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
         f64 current_time    = state.time;
@@ -239,15 +238,14 @@ int main() {
 
         // reset_mesh(&state.chunk.mesh);
 
+        draw_rectangle(&state.renderer, {-10, 0, 10}, {5, 5}, ORANGE);
+
         poll_inputs(); 
         update_and_draw(delta_time);
         physics(delta_time); 
 
-        // update_mesh(&state.chunk.mesh);
-
         draw_mesh(&state.renderer, &state.chunk.mesh); 
-        // draw_frame(&state.renderer, &state.window, state.camera); 
-        // draw_frame_abs(&state.renderer, &state.window, state.camera); 
+        draw_frame(&state.renderer, &state.window, state.camera); 
 
 #if ALLOW_EDITOR
         draw_editor(delta_time); 
@@ -586,7 +584,7 @@ Chunk new_chunk() {
     i64 size = CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_DEPTH;
 
     return Chunk {
-        .mesh = new_chunk_mesh({}, size * 6),
+        .mesh = new_mesh({}, size * 6),
         .blocks = mem_alloc<BlockType>(size)
     };
 }
@@ -636,7 +634,7 @@ void draw_chunk(Chunk *chunk) {
                 position + front_top_left
             };
 
-            push_quad_abs(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            push_quad(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
         }
 
         if (down == BlockType::AIR) {
@@ -647,7 +645,7 @@ void draw_chunk(Chunk *chunk) {
                 position + back_bottom_left
             };
 
-            push_quad_abs(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            push_quad(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
         }
 
         if (left == BlockType::AIR) {
@@ -658,7 +656,7 @@ void draw_chunk(Chunk *chunk) {
                 position + back_bottom_left
             };
 
-            push_quad_abs(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            push_quad(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
         }
 
 
@@ -670,7 +668,7 @@ void draw_chunk(Chunk *chunk) {
                 position + front_bottom_right
             };
 
-            push_quad_abs(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            push_quad(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
         }
 
 
@@ -682,7 +680,7 @@ void draw_chunk(Chunk *chunk) {
                 position + front_bottom_left
             };
 
-            push_quad_abs(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            push_quad(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
         }
 
 
@@ -694,7 +692,7 @@ void draw_chunk(Chunk *chunk) {
                 position + back_bottom_right
             };
 
-            push_quad_abs(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            push_quad(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
         }
 #endif
     }

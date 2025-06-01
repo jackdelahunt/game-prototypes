@@ -292,7 +292,7 @@ struct Shader {
     u32 id;
 };
 
-struct ChunkMesh {
+struct Mesh {
     v3 position;
     FixedArray<Quad> quads;
 
@@ -347,11 +347,11 @@ v3 get_forward_direction(Camera camera);
 v3 get_right_direction(Camera camera);
 v3 get_up_direction(Camera camera);
 
-ChunkMesh new_chunk_mesh(v3 position, i64 quad_count);
-Quad *push_quad(Renderer *renderer, ChunkMesh *mesh, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
-Quad *push_quad_abs(ChunkMesh *mesh, v3 positions[4], v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
-void draw_mesh(Renderer *renderer, ChunkMesh *mesh);
-void reset_mesh(ChunkMesh *mesh);
+Mesh new_mesh(v3 position, i64 quad_count);
+Quad *push_quad(Mesh *mesh, v3 positions[4], v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
+void draw_mesh(Renderer *renderer, Mesh *mesh);
+void reset_mesh(Mesh *mesh);
+void upload_mesh(Mesh *mesh);
 
 bool init_renderer(Renderer *renderer, Window *window);
 bool load_shaders(Renderer *renderer);
@@ -375,9 +375,7 @@ void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 c
 void draw_light(Renderer *renderer, v3 position, f32 radius, v4 colour, f32 intensity);
 void new_frame(Renderer *renderer, Window *window, Camera camera);
 void draw_frame(Renderer *renderer, Window *window, Camera camera);
-void draw_frame_abs(Renderer *renderer, Window *window, Camera camera);
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
-Quad *push_quad_abs(Renderer *renderer, v3 positions[4], v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
 
 void new_imgui_frame();
 void draw_imgui_frame();
@@ -430,8 +428,8 @@ v3 get_up_direction(Camera camera) {
     return {0, 1, 0};
 }
 
-ChunkMesh new_chunk_mesh(v3 position, i64 quad_count) {
-    ChunkMesh mesh = ChunkMesh {
+Mesh new_mesh(v3 position, i64 quad_count) {
+    Mesh mesh = Mesh {
         .position = position,
         .quads = new_fixed_array<Quad>(quad_count),
     };
@@ -507,65 +505,7 @@ ChunkMesh new_chunk_mesh(v3 position, i64 quad_count) {
     return mesh;
 }
 
-Quad *push_quad(Renderer *renderer, ChunkMesh *mesh, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type) {
-    const v4 top_left      = {-0.5,   0.5, 0, 1};
-    const v4 top_right     = { 0.5,   0.5, 0, 1};
-    const v4 bottom_right  = { 0.5,  -0.5, 0, 1};
-    const v4 bottom_left   = {-0.5,  -0.5, 0, 1};
-
-    // After looking at how unity does their rotations I am doing the oppisite.
-    // In unity, when looking down the negative of an axis towards origin, 
-    // increasing the rotation of that axis means it rotates to the right. 
-    // For me it was when looking in the positive of that axis.
-    //
-    // After trying it I think I rather my approach so I am keeping it, maybe
-    // this will change. If in the future I am confused, always remember that
-    // when looking from the origin, down an axis, a positive rotation means
-    // it rotates to the right
-    // - 31/05/25
-
-    m4 model_matrix = HMM_M4D(1.0f);
-    model_matrix = HMM_MulM4(model_matrix, HMM_Translate(position));
-    model_matrix = HMM_MulM4(model_matrix, HMM_Scale({size.x, size.y, 1}));
-    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.x * HMM_DegToRad, {1, 0, 0}));
-    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.y * HMM_DegToRad, {0, 1, 0}));
-    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.z * HMM_DegToRad, {0, 0, 1}));
-                
-    m4 mvp_matrix = HMM_MulM4(renderer->view_projection_matrix, model_matrix);
-
-    Quad *quad = push(&mesh->quads);
-
-    quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left);
-    quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right);
-    quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right);
-    quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left);
-                
-    quad->vertices[0].colour = color;
-    quad->vertices[1].colour = color;
-    quad->vertices[2].colour = color;
-    quad->vertices[3].colour = color;
-
-    quad->vertices[0].uv = uvs[0];
-    quad->vertices[1].uv = uvs[1];
-    quad->vertices[2].uv = uvs[2];
-    quad->vertices[3].uv = uvs[3];
-
-    if (normal_uvs != NULL) {
-        quad->vertices[0].normal_uv = normal_uvs[0];
-        quad->vertices[1].normal_uv = normal_uvs[1];
-        quad->vertices[2].normal_uv = normal_uvs[2];
-        quad->vertices[3].normal_uv = normal_uvs[3];
-    }
-
-    quad->vertices[0].draw_type = (i32) draw_type;
-    quad->vertices[1].draw_type = (i32) draw_type;
-    quad->vertices[2].draw_type = (i32) draw_type;
-    quad->vertices[3].draw_type = (i32) draw_type;
-
-    return quad;
-}
-
-Quad *push_quad_abs(ChunkMesh *mesh, v3 positions[4], v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type) {
+Quad *push_quad(Mesh *mesh, v3 positions[4], v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type) {
     Quad *quad = push(&mesh->quads);
 
     quad->vertices[0].position = v4{positions[0], 1};
@@ -606,7 +546,7 @@ Quad *push_quad_abs(ChunkMesh *mesh, v3 positions[4], v4 color, v2 uvs[4], v2 no
     return quad;
 }
 
-void draw_mesh(Renderer *renderer, ChunkMesh *mesh) {
+void draw_mesh(Renderer *renderer, Mesh *mesh) {
     glUseProgram(renderer->chunk_shader.id);
 
     glActiveTexture(GL_TEXTURE0);
@@ -623,8 +563,13 @@ void draw_mesh(Renderer *renderer, ChunkMesh *mesh) {
     GL_CALL(glDrawElements(GL_TRIANGLES, 6 * mesh->quads.len, GL_UNSIGNED_INT, 0));
 }
 
-void reset_mesh(ChunkMesh *mesh) {
+void reset_mesh(Mesh *mesh) {
     reset(&mesh->quads);
+}
+
+void upload_mesh(Mesh *mesh) {
+    glBindBuffer(GL_ARRAY_BUFFER, mesh->vertex_buffer_id);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * mesh->quads.len, mesh->quads.slice.ptr);
 }
 
 bool init_renderer(Renderer *renderer, Window *window) {
@@ -1276,7 +1221,7 @@ void draw_light(Renderer *renderer, v3 position, f32 radius, v4 colour, f32 inte
 }
 
 void new_frame(Renderer *renderer, Window *window, Camera camera) {
-    // reset(&renderer->quads);
+    reset(&renderer->quads);
     renderer->view_projection_matrix = HMM_MulM4(
         get_projection_matrix(camera, (f32) window->width / (f32) window->height),
         get_view_matrix(camera)
@@ -1298,23 +1243,6 @@ void draw_frame(Renderer *renderer, Window *window, Camera camera) {
 
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, renderer->font_texture_id);
-
-    glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
-}
-
-void draw_frame_abs(Renderer *renderer, Window *window, Camera camera) {
-    glBindVertexArray(renderer->vertex_array_id);
-    glUseProgram(renderer->chunk_shader.id);
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
-
-    glUniformMatrix4fv(
-        glGetUniformLocation(renderer->chunk_shader.id, "mvp"),
-        1,
-        false,
-        (f32 *) &renderer->view_projection_matrix.Columns[0]
-    );
 
     glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
 }
@@ -1373,47 +1301,6 @@ Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color,
     quad->vertices[1].draw_type = (i32) draw_type;
     quad->vertices[2].draw_type = (i32) draw_type;
     quad->vertices[3].draw_type = (i32) draw_type;
-
-    return quad;
-}
-
-Quad *push_quad_abs(Renderer *renderer, v3 positions[4], v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type) {
-    Quad *quad = push(&renderer->quads);
-
-    quad->vertices[0].position = v4{positions[0], 1};
-    quad->vertices[1].position = v4{positions[1], 1};
-    quad->vertices[2].position = v4{positions[2], 1};
-    quad->vertices[3].position = v4{positions[3], 1};
-
-    quad->vertices[0].colour = color;
-    quad->vertices[1].colour = color;
-    quad->vertices[2].colour = color;
-    quad->vertices[3].colour = color;
-
-    quad->vertices[0].uv = uvs[0];
-    quad->vertices[1].uv = uvs[1];
-    quad->vertices[2].uv = uvs[2];
-    quad->vertices[3].uv = uvs[3];
-
-    quad->vertices[0].normal_uv = normal_uvs[0];
-    quad->vertices[1].normal_uv = normal_uvs[1];
-    quad->vertices[2].normal_uv = normal_uvs[2];
-    quad->vertices[3].normal_uv = normal_uvs[3];
-
-    quad->vertices[0].draw_type = (i32) draw_type;
-    quad->vertices[1].draw_type = (i32) draw_type;
-    quad->vertices[2].draw_type = (i32) draw_type;
-    quad->vertices[3].draw_type = (i32) draw_type;
-
-#if 0
-    for (i64 i = 0; i < 4; i++) {
-        quad->vertices[i].position = v4{positions[i], 1};
-        quad->vertices[i].colour = color;
-        quad->vertices[i].uv = uvs[i];
-        quad->vertices[i].normal_uv = normal_uvs[i];
-        quad->vertices[i].draw_type = (i32) draw_type;
-    }
-#endif
 
     return quad;
 }
