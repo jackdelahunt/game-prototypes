@@ -36,14 +36,13 @@
 //////////////////////////////// @window ////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 struct Window {
-    bool vsync;
-
     i32 width;
     i32 height;
     string title;
 
     GLFWwindow *glfw_window;
 
+    bool vsync;
     bool mouse_captured;
 };
 
@@ -61,7 +60,7 @@ struct {
     StackArray<InputState, 8> buttons;
 } MOUSE;
 
-bool init_window(Window *window, i32 width, i32 height, string title);
+bool init_window(Window *window, string title);
 void set_mouse_captured(Window *window, bool captured);
 void poll_inputs();
 void swap_buffers(Window *window);
@@ -71,42 +70,45 @@ void glfw_mouse_move_callback(GLFWwindow* window, f64 x, f64 y);
 void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 mods);
 void glfw_error_callback(int error_code, const char* description);
 
-bool init_window(Window *window, i32 width, i32 height, string title) {
-    window->width = width;
-    window->height = height;
-    window->title = title;
-
+bool init_window(Window *window, string title) {
     if (glfwInit() == 0) {
         printf("Failed to init glfw\n");
         return false;
     }
 
-    window->glfw_window = glfwCreateWindow(width, height, title.c(), 0, 0);
+    GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+    const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+
+    *window = Window {
+        .width = mode->width,
+        .height = mode->height,
+        .title = title,
+        .vsync = true,
+        .mouse_captured = true,
+    };
+ 
+    glfwWindowHint(GLFW_MAXIMIZED, GL_TRUE);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
+
+    window->glfw_window = glfwCreateWindow(window->width, window->height, window->title.c(), NULL, NULL);
     if (window->glfw_window == nullptr) {
         printf("Failed to create window\n");
         return false;
     }
 
     glfwMakeContextCurrent(window->glfw_window);
-
-    glfwSetErrorCallback(glfw_error_callback);
-
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
-
-    glfwSetWindowAttrib(window->glfw_window, GLFW_RESIZABLE, 0);
-
     glfwSetWindowUserPointer(window->glfw_window, window);
 
-    glfwSwapInterval(1); // 0 -> no vsync, 1 -> vsync
+    glfwSwapInterval(window->vsync);
+    set_mouse_captured(window, window->mouse_captured);
 
+    glfwSetErrorCallback(glfw_error_callback);
     glfwSetKeyCallback(window->glfw_window, glfw_key_callback);
     glfwSetCursorPosCallback(window->glfw_window, glfw_mouse_move_callback);
     glfwSetMouseButtonCallback(window->glfw_window, glfw_mouse_button_callback);
-
-    set_mouse_captured(window, window->mouse_captured);
 
     return true;
 }
@@ -170,7 +172,7 @@ void toggle_vsync(Window *window) {
 }
 
 void glfw_error_callback(int error_code, const char* description) {
-    printf("glfw error: [%d]: %s", error_code, description);
+    printf("glfw error: [%d]: %s\n", error_code, description);
 }
 
 void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
@@ -1577,7 +1579,7 @@ bool check_gl_errors() {
 }
 
 void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, i32 length, const char *message, const void *user_param) {
-    printf("OpenGL error: %s", message);
+    printf("OpenGL error: %s\n", message);
 }
 
 void print(v2 vector) {

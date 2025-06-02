@@ -79,9 +79,9 @@ enum EntityFlags {
     EF_DELETE           = 1 << 16,
 };
 
-#define CHUNK_WIDTH 100
-#define CHUNK_HEIGHT 100
-#define CHUNK_DEPTH 100
+#define CHUNK_WIDTH 50
+#define CHUNK_HEIGHT 50
+#define CHUNK_DEPTH 50
 #define BLOCK_SIZE 1
 
 enum class BlockType {
@@ -189,7 +189,7 @@ int main() {
     { // init engine stuff
         bool ok = false;
 
-        ok = init_window(&state.window, 2310, 1300, "game9");
+        ok = init_window(&state.window, "game9");
         if (!ok) {
             printf("failed to init window\n");
             return 1;
