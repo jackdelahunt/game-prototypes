@@ -20,16 +20,6 @@
 
 #define GL_VERIFY() ASSERT(check_gl_errors());
 
-//example use:
-// { __breakable__
-//    ...
-//    if (condition)
-//        break;
-//    ...
-//    if (condition2)
-//        break;
-//    ...
-// }
 #define SCOPE }switch(0){default:
 
 /////////////////////////////////////////////////////////////////////////////
@@ -222,6 +212,18 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 #define MAX_SPRITES 256
 #define MAX_TEXTURES 256
 
+struct MeshVertex {
+    v3 position;
+    v3 normal;
+    v4 colour;
+    v2 uv;
+    v2 normal_uv;
+};
+
+struct MeshQuad {
+    MeshVertex vertices[4];
+};
+
 struct Vertex {
     v4 position;
     v4 colour;
@@ -313,7 +315,7 @@ struct Shader {
 
 struct Mesh {
     v3 position;
-    FixedArray<Quad> quads;
+    FixedArray<MeshQuad> quads;
 
     u32 vertex_array_id;
     u32 vertex_buffer_id;
@@ -323,8 +325,10 @@ struct Mesh {
 struct Renderer {
     bool wireframe;
 
-    v4 global_light;
     v4 clear_colour;
+    v4 ambient_light;
+    v4 sun_colour;
+    v3 sun_direction;
 
     FixedArray<Quad> quads;
     StackArray<Light, MAX_LIGHTS> lights;
@@ -347,7 +351,7 @@ struct Renderer {
     u32 index_buffer_id;
 
     Shader default_shader;
-    Shader chunk_shader;
+    Shader mesh_shader;
     Shader lighting_shader;
 
     u32 atlas_texture_id;
@@ -363,6 +367,7 @@ v4 BLUE             = {0, 0, 1, 1};
 
 v4 ORANGE           = {1, 0.64, 0.1, 1};
 v4 CORNFLOUR_BLUE   = {0.35, 0.80, 0.80, 1};
+v4 SUN_YELLOW       = {1, 0.95, 0.5, 1};
 
 // Camera API
 v3 get_forward_direction(Camera camera);
@@ -405,7 +410,7 @@ f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
 
 // Mesh API
 Mesh new_mesh(v3 position, i64 quad_count);
-Quad *push_quad(Mesh *mesh, v3 positions[4], v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
+MeshQuad *push_quad(Mesh *mesh, v3 positions[4], v3 normals[4], v4 color, v2 uvs[4], v2 normal_uvs[4]);
 void draw_mesh(Renderer *renderer, Mesh *mesh);
 void reset_mesh(Mesh *mesh);
 void upload_mesh(Mesh *mesh);
@@ -621,13 +626,13 @@ bool load_shaders(Renderer *renderer) {
     assign_texture_slot(&renderer->lighting_shader, "normals_texture", 1);
     assign_texture_slot(&renderer->lighting_shader, "depth_texture", 2);
 
-    ok = init_shader(&renderer->chunk_shader, "resources/shaders/chunk_vertex.shader", "resources/shaders/chunk_fragment.shader");
+    ok = init_shader(&renderer->mesh_shader, "resources/shaders/mesh_vertex.shader", "resources/shaders/mesh_fragment.shader");
     if (!ok) {
         printf("Error when creating chunk shader program\n");
         return false;
     }
 
-    assign_texture_slot(&renderer->chunk_shader, "atlas_texture", 0);
+    assign_texture_slot(&renderer->mesh_shader, "atlas_texture", 0);
 
     return true;
 }
@@ -936,7 +941,16 @@ void new_frame(Renderer *renderer, Window *window, Camera camera) {
         get_view_matrix(camera)
     ); 
 
+
+    glClearColor(
+        renderer->clear_colour.r,
+        renderer->clear_colour.g,
+        renderer->clear_colour.b,
+        renderer->clear_colour.a
+    );
+
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
     glViewport(0, 0, window->width, window->height);
 
     new_imgui_frame();
@@ -1241,7 +1255,7 @@ f32 texture_aspect_ratio(Renderer *renderer, Texture *texture) {
 Mesh new_mesh(v3 position, i64 quad_count) {
     Mesh mesh = Mesh {
         .position = position,
-        .quads = new_fixed_array<Quad>(quad_count),
+        .quads = new_fixed_array<MeshQuad>(quad_count),
     };
 
     { // vertex array
@@ -1256,7 +1270,7 @@ Mesh new_mesh(v3 position, i64 quad_count) {
         u32 vertex_buffer;
         glGenBuffers(1, &vertex_buffer);
         glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(Quad) * mesh.quads.slice.len, mesh.quads.slice.ptr, GL_DYNAMIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(MeshQuad) * mesh.quads.slice.len, mesh.quads.slice.ptr, GL_DYNAMIC_DRAW);
 
         mesh.vertex_buffer_id = vertex_buffer;
     }
@@ -1295,11 +1309,11 @@ Mesh new_mesh(v3 position, i64 quad_count) {
     }
 
     { // vertex attributes
-        glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, position));   // position
-        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, colour));     // colour
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, uv));         // uv
-        glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, normal_uv));  // normal_uv
-        glVertexAttribIPointer(4, 1, GL_INT, sizeof(Vertex), (void *) offsetof(Vertex, draw_type));             // draw_type
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, position));   // position
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, normal));     // normal
+        glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, colour));     // colour
+        glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, uv));         // uv
+        glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, normal_uv));  // normal_uv
 
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
@@ -1315,13 +1329,18 @@ Mesh new_mesh(v3 position, i64 quad_count) {
     return mesh;
 }
 
-Quad *push_quad(Mesh *mesh, v3 positions[4], v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type) {
-    Quad *quad = push(&mesh->quads);
+MeshQuad *push_quad(Mesh *mesh, v3 positions[4], v3 normals[4], v4 color, v2 uvs[4], v2 normal_uvs[4]) {
+    MeshQuad *quad = push(&mesh->quads);
 
-    quad->vertices[0].position = v4{positions[0], 1};
-    quad->vertices[1].position = v4{positions[1], 1};
-    quad->vertices[2].position = v4{positions[2], 1};
-    quad->vertices[3].position = v4{positions[3], 1};
+    quad->vertices[0].position = positions[0];
+    quad->vertices[1].position = positions[1];
+    quad->vertices[2].position = positions[2];
+    quad->vertices[3].position = positions[3];
+
+    quad->vertices[0].normal = normals[0];
+    quad->vertices[1].normal = normals[1];
+    quad->vertices[2].normal = normals[2];
+    quad->vertices[3].normal = normals[3];
 
     quad->vertices[0].colour = color;
     quad->vertices[1].colour = color;
@@ -1338,11 +1357,6 @@ Quad *push_quad(Mesh *mesh, v3 positions[4], v4 color, v2 uvs[4], v2 normal_uvs[
     quad->vertices[2].normal_uv = normal_uvs[2];
     quad->vertices[3].normal_uv = normal_uvs[3];
 
-    quad->vertices[0].draw_type = (i32) draw_type;
-    quad->vertices[1].draw_type = (i32) draw_type;
-    quad->vertices[2].draw_type = (i32) draw_type;
-    quad->vertices[3].draw_type = (i32) draw_type;
-
 #if 0
     for (i64 i = 0; i < 4; i++) {
         quad->vertices[i].position = v4{positions[i], 1};
@@ -1357,16 +1371,33 @@ Quad *push_quad(Mesh *mesh, v3 positions[4], v4 color, v2 uvs[4], v2 normal_uvs[
 }
 
 void draw_mesh(Renderer *renderer, Mesh *mesh) {
-    glUseProgram(renderer->chunk_shader.id);
+    glUseProgram(renderer->mesh_shader.id);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
 
     glUniformMatrix4fv(
-        glGetUniformLocation(renderer->chunk_shader.id, "mvp"),
+        glGetUniformLocation(renderer->mesh_shader.id, "mvp"),
         1,
         false,
         (f32 *) &renderer->view_projection_matrix.Columns[0]
+    );
+
+    glUniform4f(
+        glGetUniformLocation(renderer->mesh_shader.id, "ambient_light"),
+        renderer->ambient_light.r, renderer->ambient_light.g, renderer->ambient_light.b, renderer->ambient_light.a
+    );
+
+    v3 direction = norm(renderer->sun_direction);
+
+    glUniform3f(
+        glGetUniformLocation(renderer->mesh_shader.id, "sun_direction"),
+        direction.x, direction.y, direction.z
+    );
+
+    glUniform4f(
+        glGetUniformLocation(renderer->mesh_shader.id, "sun_colour"),
+        renderer->sun_colour.r, renderer->sun_colour.g, renderer->sun_colour.b, renderer->sun_colour.a
     );
 
     GL_CALL(glBindVertexArray(mesh->vertex_array_id));

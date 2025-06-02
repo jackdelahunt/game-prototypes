@@ -14,7 +14,7 @@
 #include <fstream>
 #include <string>
 
-// Total: 20:00
+// Total: 28:00
 // Started: 05:00
 
 // Performance (20 * 20 * 20):
@@ -128,7 +128,6 @@ struct CollisionIterator {
 void update_and_draw(f32 delta_time);
 void physics(f32 delta_time);
 void update_and_draw_editor(f32 delta_time);
-void draw_inspector(f32 delta_time);
 
 Chunk new_chunk(v3 position);
 void generate_mesh(Chunk *chunk);
@@ -169,8 +168,10 @@ int main() {
             .mouse_captured = true, 
         },
         .renderer = {
-            .global_light = {1, 1, 1, 1},
-            .clear_colour = brightness(WHITE, 0.9),
+            .clear_colour = {0.8, 1, 1, 1},
+            .ambient_light = {0.5, 0.5, 0.5, 1},
+            .sun_colour = {0.8, 0.8, 0.5, 1},
+            .sun_direction = {-0.25, 0.6, -0.5},
         },
         .editor = {
             .visable = false,
@@ -456,7 +457,10 @@ void update_and_draw_editor(f32 delta_time) {
                 ImGui::SliderFloat3("Camera position", &state.camera.position[0], -50, 50);
                 ImGui::SliderFloat3("Camera rotation", &state.camera.rotation[0], -360, 360);
                 ImGui::SliderFloat("Orthographic size", &state.camera.orthographic_size, 10, 2000);
-                ImGui::InputFloat4("Global light", &state.renderer.global_light[0]);
+                ImGui::SliderFloat4("Clear colour", &state.renderer.clear_colour[0], 0, 1);
+                ImGui::SliderFloat4("Ambient light", &state.renderer.ambient_light[0], 0, 1);
+                ImGui::SliderFloat4("Sun colour", &state.renderer.sun_colour[0], 0, 1);
+                ImGui::SliderFloat3("Sun direction", &state.renderer.sun_direction[0], -1, 1);
             }
        
             {
@@ -529,9 +533,6 @@ void update_and_draw_editor(f32 delta_time) {
 }
 
 
-void draw_inspector(f32 delta_time) {
-}
-
 Chunk new_chunk(v3 position) {
     i64 size = CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_DEPTH;
 
@@ -553,7 +554,8 @@ void generate_mesh(Chunk *chunk) {
         ChunkPosition chunk_position = block_index_to_chunk_position(i);
         v3 position = as_floats(chunk_position);
 
-        v4 colour = {0.8, position.y / (f32) CHUNK_HEIGHT, 0.3, 1};
+        // v4 colour = {0.8, position.y / (f32) CHUNK_HEIGHT, 0.3, 1};
+        v4 colour = WHITE;
 
         BlockType up    = get_block_neighbour(chunk, chunk_position, {0, 1, 0});
         BlockType down  = get_block_neighbour(chunk, chunk_position, {0, -1, 0});
@@ -581,6 +583,13 @@ void generate_mesh(Chunk *chunk) {
         v3 back_bottom_right   = {0.5, -0.5, 0.5};
         v3 back_bottom_left    = {-0.5, -0.5, 0.5};
 
+        v3 up_normal = {0, 1, 0};
+        v3 down_normal = {0, -1, 0};
+        v3 left_normal = {-1, 0, 0};
+        v3 right_normal = {1, 0, 0};
+        v3 front_normal = {0, 0, -1};
+        v3 back_normal = {0, 0, 1};
+
         if (up == BlockType::AIR) {
             v3 positions[4] = {
                 position + back_top_left,
@@ -589,7 +598,9 @@ void generate_mesh(Chunk *chunk) {
                 position + front_top_left
             };
 
-            push_quad(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            v3 normals[4] = {up_normal, up_normal, up_normal, up_normal};
+
+            push_quad(&chunk->mesh, positions, normals, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs);
         }
 
         if (down == BlockType::AIR) {
@@ -600,7 +611,9 @@ void generate_mesh(Chunk *chunk) {
                 position + back_bottom_left
             };
 
-            push_quad(&chunk->mesh, positions, brightness(colour, 0.4), sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            v3 normals[4] = {down_normal, down_normal, down_normal, down_normal};
+
+            push_quad(&chunk->mesh, positions, normals, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs);
         }
 
         if (left == BlockType::AIR) {
@@ -611,7 +624,9 @@ void generate_mesh(Chunk *chunk) {
                 position + back_bottom_left
             };
 
-            push_quad(&chunk->mesh, positions, brightness(colour, 0.8), sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            v3 normals[4] = {left_normal, left_normal, left_normal, left_normal};
+
+            push_quad(&chunk->mesh, positions, normals, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs);
         }
 
 
@@ -623,7 +638,9 @@ void generate_mesh(Chunk *chunk) {
                 position + front_bottom_right
             };
 
-            push_quad(&chunk->mesh, positions, brightness(colour, 0.6), sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            v3 normals[4] = {right_normal, right_normal, right_normal, right_normal};
+
+            push_quad(&chunk->mesh, positions, normals, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs);
         }
 
 
@@ -635,7 +652,9 @@ void generate_mesh(Chunk *chunk) {
                 position + front_bottom_left
             };
 
-            push_quad(&chunk->mesh, positions, brightness(colour, 0.8), sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            v3 normals[4] = {front_normal, front_normal, front_normal, front_normal};
+
+            push_quad(&chunk->mesh, positions, normals, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs);
         }
 
 
@@ -647,7 +666,9 @@ void generate_mesh(Chunk *chunk) {
                 position + back_bottom_right
             };
 
-            push_quad(&chunk->mesh, positions, brightness(colour, 0.5), sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            v3 normals[4] = {back_normal, back_normal, back_normal, back_normal};
+
+            push_quad(&chunk->mesh, positions, normals, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs);
         }
     }
 }
