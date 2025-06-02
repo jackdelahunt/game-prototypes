@@ -15,6 +15,8 @@ project "game9"
 
     flags { "MultiProcessorCompile" }
 
+    warnings "Off"
+
     files {
         "src/main.cpp",
         "src/libs/imgui/imgui*.cpp",

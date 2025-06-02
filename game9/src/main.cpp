@@ -160,7 +160,7 @@ int main() {
         },
         .renderer = {
             .global_light = {1, 1, 1, 1},
-            .clear_colour = brightness(BLUE, 0.2),
+            .clear_colour = brightness(WHITE, 0.9),
         },
         .editor = {
             .visable = false,
@@ -309,13 +309,20 @@ void update_and_draw(f32 delta_time) {
     }
 
     if (state.window.mouse_captured) { // update camera rotation (looking at)
-        f32 sensitivity = 0.3;
-
+        f32 sensitivity = 10;
         v2 mouse_input = MOUSE.delta;
 
         if(length(mouse_input) != 0) {
-            state.camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
+            // max the mouse delta vector can be, stops huge spikes mouse input 
+            // when mouse changes capture like at start of game
+            // - 02/06/25
+            f32 max_delta = 75;
 
+            if (length(mouse_input) > max_delta) {
+                mouse_input = norm(mouse_input) * max_delta;
+            }
+    
+            state.camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity * delta_time;
             state.camera.rotation.x = clamp(-90, state.camera.rotation.x, 90);
         }
     }
@@ -325,7 +332,10 @@ void update_and_draw(f32 delta_time) {
 
         for (i64 i = 0; i < 10; i++) {
             v3 check = state.camera.position + (forward * (f32) i);
-            draw_rectangle(&state.renderer, check, {0.2, 0.2}, GREEN);
+
+            if (i == 9) {
+                draw_cube(&state.renderer, check, {1, 1, 1}, GREEN);
+            }
         }
     }
 
@@ -544,7 +554,7 @@ void draw_options() {
     ImGui::Separator();
 
     if(ImGui::CollapsingHeader("Render outputs")) {
-        ImVec2 image_size(360 * 1.77, 360);
+        ImVec2 image_size(360 * 1.777, 360);
 
         ImGui::Text("Depth buffer");
         ImGui::Image(state.renderer.unlit_frame_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));

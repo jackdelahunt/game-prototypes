@@ -30,7 +30,10 @@ struct Slice { // TODO: do safety checks in slices
     T *ptr;
     i64 len;
 
-    Slice() {}
+    Slice() {
+        this->ptr = NULL;
+        this->len = 0;
+    }
 
     Slice(T *data, i64 len) { // C++ sucks
         this->ptr = data;

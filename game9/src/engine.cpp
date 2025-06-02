@@ -48,7 +48,7 @@ struct {
     StackArray<InputState, 8> buttons;
 } MOUSE;
 
-bool init_window(i32 width, i32 height, string title);
+bool init_window(Window *window, i32 width, i32 height, string title);
 void set_mouse_captured(Window *window, bool captured);
 void poll_inputs();
 void swap_buffers(Window *window);
@@ -59,20 +59,18 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 void glfw_error_callback(int error_code, const char* description);
 
 bool init_window(Window *window, i32 width, i32 height, string title) {
-    *window = Window {
-        .width = width,
-        .height = height,
-        .title = title
-    };
+    window->width = width;
+    window->height = height;
+    window->title = title;
 
     if (glfwInit() == 0) {
-        printf("failed to init glfw\n");
+        printf("Failed to init glfw\n");
         return false;
     }
 
     window->glfw_window = glfwCreateWindow(width, height, title.c(), 0, 0);
     if (window->glfw_window == nullptr) {
-        printf("failed to create window\n");
+        printf("Failed to create window\n");
         return false;
     }
 
@@ -351,16 +349,12 @@ v4 BLUE             = {0, 0, 1, 1};
 v4 ORANGE           = {1, 0.64, 0.1, 1};
 v4 CORNFLOUR_BLUE   = {0.35, 0.80, 0.80, 1};
 
+// Camera API
 v3 get_forward_direction(Camera camera);
 v3 get_right_direction(Camera camera);
 v3 get_up_direction(Camera camera);
 
-Mesh new_mesh(v3 position, i64 quad_count);
-Quad *push_quad(Mesh *mesh, v3 positions[4], v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
-void draw_mesh(Renderer *renderer, Mesh *mesh);
-void reset_mesh(Mesh *mesh);
-void upload_mesh(Mesh *mesh);
-
+// Renderer init API
 bool init_renderer(Renderer *renderer, Window *window);
 bool load_shaders(Renderer *renderer);
 void delete_shaders(Renderer *renderer);
@@ -373,24 +367,33 @@ u32 upload_texture_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
 u32 upload_font_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
 bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel_height);
 
+// Renderer frame API
+void new_frame(Renderer *renderer, Window *window, Camera camera);
+void draw_frame(Renderer *renderer, Window *window, Camera camera);
+void new_imgui_frame();
+void draw_imgui_frame();
+
+// Immediate rendering API
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
+void draw_cube(Renderer *renderer, v3 position, v3 size, v4 color);
 void draw_sprite(Renderer *renderer, Sprite *sprite, v3 position, v2 size, f32 rotation, v4 color);
 void draw_animated_sprite(Renderer *renderer, Sprite *sprite, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
 void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color);
 void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
 void draw_light(Renderer *renderer, v3 position, f32 radius, v4 colour, f32 intensity);
-void new_frame(Renderer *renderer, Window *window, Camera camera);
-void draw_frame(Renderer *renderer, Window *window, Camera camera);
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
 
-void new_imgui_frame();
-void draw_imgui_frame();
-
 void toggle_wireframe(Renderer *renderer);
-
 f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
+
+// Mesh API
+Mesh new_mesh(v3 position, i64 quad_count);
+Quad *push_quad(Mesh *mesh, v3 positions[4], v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
+void draw_mesh(Renderer *renderer, Mesh *mesh);
+void reset_mesh(Mesh *mesh);
+void upload_mesh(Mesh *mesh);
 
 bool init_frame_buffer(FrameBuffer *frame_buffer);
 
@@ -434,150 +437,6 @@ v3 get_right_direction(Camera camera) {
 
 v3 get_up_direction(Camera camera) {
     return {0, 1, 0};
-}
-
-Mesh new_mesh(v3 position, i64 quad_count) {
-    Mesh mesh = Mesh {
-        .position = position,
-        .quads = new_fixed_array<Quad>(quad_count),
-    };
-
-    { // vertex array
-        u32 vertex_array;
-        glGenVertexArrays(1, &vertex_array);
-        glBindVertexArray(vertex_array);
-
-        mesh.vertex_array_id = vertex_array;
-    }
-
-    { // vertex buffer
-        u32 vertex_buffer;
-        glGenBuffers(1, &vertex_buffer);
-        glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(Quad) * mesh.quads.slice.len, mesh.quads.slice.ptr, GL_DYNAMIC_DRAW);
-
-        mesh.vertex_buffer_id = vertex_buffer;
-    }
-
-    { // index buffer
-        const i64 index_buffer_length = mesh.quads.slice.len * 6;
-        Slice<u32> indices = mem_alloc<u32>(index_buffer_length);
-
-        i64 i = 0;
-        while (i < index_buffer_length) {
-            // updated order of indices to be CCW as that is the default
-            // for opengl and we want to use back face culling now that
-            // we are rendering in 3d
-            // 31/05/25
-
-            // vertex offset pattern to draw a quad
-            // { 0, 1, 2,  0, 2, 3 } -> CW winding 
-            // { 0, 2, 1,  0, 3, 2 } -> CCW winding
-            indices[i + 0] = ((i/6)*4 + 0);
-            indices[i + 1] = ((i/6)*4 + 2);
-            indices[i + 2] = ((i/6)*4 + 1);
-            indices[i + 3] = ((i/6)*4 + 0);
-            indices[i + 4] = ((i/6)*4 + 3);
-            indices[i + 5] = ((i/6)*4 + 2);
-            i += 6;
-        }
-
-        u32 index_buffer;
-        glGenBuffers(1, &index_buffer);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u32) * index_buffer_length, indices.ptr, GL_STATIC_DRAW);
-
-        mesh.index_buffer_id = index_buffer;
-
-        mem_free(indices);
-    }
-
-    { // vertex attributes
-        glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, position));   // position
-        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, colour));     // colour
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, uv));         // uv
-        glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, normal_uv));  // normal_uv
-        glVertexAttribIPointer(4, 1, GL_INT, sizeof(Vertex), (void *) offsetof(Vertex, draw_type));             // draw_type
-
-        glEnableVertexAttribArray(0);
-        glEnableVertexAttribArray(1);
-        glEnableVertexAttribArray(2);
-        glEnableVertexAttribArray(3);
-        glEnableVertexAttribArray(4);
-    }
-
-    glBindVertexArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-    return mesh;
-}
-
-Quad *push_quad(Mesh *mesh, v3 positions[4], v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type) {
-    Quad *quad = push(&mesh->quads);
-
-    quad->vertices[0].position = v4{positions[0], 1};
-    quad->vertices[1].position = v4{positions[1], 1};
-    quad->vertices[2].position = v4{positions[2], 1};
-    quad->vertices[3].position = v4{positions[3], 1};
-
-    quad->vertices[0].colour = color;
-    quad->vertices[1].colour = color;
-    quad->vertices[2].colour = color;
-    quad->vertices[3].colour = color;
-
-    quad->vertices[0].uv = uvs[0];
-    quad->vertices[1].uv = uvs[1];
-    quad->vertices[2].uv = uvs[2];
-    quad->vertices[3].uv = uvs[3];
-
-    quad->vertices[0].normal_uv = normal_uvs[0];
-    quad->vertices[1].normal_uv = normal_uvs[1];
-    quad->vertices[2].normal_uv = normal_uvs[2];
-    quad->vertices[3].normal_uv = normal_uvs[3];
-
-    quad->vertices[0].draw_type = (i32) draw_type;
-    quad->vertices[1].draw_type = (i32) draw_type;
-    quad->vertices[2].draw_type = (i32) draw_type;
-    quad->vertices[3].draw_type = (i32) draw_type;
-
-#if 0
-    for (i64 i = 0; i < 4; i++) {
-        quad->vertices[i].position = v4{positions[i], 1};
-        quad->vertices[i].colour = color;
-        quad->vertices[i].uv = uvs[i];
-        quad->vertices[i].normal_uv = normal_uvs[i];
-        quad->vertices[i].draw_type = (i32) draw_type;
-    }
-#endif
-
-    return quad;
-}
-
-void draw_mesh(Renderer *renderer, Mesh *mesh) {
-    glUseProgram(renderer->chunk_shader.id);
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
-
-    glUniformMatrix4fv(
-        glGetUniformLocation(renderer->chunk_shader.id, "mvp"),
-        1,
-        false,
-        (f32 *) &renderer->view_projection_matrix.Columns[0]
-    );
-
-    GL_CALL(glBindVertexArray(mesh->vertex_array_id));
-    GL_CALL(glDrawElements(GL_TRIANGLES, 6 * mesh->quads.len, GL_UNSIGNED_INT, 0));
-}
-
-void reset_mesh(Mesh *mesh) {
-    reset(&mesh->quads);
-}
-
-void upload_mesh(Mesh *mesh) {
-    glBindBuffer(GL_ARRAY_BUFFER, mesh->vertex_buffer_id);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * mesh->quads.len, mesh->quads.slice.ptr);
 }
 
 bool init_renderer(Renderer *renderer, Window *window) {
@@ -1054,6 +913,48 @@ bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel
     return true;
 }
 
+void new_frame(Renderer *renderer, Window *window, Camera camera) {
+    reset(&renderer->quads);
+    renderer->view_projection_matrix = HMM_MulM4(
+        get_projection_matrix(camera, (f32) window->width / (f32) window->height),
+        get_view_matrix(camera)
+    ); 
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glViewport(0, 0, window->width, window->height);
+}
+
+void draw_frame(Renderer *renderer, Window *window, Camera camera) {
+    glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
+
+    glBindVertexArray(renderer->vertex_array_id);
+    glUseProgram(renderer->default_shader.id);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, renderer->font_texture_id);
+
+    glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
+}
+
+void new_imgui_frame() {
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame(); 
+}
+
+void draw_imgui_frame() {
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    GLFWwindow *current = glfwGetCurrentContext();
+    ImGui::UpdatePlatformWindows();
+    ImGui::RenderPlatformWindowsDefault();
+    glfwMakeContextCurrent(current);
+}
+
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color) {
     v2 uvs[4] = {
         {0, 1},
@@ -1076,6 +977,21 @@ void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color) {
     };
 
     push_quad(renderer, position, size, {}, color, uvs, {}, DrawType::CIRCLE);
+}
+
+void draw_cube(Renderer *renderer, v3 position, v3 size, v4 color) {
+    v2 uvs[4] = {
+        {0, 1},
+        {1, 1},
+        {1, 0},
+        {0, 0},
+    };
+    push_quad(renderer, position + v3{-0.5,    0,    0}, {size.z, size.y}, {  0, -90, 0}, WHITE, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // left
+    push_quad(renderer, position + v3{   0,    0, -0.5}, {size.x, size.y}, {  0,   0, 0}, WHITE, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // front
+    push_quad(renderer, position + v3{ 0.5,    0,    0}, {size.z, size.y}, {  0,  90, 0}, WHITE, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // right
+    push_quad(renderer, position + v3{   0,  0.5,    0}, {size.x, size.z}, {-90,   0, 0}, WHITE, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // top
+    push_quad(renderer, position + v3{   0, -0.5,    0}, {size.x, size.z}, { 90,   0, 0}, WHITE, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // bottom
+    push_quad(renderer, position + v3{   0,    0,  0.5}, {size.x, size.y}, {  0, 180, 0}, WHITE, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // back
 }
 
 void draw_sprite(Renderer *renderer, Sprite *sprite, v3 position, v2 size, f32 rotation, v4 color) {
@@ -1229,33 +1145,6 @@ void draw_light(Renderer *renderer, v3 position, f32 radius, v4 colour, f32 inte
     };
 }
 
-void new_frame(Renderer *renderer, Window *window, Camera camera) {
-    reset(&renderer->quads);
-    renderer->view_projection_matrix = HMM_MulM4(
-        get_projection_matrix(camera, (f32) window->width / (f32) window->height),
-        get_view_matrix(camera)
-    ); 
-
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glViewport(0, 0, window->width, window->height);
-}
-
-void draw_frame(Renderer *renderer, Window *window, Camera camera) {
-    glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
-
-    glBindVertexArray(renderer->vertex_array_id);
-    glUseProgram(renderer->default_shader.id);
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
-
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, renderer->font_texture_id);
-
-    glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
-}
-
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type) {
     const v4 top_left      = {-0.5,   0.5, 0, 1};
     const v4 top_right     = { 0.5,   0.5, 0, 1};
@@ -1314,21 +1203,6 @@ Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color,
     return quad;
 }
 
-void new_imgui_frame() {
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplGlfw_NewFrame();
-    ImGui::NewFrame(); 
-}
-
-void draw_imgui_frame() {
-    ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-    GLFWwindow *current = glfwGetCurrentContext();
-    ImGui::UpdatePlatformWindows();
-    ImGui::RenderPlatformWindowsDefault();
-    glfwMakeContextCurrent(current);
-}
-
 void toggle_wireframe(Renderer *renderer) {
     renderer->wireframe = !renderer->wireframe;
 
@@ -1341,6 +1215,150 @@ void toggle_wireframe(Renderer *renderer) {
 
 f32 texture_aspect_ratio(Renderer *renderer, Texture *texture) {
     return (f32) texture->width / (f32) texture->height;
+}
+
+Mesh new_mesh(v3 position, i64 quad_count) {
+    Mesh mesh = Mesh {
+        .position = position,
+        .quads = new_fixed_array<Quad>(quad_count),
+    };
+
+    { // vertex array
+        u32 vertex_array;
+        glGenVertexArrays(1, &vertex_array);
+        glBindVertexArray(vertex_array);
+
+        mesh.vertex_array_id = vertex_array;
+    }
+
+    { // vertex buffer
+        u32 vertex_buffer;
+        glGenBuffers(1, &vertex_buffer);
+        glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(Quad) * mesh.quads.slice.len, mesh.quads.slice.ptr, GL_DYNAMIC_DRAW);
+
+        mesh.vertex_buffer_id = vertex_buffer;
+    }
+
+    { // index buffer
+        const i64 index_buffer_length = mesh.quads.slice.len * 6;
+        Slice<u32> indices = mem_alloc<u32>(index_buffer_length);
+
+        i64 i = 0;
+        while (i < index_buffer_length) {
+            // updated order of indices to be CCW as that is the default
+            // for opengl and we want to use back face culling now that
+            // we are rendering in 3d
+            // 31/05/25
+
+            // vertex offset pattern to draw a quad
+            // { 0, 1, 2,  0, 2, 3 } -> CW winding 
+            // { 0, 2, 1,  0, 3, 2 } -> CCW winding
+            indices[i + 0] = ((i/6)*4 + 0);
+            indices[i + 1] = ((i/6)*4 + 2);
+            indices[i + 2] = ((i/6)*4 + 1);
+            indices[i + 3] = ((i/6)*4 + 0);
+            indices[i + 4] = ((i/6)*4 + 3);
+            indices[i + 5] = ((i/6)*4 + 2);
+            i += 6;
+        }
+
+        u32 index_buffer;
+        glGenBuffers(1, &index_buffer);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u32) * index_buffer_length, indices.ptr, GL_STATIC_DRAW);
+
+        mesh.index_buffer_id = index_buffer;
+
+        mem_free(indices);
+    }
+
+    { // vertex attributes
+        glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, position));   // position
+        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, colour));     // colour
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, uv));         // uv
+        glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, normal_uv));  // normal_uv
+        glVertexAttribIPointer(4, 1, GL_INT, sizeof(Vertex), (void *) offsetof(Vertex, draw_type));             // draw_type
+
+        glEnableVertexAttribArray(0);
+        glEnableVertexAttribArray(1);
+        glEnableVertexAttribArray(2);
+        glEnableVertexAttribArray(3);
+        glEnableVertexAttribArray(4);
+    }
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+    return mesh;
+}
+
+Quad *push_quad(Mesh *mesh, v3 positions[4], v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type) {
+    Quad *quad = push(&mesh->quads);
+
+    quad->vertices[0].position = v4{positions[0], 1};
+    quad->vertices[1].position = v4{positions[1], 1};
+    quad->vertices[2].position = v4{positions[2], 1};
+    quad->vertices[3].position = v4{positions[3], 1};
+
+    quad->vertices[0].colour = color;
+    quad->vertices[1].colour = color;
+    quad->vertices[2].colour = color;
+    quad->vertices[3].colour = color;
+
+    quad->vertices[0].uv = uvs[0];
+    quad->vertices[1].uv = uvs[1];
+    quad->vertices[2].uv = uvs[2];
+    quad->vertices[3].uv = uvs[3];
+
+    quad->vertices[0].normal_uv = normal_uvs[0];
+    quad->vertices[1].normal_uv = normal_uvs[1];
+    quad->vertices[2].normal_uv = normal_uvs[2];
+    quad->vertices[3].normal_uv = normal_uvs[3];
+
+    quad->vertices[0].draw_type = (i32) draw_type;
+    quad->vertices[1].draw_type = (i32) draw_type;
+    quad->vertices[2].draw_type = (i32) draw_type;
+    quad->vertices[3].draw_type = (i32) draw_type;
+
+#if 0
+    for (i64 i = 0; i < 4; i++) {
+        quad->vertices[i].position = v4{positions[i], 1};
+        quad->vertices[i].colour = color;
+        quad->vertices[i].uv = uvs[i];
+        quad->vertices[i].normal_uv = normal_uvs[i];
+        quad->vertices[i].draw_type = (i32) draw_type;
+    }
+#endif
+
+    return quad;
+}
+
+void draw_mesh(Renderer *renderer, Mesh *mesh) {
+    glUseProgram(renderer->chunk_shader.id);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
+
+    glUniformMatrix4fv(
+        glGetUniformLocation(renderer->chunk_shader.id, "mvp"),
+        1,
+        false,
+        (f32 *) &renderer->view_projection_matrix.Columns[0]
+    );
+
+    GL_CALL(glBindVertexArray(mesh->vertex_array_id));
+    GL_CALL(glDrawElements(GL_TRIANGLES, 6 * mesh->quads.len, GL_UNSIGNED_INT, 0));
+}
+
+void reset_mesh(Mesh *mesh) {
+    reset(&mesh->quads);
+}
+
+void upload_mesh(Mesh *mesh) {
+    glBindBuffer(GL_ARRAY_BUFFER, mesh->vertex_buffer_id);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * mesh->quads.len, mesh->quads.slice.ptr);
 }
 
 bool init_frame_buffer(FrameBuffer *frame_buffer) {
