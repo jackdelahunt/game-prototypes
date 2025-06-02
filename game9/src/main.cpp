@@ -1,5 +1,6 @@
 #include "libs/libs.h"
 #include "ack.cpp"
+#include "math.cpp"
 #include "engine.cpp"
 
 #include <cmath>
@@ -64,10 +65,11 @@ struct Entity {
 struct Editor {
     bool visable;
 
-    Entity *selected_entity;
-    bool snap_to_grid;
-    v2 grid_size;
-    v2 selection_range;
+    struct {
+        i32 range;
+        i32 radius;
+        f32 cooldown;
+    } brush;
 };
 
 enum EntityFlags {
@@ -77,16 +79,21 @@ enum EntityFlags {
     EF_DELETE           = 1 << 16,
 };
 
-#define CHUNK_WIDTH 50
-#define CHUNK_HEIGHT 50
-#define CHUNK_DEPTH 50
+#define CHUNK_WIDTH 100
+#define CHUNK_HEIGHT 100
+#define CHUNK_DEPTH 100
+#define BLOCK_SIZE 1
 
 enum class BlockType {
     AIR,
     BRICK
 };
 
+typedef v3i ChunkPosition;
+
 struct Chunk {
+    bool dirty;
+    v3 position;
     Mesh mesh;
     Slice<BlockType> blocks;
 };
@@ -98,7 +105,8 @@ struct State {
     SoundEngine sound_engine;
     Editor editor;
 
-    i64 quads_last_frame;
+    i64 chunk_quads_last_frame;
+    i64 im_quads_last_frame;
 
     Chunk chunk;
 
@@ -119,17 +127,19 @@ struct CollisionIterator {
 
 void update_and_draw(f32 delta_time);
 void physics(f32 delta_time);
-void draw_editor(f32 delta_time);
+void update_and_draw_editor(f32 delta_time);
 void draw_inspector(f32 delta_time);
-void draw_tools();
-void draw_options();
 
-Chunk new_chunk();
+Chunk new_chunk(v3 position);
 void generate_mesh(Chunk *chunk);
 void generate_blocks(Chunk *chunk);
-v3 block_index_to_chunk_position(i64 index);
-i64 chunk_position_to_block_index(i64 x, i64 y, i64 z);
-BlockType get_block_neighbour(Chunk *chunk, i64 x, i64 y, i64 z, i64 x_offset, i64 y_offset, i64 z_offset);
+bool set_block(Chunk *chunk, ChunkPosition position, BlockType block);
+void set_block_radius(Chunk *chunk, ChunkPosition centre, BlockType block, i32 radius);
+ChunkPosition block_index_to_chunk_position(i64 index);
+i32 chunk_position_to_block_index(ChunkPosition position);
+BlockType get_block_neighbour(Chunk *chunk, ChunkPosition position, v3i offset);
+ChunkPosition get_block_looking_at(Chunk *chunk, Camera camera, i32 range, bool *hit);
+ChunkPosition world_to_chunk_position(v3 position);
 
 Entity *spawn_entity(Entity entity);
 
@@ -148,8 +158,8 @@ Sprite *get_sprite(SpriteHandle handle);
 int main() {
     state = State {
         .camera = {
-            .fov = 90,
-            .position = {0, 0, 0},
+            .fov = 110,
+            .position = {CHUNK_WIDTH * 0.5, CHUNK_HEIGHT * 0.5, -20},
             .rotation = {0, 0, 0},
             .orthographic_size = 5,
             .near_plane = 0.1f,
@@ -164,13 +174,15 @@ int main() {
         },
         .editor = {
             .visable = false,
-            .snap_to_grid = true,
-            .grid_size = {50, 50},
-            .selection_range = {0, 20},
+            .brush = {
+                .range = 50,
+                .radius = 4,
+                .cooldown = 0.075,
+            },
         },
         .noise = {
             .cutoff = 0.1,
-            .frequency = 0.01
+            .frequency = 0.05
         },
     };
 
@@ -227,7 +239,7 @@ int main() {
         srand(time(NULL));
     }
 
-    state.chunk = new_chunk(); // can only happen after renderer has started
+    state.chunk = new_chunk({0, 0, 0}); // can only happen after renderer has started
     generate_blocks(&state.chunk);
     generate_mesh(&state.chunk);
     upload_mesh(&state.chunk.mesh);
@@ -242,23 +254,27 @@ int main() {
             glfwSetWindowShouldClose(state.window.glfw_window, GLFW_TRUE);
         }
 
-        state.quads_last_frame = state.chunk.mesh.quads.len;
+        state.chunk_quads_last_frame = state.chunk.mesh.quads.len;
+        state.im_quads_last_frame = state.renderer.quads.len;
         new_frame(&state.renderer, &state.window, state.camera);
-
-        // reset_mesh(&state.chunk.mesh);
-
-        draw_rectangle(&state.renderer, {-10, 0, 10}, {5, 5}, ORANGE);
 
         poll_inputs(); 
         update_and_draw(delta_time);
+#if ALLOW_EDITOR
+        update_and_draw_editor(delta_time); 
+#endif
         physics(delta_time); 
+
+        if (state.chunk.dirty) {
+            reset_mesh(&state.chunk.mesh);
+            generate_mesh(&state.chunk);
+            upload_mesh(&state.chunk.mesh);
+
+            state.chunk.dirty = false;
+        }
 
         draw_mesh(&state.renderer, &state.chunk.mesh); 
         draw_frame(&state.renderer, &state.window, state.camera); 
-
-#if ALLOW_EDITOR
-        draw_editor(delta_time); 
-#endif
 
         swap_buffers(&state.window);
     }
@@ -269,14 +285,7 @@ int main() {
 }
 
 void update_and_draw(f32 delta_time) {
-    { // toggle editor 
-        if (KEYS[GLFW_KEY_F1] == InputState::down) {
-            state.editor.visable = !state.editor.visable;
-            set_mouse_captured(&state.window, !state.editor.visable);
-        }
-    }
-
-    { // update camera position
+    { // update camera position x and z
         v2 input = {};
     
         if (KEYS[GLFW_KEY_W] == InputState::pressed) {
@@ -308,8 +317,28 @@ void update_and_draw(f32 delta_time) {
         }
     }
 
-    if (state.window.mouse_captured) { // update camera rotation (looking at)
-        f32 sensitivity = 10;
+    { // update camera position y 
+        f32 input = {};
+    
+        if (KEYS[GLFW_KEY_SPACE] == InputState::pressed) {
+            input += 1;
+        }
+    
+        if (KEYS[GLFW_KEY_LEFT_SHIFT] == InputState::pressed) {
+            input -= 1;
+        }
+    
+        const f32 move_speed = 10;
+
+        if(input != 0) {
+            v3 up = get_up_direction(state.camera);
+            state.camera.position += up * (input * move_speed * delta_time);
+        }
+    }
+
+    // update camera rotation (looking at)
+    if (state.window.mouse_captured) {
+        f32 sensitivity = 0.1;
         v2 mouse_input = MOUSE.delta;
 
         if(length(mouse_input) != 0) {
@@ -322,166 +351,10 @@ void update_and_draw(f32 delta_time) {
                 mouse_input = norm(mouse_input) * max_delta;
             }
     
-            state.camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity * delta_time;
+            state.camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
             state.camera.rotation.x = clamp(-90, state.camera.rotation.x, 90);
         }
     }
-
-    {
-        v3 forward = get_forward_direction(state.camera);
-
-        for (i64 i = 0; i < 10; i++) {
-            v3 check = state.camera.position + (forward * (f32) i);
-
-            if (i == 9) {
-                draw_cube(&state.renderer, check, {1, 1, 1}, GREEN);
-            }
-        }
-    }
-
-#if ALLOW_EDITOR
-    // check to see for a new selected entity
-    if(MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::down) {
-        v2 world_position = screen_position_to_world_position(MOUSE.position, state.camera, &state.window);
-
-        for (int i = 0; i < state.entities.len; i++) {
-            Entity* entity = &state.entities[i];
-            if (entity == state.editor.selected_entity) {
-                continue; // means it gives a chance to select an entity that is overlapping
-            }
-
-            if (entity->position.z < state.editor.selection_range.x || entity->position.z > state.editor.selection_range.y) {
-                continue;
-            }
-
-            f32 low_x = entity->position.x - (entity->size.x * 0.5);
-            f32 high_x = entity->position.x + (entity->size.x * 0.5);
-            f32 low_y = entity->position.y - (entity->size.y * 0.5);
-            f32 high_y = entity->position.y + (entity->size.y * 0.5);
-
-            if ((world_position.x >= low_x && world_position.x <= high_x) &&
-                (world_position.y >= low_y && world_position.y <= high_y)) {
-                state.editor.selected_entity = entity;
-                break;
-            }
-        }
-    }
-
-    { // duplicate selected entity
-        if(KEYS[GLFW_KEY_SPACE] == InputState::down) {
-            printf("new entity\n");
-            Entity copy = *state.editor.selected_entity;
-            copy.position += {copy.size.x, 0, 0};
-            state.editor.selected_entity = spawn_entity(copy);
-        }
-    }
-        
-    { // delete selected entity
-        if(state.editor.selected_entity != NULL && KEYS[GLFW_KEY_DELETE] == InputState::down) {
-            state.editor.selected_entity->flags |= EF_DELETE;
-            state.editor.selected_entity = NULL;
-        }
-    }
-
-    { // rotate selected entity
-        if(state.editor.selected_entity != NULL && KEYS[GLFW_KEY_R] == InputState::down) {
-
-            if(KEYS[GLFW_KEY_LEFT_SHIFT] == InputState::pressed) {
-                state.editor.selected_entity->rotation -= 90;
-            } else {
-                state.editor.selected_entity->rotation += 90;
-            }
-        }
-    }
-#endif
-
-#if 0
-    for (int i = 0; i < state.entities.len; i++) {
-        Entity* entity = &state.entities[i];
-
-        if (entity->flags & EF_PLAYER) {
-
-            v2 input = {};
-
-            if (KEYS[GLFW_KEY_W] == InputState::pressed) {
-                input.y += 1;
-            }
-
-            if (KEYS[GLFW_KEY_S] == InputState::pressed) {
-                input.y -= 1;
-            }
-
-            if (KEYS[GLFW_KEY_A] == InputState::pressed) {
-                input.x -= 1;
-            }
-
-            if (KEYS[GLFW_KEY_D] == InputState::pressed) {
-                input.x += 1;
-            }
-
-            entity->velocity = input * 250;
-        }
-
-        if (entity->flags & EF_ANIMATED_SPRITE) {
-            entity->animation_cycle += delta_time;
-
-            Sprite *sprite = get_sprite(entity->sprite);
-            if(entity->animation_cycle >= sprite->albedo->animation_length) {
-                entity->animation_cycle = 0;
-            }
-        }
-
-        if (entity->flags & EF_LIGHT) {
-            draw_light(&state.renderer, entity->position, entity->light_radius, entity->light_colour, entity->light_intensity);
-        } 
-
-        if (entity->sprite != SH_NONE) {
-            Sprite *sprite = get_sprite(entity->sprite);
-
-            // highlight green as selected entity
-            v4 draw_colour = entity->color;
-            if (entity == state.editor.selected_entity) {
-                draw_colour = GREEN;
-                draw_circle(&state.renderer, entity->position, 5, alpha(RED, 0.4));
-            }
-
-            if(sprite->albedo->type == TextureType::ANIMATED) {
-                draw_animated_sprite(&state.renderer, sprite, entity->animation_cycle, entity->position, entity->size, entity->rotation, draw_colour);
-            }
-            else {
-                draw_sprite(&state.renderer, sprite, entity->position, entity->size, entity->rotation, draw_colour);
-            }
-        }
-    }
-
-#if 0
-    { // draw grid lines
-        i64 grid_region_width = 2000;
-        i64 grid_region_height = 2000;
-        f32 line_thickness = 1;
-        v4 grid_colour = BLACK;
-
-        // horizontal lines
-        for(i64 y = (-grid_region_height) / 2; y <= grid_region_height / 2; y += (i64) state.editor.grid_size.y) {
-            draw_rectangle(&state.renderer, {0, (f32) y, 90}, {(f32) grid_region_width, line_thickness}, grid_colour);
-        }
-
-        // vertical lines
-        for(i64 x = (-grid_region_width) / 2; x <= grid_region_width / 2; x += (i64) state.editor.grid_size.x) {
-            draw_rectangle(&state.renderer, {(f32) x, 0, 90}, {line_thickness, (f32) grid_region_height}, grid_colour);
-        }
-    }
-#endif
-
-    for (int i = 0; i < state.entities.len; i++) {
-        Entity* entity = &state.entities[i];
-
-        if (entity->flags & EF_DELETE) {
-            swap_remove(&state.entities, i);
-            i--;
-        }
-    }
-#endif
 }
 
 void physics(f32 delta_time) {
@@ -493,158 +366,178 @@ void physics(f32 delta_time) {
     }
 }
 
-void draw_editor(f32 delta_time) {
-    new_imgui_frame();
+void update_and_draw_editor(f32 delta_time) {
+    if (KEYS[GLFW_KEY_F1] == InputState::down) {
+        state.editor.visable = !state.editor.visable;
+        set_mouse_captured(&state.window, !state.editor.visable);
+    }
 
-    // Important: Process the Docking app first, as explicit DockSpace() nodes needs to be submitted early (read comments near the DockSpace function)
+    { SCOPE // forgive me god for I have sinned
+        bool hit = false;
+        bool too_close = false;
+        i32 radius = state.editor.brush.radius;
 
-    /*
-    ImGuiDockNodeFlags_None                         = 0,
-    ImGuiDockNodeFlags_KeepAliveOnly                = 1 << 0,   //       // Don't display the dockspace node but keep it alive. Windows docked into this dockspace node won't be undocked.
-    ImGuiDockNodeFlags_NoCentralNode              = 1 << 1,   //       // Disable Central Node (the node which can stay empty)
-    ImGuiDockNodeFlags_NoDockingOverCentralNode     = 1 << 2,   //       // Disable docking over the Central Node, which will be always kept empty.
-    ImGuiDockNodeFlags_PassthruCentralNode          = 1 << 3,   //       // Enable passthru dockspace: 1) DockSpace() will render a ImGuiCol_WindowBg background covering everything excepted the Central Node when empty. Meaning the host window should probably use SetNextWindowBgAlpha(0.0f) prior to Begin() when using this. 2) When Central Node is empty: let inputs pass-through + won't display a DockingEmptyBg background. See demo for details.
-    ImGuiDockNodeFlags_NoDockingSplit               = 1 << 4,   //       // Disable other windows/nodes from splitting this node.
-    ImGuiDockNodeFlags_NoResize                     = 1 << 5,   // Saved // Disable resizing node using the splitter/separators. Useful with programmatically setup dockspaces.
-    ImGuiDockNodeFlags_AutoHideTabBar               = 1 << 6,   //       // Tab bar will automatically hide when there is a single window in the dock node.
-    ImGuiDockNodeFlags_NoUndocking                  = 1 << 7,   //       // Disable undocking this node.
-    */
+        ChunkPosition target_position = get_block_looking_at(&state.chunk, state.camera, state.editor.brush.range, &hit);
+        if (!hit) {
+            break;
+        }
+
+        v3 centre = state.chunk.position + as_floats(target_position);
+
+        if (length(state.camera.position - centre) < 1.5 * (f32) radius) {
+            too_close = true;
+        }
+
+        i32 start_offset = -state.editor.brush.radius;
+        i32 end_offset = -start_offset;
+
+        for (i32 z = start_offset; z <= end_offset; z++) {
+            for (i32 y = start_offset; y <= end_offset; y++) {
+                for (i32 x = start_offset; x <= end_offset; x++) {
+                    v3 offset_position = centre + as_floats(v3i{x, y, z});
+                    f32 distance = length(offset_position - centre);
+                   
+                    // draw if in radius but also draw if close to the edge of the radius
+                    // this reduces the amount of cubes we are drawing for no reason - 02/06/25
+                    if (distance <= (f32) radius && distance > f32(radius - BLOCK_SIZE)) {
+                        v4 cube_colour = GREEN;
+                        if (too_close) {
+                            cube_colour = RED;
+                        }
+
+                        draw_cube(&state.renderer, offset_position, {BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE}, alpha(cube_colour, 0.4));
+                    }
+                }
+            }
+        }
+
+
+        static f32 cooldown_timer = 0;
+        
+        cooldown_timer -= delta_time;
+        if (cooldown_timer < 0) {
+            cooldown_timer = 0;
+        }
+
+        // check all these here because we still want to see the brush cubes
+        // even though it is disabled for whatever reason
+        if(state.editor.visable || too_close || cooldown_timer > 0) {
+            break;
+        }
+
+        if(MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::pressed) {
+            set_block_radius(&state.chunk, target_position, BlockType::AIR, radius);
+            cooldown_timer = state.editor.brush.cooldown;
+        }
+        else if(MOUSE.buttons[GLFW_MOUSE_BUTTON_2] == InputState::pressed) {
+            set_block_radius(&state.chunk, target_position, BlockType::BRICK, radius);
+            cooldown_timer = state.editor.brush.cooldown;
+        }
+    }
 
     if(state.editor.visable) {
         ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_NoDockingOverCentralNode);
 
-        draw_inspector(delta_time);
-        draw_tools();
-        draw_options();
-    }
+        {
+            ImGui::Begin("Inspector");
+        
+            { 
+                v3 direction = get_forward_direction(state.camera);
+                ImGui::Text("Looking: {%.2f, %.2f, %.2f}", direction.x, direction.y ,direction.z);
+                ImGui::Text("Chunk quads: %llu", state.chunk_quads_last_frame);
+                ImGui::Text("IM quads: %llu", state.im_quads_last_frame);
+                ImGui::Text("Total triangles: %llu", (state.im_quads_last_frame + state.chunk_quads_last_frame) * 2);
+                ImGui::Text("FPS: %f", 1.0f / delta_time);
+            }
 
-    draw_imgui_frame();
-}
-
-
-void draw_tools() {
-    ImGui::Begin("Tools");
-    ImGui::End();
-}
-
-void draw_options() {
-    ImGui::Begin("Options");
-    if(ImGui::Button("Reload Shaders")) {
-        delete_shaders(&state.renderer);
-        load_shaders(&state.renderer);
-    }
+            {
+                ImGui::SeparatorText("Camera");
+                ImGui::SliderFloat("FOV", &state.camera.fov, 1, 360);
+                ImGui::SliderFloat3("Camera position", &state.camera.position[0], -50, 50);
+                ImGui::SliderFloat3("Camera rotation", &state.camera.rotation[0], -360, 360);
+                ImGui::SliderFloat("Orthographic size", &state.camera.orthographic_size, 10, 2000);
+                ImGui::InputFloat4("Global light", &state.renderer.global_light[0]);
+            }
+       
+            {
+                ImGui::SeparatorText("Chunk");
+                ImGui::SliderFloat("Cutoff", &state.noise.cutoff, 0, 1);
+                ImGui::SliderFloat("Frequency", &state.noise.frequency, 0, 0.4);
+         
+                if(ImGui::Button("Regenerate")) {
+                    reset_mesh(&state.chunk.mesh);
+                    generate_blocks(&state.chunk);
+                    generate_mesh(&state.chunk);
+                    upload_mesh(&state.chunk.mesh);
+                }
+            }
+        
+            ImGui::End();
+        }
     
-    if(ImGui::Button("Save scene")) {
-        save_scene(&state);
-    }
+        {
+            ImGui::Begin("Tools");
+            ImGui::SeparatorText("Chunk Brush");
+            ImGui::SliderInt("Range", &state.editor.brush.range, 10, 200);
+            ImGui::SliderInt("Radius", &state.editor.brush.radius, 1, 10);
+            ImGui::SliderFloat("Cooldown", &state.editor.brush.cooldown, 0, 0.5);
+            ImGui::End();
+        }
+
+        {
+            ImGui::Begin("Options");
+            if(ImGui::Button("Reload Shaders")) {
+                delete_shaders(&state.renderer);
+                load_shaders(&state.renderer);
+            }
+        
+            if(ImGui::Button("Save scene")) {
+                save_scene(&state);
+            }
+        
+            ImGui::SameLine();
+            if(ImGui::Button("Load scene")) {
+                load_scene(&state);
+            }
     
-    ImGui::SameLine();
-    if(ImGui::Button("Load scene")) {
-        load_scene(&state);
+            if(ImGui::Button("Toggle wireframe")) {
+                toggle_wireframe(&state.renderer);
+            }
+    
+            if(ImGui::Button("Toggle V-sync")) {
+                toggle_vsync(&state.window);
+            }
+    
+            ImGui::Separator();
+    
+            if(ImGui::CollapsingHeader("Render outputs")) {
+                ImVec2 image_size(360 * 1.777, 360);
+    
+                ImGui::Text("Depth buffer");
+                ImGui::Image(state.renderer.unlit_frame_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+
+                ImGui::Text("Normal buffer");
+                ImGui::Image(state.renderer.unlit_frame_buffer.normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+
+                ImGui::Text("Colour buffer");
+                ImGui::Image(state.renderer.unlit_frame_buffer.colour_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+            }
+
+            ImGui::End();
+        }
     }
-
-    if(ImGui::Button("Toggle wireframe")) {
-        toggle_wireframe(&state.renderer);
-    }
-
-    if(ImGui::Button("Toggle V-sync")) {
-        toggle_vsync(&state.window);
-    }
-
-    ImGui::Separator();
-
-    if(ImGui::CollapsingHeader("Render outputs")) {
-        ImVec2 image_size(360 * 1.777, 360);
-
-        ImGui::Text("Depth buffer");
-        ImGui::Image(state.renderer.unlit_frame_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
-
-        ImGui::Text("Normal buffer");
-        ImGui::Image(state.renderer.unlit_frame_buffer.normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
-
-        ImGui::Text("Colour buffer");
-        ImGui::Image(state.renderer.unlit_frame_buffer.colour_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
-    }
-
-    ImGui::End();
 }
+
 
 void draw_inspector(f32 delta_time) {
-    ImGui::Begin("Inspector");
-
-    { // top info text
-        v3 direction = get_forward_direction(state.camera);
-        ImGui::Text("Looking: {%.2f, %.2f, %.2f}", direction.x, direction.y ,direction.z);
-    
-        ImGui::Text("Quads: %llu", state.quads_last_frame);
-        ImGui::SameLine();
-        ImGui::Text("FPS: %f", 1.0f / delta_time);
-    }
-
-    { // top level buttons
-        if(ImGui::Button("Deselect Entity")) {
-            state.editor.selected_entity = NULL;
-        }
-    }
-
-    ImGui::Separator();
-
-    if(ImGui::CollapsingHeader("Noise")) {
-        ImGui::SliderFloat("Cutoff", &state.noise.cutoff, 0, 1);
-        ImGui::SliderFloat("Frequency", &state.noise.frequency, 0, 0.4);
-
-        if(ImGui::Button("Regenerate")) {
-            reset_mesh(&state.chunk.mesh);
-            generate_blocks(&state.chunk);
-            generate_mesh(&state.chunk);
-            upload_mesh(&state.chunk.mesh);
-        }
-    }
-
-    if(ImGui::CollapsingHeader("Grid")) {
-        ImGui::Checkbox("Snap to grid", &state.editor.snap_to_grid);
-
-        ImGui::SameLine();
-
-        if(ImGui::Button("Use entity size")) {
-            if (state.editor.selected_entity != NULL) {
-                state.editor.grid_size = state.editor.selected_entity->size;
-            }
-        }
-
-        ImGui::InputFloat2("Grid size", &state.editor.grid_size[0]);
-        ImGui::InputFloat2("selection range", &state.editor.selection_range[0]);
-    }
-
-    if(ImGui::CollapsingHeader("Camera")) {
-        ImGui::SliderFloat("FOV", &state.camera.fov, 1, 360);
-        ImGui::SliderFloat3("Camera position", &state.camera.position[0], -50, 50);
-        ImGui::SliderFloat3("Camera rotation", &state.camera.rotation[0], -360, 360);
-        ImGui::SliderFloat("Orthographic size", &state.camera.orthographic_size, 10, 2000);
-        ImGui::InputFloat4("Global light", &state.renderer.global_light[0]);
-    }
-
-    if(state.editor.selected_entity != NULL && ImGui::CollapsingHeader("Entity Editor")) {
-        Entity *entity = state.editor.selected_entity;
-
-        ImGui::InputFloat3("position", &entity->position[0]);
-        ImGui::InputFloat2("size", &entity->size[0]);
-        ImGui::InputFloat("rotation", &entity->rotation);
-        ImGui::InputFloat4("colour", &entity->color[0]);
-        ImGui::InputFloat4("light_colour", &entity->light_colour[0]);
-        ImGui::InputFloat("light_radius", &entity->light_radius);
-        ImGui::InputFloat("light_intensity", &entity->light_intensity);
-        ImGui::InputInt("sprite", (i32 *) &entity->sprite);
-    }
-
-    ImGui::End();
 }
 
-Chunk new_chunk() {
+Chunk new_chunk(v3 position) {
     i64 size = CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_DEPTH;
 
     return Chunk {
-        .mesh = new_mesh({}, size * 6),
+        .position = position,
+        .mesh = new_mesh(position, size * 6),
         .blocks = mem_alloc<BlockType>(size)
     };
 }
@@ -657,24 +550,26 @@ void generate_mesh(Chunk *chunk) {
             continue;
         }
 
-        v3 position = block_index_to_chunk_position(i);
+        ChunkPosition chunk_position = block_index_to_chunk_position(i);
+        v3 position = as_floats(chunk_position);
 
         v4 colour = {0.8, position.y / (f32) CHUNK_HEIGHT, 0.3, 1};
 
-        BlockType up = get_block_neighbour(chunk, (i64) position.x, (i64) position.y, (i64) position.z, 0, 1, 0);
-        BlockType down = get_block_neighbour(chunk, (i64) position.x, (i64) position.y, (i64) position.z, 0, -1, 0);
-        BlockType left = get_block_neighbour(chunk, (i64) position.x, (i64) position.y, (i64) position.z, -1, 0, 0);
-        BlockType right = get_block_neighbour(chunk, (i64) position.x, (i64) position.y, (i64) position.z, 1, 0, 0);
-        BlockType front = get_block_neighbour(chunk, (i64) position.x, (i64) position.y, (i64) position.z, 0, 0, -1);
-        BlockType back = get_block_neighbour(chunk, (i64) position.x, (i64) position.y, (i64) position.z, 0, 0, 1);
+        BlockType up    = get_block_neighbour(chunk, chunk_position, {0, 1, 0});
+        BlockType down  = get_block_neighbour(chunk, chunk_position, {0, -1, 0});
+        BlockType left  = get_block_neighbour(chunk, chunk_position, {-1, 0, 0});
+        BlockType right = get_block_neighbour(chunk, chunk_position, {1, 0, 0});
+        BlockType front = get_block_neighbour(chunk, chunk_position, {0, 0, -1});
+        BlockType back  = get_block_neighbour(chunk, chunk_position, {0, 0, 1});
 
-        const v2 CUBE_SIZE = {1, 1};
+        // order of vertices in a quad is:
+        // top_left
+        // top_right
+        // bottom_rigth
+        // bottom_left
 
-#if 1
-    // const v4 top_left      = {-0.5,   0.5, 0, 1};
-    // const v4 top_right     = { 0.5,   0.5, 0, 1};
-    // const v4 bottom_right  = { 0.5,  -0.5, 0, 1};
-    // const v4 bottom_left   = {-0.5,  -0.5, 0, 1};
+        // TODO: not actually taking into account the size of the cubes here so
+        // they are always drawn as 1x1x1
 
         v3 front_top_left       = {-0.5, 0.5, -0.5};
         v3 front_top_right      = {0.5, 0.5, -0.5};
@@ -754,7 +649,6 @@ void generate_mesh(Chunk *chunk) {
 
             push_quad(&chunk->mesh, positions, brightness(colour, 0.5), sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
         }
-#endif
     }
 }
 
@@ -782,33 +676,89 @@ void generate_blocks(Chunk *chunk) {
     }
 }
 
-v3 block_index_to_chunk_position(i64 index) {
+bool set_block(Chunk *chunk, ChunkPosition position, BlockType block) {
+    i32 index = chunk_position_to_block_index(position);
+
+    if (index < 0 || index >= chunk->blocks.len) {
+        return false;
+    }
+
+    chunk->blocks[index] = block;
+    chunk->dirty = true;
+}
+
+void set_block_radius(Chunk *chunk, ChunkPosition centre, BlockType block, i32 radius) {
+    for (i32 z = -radius; z <= radius; z++) {
+        for (i32 y = -radius; y <= radius; y++) {
+            for (i32 x = -radius; x <= radius; x++) {
+                ChunkPosition block_position = centre + v3i{x, y, z};
+                 
+                if (length(as_floats(block_position) - as_floats(centre)) <= (f32) radius) {
+                    set_block(&state.chunk, block_position, block);
+                }
+            }
+        }
+    }
+}
+
+ChunkPosition block_index_to_chunk_position(i64 index) {
     i64 x = index % CHUNK_WIDTH;
     i64 y = (index / CHUNK_DEPTH) % CHUNK_HEIGHT;
     i64 z = index / (CHUNK_HEIGHT * CHUNK_DEPTH);
 
-    return {(f32) x, (f32) y, (f32) z};
+    return {(i32) x, (i32) y, (i32) z};
 }
 
-i64 chunk_position_to_block_index(i64 x, i64 y, i64 z) {
-    return x + (CHUNK_WIDTH * y) + (CHUNK_WIDTH * CHUNK_HEIGHT * z);
+i32 chunk_position_to_block_index(ChunkPosition position) {
+    return position.x + (CHUNK_WIDTH * position.y) + (CHUNK_WIDTH * CHUNK_HEIGHT * position.z);
 }
 
-BlockType get_block_neighbour(Chunk *chunk, i64 x, i64 y, i64 z, i64 x_offset, i64 y_offset, i64 z_offset) {
-    i64 neighbour_x = x + x_offset;
-    i64 neighbour_y = y + y_offset;
-    i64 neighbour_z = z + z_offset;
+BlockType get_block_neighbour(Chunk *chunk, ChunkPosition position, v3i offset) {
+    ChunkPosition neighbour = position + offset;
 
-    if(neighbour_x < 0 || neighbour_y < 0 || neighbour_z < 0) {
+    if(neighbour.x < 0 || neighbour.y < 0 || neighbour.z < 0) {
         return BlockType::AIR;
     }
 
-    if(neighbour_x >= CHUNK_WIDTH || neighbour_y >= CHUNK_HEIGHT || neighbour_z >= CHUNK_DEPTH) {
+    if(neighbour.x >= CHUNK_WIDTH || neighbour.y >= CHUNK_HEIGHT || neighbour.z >= CHUNK_DEPTH) {
         return BlockType::AIR;
     }
 
-    i64 neighbour_index = chunk_position_to_block_index(neighbour_x, neighbour_y, neighbour_z);
+    i64 neighbour_index = chunk_position_to_block_index(neighbour);
     return chunk->blocks[neighbour_index];
+}
+
+
+ChunkPosition get_block_looking_at(Chunk *chunk, Camera camera, i32 range, bool *hit) {
+    v3 forward = get_forward_direction(state.camera);
+
+    for (i64 i = 0; i < range; i++) {
+        v3 check_position = state.camera.position + (forward * f32(i * BLOCK_SIZE));
+
+        if (check_position.x >= chunk->position.x && check_position.x < chunk->position.x + CHUNK_WIDTH &&
+            check_position.y >= chunk->position.y && check_position.y < chunk->position.y + CHUNK_HEIGHT &&
+            check_position.z >= chunk->position.z && check_position.z < chunk->position.z + CHUNK_DEPTH) {
+
+            ChunkPosition chunk_position = world_to_chunk_position(check_position);
+            i32 index = chunk_position_to_block_index(chunk_position);
+
+            if (chunk->blocks[index] != BlockType::AIR) {
+                *hit = true;
+                return chunk_position;
+            }
+        }
+    }
+
+    *hit = false;
+    return {};
+}
+
+ChunkPosition world_to_chunk_position(v3 position) {
+    return ChunkPosition {
+        (i32) floor(position.x),
+        (i32) floor(position.y),
+        (i32) floor(position.z),
+    };
 }
 
 Entity *spawn_entity(Entity entity) {

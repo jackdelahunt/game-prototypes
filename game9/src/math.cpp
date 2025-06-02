@@ -96,6 +96,8 @@
 #ifndef HANDMADE_MATH_H
 #define HANDMADE_MATH_H
 
+#include "ack.cpp"
+
 // Dummy macros for when test framework is not present.
 #ifndef COVERAGE
 # define COVERAGE(a, b)
@@ -362,6 +364,63 @@ typedef union v4
     }
 #endif
 } v4;
+
+typedef union v2i
+{
+    struct
+    {
+        i32 x, y;
+    };
+
+    struct
+    {
+        i32 left, right;
+    };
+
+    struct
+    {
+        i32 width, height;
+    };
+
+    i32 elements[2];
+
+#ifdef __cplusplus
+    inline i32 &operator[](const int &Index)
+    {
+        return elements[Index];
+    }
+#endif
+} v2i;
+
+typedef union v3i
+{
+    struct
+    {
+        i32 x, y, z;
+    };
+
+    struct
+    {
+        v2i xy;
+        i32 _Ignored0;
+    };
+
+    struct
+    {
+        i32 _Ignored1;
+        v2i yz;
+    };
+
+    i32 elements[3];
+
+#ifdef __cplusplus
+    inline i32 &operator[](const int &Index)
+    {
+        return elements[Index];
+    }
+#endif
+} v3i;
+
 
 typedef union m2
 {
@@ -682,6 +741,25 @@ static inline v4 HMM_AddV4(v4 Left, v4 Right)
     return Result;
 }
 
+static inline v2i HMM_AddV2I(v2i Left, v2i Right)
+{
+    v2i Result;
+    Result.x = Left.x + Right.x;
+    Result.y = Left.y + Right.y;
+
+    return Result;
+}
+
+static inline v3i HMM_AddV3I(v3i Left, v3i Right)
+{
+    v3i Result;
+    Result.x = Left.x + Right.x;
+    Result.y = Left.y + Right.y;
+    Result.z = Left.z + Right.z;
+
+    return Result;
+}
+
 COVERAGE(HMM_SubV2, 1)
 static inline v2 HMM_SubV2(v2 Left, v2 Right)
 {
@@ -722,6 +800,25 @@ static inline v4 HMM_SubV4(v4 Left, v4 Right)
     Result.Z = Left.Z - Right.Z;
     Result.W = Left.W - Right.W;
 #endif
+
+    return Result;
+}
+
+static inline v2i HMM_SubV2I(v2i Left, v2i Right)
+{
+    v2i Result;
+    Result.x = Left.x - Right.x;
+    Result.y = Left.y - Right.y;
+
+    return Result;
+}
+
+static inline v3i HMM_SubV3I(v3i Left, v3i Right)
+{
+    v3i Result;
+    Result.x = Left.x - Right.x;
+    Result.y = Left.y - Right.y;
+    Result.z = Left.z - Right.z;
 
     return Result;
 }
@@ -1049,6 +1146,16 @@ static inline v4 HMM_LerpV4(v4 A, float Time, v4 B)
 {
     ASSERT_COVERED(HMM_LerpV4);
     return HMM_AddV4(HMM_MulV4F(A, 1.0f - Time), HMM_MulV4F(B, Time));
+}
+
+static inline v2 as_floats(v2i A) 
+{
+    return v2{(f32) A.x, (f32) A.y};
+}
+
+static inline v3 as_floats(v3i A) 
+{
+    return v3{(f32) A.x, (f32) A.y, (f32) A.z};
 }
 
 /*
@@ -2973,6 +3080,17 @@ static inline v4 operator+(v4 Left, v4 Right)
     return HMM_AddV4(Left, Right);
 }
 
+
+static inline v2i operator+(v2i Left, v2i Right)
+{
+    return HMM_AddV2I(Left, Right);
+}
+
+static inline v3i operator+(v3i Left, v3i Right)
+{
+    return HMM_AddV3I(Left, Right);
+}
+
 COVERAGE(HMM_AddM2Op, 1)
 static inline m2 operator+(m2 Left, m2 Right)
 {
@@ -3020,6 +3138,16 @@ static inline v4 operator-(v4 Left, v4 Right)
 {
     ASSERT_COVERED(HMM_SubV4Op);
     return HMM_SubV4(Left, Right);
+}
+
+static inline v2i operator-(v2i Left, v2i Right)
+{
+    return HMM_SubV2I(Left, Right);
+}
+
+static inline v3i operator-(v3i Left, v3i Right)
+{
+    return HMM_SubV3I(Left, Right);
 }
 
 COVERAGE(HMM_SubM2Op, 1)

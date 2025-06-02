@@ -9,6 +9,7 @@
 
 #include "libs/libs.h"
 #include "ack.cpp"
+#include "math.cpp"
 
 #define ASSERT(x) if (!(x)) __debugbreak();
 
@@ -18,6 +19,18 @@
     ASSERT(check_gl_errors());
 
 #define GL_VERIFY() ASSERT(check_gl_errors());
+
+//example use:
+// { __breakable__
+//    ...
+//    if (condition)
+//        break;
+//    ...
+//    if (condition2)
+//        break;
+//    ...
+// }
+#define SCOPE }switch(0){default:
 
 /////////////////////////////////////////////////////////////////////////////
 //////////////////////////////// @window ////////////////////////////////////
@@ -915,6 +928,7 @@ bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel
 
 void new_frame(Renderer *renderer, Window *window, Camera camera) {
     reset(&renderer->quads);
+
     renderer->view_projection_matrix = HMM_MulM4(
         get_projection_matrix(camera, (f32) window->width / (f32) window->height),
         get_view_matrix(camera)
@@ -922,6 +936,8 @@ void new_frame(Renderer *renderer, Window *window, Camera camera) {
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glViewport(0, 0, window->width, window->height);
+
+    new_imgui_frame();
 }
 
 void draw_frame(Renderer *renderer, Window *window, Camera camera) {
@@ -938,6 +954,8 @@ void draw_frame(Renderer *renderer, Window *window, Camera camera) {
     glBindTexture(GL_TEXTURE_2D, renderer->font_texture_id);
 
     glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
+
+    draw_imgui_frame();
 }
 
 void new_imgui_frame() {
@@ -986,12 +1004,13 @@ void draw_cube(Renderer *renderer, v3 position, v3 size, v4 color) {
         {1, 0},
         {0, 0},
     };
-    push_quad(renderer, position + v3{-0.5,    0,    0}, {size.z, size.y}, {  0, -90, 0}, WHITE, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // left
-    push_quad(renderer, position + v3{   0,    0, -0.5}, {size.x, size.y}, {  0,   0, 0}, WHITE, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // front
-    push_quad(renderer, position + v3{ 0.5,    0,    0}, {size.z, size.y}, {  0,  90, 0}, WHITE, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // right
-    push_quad(renderer, position + v3{   0,  0.5,    0}, {size.x, size.z}, {-90,   0, 0}, WHITE, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // top
-    push_quad(renderer, position + v3{   0, -0.5,    0}, {size.x, size.z}, { 90,   0, 0}, WHITE, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // bottom
-    push_quad(renderer, position + v3{   0,    0,  0.5}, {size.x, size.y}, {  0, 180, 0}, WHITE, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // back
+
+    push_quad(renderer, position + v3{-0.5,    0,    0}, {size.z, size.y}, {  0, -90, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // left
+    push_quad(renderer, position + v3{   0,    0, -0.5}, {size.x, size.y}, {  0,   0, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // front
+    push_quad(renderer, position + v3{ 0.5,    0,    0}, {size.z, size.y}, {  0,  90, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // right
+    push_quad(renderer, position + v3{   0,  0.5,    0}, {size.x, size.z}, {-90,   0, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // top
+    push_quad(renderer, position + v3{   0, -0.5,    0}, {size.x, size.z}, { 90,   0, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // bottom
+    push_quad(renderer, position + v3{   0,    0,  0.5}, {size.x, size.y}, {  0, 180, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // back
 }
 
 void draw_sprite(Renderer *renderer, Sprite *sprite, v3 position, v2 size, f32 rotation, v4 color) {
