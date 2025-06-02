@@ -23,6 +23,8 @@
 //////////////////////////////// @window ////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 struct Window {
+    bool vsync;
+
     i32 width;
     i32 height;
     string title;
@@ -50,7 +52,7 @@ bool init_window(i32 width, i32 height, string title);
 void set_mouse_captured(Window *window, bool captured);
 void poll_inputs();
 void swap_buffers(Window *window);
-void vsync(bool enable);
+void toggle_vsync(Window *window);
 void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
 void glfw_mouse_move_callback(GLFWwindow* window, f64 x, f64 y);
 void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 mods);
@@ -92,6 +94,8 @@ bool init_window(Window *window, i32 width, i32 height, string title) {
     glfwSetKeyCallback(window->glfw_window, glfw_key_callback);
     glfwSetCursorPosCallback(window->glfw_window, glfw_mouse_move_callback);
     glfwSetMouseButtonCallback(window->glfw_window, glfw_mouse_button_callback);
+
+    set_mouse_captured(window, window->mouse_captured);
 
     return true;
 }
@@ -144,8 +148,10 @@ void swap_buffers(Window *window) {
     glfwSwapBuffers(window->glfw_window);
 }
 
-void vsync(bool enable) {
-    if (enable) {
+void toggle_vsync(Window *window) {
+    window->vsync = !window->vsync;
+
+    if (window->vsync) {
         glfwSwapInterval(1);
     } else {
         glfwSwapInterval(0); 
@@ -302,6 +308,8 @@ struct Mesh {
 };
 
 struct Renderer {
+    bool wireframe;
+
     v4 global_light;
     v4 clear_colour;
 
@@ -380,7 +388,7 @@ Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color,
 void new_imgui_frame();
 void draw_imgui_frame();
 
-void draw_wireframe(bool draw);
+void toggle_wireframe(Renderer *renderer);
 
 f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
 
@@ -612,7 +620,8 @@ bool init_renderer(Renderer *renderer, Window *window) {
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
     
-        ImGui::StyleColorsLight();
+        // ImGui::StyleColorsLight();
+        ImGui::StyleColorsDark();
     
         ImGuiIO& io = ImGui::GetIO();
     
@@ -1320,8 +1329,10 @@ void draw_imgui_frame() {
     glfwMakeContextCurrent(current);
 }
 
-void draw_wireframe(bool draw) {
-    if(draw) {
+void toggle_wireframe(Renderer *renderer) {
+    renderer->wireframe = !renderer->wireframe;
+
+    if (renderer->wireframe) {
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
     } else {
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);

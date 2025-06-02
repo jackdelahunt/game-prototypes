@@ -13,8 +13,8 @@
 #include <fstream>
 #include <string>
 
-// Total: 12:00
-// Started: 24:00
+// Total: 20:00
+// Started: 05:00
 
 // Performance (20 * 20 * 20):
 // start                            == ~21 fps  - 48,000 quads
@@ -62,6 +62,8 @@ struct Entity {
 };
 
 struct Editor {
+    bool visable;
+
     Entity *selected_entity;
     bool snap_to_grid;
     v2 grid_size;
@@ -118,9 +120,12 @@ struct CollisionIterator {
 void update_and_draw(f32 delta_time);
 void physics(f32 delta_time);
 void draw_editor(f32 delta_time);
+void draw_inspector(f32 delta_time);
+void draw_tools();
+void draw_options();
 
 Chunk new_chunk();
-void draw_chunk(Chunk *chunk);
+void generate_mesh(Chunk *chunk);
 void generate_blocks(Chunk *chunk);
 v3 block_index_to_chunk_position(i64 index);
 i64 chunk_position_to_block_index(i64 x, i64 y, i64 z);
@@ -150,11 +155,15 @@ int main() {
             .near_plane = 0.1f,
             .far_plane = 1000.0f,
         },
+        .window = {
+            .mouse_captured = true, 
+        },
         .renderer = {
             .global_light = {1, 1, 1, 1},
-            .clear_colour = CORNFLOUR_BLUE,
+            .clear_colour = brightness(BLUE, 0.2),
         },
         .editor = {
+            .visable = false,
             .snap_to_grid = true,
             .grid_size = {50, 50},
             .selection_range = {0, 20},
@@ -168,7 +177,7 @@ int main() {
     { // init engine stuff
         bool ok = false;
 
-        ok = init_window(&state.window, 1920, 1080, "game9");
+        ok = init_window(&state.window, 2310, 1300, "game9");
         if (!ok) {
             printf("failed to init window\n");
             return 1;
@@ -220,7 +229,7 @@ int main() {
 
     state.chunk = new_chunk(); // can only happen after renderer has started
     generate_blocks(&state.chunk);
-    draw_chunk(&state.chunk);
+    generate_mesh(&state.chunk);
     upload_mesh(&state.chunk.mesh);
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
@@ -260,9 +269,10 @@ int main() {
 }
 
 void update_and_draw(f32 delta_time) {
-    { // toggle mouse capture
+    { // toggle editor 
         if (KEYS[GLFW_KEY_F1] == InputState::down) {
-            set_mouse_captured(&state.window, !state.window.mouse_captured);
+            state.editor.visable = !state.editor.visable;
+            set_mouse_captured(&state.window, !state.editor.visable);
         }
     }
 
@@ -307,6 +317,15 @@ void update_and_draw(f32 delta_time) {
             state.camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
 
             state.camera.rotation.x = clamp(-90, state.camera.rotation.x, 90);
+        }
+    }
+
+    {
+        v3 forward = get_forward_direction(state.camera);
+
+        for (i64 i = 0; i < 10; i++) {
+            v3 check = state.camera.position + (forward * (f32) i);
+            draw_rectangle(&state.renderer, check, {0.2, 0.2}, GREEN);
         }
     }
 
@@ -466,7 +485,82 @@ void physics(f32 delta_time) {
 
 void draw_editor(f32 delta_time) {
     new_imgui_frame();
-    ImGui::Begin("Editor");
+
+    // Important: Process the Docking app first, as explicit DockSpace() nodes needs to be submitted early (read comments near the DockSpace function)
+
+    /*
+    ImGuiDockNodeFlags_None                         = 0,
+    ImGuiDockNodeFlags_KeepAliveOnly                = 1 << 0,   //       // Don't display the dockspace node but keep it alive. Windows docked into this dockspace node won't be undocked.
+    ImGuiDockNodeFlags_NoCentralNode              = 1 << 1,   //       // Disable Central Node (the node which can stay empty)
+    ImGuiDockNodeFlags_NoDockingOverCentralNode     = 1 << 2,   //       // Disable docking over the Central Node, which will be always kept empty.
+    ImGuiDockNodeFlags_PassthruCentralNode          = 1 << 3,   //       // Enable passthru dockspace: 1) DockSpace() will render a ImGuiCol_WindowBg background covering everything excepted the Central Node when empty. Meaning the host window should probably use SetNextWindowBgAlpha(0.0f) prior to Begin() when using this. 2) When Central Node is empty: let inputs pass-through + won't display a DockingEmptyBg background. See demo for details.
+    ImGuiDockNodeFlags_NoDockingSplit               = 1 << 4,   //       // Disable other windows/nodes from splitting this node.
+    ImGuiDockNodeFlags_NoResize                     = 1 << 5,   // Saved // Disable resizing node using the splitter/separators. Useful with programmatically setup dockspaces.
+    ImGuiDockNodeFlags_AutoHideTabBar               = 1 << 6,   //       // Tab bar will automatically hide when there is a single window in the dock node.
+    ImGuiDockNodeFlags_NoUndocking                  = 1 << 7,   //       // Disable undocking this node.
+    */
+
+    if(state.editor.visable) {
+        ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_NoDockingOverCentralNode);
+
+        draw_inspector(delta_time);
+        draw_tools();
+        draw_options();
+    }
+
+    draw_imgui_frame();
+}
+
+
+void draw_tools() {
+    ImGui::Begin("Tools");
+    ImGui::End();
+}
+
+void draw_options() {
+    ImGui::Begin("Options");
+    if(ImGui::Button("Reload Shaders")) {
+        delete_shaders(&state.renderer);
+        load_shaders(&state.renderer);
+    }
+    
+    if(ImGui::Button("Save scene")) {
+        save_scene(&state);
+    }
+    
+    ImGui::SameLine();
+    if(ImGui::Button("Load scene")) {
+        load_scene(&state);
+    }
+
+    if(ImGui::Button("Toggle wireframe")) {
+        toggle_wireframe(&state.renderer);
+    }
+
+    if(ImGui::Button("Toggle V-sync")) {
+        toggle_vsync(&state.window);
+    }
+
+    ImGui::Separator();
+
+    if(ImGui::CollapsingHeader("Render outputs")) {
+        ImVec2 image_size(360 * 1.77, 360);
+
+        ImGui::Text("Depth buffer");
+        ImGui::Image(state.renderer.unlit_frame_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+
+        ImGui::Text("Normal buffer");
+        ImGui::Image(state.renderer.unlit_frame_buffer.normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+
+        ImGui::Text("Colour buffer");
+        ImGui::Image(state.renderer.unlit_frame_buffer.colour_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+    }
+
+    ImGui::End();
+}
+
+void draw_inspector(f32 delta_time) {
+    ImGui::Begin("Inspector");
 
     { // top info text
         v3 direction = get_forward_direction(state.camera);
@@ -481,39 +575,6 @@ void draw_editor(f32 delta_time) {
         if(ImGui::Button("Deselect Entity")) {
             state.editor.selected_entity = NULL;
         }
-
-        if(ImGui::Button("Reload Shaders")) {
-            delete_shaders(&state.renderer);
-            load_shaders(&state.renderer);
-        }
-    
-        ImGui::SameLine();
-        if(ImGui::Button("Save scene")) {
-            save_scene(&state);
-        }
-    
-        ImGui::SameLine();
-        if(ImGui::Button("Load scene")) {
-            load_scene(&state);
-        }
-
-        if(ImGui::Button("Normal mode")) {
-            draw_wireframe(false);
-        }
-
-        ImGui::SameLine();
-        if(ImGui::Button("Wireframe mode")) {
-            draw_wireframe(true);
-        }
-
-        if(ImGui::Button("Vsync on")) {
-            vsync(true);
-        }
-
-        ImGui::SameLine();
-        if(ImGui::Button("Vsync off")) {
-            vsync(false);
-        }
     }
 
     ImGui::Separator();
@@ -523,7 +584,10 @@ void draw_editor(f32 delta_time) {
         ImGui::SliderFloat("Frequency", &state.noise.frequency, 0, 0.4);
 
         if(ImGui::Button("Regenerate")) {
+            reset_mesh(&state.chunk.mesh);
             generate_blocks(&state.chunk);
+            generate_mesh(&state.chunk);
+            upload_mesh(&state.chunk.mesh);
         }
     }
 
@@ -563,21 +627,7 @@ void draw_editor(f32 delta_time) {
         ImGui::InputInt("sprite", (i32 *) &entity->sprite);
     }
 
-    if(ImGui::CollapsingHeader("Render outputs")) {
-        ImVec2 image_size(360 * 1.77, 360);
-
-        ImGui::Text("Depth buffer");
-        ImGui::Image(state.renderer.unlit_frame_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
-
-        ImGui::Text("Normal buffer");
-        ImGui::Image(state.renderer.unlit_frame_buffer.normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
-
-        ImGui::Text("Colour buffer");
-        ImGui::Image(state.renderer.unlit_frame_buffer.colour_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
-    }
-
     ImGui::End();
-    draw_imgui_frame();
 }
 
 Chunk new_chunk() {
@@ -589,7 +639,7 @@ Chunk new_chunk() {
     };
 }
 
-void draw_chunk(Chunk *chunk) {
+void generate_mesh(Chunk *chunk) {
     Sprite *sprite = get_sprite(SH_BRICK);
 
     for(i64 i = 0; i < chunk->blocks.len; i++) {
@@ -599,7 +649,7 @@ void draw_chunk(Chunk *chunk) {
 
         v3 position = block_index_to_chunk_position(i);
 
-        v4 colour = {position.x / (f32) CHUNK_WIDTH, position.y / (f32) CHUNK_HEIGHT, position.z / (f32) CHUNK_DEPTH, 1};
+        v4 colour = {0.8, position.y / (f32) CHUNK_HEIGHT, 0.3, 1};
 
         BlockType up = get_block_neighbour(chunk, (i64) position.x, (i64) position.y, (i64) position.z, 0, 1, 0);
         BlockType down = get_block_neighbour(chunk, (i64) position.x, (i64) position.y, (i64) position.z, 0, -1, 0);
@@ -645,7 +695,7 @@ void draw_chunk(Chunk *chunk) {
                 position + back_bottom_left
             };
 
-            push_quad(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            push_quad(&chunk->mesh, positions, brightness(colour, 0.4), sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
         }
 
         if (left == BlockType::AIR) {
@@ -656,7 +706,7 @@ void draw_chunk(Chunk *chunk) {
                 position + back_bottom_left
             };
 
-            push_quad(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            push_quad(&chunk->mesh, positions, brightness(colour, 0.8), sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
         }
 
 
@@ -668,7 +718,7 @@ void draw_chunk(Chunk *chunk) {
                 position + front_bottom_right
             };
 
-            push_quad(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            push_quad(&chunk->mesh, positions, brightness(colour, 0.6), sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
         }
 
 
@@ -680,7 +730,7 @@ void draw_chunk(Chunk *chunk) {
                 position + front_bottom_left
             };
 
-            push_quad(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            push_quad(&chunk->mesh, positions, brightness(colour, 0.8), sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
         }
 
 
@@ -692,7 +742,7 @@ void draw_chunk(Chunk *chunk) {
                 position + back_bottom_right
             };
 
-            push_quad(&chunk->mesh, positions, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
+            push_quad(&chunk->mesh, positions, brightness(colour, 0.5), sprite->albedo->uvs, state.renderer.default_normal->uvs, DrawType::TEXTURE);
         }
 #endif
     }
