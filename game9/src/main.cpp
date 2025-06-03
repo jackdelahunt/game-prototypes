@@ -14,8 +14,8 @@
 #include <fstream>
 #include <string>
 
-// Total: 28:00
-// Started: 05:00
+// Total: 30:00
+// Started: 01:30
 
 // Performance (20 * 20 * 20):
 // start                            == ~21 fps  - 48,000 quads
@@ -69,7 +69,7 @@ struct Editor {
         i32 range;
         i32 radius;
         f32 cooldown;
-    } brush;
+    } sculptor;
 };
 
 enum EntityFlags {
@@ -79,9 +79,6 @@ enum EntityFlags {
     EF_DELETE           = 1 << 16,
 };
 
-#define CHUNK_WIDTH 50
-#define CHUNK_HEIGHT 50
-#define CHUNK_DEPTH 50
 #define BLOCK_SIZE 1
 
 enum class BlockType {
@@ -93,7 +90,9 @@ typedef v3i ChunkPosition;
 
 struct Chunk {
     bool dirty;
+
     v3 position;
+    v3 size;
     Mesh mesh;
     Slice<BlockType> blocks;
 };
@@ -108,7 +107,7 @@ struct State {
     i64 chunk_quads_last_frame;
     i64 im_quads_last_frame;
 
-    Chunk chunk;
+    StackArray<Chunk, 10> chunks;
 
     struct {
         f32 cutoff;
@@ -129,13 +128,13 @@ void update_and_draw(f32 delta_time);
 void physics(f32 delta_time);
 void update_and_draw_editor(f32 delta_time);
 
-Chunk new_chunk(v3 position);
+Chunk new_chunk(v3i position, v3i size);
 void generate_mesh(Chunk *chunk);
 void generate_blocks(Chunk *chunk);
 bool set_block(Chunk *chunk, ChunkPosition position, BlockType block);
 void set_block_radius(Chunk *chunk, ChunkPosition centre, BlockType block, i32 radius);
-ChunkPosition block_index_to_chunk_position(i64 index);
-i32 chunk_position_to_block_index(ChunkPosition position);
+ChunkPosition block_index_to_chunk_position(Chunk *chunk, i64 index);
+i32 chunk_position_to_block_index(Chunk *chunk, ChunkPosition position);
 BlockType get_block_neighbour(Chunk *chunk, ChunkPosition position, v3i offset);
 ChunkPosition get_block_looking_at(Chunk *chunk, Camera camera, i32 range, bool *hit);
 ChunkPosition world_to_chunk_position(v3 position);
@@ -158,7 +157,7 @@ int main() {
     state = State {
         .camera = {
             .fov = 110,
-            .position = {CHUNK_WIDTH * 0.5, CHUNK_HEIGHT * 0.5, -20},
+            .position = {10, 10, -20},
             .rotation = {0, 0, 0},
             .orthographic_size = 5,
             .near_plane = 0.1f,
@@ -175,7 +174,7 @@ int main() {
         },
         .editor = {
             .visable = false,
-            .brush = {
+            .sculptor = {
                 .range = 50,
                 .radius = 4,
                 .cooldown = 0.075,
@@ -240,11 +239,6 @@ int main() {
         srand(time(NULL));
     }
 
-    state.chunk = new_chunk({0, 0, 0}); // can only happen after renderer has started
-    generate_blocks(&state.chunk);
-    generate_mesh(&state.chunk);
-    upload_mesh(&state.chunk.mesh);
-
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
         f64 current_time    = state.time;
         f64 new_time        = glfwGetTime();
@@ -255,7 +249,6 @@ int main() {
             glfwSetWindowShouldClose(state.window.glfw_window, GLFW_TRUE);
         }
 
-        state.chunk_quads_last_frame = state.chunk.mesh.quads.len;
         state.im_quads_last_frame = state.renderer.quads.len;
         new_frame(&state.renderer, &state.window, state.camera);
 
@@ -264,17 +257,19 @@ int main() {
 #if ALLOW_EDITOR
         update_and_draw_editor(delta_time); 
 #endif
-        physics(delta_time); 
+        physics(delta_time);  
 
-        if (state.chunk.dirty) {
-            reset_mesh(&state.chunk.mesh);
-            generate_mesh(&state.chunk);
-            upload_mesh(&state.chunk.mesh);
+        for (Chunk &chunk : state.chunks) {
+            if (chunk.dirty) {
+                reset_mesh(&chunk.mesh);
+                generate_mesh(&chunk);
+                upload_mesh(&chunk.mesh);
+                chunk.dirty = false;
+            }
 
-            state.chunk.dirty = false;
+            draw_mesh(&state.renderer, &chunk.mesh, chunk.position); 
         }
 
-        draw_mesh(&state.renderer, &state.chunk.mesh); 
         draw_frame(&state.renderer, &state.window, state.camera); 
 
         swap_buffers(&state.window);
@@ -286,6 +281,9 @@ int main() {
 }
 
 void update_and_draw(f32 delta_time) {
+    draw_cube(&state.renderer, {}, {1, 1}, RED);
+    draw_cube(&state.renderer, {10, 0, 0}, {1, 1}, BLUE);
+
     { // update camera position x and z
         v2 input = {};
     
@@ -373,23 +371,23 @@ void update_and_draw_editor(f32 delta_time) {
         set_mouse_captured(&state.window, !state.editor.visable);
     }
 
-    { SCOPE // forgive me god for I have sinned
+    for (Chunk &chunk : state.chunks) {
         bool hit = false;
         bool too_close = false;
-        i32 radius = state.editor.brush.radius;
+        i32 radius = state.editor.sculptor.radius;
 
-        ChunkPosition target_position = get_block_looking_at(&state.chunk, state.camera, state.editor.brush.range, &hit);
+        ChunkPosition target_position = get_block_looking_at(&chunk, state.camera, state.editor.sculptor.range, &hit);
         if (!hit) {
-            break;
+            continue;
         }
 
-        v3 centre = state.chunk.position + as_floats(target_position);
+        v3 centre = chunk.position + as_floats(target_position);
 
         if (length(state.camera.position - centre) < 1.5 * (f32) radius) {
             too_close = true;
         }
 
-        i32 start_offset = -state.editor.brush.radius;
+        i32 start_offset = -state.editor.sculptor.radius;
         i32 end_offset = -start_offset;
 
         for (i32 z = start_offset; z <= end_offset; z++) {
@@ -427,12 +425,12 @@ void update_and_draw_editor(f32 delta_time) {
         }
 
         if(MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::pressed) {
-            set_block_radius(&state.chunk, target_position, BlockType::AIR, radius);
-            cooldown_timer = state.editor.brush.cooldown;
+            set_block_radius(&chunk, target_position, BlockType::AIR, radius);
+            cooldown_timer = state.editor.sculptor.cooldown;
         }
         else if(MOUSE.buttons[GLFW_MOUSE_BUTTON_2] == InputState::pressed) {
-            set_block_radius(&state.chunk, target_position, BlockType::BRICK, radius);
-            cooldown_timer = state.editor.brush.cooldown;
+            set_block_radius(&chunk, target_position, BlockType::BRICK, radius);
+            cooldown_timer = state.editor.sculptor.cooldown;
         }
     }
 
@@ -464,15 +462,25 @@ void update_and_draw_editor(f32 delta_time) {
             }
        
             {
-                ImGui::SeparatorText("Chunk");
+                ImGui::SeparatorText("Chunk generation");
                 ImGui::SliderFloat("Cutoff", &state.noise.cutoff, 0, 1);
                 ImGui::SliderFloat("Frequency", &state.noise.frequency, 0, 0.4);
-         
-                if(ImGui::Button("Regenerate")) {
-                    reset_mesh(&state.chunk.mesh);
-                    generate_blocks(&state.chunk);
-                    generate_mesh(&state.chunk);
-                    upload_mesh(&state.chunk.mesh);
+            }
+
+            {
+                ImGui::SeparatorText("Chunk list");
+                for (i64 i = 0; i < state.chunks.len; i++) {
+                    Chunk *chunk = &state.chunks[i];
+
+                    ImGui::PushID(i);
+
+                    if(ImGui::Button("TP")) {
+                        chunk->position = as_floats(world_to_chunk_position(state.camera.position));
+                    }
+
+                    ImGui::InputFloat3("Position", &chunk->position[0]);
+                    ImGui::InputFloat3("Size", &chunk->size[0]);
+                    ImGui::PopID();
                 }
             }
         
@@ -481,10 +489,31 @@ void update_and_draw_editor(f32 delta_time) {
     
         {
             ImGui::Begin("Tools");
-            ImGui::SeparatorText("Chunk Brush");
-            ImGui::SliderInt("Range", &state.editor.brush.range, 10, 200);
-            ImGui::SliderInt("Radius", &state.editor.brush.radius, 1, 10);
-            ImGui::SliderFloat("Cooldown", &state.editor.brush.cooldown, 0, 0.5);
+
+            ImGui::SeparatorText("Chunk builder");
+
+            static struct {
+                v3i position = {0, 0, 0};
+                v3i size = {50, 50, 50};
+            } builder;  
+
+            ImGui::InputInt3("Position", &builder.position[0]);
+            ImGui::InputInt3("Size", &builder.size[0]);
+
+            if(ImGui::Button("Build")) {
+                Chunk *chunk = push(&state.chunks);
+                *chunk = new_chunk(builder.position, builder.size);
+
+                generate_blocks(chunk);
+                generate_mesh(chunk);
+                upload_mesh(&chunk->mesh);
+            }
+
+            ImGui::SeparatorText("Sculptor");
+            ImGui::SliderInt("Range", &state.editor.sculptor.range, 10, 200);
+            ImGui::SliderInt("Radius", &state.editor.sculptor.radius, 1, 10);
+            ImGui::SliderFloat("Cooldown", &state.editor.sculptor.cooldown, 0, 0.5);
+
             ImGui::End();
         }
 
@@ -532,14 +561,15 @@ void update_and_draw_editor(f32 delta_time) {
     }
 }
 
-
-Chunk new_chunk(v3 position) {
-    i64 size = CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_DEPTH;
+Chunk new_chunk(v3i position, v3i size) {
+    i64 blocks = size.x * size.y * size.z;
 
     return Chunk {
-        .position = position,
-        .mesh = new_mesh(position, size * 6),
-        .blocks = mem_alloc<BlockType>(size)
+        .dirty = false,
+        .position = as_floats(position),
+        .size = as_floats(size),
+        .mesh = new_mesh(as_floats(position), blocks * 6),
+        .blocks = mem_alloc<BlockType>(blocks)
     };
 }
 
@@ -551,11 +581,11 @@ void generate_mesh(Chunk *chunk) {
             continue;
         }
 
-        ChunkPosition chunk_position = block_index_to_chunk_position(i);
+        ChunkPosition chunk_position = block_index_to_chunk_position(chunk, i);
         v3 position = as_floats(chunk_position);
 
-        // v4 colour = {0.8, position.y / (f32) CHUNK_HEIGHT, 0.3, 1};
-        v4 colour = WHITE;
+        v4 colour = {0.8, position.y / (f32) chunk->size.y, 0.3, 1};
+        // v4 colour = WHITE;
 
         BlockType up    = get_block_neighbour(chunk, chunk_position, {0, 1, 0});
         BlockType down  = get_block_neighbour(chunk, chunk_position, {0, -1, 0});
@@ -682,9 +712,9 @@ void generate_blocks(Chunk *chunk) {
 
     i64 index = 0;
 
-    for (i64 z = 0; z < CHUNK_DEPTH; z++) {
-        for (i64 y = 0; y < CHUNK_HEIGHT; y++) {
-            for (i64 x = 0; x < CHUNK_WIDTH; x++) {
+    for (i64 z = 0; z < chunk->size.z; z++) {
+        for (i64 y = 0; y < chunk->size.y; y++) {
+            for (i64 x = 0; x < chunk->size.x; x++) {
                 f32 n = noise.GetNoise((f32) x, (f32) y, (f32) z);
                     
                 if (n > state.noise.cutoff) {
@@ -698,7 +728,7 @@ void generate_blocks(Chunk *chunk) {
 }
 
 bool set_block(Chunk *chunk, ChunkPosition position, BlockType block) {
-    i32 index = chunk_position_to_block_index(position);
+    i32 index = chunk_position_to_block_index(chunk, position);
 
     if (index < 0 || index >= chunk->blocks.len) {
         return false;
@@ -715,23 +745,29 @@ void set_block_radius(Chunk *chunk, ChunkPosition centre, BlockType block, i32 r
                 ChunkPosition block_position = centre + v3i{x, y, z};
                  
                 if (length(as_floats(block_position) - as_floats(centre)) <= (f32) radius) {
-                    set_block(&state.chunk, block_position, block);
+                    set_block(chunk, block_position, block);
                 }
             }
         }
     }
 }
 
-ChunkPosition block_index_to_chunk_position(i64 index) {
-    i64 x = index % CHUNK_WIDTH;
-    i64 y = (index / CHUNK_DEPTH) % CHUNK_HEIGHT;
-    i64 z = index / (CHUNK_HEIGHT * CHUNK_DEPTH);
+ChunkPosition block_index_to_chunk_position(Chunk *chunk, i64 index) {
+    v3i size = {
+        (i32) chunk->size.x,
+        (i32) chunk->size.y,
+        (i32) chunk->size.z,
+    };
 
-    return {(i32) x, (i32) y, (i32) z};
+    i32 x = index % size.x;
+    i32 y = (index / size.z) % size.y;
+    i32 z = index / (size.y * size.z);
+
+    return {x, y, z};
 }
 
-i32 chunk_position_to_block_index(ChunkPosition position) {
-    return position.x + (CHUNK_WIDTH * position.y) + (CHUNK_WIDTH * CHUNK_HEIGHT * position.z);
+i32 chunk_position_to_block_index(Chunk *chunk, ChunkPosition position) {
+    return position.x + (chunk->size.x * position.y) + (chunk->size.x * chunk->size.y * position.z);
 }
 
 BlockType get_block_neighbour(Chunk *chunk, ChunkPosition position, v3i offset) {
@@ -741,11 +777,11 @@ BlockType get_block_neighbour(Chunk *chunk, ChunkPosition position, v3i offset) 
         return BlockType::AIR;
     }
 
-    if(neighbour.x >= CHUNK_WIDTH || neighbour.y >= CHUNK_HEIGHT || neighbour.z >= CHUNK_DEPTH) {
+    if(neighbour.x >= chunk->size.x || neighbour.y >= chunk->size.y || neighbour.z >= chunk->size.z) {
         return BlockType::AIR;
     }
 
-    i64 neighbour_index = chunk_position_to_block_index(neighbour);
+    i64 neighbour_index = chunk_position_to_block_index(chunk, neighbour);
     return chunk->blocks[neighbour_index];
 }
 
@@ -755,13 +791,14 @@ ChunkPosition get_block_looking_at(Chunk *chunk, Camera camera, i32 range, bool 
 
     for (i64 i = 0; i < range; i++) {
         v3 check_position = state.camera.position + (forward * f32(i * BLOCK_SIZE));
+        v3 delta_position = check_position - chunk->position;
 
-        if (check_position.x >= chunk->position.x && check_position.x < chunk->position.x + CHUNK_WIDTH &&
-            check_position.y >= chunk->position.y && check_position.y < chunk->position.y + CHUNK_HEIGHT &&
-            check_position.z >= chunk->position.z && check_position.z < chunk->position.z + CHUNK_DEPTH) {
+        if (delta_position.x >= 0 && delta_position.x < chunk->size.x &&
+            delta_position.y >= 0 && delta_position.y < chunk->size.y &&
+            delta_position.z >= 0 && delta_position.z < chunk->size.z) {
 
-            ChunkPosition chunk_position = world_to_chunk_position(check_position);
-            i32 index = chunk_position_to_block_index(chunk_position);
+            ChunkPosition chunk_position = world_to_chunk_position(delta_position);
+            i32 index = chunk_position_to_block_index(chunk, chunk_position);
 
             if (chunk->blocks[index] != BlockType::AIR) {
                 *hit = true;

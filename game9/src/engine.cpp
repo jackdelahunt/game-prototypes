@@ -411,7 +411,7 @@ f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
 // Mesh API
 Mesh new_mesh(v3 position, i64 quad_count);
 MeshQuad *push_quad(Mesh *mesh, v3 positions[4], v3 normals[4], v4 color, v2 uvs[4], v2 normal_uvs[4]);
-void draw_mesh(Renderer *renderer, Mesh *mesh);
+void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position);
 void reset_mesh(Mesh *mesh);
 void upload_mesh(Mesh *mesh);
 
@@ -1370,7 +1370,11 @@ MeshQuad *push_quad(Mesh *mesh, v3 positions[4], v3 normals[4], v4 color, v2 uvs
     return quad;
 }
 
-void draw_mesh(Renderer *renderer, Mesh *mesh) {
+void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position) {
+    m4 model_matrix = HMM_M4D(1.0f);
+    model_matrix = HMM_MulM4(model_matrix, HMM_Translate(position));
+    m4 mvp_matrix = HMM_MulM4(renderer->view_projection_matrix, model_matrix);
+
     glUseProgram(renderer->mesh_shader.id);
 
     glActiveTexture(GL_TEXTURE0);
@@ -1380,7 +1384,7 @@ void draw_mesh(Renderer *renderer, Mesh *mesh) {
         glGetUniformLocation(renderer->mesh_shader.id, "mvp"),
         1,
         false,
-        (f32 *) &renderer->view_projection_matrix.Columns[0]
+        (f32 *) &mvp_matrix.Columns[0]
     );
 
     glUniform4f(
