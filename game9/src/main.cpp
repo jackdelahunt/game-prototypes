@@ -4,6 +4,7 @@
 #include "engine.cpp"
 
 #include <cmath>
+#include <cstring>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -14,8 +15,8 @@
 #include <fstream>
 #include <string>
 
-// Total: 35:30
-// Started: 17:30
+// Total: 37:00
+// Started: 00:00
 
 #define ALLOW_EDITOR 1
 #define MAX_ENTITIES 2000
@@ -168,11 +169,11 @@ int main() {
                 .cooldown = 0.075,
             },
         },
-        .gravity = 11,
+        .gravity = 0.5,
         .game_running = false,
         .noise = {
             .cutoff = 0.1,
-            .frequency = 0.05
+            .frequency = 0.006
         },
     };
 
@@ -231,13 +232,13 @@ int main() {
 
     spawn_entity(Entity {
         .flags = EF_PLAYER | EF_GRAVITY_AFFECTED,
-        .position = {12, 10, 12},
-        .size = {1, 2, 1}
+        .position = {-25, 75, 25},
+        .size = {1.5, 0.5, 2}
     });
 
 
     Chunk *chunk = push(&state.chunks);
-    *chunk = new_chunk({}, {50, 50, 50});
+    *chunk = new_chunk({}, {30, 100, 30});
 
     generate_blocks(chunk);
     generate_mesh(chunk);
@@ -286,7 +287,7 @@ int main() {
 }
 
 void update_and_draw(f32 delta_time) {
-    draw_cube(&state.renderer, {}, {1, 1}, alpha(RED, 0.5));
+    draw_cube(&state.renderer, {}, {1, 1, 1}, {}, alpha(RED, 0.5));
 
     if (KEYS[GLFW_KEY_F5] == InputState::DOWN) {
         state.game_running = !state.game_running; 
@@ -356,10 +357,6 @@ void update_and_draw(f32 delta_time) {
                     input.x += 1;
                 }
                 
-                if (KEYS[GLFW_KEY_SPACE] == InputState::DOWN) {
-                    input.y += 1;
-                }
-                
                 if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
                     input.z += 1;
                 }
@@ -370,21 +367,37 @@ void update_and_draw(f32 delta_time) {
             
                 const f32 SPEED = 1;
                 const f32 JUMP = 10;
+                const f32 LIFT = 0.1;
     
                 v3 up = {0, 1, 0};
                 v3 forward = get_forward_direction(entity.rotation);
                 v3 right = get_right_direction(entity.rotation);
 
-                // remove y axis component so we dont fly upwards by looking down
-                v3 forward_plane = norm(v3{forward.x, 0, forward.z});
-                v3 right_plane = norm(v3{right.x, 0, right.z});
-    
-                entity.velocity += right_plane * (input.x * SPEED);
-                entity.velocity += up * (input.y * JUMP);
-                entity.velocity += forward_plane * (input.z * SPEED);
+                f32 air_speed = length(v3{entity.velocity.x, entity.velocity.y, entity.velocity.z});
+                f32 pitch = forward.y;
+                f32 pitch_influence = 0;
 
-                f32 drag = 0.2;
-                entity.velocity -= entity.velocity * v3{drag, 0, drag};
+                if (pitch < 0) {
+                    pitch_influence = 0;
+                } else if (pitch < 0.5) {
+                    pitch_influence = pitch * 2;
+                } else if (pitch < 1) {
+                    pitch_influence = 1 - pitch;
+                }
+
+                entity.velocity.y += pitch_influence * air_speed  * LIFT;
+
+                u8 buffer[128] = {};
+
+                memset(buffer, 0, 128);
+                i64 len = sprintf((char *) buffer, "%.2f %.2f %.2f", entity.velocity.x, entity.velocity.y, entity.velocity.z);
+                string s = make_slice(buffer, len);
+                draw_text(&state.renderer, s, entity.position + v3{-8, 2, 0}, 1, BLACK);
+
+                memset(buffer, 0, 128);
+                len = sprintf((char *) buffer, "%.2f %.2f %.2f", pitch, pitch_influence, air_speed);
+                s = make_slice(buffer, len);
+                draw_text(&state.renderer, s, entity.position + v3{-8, -2, 0}, 1, BLACK);
 
                 if (state.window.mouse_captured) {
                     f32 sensitivity = 0.1;
@@ -401,7 +414,7 @@ void update_and_draw(f32 delta_time) {
             }
         }
 
-        draw_cube(&state.renderer, entity.position, entity.size, WHITE);
+        draw_cube(&state.renderer, entity.position, entity.size, entity.rotation, WHITE);
     }
 }
 
@@ -447,8 +460,16 @@ void physics(f32 delta_time) {
         Entity* entity = &state.entities[i];
 
         if (BIT_SET(entity->flags, EF_GRAVITY_AFFECTED)) {
-            entity->velocity.y -= state.gravity * delta_time;
+            entity->velocity.y -= state.gravity;
         }
+
+        const f32 MAX_SPEED = 50;
+        if (length(entity->velocity) > MAX_SPEED) {
+            entity->velocity = norm(entity->velocity) * MAX_SPEED;
+        }
+
+        // v3 drag = -(entity->velocity * entity->velocity * 0.0007);
+        // entity->velocity += drag;
 
         entity->position += entity->velocity * delta_time;
 
@@ -473,7 +494,6 @@ void physics(f32 delta_time) {
                     continue;
                 }
 
-                print(info.overlap);
                 if (info.overlap.x < info.overlap.y && info.overlap.x < info.overlap.z) {
                     entity->position.x -= sign(info.distance.x) * info.overlap.x;
                     entity->velocity.x = 0;
@@ -531,7 +551,7 @@ void update_and_draw_editor(f32 delta_time) {
                                 cube_colour = RED;
                             }
     
-                            draw_cube(&state.renderer, offset_position, {BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE}, alpha(cube_colour, 0.4));
+                            draw_cube(&state.renderer, offset_position, {BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE}, {}, alpha(cube_colour, 0.4));
                         }
                     }
                 }

@@ -415,7 +415,7 @@ void draw_imgui_frame();
 // Immediate rendering API
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
-void draw_cube(Renderer *renderer, v3 position, v3 size, v4 color);
+void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 color);
 void draw_sprite(Renderer *renderer, Sprite *sprite, v3 position, v2 size, f32 rotation, v4 color);
 void draw_animated_sprite(Renderer *renderer, Sprite *sprite, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
 void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color);
@@ -1055,7 +1055,7 @@ void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color) {
     push_quad(renderer, position, size, {}, color, uvs, {}, DrawType::CIRCLE);
 }
 
-void draw_cube(Renderer *renderer, v3 position, v3 size, v4 color) {
+void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 color) {
     v2 uvs[4] = {
         {0, 1},
         {1, 1},
@@ -1063,12 +1063,12 @@ void draw_cube(Renderer *renderer, v3 position, v3 size, v4 color) {
         {0, 0},
     };
 
-    push_quad(renderer, position + v3{-0.5,    0,    0}, {size.z, size.y}, {  0, -90, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // left
-    push_quad(renderer, position + v3{   0,    0, -0.5}, {size.x, size.y}, {  0,   0, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // front
-    push_quad(renderer, position + v3{ 0.5,    0,    0}, {size.z, size.y}, {  0,  90, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // right
-    push_quad(renderer, position + v3{   0,  0.5,    0}, {size.x, size.z}, {-90,   0, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // top
-    push_quad(renderer, position + v3{   0, -0.5,    0}, {size.x, size.z}, { 90,   0, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // bottom
-    push_quad(renderer, position + v3{   0,    0,  0.5}, {size.x, size.y}, {  0, 180, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // back
+    push_quad(renderer, position + (v3{-0.5,    0,    0} * size), {size.z, size.y}, v3{  0, -90, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // left
+    push_quad(renderer, position + (v3{   0,    0, -0.5} * size), {size.x, size.y}, v3{  0,   0, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // front
+    push_quad(renderer, position + (v3{ 0.5,    0,    0} * size), {size.z, size.y}, v3{  0,  90, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // right
+    push_quad(renderer, position + (v3{   0,  0.5,    0} * size), {size.x, size.z}, v3{-90,   0, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // top
+    push_quad(renderer, position + (v3{   0, -0.5,    0} * size), {size.x, size.z}, v3{ 90,   0, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // bottom
+    push_quad(renderer, position + (v3{   0,    0,  0.5} * size), {size.x, size.y}, v3{  0, 180, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // back
 }
 
 void draw_sprite(Renderer *renderer, Sprite *sprite, v3 position, v2 size, f32 rotation, v4 color) {
@@ -1203,7 +1203,7 @@ void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 c
         // quad needs position to be centre of quad so just convert that here
         v2 quad_centered_position = translated_position + (scaled_size * 0.5f);
 
-        push_quad(renderer, v3{quad_centered_position.x, quad_centered_position.y, 0}, scaled_size, {}, color, glyph->uvs, {}, DrawType::TEXT);
+        push_quad(renderer, v3{quad_centered_position.x, quad_centered_position.y, position.z}, scaled_size, {}, color, glyph->uvs, {}, DrawType::TEXT);
    }
 
     mem_free(glyphs);
@@ -1241,10 +1241,10 @@ Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color,
 
     m4 model_matrix = HMM_M4D(1.0f);
     model_matrix = HMM_MulM4(model_matrix, HMM_Translate(position));
-    model_matrix = HMM_MulM4(model_matrix, HMM_Scale({size.x, size.y, 1}));
     model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.x * HMM_DegToRad, {1, 0, 0}));
     model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.y * HMM_DegToRad, {0, 1, 0}));
     model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.z * HMM_DegToRad, {0, 0, 1}));
+    model_matrix = HMM_MulM4(model_matrix, HMM_Scale({size.x, size.y, 1}));
                 
     m4 mvp_matrix = HMM_MulM4(renderer->view_projection_matrix, model_matrix);
 
