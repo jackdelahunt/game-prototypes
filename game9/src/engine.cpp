@@ -146,6 +146,15 @@ void poll_inputs() {
     glfwPollEvents();
 
     MOUSE.delta = MOUSE.position - last_mouse_position;
+
+    // max the mouse delta vector can be, stops huge spikes mouse input 
+    // when mouse changes capture like at start of game
+    // - 02/06/25
+    f32 max_delta = 75;
+         
+    if (length(MOUSE.delta) > max_delta) {
+        MOUSE.delta = norm(MOUSE.delta) * max_delta;
+    }
 }
 
 void swap_buffers(Window *window) {
@@ -244,11 +253,17 @@ struct Light {
     f32 intensity;
 };
 
+enum class CameraMode {
+    FIRST_PERSON,
+    THIRD_PERSON
+};
+
 struct Camera {
+    CameraMode mode;
     f32 fov;
     v3 position;
     v3 rotation;
-    f32 orthographic_size;
+    v3 target;
     f32 near_plane;
     f32 far_plane;
 };
@@ -374,6 +389,9 @@ v4 SUN_YELLOW       = {1, 0.95, 0.5, 1};
 v3 get_forward_direction(Camera camera);
 v3 get_right_direction(Camera camera);
 v3 get_up_direction(Camera camera);
+v3 get_forward_direction(v3 rotation);
+v3 get_right_direction(v3 rotation);
+v3 get_up_direction(v3 rotation);
 
 // Renderer init API
 bool init_renderer(Renderer *renderer, Window *window);
@@ -390,7 +408,7 @@ bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel
 
 // Renderer frame API
 void new_frame(Renderer *renderer, Window *window, Camera camera);
-void draw_frame(Renderer *renderer, Window *window, Camera camera);
+void draw_frame(Renderer *renderer, Window *window);
 void new_imgui_frame();
 void draw_imgui_frame();
 
@@ -457,6 +475,27 @@ v3 get_right_direction(Camera camera) {
 }
 
 v3 get_up_direction(Camera camera) {
+    return {0, 1, 0};
+}
+
+v3 get_forward_direction(v3 rotation) {
+    // pitch    - x
+    // yaw      - y
+    // roll     - z
+    v3 direction {
+        .x = sin(rotation.y * HMM_DegToRad) * cos(rotation.x * HMM_DegToRad),
+        .y = sin(rotation.x * HMM_DegToRad),
+        .z = cos(rotation.y * HMM_DegToRad) * cos(rotation.x * HMM_DegToRad)
+    };
+
+    return norm(direction);
+}
+
+v3 get_right_direction(v3 rotation) {
+    return HMM_Cross(get_up_direction(rotation), get_forward_direction(rotation));
+}
+
+v3 get_up_direction(v3 rotation) {
     return {0, 1, 0};
 }
 
@@ -959,7 +998,7 @@ void new_frame(Renderer *renderer, Window *window, Camera camera) {
     new_imgui_frame();
 }
 
-void draw_frame(Renderer *renderer, Window *window, Camera camera) {
+void draw_frame(Renderer *renderer, Window *window) {
     glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
 
@@ -1559,12 +1598,18 @@ v2 screen_position_to_ndc(v2 screen_position, Window *window) {
 }
 
 m4 get_view_matrix(Camera camera) {
-    v3 forward = get_forward_direction(camera);
+    v3 target = {};
+
+    if (camera.mode == CameraMode::FIRST_PERSON) {
+        target = camera.position + get_forward_direction(camera);
+    } else {
+        target = camera.target;
+    }
 
     // FIXME: having the up always be y = 1 is probably wrong - 04/06/25
     m4 view_matrix = HMM_LookAt_LH(
         camera.position, 
-        camera.position + forward, 
+        target, 
         {0, 1, 0}
     );
 
@@ -1572,17 +1617,6 @@ m4 get_view_matrix(Camera camera) {
 }
 
 m4 get_projection_matrix(Camera camera, f32 aspect) {
-#if 0 
-    return HMM_Orthographic_LH_NO(
-        -camera.orthographic_size * aspect,  // left
-         camera.orthographic_size * aspect,  // right
-        -camera.orthographic_size,           // bottom
-         camera.orthographic_size,           // top
-         camera.near_plane, 
-         camera.far_plane 
-    );
-#endif
-
     return HMM_Perspective_LH_NO(camera.fov * HMM_DegToRad, aspect, camera.near_plane, camera.far_plane);
 }
 

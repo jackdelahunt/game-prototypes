@@ -14,8 +14,8 @@
 #include <fstream>
 #include <string>
 
-// Total: 34:30
-// Started: 15:30
+// Total: 35:30
+// Started: 17:30
 
 #define ALLOW_EDITOR 1
 #define MAX_ENTITIES 2000
@@ -36,7 +36,7 @@ struct Entity {
     // entity
     v3 position;
     v3 size;
-    f32 rotation;
+    v3 rotation;
     v3 velocity;
 
     // rendering
@@ -103,7 +103,7 @@ struct State {
     StackArray<Chunk, 10> chunks;
 
     f32 gravity;
-    bool creative;
+    bool game_running;
 
     struct {
         f32 cutoff;
@@ -144,10 +144,9 @@ Sprite *get_sprite(SpriteHandle handle);
 int main() {
     state = State {
         .camera = {
+            .mode = CameraMode::FIRST_PERSON,
             .fov = 110,
             .position = {10, 10, -20},
-            .rotation = {0, 0, 0},
-            .orthographic_size = 5,
             .near_plane = 0.1f,
             .far_plane = 1000.0f,
         },
@@ -170,7 +169,7 @@ int main() {
             },
         },
         .gravity = 11,
-        .creative = true,
+        .game_running = false,
         .noise = {
             .cutoff = 0.1,
             .frequency = 0.05
@@ -231,10 +230,18 @@ int main() {
     }
 
     spawn_entity(Entity {
-        .flags = EF_PLAYER,
-        .position = {0, 0, 0},
+        .flags = EF_PLAYER | EF_GRAVITY_AFFECTED,
+        .position = {12, 10, 12},
         .size = {1, 2, 1}
     });
+
+
+    Chunk *chunk = push(&state.chunks);
+    *chunk = new_chunk({}, {50, 50, 50});
+
+    generate_blocks(chunk);
+    generate_mesh(chunk);
+    upload_mesh(&chunk->mesh);
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
         f64 current_time    = state.time;
@@ -268,7 +275,7 @@ int main() {
             draw_mesh(&state.renderer, &chunk.mesh, chunk.position); 
         }
 
-        draw_frame(&state.renderer, &state.window, state.camera); 
+        draw_frame(&state.renderer, &state.window); 
 
         swap_buffers(&state.window);
     }
@@ -281,76 +288,64 @@ int main() {
 void update_and_draw(f32 delta_time) {
     draw_cube(&state.renderer, {}, {1, 1}, alpha(RED, 0.5));
 
-    // update camera rotation (looking at)
-    if (state.window.mouse_captured) {
-        f32 sensitivity = 0.1;
-        v2 mouse_input = MOUSE.delta;
+    if (KEYS[GLFW_KEY_F5] == InputState::DOWN) {
+        state.game_running = !state.game_running; 
+    }
 
-        if(length(mouse_input) != 0) {
-            // max the mouse delta vector can be, stops huge spikes mouse input 
-            // when mouse changes capture like at start of game
-            // - 02/06/25
-            f32 max_delta = 75;
+    if (!state.game_running) { // update editor camera
+        state.camera.mode = CameraMode::FIRST_PERSON;
 
-            if (length(mouse_input) > max_delta) {
-                mouse_input = norm(mouse_input) * max_delta;
-            }
+        v3 input = {};
     
-            state.camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
-            state.camera.rotation.x = clamp(-90, state.camera.rotation.x, 90);
+        if (KEYS[GLFW_KEY_A] == InputState::PRESSED) {
+            input.x -= 1;
+        }
+            
+        if (KEYS[GLFW_KEY_D] == InputState::PRESSED) {
+            input.x += 1;
+        }
+                
+        if (KEYS[GLFW_KEY_SPACE] == InputState::PRESSED) {
+            input.y += 1;
+        }
+                
+        if (KEYS[GLFW_KEY_LEFT_SHIFT] == InputState::PRESSED) {
+            input.y -= 1;
+        }
+            
+        if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
+            input.z += 1;
+        }
+         
+        if (KEYS[GLFW_KEY_S] == InputState::PRESSED) {
+            input.z -= 1;
+        }
+         
+        const f32 FLY_SPEED = 15;
+ 
+        v3 forward = get_forward_direction(state.camera);
+        v3 up = {0, 1, 0};
+        v3 right = get_right_direction(state.camera);
+ 
+        state.camera.position += right * (input.x * FLY_SPEED * delta_time);
+        state.camera.position += up * (input.y * FLY_SPEED * delta_time);
+        state.camera.position += forward * (input.z * FLY_SPEED * delta_time);
+
+        // update camera rotation (looking at)
+        if (state.window.mouse_captured) {
+            f32 sensitivity = 0.1;
+            v2 mouse_input = MOUSE.delta;
+    
+            if(length(mouse_input) != 0) {
+                state.camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
+                state.camera.rotation.x = clamp(-90, state.camera.rotation.x, 90);
+            }
         }
     }
 
     for (Entity &entity : state.entities) {
-        if (BIT_SET(entity.flags, EF_PLAYER)) {
-
-            if (state.creative) {
-                UNSET_BIT(entity.flags, EF_GRAVITY_AFFECTED);
-            }
-            else {
-                SET_BIT(entity.flags, EF_GRAVITY_AFFECTED);
-            }
-
-            if (state.creative) { // creative mode movement
-                v3 input = {};
-    
-                if (KEYS[GLFW_KEY_A] == InputState::PRESSED) {
-                    input.x -= 1;
-                }
-            
-                if (KEYS[GLFW_KEY_D] == InputState::PRESSED) {
-                    input.x += 1;
-                }
-                
-                if (KEYS[GLFW_KEY_SPACE] == InputState::PRESSED) {
-                    input.y += 1;
-                }
-                
-                if (KEYS[GLFW_KEY_LEFT_SHIFT] == InputState::PRESSED) {
-                    input.y -= 1;
-                }
-            
-                if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
-                    input.z += 1;
-                }
-            
-                if (KEYS[GLFW_KEY_S] == InputState::PRESSED) {
-                    input.z -= 1;
-                }
-            
-                const f32 FLY_SPEED = 15;
-    
-                v3 forward = get_forward_direction(state.camera);
-                v3 up = {0, 1, 0};
-                v3 right = get_right_direction(state.camera);
-    
-                entity.velocity = {};
- 
-                entity.velocity += right * (input.x * FLY_SPEED);
-                entity.velocity += up * (input.y * FLY_SPEED);
-                entity.velocity += forward * (input.z * FLY_SPEED);
-            }
-            else { // normal mode movement
+        if (state.game_running) {
+            if (BIT_SET(entity.flags, EF_PLAYER)) {
                 v3 input = {};
     
                 if (KEYS[GLFW_KEY_A] == InputState::PRESSED) {
@@ -376,31 +371,37 @@ void update_and_draw(f32 delta_time) {
                 const f32 SPEED = 1;
                 const f32 JUMP = 10;
     
-                v3 forward = get_forward_direction(state.camera);
                 v3 up = {0, 1, 0};
-                v3 right = get_right_direction(state.camera);
+                v3 forward = get_forward_direction(entity.rotation);
+                v3 right = get_right_direction(entity.rotation);
+
+                // remove y axis component so we dont fly upwards by looking down
+                v3 forward_plane = norm(v3{forward.x, 0, forward.z});
+                v3 right_plane = norm(v3{right.x, 0, right.z});
     
-                entity.velocity += right * (input.x * SPEED);
+                entity.velocity += right_plane * (input.x * SPEED);
                 entity.velocity += up * (input.y * JUMP);
-                entity.velocity += forward * (input.z * SPEED);
+                entity.velocity += forward_plane * (input.z * SPEED);
 
                 f32 drag = 0.2;
                 entity.velocity -= entity.velocity * v3{drag, 0, drag};
-            }
 
-            state.camera.position = entity.position + (entity.size * v3{0, 0.25, 0});
+                if (state.window.mouse_captured) {
+                    f32 sensitivity = 0.1;
+                    v2 mouse_input = MOUSE.delta;
+            
+                    if(length(mouse_input) != 0) { 
+                        entity.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
+                    }
+                }
 
-            if (KEYS[GLFW_KEY_F] == InputState::DOWN) {
-                spawn_entity(Entity {
-                    .position = entity.position + v3{0, 5, 0} + (get_forward_direction(state.camera) * 5),
-                    .size = V_BLOCK_SIZE,
-                });
+                state.camera.mode = CameraMode::THIRD_PERSON;
+                state.camera.position = entity.position - (forward * 5) + v3{0, 2, 0};
+                state.camera.target = entity.position + v3{0, 1, 0};
             }
         }
 
-        if (!BIT_SET(entity.flags, EF_PLAYER)) {
-            draw_cube(&state.renderer, entity.position, entity.size, WHITE);
-        }
+        draw_cube(&state.renderer, entity.position, entity.size, WHITE);
     }
 }
 
@@ -438,6 +439,10 @@ CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size)
 }
 
 void physics(f32 delta_time) {
+    if (!state.game_running) {
+        return;
+    }
+
     for (int i = 0; i < state.entities.len; i++) {
         Entity* entity = &state.entities[i];
 
@@ -574,16 +579,16 @@ void update_and_draw_editor(f32 delta_time) {
 
             {
                 ImGui::SeparatorText("World");
-                ImGui::Checkbox("Creative", &state.creative);
+                ImGui::Checkbox("Running", &state.game_running);
                 ImGui::SliderFloat("Gravity", &state.gravity, 0, 20);
             }
 
             {
                 ImGui::SeparatorText("Camera");
+                state.camera.mode == CameraMode::FIRST_PERSON ? ImGui::Text("Mode: FP") : ImGui::Text("Mode: TP");
                 ImGui::SliderFloat("FOV", &state.camera.fov, 1, 360);
                 ImGui::SliderFloat3("Camera position", &state.camera.position[0], -50, 50);
                 ImGui::SliderFloat3("Camera rotation", &state.camera.rotation[0], -360, 360);
-                ImGui::SliderFloat("Orthographic size", &state.camera.orthographic_size, 10, 2000);
                 ImGui::SliderFloat4("Clear colour", &state.renderer.clear_colour[0], 0, 1);
                 ImGui::SliderFloat4("Ambient light", &state.renderer.ambient_light[0], 0, 1);
                 ImGui::SliderFloat4("Sun colour", &state.renderer.sun_colour[0], 0, 1);
