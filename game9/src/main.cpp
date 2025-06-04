@@ -15,17 +15,11 @@
 #include <string>
 
 // Total: 30:00
-// Started: 01:30
+// Started: 09:30
 
-// Performance (20 * 20 * 20):
-// start                            == ~21 fps  - 48,000 quads
-// no block unless touching air     == ~78 fps  - 13,008 quads
-// no face unless touching air      == ~350 fps - 2,400 quads
-
-// Profilling (150 * 150 * 150)
-// .cutoff = 0.31, .frequency = 0.05
-// profile_1 = ~17 fps
-// profile_2 = ~35 fps
+// chunk collision
+// gravity
+// toggle free cam
 
 #define ALLOW_EDITOR 1
 #define MAX_ENTITIES 2000
@@ -45,9 +39,9 @@ struct Entity {
 
     // entity
     v3 position;
-    v2 size;
+    v3 size;
     f32 rotation;
-    v2 velocity;
+    v3 velocity;
 
     // rendering
     v4 color;
@@ -119,11 +113,6 @@ struct State {
     StackArray<Entity, MAX_ENTITIES> entities;
 } state = {};
 
-struct CollisionIterator {
-    Entity* entity;
-    i64 index;
-};
-
 void update_and_draw(f32 delta_time);
 void physics(f32 delta_time);
 void update_and_draw_editor(f32 delta_time);
@@ -147,9 +136,6 @@ void from_json(const json& j, Entity& entity);
 void backup_scene();
 void save_scene(State *state);
 void load_scene(State *state);
-
-CollisionIterator new_collision_iterator(Entity *entity);
-Entity *next(CollisionIterator *iterator);
 
 Sprite *get_sprite(SpriteHandle handle);
 
@@ -239,6 +225,12 @@ int main() {
         srand(time(NULL));
     }
 
+    spawn_entity(Entity {
+        .flags = EF_PLAYER,
+        .position = {0, 0, 0},
+        .size = {1, 1, 1}
+    });
+
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
         f64 current_time    = state.time;
         f64 new_time        = glfwGetTime();
@@ -254,6 +246,7 @@ int main() {
 
         poll_inputs(); 
         update_and_draw(delta_time);
+
 #if ALLOW_EDITOR
         update_and_draw_editor(delta_time); 
 #endif
@@ -281,59 +274,7 @@ int main() {
 }
 
 void update_and_draw(f32 delta_time) {
-    draw_cube(&state.renderer, {}, {1, 1}, RED);
-    draw_cube(&state.renderer, {10, 0, 0}, {1, 1}, BLUE);
-
-    { // update camera position x and z
-        v2 input = {};
-    
-        if (KEYS[GLFW_KEY_W] == InputState::pressed) {
-            input.y += 1;
-        }
-    
-        if (KEYS[GLFW_KEY_S] == InputState::pressed) {
-            input.y -= 1;
-        }
-    
-        if (KEYS[GLFW_KEY_A] == InputState::pressed) {
-            input.x -= 1;
-        }
-    
-        if (KEYS[GLFW_KEY_D] == InputState::pressed) {
-            input.x += 1;
-        }
-    
-        const f32 move_speed = 10;
-        v3 forward = get_forward_direction(state.camera);
-        v3 right = get_right_direction(state.camera);
-    
-        if(input.y != 0) {
-            state.camera.position += forward * (input.y * move_speed * delta_time);
-        }
-    
-        if(input.x != 0) {
-            state.camera.position += right * (input.x * move_speed * delta_time);
-        }
-    }
-
-    { // update camera position y 
-        f32 input = {};
-    
-        if (KEYS[GLFW_KEY_SPACE] == InputState::pressed) {
-            input += 1;
-        }
-    
-        if (KEYS[GLFW_KEY_LEFT_SHIFT] == InputState::pressed) {
-            input -= 1;
-        }
-    
-        const f32 move_speed = 10;
-
-        if(input != 0) {
-            v3 up = get_up_direction(state.camera);
-            state.camera.position += up * (input * move_speed * delta_time);
-        }
-    }
+    draw_cube(&state.renderer, {}, {1, 1}, alpha(RED, 0.5));
 
     // update camera rotation (looking at)
     if (state.window.mouse_captured) {
@@ -354,14 +295,58 @@ void update_and_draw(f32 delta_time) {
             state.camera.rotation.x = clamp(-90, state.camera.rotation.x, 90);
         }
     }
+
+    for (Entity &entity : state.entities) {
+        if (BIT_SET(entity.flags, EF_PLAYER)) {
+            v3 input = {};
+
+            if (KEYS[GLFW_KEY_A] == InputState::pressed) {
+                input.x -= 1;
+            }
+        
+            if (KEYS[GLFW_KEY_D] == InputState::pressed) {
+                input.x += 1;
+            }
+
+            if (KEYS[GLFW_KEY_SPACE] == InputState::pressed) {
+                input.y += 1;
+            }
+            
+            if (KEYS[GLFW_KEY_LEFT_SHIFT] == InputState::pressed) {
+                input.y -= 1;
+            }
+        
+            if (KEYS[GLFW_KEY_W] == InputState::pressed) {
+                input.z += 1;
+            }
+        
+            if (KEYS[GLFW_KEY_S] == InputState::pressed) {
+                input.z -= 1;
+            }
+        
+            const f32 SPEED = 15;
+            const f32 FLY_SPEED = 20;
+
+            v3 forward = get_forward_direction(state.camera);
+            v3 up = {0, 1, 0};
+            v3 right = get_right_direction(state.camera);
+
+            entity.velocity = {};
+
+            entity.velocity += right * (input.x * SPEED);
+            entity.velocity += up * (input.y * SPEED);
+            entity.velocity += forward * (input.z * SPEED);
+
+            state.camera.position = entity.position;
+        }
+    }
 }
 
 void physics(f32 delta_time) {
     for (int i = 0; i < state.entities.len; i++) {
         Entity* entity = &state.entities[i];
 
-        entity->position.x += entity->velocity.x * delta_time;
-        entity->position.y += entity->velocity.y * delta_time;
+        entity->position += entity->velocity * delta_time;
     }
 }
 
@@ -924,36 +909,6 @@ void from_json(const json& j, Entity& entity) {
     j.at("light_intensity").get_to(entity.light_intensity);
     j.at("light_radius").get_to(entity.light_radius);
 }
-
-CollisionIterator new_collision_iterator(Entity *entity) {
-    return CollisionIterator {
-        .entity = entity,
-        .index = 0,
-    };
-}
-
-Entity *next(CollisionIterator *iterator) {
-    while (iterator->index < state.entities.len) {
-        Entity *entity = iterator->entity;
-        Entity *other = &state.entities[iterator->index];
-
-        iterator->index++;
-
-        { // basic aabb collision
-            v2 distance = other->position.xy - entity->position.xy;
-            v2 distance_abs = v2{ABS(distance.x), ABS(distance.y)};
-            v2 distance_for_collision = (entity->size + other->size) * v2{0.5, 0.5};
-
-            bool collision = distance_for_collision[0] >= distance_abs[0] && distance_for_collision[1] >= distance_abs[1];
-            if (collision) {
-                return other;
-            }
-        }
-    }
-
-    return nullptr;
-}
-
 
 Sprite *get_sprite(SpriteHandle handle) {
     if(handle == SH_NONE) {

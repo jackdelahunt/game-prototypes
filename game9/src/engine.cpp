@@ -11,16 +11,12 @@
 #include "ack.cpp"
 #include "math.cpp"
 
-#define ASSERT(x) if (!(x)) __debugbreak();
-
 #define GL_CALL(x) \
     clear_gl_errors(); \
     x;\
     ASSERT(check_gl_errors());
 
 #define GL_VERIFY() ASSERT(check_gl_errors());
-
-#define SCOPE }switch(0){default:
 
 /////////////////////////////////////////////////////////////////////////////
 //////////////////////////////// @window ////////////////////////////////////
@@ -1558,6 +1554,7 @@ v2 screen_position_to_ndc(v2 screen_position, Window *window) {
 m4 get_view_matrix(Camera camera) {
     v3 forward = get_forward_direction(camera);
 
+    // FIXME: having the up always be y = 1 is probably wrong - 04/06/25
     m4 view_matrix = HMM_LookAt_LH(
         camera.position, 
         camera.position + forward, 

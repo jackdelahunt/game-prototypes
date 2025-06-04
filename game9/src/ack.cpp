@@ -12,6 +12,10 @@
 #include <string>
 #include <filesystem>
 
+#define ASSERT(x) if (!(x)) __debugbreak();
+#define BIT_SET(a, b) (a) & (b)
+#define SCOPE }switch(0){default:
+
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
