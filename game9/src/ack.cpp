@@ -13,7 +13,9 @@
 #include <filesystem>
 
 #define ASSERT(x) if (!(x)) __debugbreak();
-#define BIT_SET(a, b) (a) & (b)
+#define BIT_SET(a, b) ((a & b) != 0)
+#define SET_BIT(a, b) (a) |= (b)
+#define UNSET_BIT(a, b) (a) &= ~(b) 
 #define SCOPE }switch(0){default:
 
 typedef uint8_t u8;

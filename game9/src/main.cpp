@@ -14,12 +14,8 @@
 #include <fstream>
 #include <string>
 
-// Total: 30:00
-// Started: 09:30
-
-// chunk collision
-// gravity
-// toggle free cam
+// Total: 34:30
+// Started: 15:30
 
 #define ALLOW_EDITOR 1
 #define MAX_ENTITIES 2000
@@ -60,6 +56,7 @@ struct Editor {
     bool visable;
 
     struct {
+        bool enabled;
         i32 range;
         i32 radius;
         f32 cooldown;
@@ -70,10 +67,12 @@ enum EntityFlags {
     EF_PLAYER           = 1 << 0,
     EF_LIGHT            = 1 << 1,
     EF_ANIMATED_SPRITE  = 1 << 2,
+    EF_GRAVITY_AFFECTED = 1 << 3,
     EF_DELETE           = 1 << 16,
 };
 
 #define BLOCK_SIZE 1
+#define V_BLOCK_SIZE v3{BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE}
 
 enum class BlockType {
     AIR,
@@ -102,6 +101,9 @@ struct State {
     i64 im_quads_last_frame;
 
     StackArray<Chunk, 10> chunks;
+
+    f32 gravity;
+    bool creative;
 
     struct {
         f32 cutoff;
@@ -161,11 +163,14 @@ int main() {
         .editor = {
             .visable = false,
             .sculptor = {
+                .enabled = false,
                 .range = 50,
                 .radius = 4,
                 .cooldown = 0.075,
             },
         },
+        .gravity = 11,
+        .creative = true,
         .noise = {
             .cutoff = 0.1,
             .frequency = 0.05
@@ -228,7 +233,7 @@ int main() {
     spawn_entity(Entity {
         .flags = EF_PLAYER,
         .position = {0, 0, 0},
-        .size = {1, 1, 1}
+        .size = {1, 2, 1}
     });
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
@@ -237,7 +242,7 @@ int main() {
         f32 delta_time      = (f32) (new_time - current_time);
         state.time          = new_time;
 
-        if (KEYS[GLFW_KEY_ESCAPE] == InputState::down) {
+        if (KEYS[GLFW_KEY_ESCAPE] == InputState::DOWN) {
             glfwSetWindowShouldClose(state.window.glfw_window, GLFW_TRUE);
         }
 
@@ -298,124 +303,257 @@ void update_and_draw(f32 delta_time) {
 
     for (Entity &entity : state.entities) {
         if (BIT_SET(entity.flags, EF_PLAYER)) {
-            v3 input = {};
 
-            if (KEYS[GLFW_KEY_A] == InputState::pressed) {
-                input.x -= 1;
+            if (state.creative) {
+                UNSET_BIT(entity.flags, EF_GRAVITY_AFFECTED);
             }
-        
-            if (KEYS[GLFW_KEY_D] == InputState::pressed) {
-                input.x += 1;
+            else {
+                SET_BIT(entity.flags, EF_GRAVITY_AFFECTED);
             }
 
-            if (KEYS[GLFW_KEY_SPACE] == InputState::pressed) {
-                input.y += 1;
-            }
+            if (state.creative) { // creative mode movement
+                v3 input = {};
+    
+                if (KEYS[GLFW_KEY_A] == InputState::PRESSED) {
+                    input.x -= 1;
+                }
             
-            if (KEYS[GLFW_KEY_LEFT_SHIFT] == InputState::pressed) {
-                input.y -= 1;
+                if (KEYS[GLFW_KEY_D] == InputState::PRESSED) {
+                    input.x += 1;
+                }
+                
+                if (KEYS[GLFW_KEY_SPACE] == InputState::PRESSED) {
+                    input.y += 1;
+                }
+                
+                if (KEYS[GLFW_KEY_LEFT_SHIFT] == InputState::PRESSED) {
+                    input.y -= 1;
+                }
+            
+                if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
+                    input.z += 1;
+                }
+            
+                if (KEYS[GLFW_KEY_S] == InputState::PRESSED) {
+                    input.z -= 1;
+                }
+            
+                const f32 FLY_SPEED = 15;
+    
+                v3 forward = get_forward_direction(state.camera);
+                v3 up = {0, 1, 0};
+                v3 right = get_right_direction(state.camera);
+    
+                entity.velocity = {};
+ 
+                entity.velocity += right * (input.x * FLY_SPEED);
+                entity.velocity += up * (input.y * FLY_SPEED);
+                entity.velocity += forward * (input.z * FLY_SPEED);
             }
-        
-            if (KEYS[GLFW_KEY_W] == InputState::pressed) {
-                input.z += 1;
+            else { // normal mode movement
+                v3 input = {};
+    
+                if (KEYS[GLFW_KEY_A] == InputState::PRESSED) {
+                    input.x -= 1;
+                }
+            
+                if (KEYS[GLFW_KEY_D] == InputState::PRESSED) {
+                    input.x += 1;
+                }
+                
+                if (KEYS[GLFW_KEY_SPACE] == InputState::DOWN) {
+                    input.y += 1;
+                }
+                
+                if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
+                    input.z += 1;
+                }
+            
+                if (KEYS[GLFW_KEY_S] == InputState::PRESSED) {
+                    input.z -= 1;
+                }
+            
+                const f32 SPEED = 1;
+                const f32 JUMP = 10;
+    
+                v3 forward = get_forward_direction(state.camera);
+                v3 up = {0, 1, 0};
+                v3 right = get_right_direction(state.camera);
+    
+                entity.velocity += right * (input.x * SPEED);
+                entity.velocity += up * (input.y * JUMP);
+                entity.velocity += forward * (input.z * SPEED);
+
+                f32 drag = 0.2;
+                entity.velocity -= entity.velocity * v3{drag, 0, drag};
             }
-        
-            if (KEYS[GLFW_KEY_S] == InputState::pressed) {
-                input.z -= 1;
+
+            state.camera.position = entity.position + (entity.size * v3{0, 0.25, 0});
+
+            if (KEYS[GLFW_KEY_F] == InputState::DOWN) {
+                spawn_entity(Entity {
+                    .position = entity.position + v3{0, 5, 0} + (get_forward_direction(state.camera) * 5),
+                    .size = V_BLOCK_SIZE,
+                });
             }
-        
-            const f32 SPEED = 15;
-            const f32 FLY_SPEED = 20;
+        }
 
-            v3 forward = get_forward_direction(state.camera);
-            v3 up = {0, 1, 0};
-            v3 right = get_right_direction(state.camera);
-
-            entity.velocity = {};
-
-            entity.velocity += right * (input.x * SPEED);
-            entity.velocity += up * (input.y * SPEED);
-            entity.velocity += forward * (input.z * SPEED);
-
-            state.camera.position = entity.position;
+        if (!BIT_SET(entity.flags, EF_PLAYER)) {
+            draw_cube(&state.renderer, entity.position, entity.size, WHITE);
         }
     }
+}
+
+// AABB detection for a point against a box where the position is centred on the box
+bool point_collision(v3 point, v3 collider_position, v3 collider_size) {
+    v3 delta_position = point - collider_position;
+    v3 bounding_box = collider_size * 0.5;
+
+    return (
+        delta_position.x >= -bounding_box.x && delta_position.x < bounding_box.x &&
+        delta_position.y >= -bounding_box.y && delta_position.y < bounding_box.y &&
+        delta_position.z >= -bounding_box.z && delta_position.z < bounding_box.z
+    );
+}
+
+struct CubeCollision {
+    bool collision;
+    v3 overlap;
+    v3 distance;
+};
+
+CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size) {
+    v3 distance = b_position - a_position;
+    v3 distance_abs = v3{ABS(distance.x), ABS(distance.y), ABS(distance.z)};
+    v3 distance_for_collision = (a_size + b_size) * 0.5; 
+
+    bool collision = distance_for_collision.x >= distance_abs.x && distance_for_collision.y >= distance_abs.y && distance_for_collision.z >= distance_abs.z;
+    v3 overlap = distance_for_collision - distance_abs;
+
+    return CubeCollision {
+        .collision = collision,
+        .overlap = overlap,
+        .distance = distance
+    };
 }
 
 void physics(f32 delta_time) {
     for (int i = 0; i < state.entities.len; i++) {
         Entity* entity = &state.entities[i];
 
+        if (BIT_SET(entity->flags, EF_GRAVITY_AFFECTED)) {
+            entity->velocity.y -= state.gravity * delta_time;
+        }
+
         entity->position += entity->velocity * delta_time;
+
+        for (Chunk &chunk : state.chunks) {
+            // adjusting position as this collision detection's position is centred 
+            // and the chunk position is the bottom left corner
+            bool in_chunk = point_collision(entity->position, chunk.position + (chunk.size * 0.5), chunk.size);
+            if (!in_chunk) {
+                continue;
+            }
+
+            for (i64 i = 0; i < chunk.blocks.len; i++) {
+                if (chunk.blocks[i] == BlockType::AIR) {
+                    continue;
+                }
+
+                ChunkPosition chunk_position = block_index_to_chunk_position(&chunk, i);
+                v3 block_world_position = chunk.position + (as_floats(chunk_position) * V_BLOCK_SIZE);
+
+                CubeCollision info = cube_collision(entity->position, entity->size, block_world_position, V_BLOCK_SIZE);
+                if (!info.collision) {
+                    continue;
+                }
+
+                print(info.overlap);
+                if (info.overlap.x < info.overlap.y && info.overlap.x < info.overlap.z) {
+                    entity->position.x -= sign(info.distance.x) * info.overlap.x;
+                    entity->velocity.x = 0;
+                }
+                else if (info.overlap.y < info.overlap.x && info.overlap.y < info.overlap.z) {
+                    entity->position.y -= sign(info.distance.y) * info.overlap.y;
+                    entity->velocity.y = 0;
+                }
+                else if (info.overlap.z < info.overlap.x && info.overlap.z < info.overlap.y) {
+                    entity->position.z -= sign(info.distance.z) * info.overlap.z;
+                    entity->velocity.z = 0;
+                }
+            }
+        }
     }
 }
 
 void update_and_draw_editor(f32 delta_time) {
-    if (KEYS[GLFW_KEY_F1] == InputState::down) {
+    if (KEYS[GLFW_KEY_F1] == InputState::DOWN) {
         state.editor.visable = !state.editor.visable;
         set_mouse_captured(&state.window, !state.editor.visable);
     }
 
-    for (Chunk &chunk : state.chunks) {
-        bool hit = false;
-        bool too_close = false;
-        i32 radius = state.editor.sculptor.radius;
-
-        ChunkPosition target_position = get_block_looking_at(&chunk, state.camera, state.editor.sculptor.range, &hit);
-        if (!hit) {
-            continue;
-        }
-
-        v3 centre = chunk.position + as_floats(target_position);
-
-        if (length(state.camera.position - centre) < 1.5 * (f32) radius) {
-            too_close = true;
-        }
-
-        i32 start_offset = -state.editor.sculptor.radius;
-        i32 end_offset = -start_offset;
-
-        for (i32 z = start_offset; z <= end_offset; z++) {
-            for (i32 y = start_offset; y <= end_offset; y++) {
-                for (i32 x = start_offset; x <= end_offset; x++) {
-                    v3 offset_position = centre + as_floats(v3i{x, y, z});
-                    f32 distance = length(offset_position - centre);
-                   
-                    // draw if in radius but also draw if close to the edge of the radius
-                    // this reduces the amount of cubes we are drawing for no reason - 02/06/25
-                    if (distance <= (f32) radius && distance > f32(radius - BLOCK_SIZE)) {
-                        v4 cube_colour = GREEN;
-                        if (too_close) {
-                            cube_colour = RED;
+    if (state.editor.sculptor.enabled) {
+        for (Chunk &chunk : state.chunks) {
+            bool hit = false;
+            bool too_close = false;
+            i32 radius = state.editor.sculptor.radius;
+    
+            ChunkPosition target_position = get_block_looking_at(&chunk, state.camera, state.editor.sculptor.range, &hit);
+            if (!hit) {
+                continue;
+            }
+    
+            v3 centre = chunk.position + as_floats(target_position);
+    
+            if (length(state.camera.position - centre) < 1.5 * (f32) radius) {
+                too_close = true;
+            }
+    
+            i32 start_offset = -state.editor.sculptor.radius;
+            i32 end_offset = -start_offset;
+    
+            for (i32 z = start_offset; z <= end_offset; z++) {
+                for (i32 y = start_offset; y <= end_offset; y++) {
+                    for (i32 x = start_offset; x <= end_offset; x++) {
+                        v3 offset_position = centre + as_floats(v3i{x, y, z});
+                        f32 distance = length(offset_position - centre);
+                       
+                        // draw if in radius but also draw if close to the edge of the radius
+                        // this reduces the amount of cubes we are drawing for no reason - 02/06/25
+                        if (distance <= (f32) radius && distance > f32(radius - BLOCK_SIZE)) {
+                            v4 cube_colour = GREEN;
+                            if (too_close) {
+                                cube_colour = RED;
+                            }
+    
+                            draw_cube(&state.renderer, offset_position, {BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE}, alpha(cube_colour, 0.4));
                         }
-
-                        draw_cube(&state.renderer, offset_position, {BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE}, alpha(cube_colour, 0.4));
                     }
                 }
             }
-        }
-
-
-        static f32 cooldown_timer = 0;
-        
-        cooldown_timer -= delta_time;
-        if (cooldown_timer < 0) {
-            cooldown_timer = 0;
-        }
-
-        // check all these here because we still want to see the brush cubes
-        // even though it is disabled for whatever reason
-        if(state.editor.visable || too_close || cooldown_timer > 0) {
-            break;
-        }
-
-        if(MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::pressed) {
-            set_block_radius(&chunk, target_position, BlockType::AIR, radius);
-            cooldown_timer = state.editor.sculptor.cooldown;
-        }
-        else if(MOUSE.buttons[GLFW_MOUSE_BUTTON_2] == InputState::pressed) {
-            set_block_radius(&chunk, target_position, BlockType::BRICK, radius);
-            cooldown_timer = state.editor.sculptor.cooldown;
+    
+    
+            static f32 cooldown_timer = 0;
+            
+            cooldown_timer -= delta_time;
+            if (cooldown_timer < 0) {
+                cooldown_timer = 0;
+            }
+    
+            // check all these here because we still want to see the brush cubes
+            // even though it is disabled for whatever reason
+            if(state.editor.visable || too_close || cooldown_timer > 0) {
+                break;
+            }
+    
+            if(MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::PRESSED) {
+                set_block_radius(&chunk, target_position, BlockType::AIR, radius);
+                cooldown_timer = state.editor.sculptor.cooldown;
+            }
+            else if(MOUSE.buttons[GLFW_MOUSE_BUTTON_2] == InputState::PRESSED) {
+                set_block_radius(&chunk, target_position, BlockType::BRICK, radius);
+                cooldown_timer = state.editor.sculptor.cooldown;
+            }
         }
     }
 
@@ -432,6 +570,12 @@ void update_and_draw_editor(f32 delta_time) {
                 ImGui::Text("IM quads: %llu", state.im_quads_last_frame);
                 ImGui::Text("Total triangles: %llu", (state.im_quads_last_frame + state.chunk_quads_last_frame) * 2);
                 ImGui::Text("FPS: %f", 1.0f / delta_time);
+            }
+
+            {
+                ImGui::SeparatorText("World");
+                ImGui::Checkbox("Creative", &state.creative);
+                ImGui::SliderFloat("Gravity", &state.gravity, 0, 20);
             }
 
             {
@@ -495,6 +639,7 @@ void update_and_draw_editor(f32 delta_time) {
             }
 
             ImGui::SeparatorText("Sculptor");
+            ImGui::Checkbox("Enabled", &state.editor.sculptor.enabled);
             ImGui::SliderInt("Range", &state.editor.sculptor.range, 10, 200);
             ImGui::SliderInt("Radius", &state.editor.sculptor.radius, 1, 10);
             ImGui::SliderFloat("Cooldown", &state.editor.sculptor.cooldown, 0, 0.5);

@@ -11,6 +11,8 @@
 #include "ack.cpp"
 #include "math.cpp"
 
+#define REPORT_GL_ERRORS 0
+
 #define GL_CALL(x) \
     clear_gl_errors(); \
     x;\
@@ -33,9 +35,9 @@ struct Window {
 };
 
 enum class InputState {
-    up,
-    down,
-    pressed
+    UP,
+    DOWN,
+    PRESSED
 };
 
 StackArray<InputState, 348> KEYS = {};
@@ -77,7 +79,10 @@ bool init_window(Window *window, string title) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+#if REPORT_GL_ERRORS
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
+#endif
 
     window->glfw_window = glfwCreateWindow(window->width, window->height, window->title.c(), NULL, NULL);
     if (window->glfw_window == nullptr) {
@@ -120,14 +125,14 @@ void poll_inputs() {
     // - 03/03/25
     
     for (int i = 0; i < KEYS.size; i++) {
-        if (KEYS[i] == InputState::down) {
-            KEYS[i] = InputState::pressed;
+        if (KEYS[i] == InputState::DOWN) {
+            KEYS[i] = InputState::PRESSED;
         }
     }
 
     for (int i = 0; i < MOUSE.buttons.size; i++) {
-        if (MOUSE.buttons[i] == InputState::down) {
-            MOUSE.buttons[i] = InputState::pressed;
+        if (MOUSE.buttons[i] == InputState::DOWN) {
+            MOUSE.buttons[i] = InputState::PRESSED;
         }
     }
 
@@ -164,11 +169,11 @@ void glfw_error_callback(int error_code, const char* description) {
 void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     switch (action) {
          case GLFW_RELEASE:	{
-            KEYS[key] = InputState::up;
+            KEYS[key] = InputState::UP;
             break;
         }
         case GLFW_PRESS: {
-            KEYS[key] = InputState::down;
+            KEYS[key] = InputState::DOWN;
             break;
         }
         case GLFW_REPEAT: break;
@@ -189,11 +194,11 @@ void glfw_mouse_move_callback(GLFWwindow* window, f64 x, f64 y) {
 void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 mods) {
      switch (action) {
          case GLFW_RELEASE:	{
-            MOUSE.buttons[button] = InputState::up;
+            MOUSE.buttons[button] = InputState::UP;
             break;
         }
         case GLFW_PRESS: {
-            MOUSE.buttons[button] = InputState::down;
+            MOUSE.buttons[button] = InputState::DOWN;
             break;
         }
         case GLFW_REPEAT: break;
@@ -464,7 +469,9 @@ bool init_renderer(Renderer *renderer, Window *window) {
             return false;
         }
 
+#if REPORT_GL_ERRORS
         glDebugMessageCallback(opengl_error_callback, NULL);
+#endif
 
         // alpha blend settings
         glEnable(GL_BLEND);
