@@ -266,6 +266,7 @@ struct Camera {
     v3 target;
     f32 near_plane;
     f32 far_plane;
+    f32 orthographic_size;
 };
 
 enum class DrawType {
@@ -315,6 +316,14 @@ struct Font {
     u8 *bitmap_data;
 };
 
+enum FrameBufferOptions {
+    FB_COLOUR_ATTACHMENT        = 1 << 0,
+    FB_NORMAL_ATTACHMENT        = 1 << 1,
+    FB_DEPTH_ATTACHMENT         = 1 << 2,
+    FB_DISABLE_READ_BUFFER      = 1 << 3,
+    FB_DISABLE_DRAW_BUFFER      = 1 << 4,
+};
+
 struct FrameBuffer {
     u32 id;
     i64 width;
@@ -338,8 +347,14 @@ struct Mesh {
     u32 index_buffer_id;
 };
 
+enum class RenderMode {
+    PERSPECTIVE,
+    ORTHOGRAPHIC
+};
+
 struct Renderer {
     bool wireframe;
+    RenderMode mode;
 
     v4 clear_colour;
     v4 ambient_light;
@@ -351,6 +366,7 @@ struct Renderer {
 
     m4 view_matrix;
     m4 projection_matrix;
+    m4 projection_matrix_ortho;
 
     StackArray<Sprite, MAX_SPRITES> sprites;
     StackArray<Texture, MAX_TEXTURES> textures;
@@ -362,6 +378,7 @@ struct Renderer {
     Font font;
 
     FrameBuffer frame_buffer;
+    FrameBuffer sun_frame_buffer;
 
     u32 vertex_array_id;
     u32 vertex_buffer_id;
@@ -437,7 +454,7 @@ void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position);
 void reset_mesh(Mesh *mesh);
 void upload_mesh(Mesh *mesh);
 
-bool init_frame_buffer(FrameBuffer *frame_buffer);
+bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options);
 
 bool init_shader(Shader *shader, string vertex_shader_path, string fragment_shader_path);
 void assign_texture_slot(Shader *shader, string texture_name, i32 slot);
@@ -447,6 +464,7 @@ v2 screen_position_to_ndc(v2 screen_position, Window *window);
 
 m4 get_view_matrix(Camera camera);
 m4 get_projection_matrix(Camera camera, f32 aspect);
+m4 get_projection_matrix_ortho(Camera camera, f32 aspect);
 
 v4 alpha(v4 base, f32 alpha);
 v4 brightness(v4 base, f32 brightness);
@@ -631,9 +649,20 @@ bool init_renderer(Renderer *renderer, Window *window) {
             .height =  window->height
         };
     
-        bool ok = init_frame_buffer(&renderer->frame_buffer);
+        bool ok = init_frame_buffer(&renderer->frame_buffer, FB_COLOUR_ATTACHMENT | FB_NORMAL_ATTACHMENT | FB_DEPTH_ATTACHMENT);
         if (!ok) {
-            printf("failed to init unlit frame buffer\n");
+            printf("failed to init default frame buffer\n");
+            return false;
+        }
+
+         renderer->sun_frame_buffer = FrameBuffer {
+            .width =  window->width,
+            .height =  window->height
+        };
+    
+        ok = init_frame_buffer(&renderer->sun_frame_buffer, FB_DEPTH_ATTACHMENT);
+        if (!ok) {
+            printf("failed to init sun frame buffer\n");
             return false;
         }
     }
@@ -981,6 +1010,7 @@ void new_frame(Renderer *renderer, Window *window, Camera camera) {
 
     renderer->view_matrix = get_view_matrix(camera);
     renderer->projection_matrix = get_projection_matrix(camera, (f32) window->width / (f32) window->height);
+    renderer->projection_matrix_ortho = get_projection_matrix_ortho(camera, (f32) window->width / (f32) window->height);
 
     glClearColor(
         renderer->clear_colour.r,
@@ -992,7 +1022,6 @@ void new_frame(Renderer *renderer, Window *window, Camera camera) {
 
     glBindFramebuffer(GL_FRAMEBUFFER, renderer->frame_buffer.id);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
     glViewport(0, 0, window->width, window->height);
 
     new_imgui_frame();
@@ -1017,8 +1046,7 @@ void draw_frame(Renderer *renderer, Window *window) {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
-
-    { // second render pass - post processing
+    if (true) { // second render pass - post processing
         reset(&renderer->quads);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glViewport(0, 0, window->width, window->height);
@@ -1508,11 +1536,13 @@ void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position) {
         (f32 *) &renderer->view_matrix.Columns[0]
     );
 
+    m4 *projection = renderer->mode == RenderMode::PERSPECTIVE ? &renderer->projection_matrix : &renderer->projection_matrix_ortho;
+
     glUniformMatrix4fv(
         glGetUniformLocation(renderer->mesh_shader.id, "projection"),
         1,
         false,
-        (f32 *) &renderer->projection_matrix.Columns[0]
+        (f32 *) &projection->Columns[0]
     );
 
     glUniform4f(
@@ -1545,40 +1575,59 @@ void upload_mesh(Mesh *mesh) {
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * mesh->quads.len, mesh->quads.slice.ptr);
 }
 
-bool init_frame_buffer(FrameBuffer *frame_buffer) {
+bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options) {
     glCreateFramebuffers(1, &frame_buffer->id);
     glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer->id);
 
-    // create texture that frame buffer will render into as the colour attachment
-    glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->colour_attachment);
-    glBindTexture(GL_TEXTURE_2D, frame_buffer->colour_attachment);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, frame_buffer->width, frame_buffer->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    StackArray<GLenum, 2> draw_buffers = {};
 
-    // create texture that frame buffer will use as depth buffer
-    glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->depth_attachment);
-    glBindTexture(GL_TEXTURE_2D, frame_buffer->depth_attachment);
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_DEPTH24_STENCIL8, frame_buffer->width, frame_buffer->height);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    if (BIT_SET(options, FB_COLOUR_ATTACHMENT)) {
+        glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->colour_attachment);
+        glBindTexture(GL_TEXTURE_2D, frame_buffer->colour_attachment);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, frame_buffer->width, frame_buffer->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-    // create texture that frame buffer will use as normal buffer
-    glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->normals_attachment);
-    glBindTexture(GL_TEXTURE_2D, frame_buffer->normals_attachment);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, frame_buffer->width, frame_buffer->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frame_buffer->colour_attachment, 0);
+        append(&draw_buffers, (GLenum) GL_COLOR_ATTACHMENT0);
+    }
 
-    // assign attachments to frame buffer
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frame_buffer->colour_attachment, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, frame_buffer->depth_attachment, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, frame_buffer->normals_attachment, 0);
+    if (BIT_SET(options, FB_DEPTH_ATTACHMENT)) {
+        glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->depth_attachment);
+        glBindTexture(GL_TEXTURE_2D, frame_buffer->depth_attachment);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, frame_buffer->width, frame_buffer->height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-    // when using more then one colour attachment, need to set all colour buffers the
-    // frame buffer can write too, if not the normal buffer will not be write too
-    GLenum draw_buffers[3] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2};
-    glDrawBuffers(3, draw_buffers);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, frame_buffer->depth_attachment, 0);
+        append(&draw_buffers, (GLenum) GL_COLOR_ATTACHMENT1);
+    }
+
+    if (BIT_SET(options, FB_NORMAL_ATTACHMENT)) {
+        glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->normals_attachment);
+        glBindTexture(GL_TEXTURE_2D, frame_buffer->normals_attachment);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, frame_buffer->width, frame_buffer->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, frame_buffer->normals_attachment, 0);
+    }
+
+    if (BIT_SET(options, FB_DISABLE_READ_BUFFER)) {
+        glReadBuffer(GL_NONE);
+    }
+
+    if (BIT_SET(options, FB_DISABLE_DRAW_BUFFER)) {
+        glDrawBuffer(GL_NONE);
+    }
+
+    if (draw_buffers.len > 0) {
+        ASSERT(BIT_SET(options, FB_DISABLE_DRAW_BUFFER) == false);
+
+        // when using more then one colour attachment, need to set all colour buffers the
+        // frame buffer can write too, if not the normal buffer will not be write too
+        glDrawBuffers(draw_buffers.len, draw_buffers.data);
+    }
 
     if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         printf("error when createing frame buffer, was not complete\n");
@@ -1704,6 +1753,17 @@ m4 get_view_matrix(Camera camera) {
 
 m4 get_projection_matrix(Camera camera, f32 aspect) {
     return HMM_Perspective_LH_NO(camera.fov * HMM_DegToRad, aspect, camera.near_plane, camera.far_plane);
+}
+
+m4 get_projection_matrix_ortho(Camera camera, f32 aspect) {
+    return HMM_Orthographic_LH_NO(
+        -camera.orthographic_size * aspect,  // left
+         camera.orthographic_size * aspect,  // right
+        -camera.orthographic_size,           // bottom
+         camera.orthographic_size,           // top
+         camera.near_plane, 
+         camera.far_plane 
+    );
 }
 
 v4 alpha(v4 base, f32 alpha) {

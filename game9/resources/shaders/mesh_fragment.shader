@@ -16,7 +16,9 @@ uniform vec4 sun_colour;
 
 void main()
 {
-    normal_colour = vec4(0, 0, 1, 1);
+    // frag_colour = vec4(vec3(gl_FragCoord.z), 1.0);
+    // frag_colour = vec4(fragment_position.x, fragment_position.x, fragment_position.x, 1.0);
+    // return;
 
     vec4 sample_colour = texture(atlas_texture, uv) * colour;
 
@@ -29,7 +31,7 @@ void main()
 
     vec4 diffuse_light = sun_colour * max(dot(normal, sun_direction), 0);
 
-    float specularStrength = 0.6;
+    float specularStrength = 2.0;
     // view-space so viewer is always at (0,0,0), so viewDir is (0,0,0) - Position => -Position
     vec3 viewDir = normalize(-fragment_position); 
     vec3 reflectDir = reflect(-sun_direction, normal);  

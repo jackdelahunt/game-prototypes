@@ -21,6 +21,7 @@ void main()
 {
     frag_colour = texture(scene_texture, uv);
 
+#if 0
     if (brightness(frag_colour) < 0.2) {
         frag_colour = change_brightness(frag_colour, 0.2);
     } 
@@ -36,7 +37,7 @@ void main()
     else {
         frag_colour = change_brightness(frag_colour, 1);
     }
-
+#endif
 
     frag_colour *= colour;
   

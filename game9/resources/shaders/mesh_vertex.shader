@@ -21,7 +21,7 @@ uniform mat4 projection;
 void main()
 {
     gl_Position = projection * view * model * vec4(a_position, 1);
-    fragment_position = (view * model * vec4(a_position, 1)).xyz;
+    fragment_position = gl_Position.xyz / gl_Position.z;
 
     normal = a_normal;
     colour = a_colour;

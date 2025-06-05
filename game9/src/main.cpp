@@ -149,12 +149,14 @@ int main() {
             .fov = 110,
             .position = {10, 10, -20},
             .near_plane = 0.1f,
-            .far_plane = 1000.0f,
+            .far_plane = 500.0f,
+            .orthographic_size = 75,
         },
         .window = {
             .mouse_captured = true, 
         },
         .renderer = {
+            .mode = RenderMode::PERSPECTIVE,
             .clear_colour = {0.8, 1, 1, 1},
             .ambient_light = {0.1, 0.1, 0.1, 1},
             .sun_colour = {1, 1, 1, 1},
@@ -629,10 +631,18 @@ void update_and_draw_editor(f32 delta_time) {
                 ImGui::SliderFloat("FOV", &state.camera.fov, 1, 360);
                 ImGui::SliderFloat3("Camera position", &state.camera.position[0], -50, 50);
                 ImGui::SliderFloat3("Camera rotation", &state.camera.rotation[0], -360, 360);
+                ImGui::SliderFloat("Ortho Size", &state.camera.orthographic_size, 1, 100);
                 ImGui::SliderFloat4("Clear colour", &state.renderer.clear_colour[0], 0, 1);
                 ImGui::SliderFloat4("Ambient light", &state.renderer.ambient_light[0], 0, 1);
                 ImGui::SliderFloat4("Sun colour", &state.renderer.sun_colour[0], 0, 1);
                 ImGui::SliderFloat3("Sun direction", &state.renderer.sun_direction[0], -1, 1);
+                if (ImGui::Button("Toggle projection")) {
+                    if (state.renderer.mode == RenderMode::PERSPECTIVE) {
+                        state.renderer.mode = RenderMode::ORTHOGRAPHIC;
+                    } else {
+                        state.renderer.mode = RenderMode::PERSPECTIVE;
+                    }
+                }
             }
        
             {
