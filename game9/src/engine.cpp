@@ -349,7 +349,8 @@ struct Renderer {
     FixedArray<Quad> quads;
     StackArray<Light, MAX_LIGHTS> lights;
 
-    m4 view_projection_matrix;
+    m4 view_matrix;
+    m4 projection_matrix;
 
     StackArray<Sprite, MAX_SPRITES> sprites;
     StackArray<Texture, MAX_TEXTURES> textures;
@@ -978,11 +979,8 @@ bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel
 void new_frame(Renderer *renderer, Window *window, Camera camera) {
     reset(&renderer->quads);
 
-    renderer->view_projection_matrix = HMM_MulM4(
-        get_projection_matrix(camera, (f32) window->width / (f32) window->height),
-        get_view_matrix(camera)
-    ); 
-
+    renderer->view_matrix = get_view_matrix(camera);
+    renderer->projection_matrix = get_projection_matrix(camera, (f32) window->width / (f32) window->height);
 
     glClearColor(
         renderer->clear_colour.r,
@@ -1212,11 +1210,13 @@ void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 c
 void draw_light(Renderer *renderer, v3 position, f32 radius, v4 colour, f32 intensity) {
     Light *light = push(&renderer->lights);
 
+    m4 view_projection_matrix = HMM_MulM4(renderer->projection_matrix, renderer->view_matrix);
+
     // light data is sent to the GPU in NDC so using view projection 
     // matrix for the transformation
     *light = Light {
-        .position = HMM_MulM4V4(renderer->view_projection_matrix, v4{position.x, position.y, position.z, 1}).xy,
-        .radius = length(HMM_MulM4V4(renderer->view_projection_matrix, {radius, 0, 0, 0}).xy) * 2,
+        .position = HMM_MulM4V4(view_projection_matrix, v4{position.x, position.y, position.z, 1}).xy,
+        .radius = length(HMM_MulM4V4(view_projection_matrix, {radius, 0, 0, 0}).xy) * 2,
         .colour = colour,
         .intensity = intensity
     };
@@ -1245,8 +1245,8 @@ Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color,
     model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.y * HMM_DegToRad, {0, 1, 0}));
     model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.z * HMM_DegToRad, {0, 0, 1}));
     model_matrix = HMM_MulM4(model_matrix, HMM_Scale({size.x, size.y, 1}));
-                
-    m4 mvp_matrix = HMM_MulM4(renderer->view_projection_matrix, model_matrix);
+              
+    m4 mvp_matrix = HMM_MulM4(HMM_MulM4(renderer->projection_matrix, renderer->view_matrix), model_matrix);
 
     Quad *quad = push(&renderer->quads);
 
@@ -1415,7 +1415,6 @@ MeshQuad *push_quad(Mesh *mesh, v3 positions[4], v3 normals[4], v4 color, v2 uvs
 void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position) {
     m4 model_matrix = HMM_M4D(1.0f);
     model_matrix = HMM_MulM4(model_matrix, HMM_Translate(position));
-    m4 mvp_matrix = HMM_MulM4(renderer->view_projection_matrix, model_matrix);
 
     glUseProgram(renderer->mesh_shader.id);
 
@@ -1423,10 +1422,24 @@ void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position) {
     glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
 
     glUniformMatrix4fv(
-        glGetUniformLocation(renderer->mesh_shader.id, "mvp"),
+        glGetUniformLocation(renderer->mesh_shader.id, "model"),
         1,
         false,
-        (f32 *) &mvp_matrix.Columns[0]
+        (f32 *) &model_matrix.Columns[0]
+    );
+
+    glUniformMatrix4fv(
+        glGetUniformLocation(renderer->mesh_shader.id, "view"),
+        1,
+        false,
+        (f32 *) &renderer->view_matrix.Columns[0]
+    );
+
+    glUniformMatrix4fv(
+        glGetUniformLocation(renderer->mesh_shader.id, "projection"),
+        1,
+        false,
+        (f32 *) &renderer->projection_matrix.Columns[0]
     );
 
     glUniform4f(

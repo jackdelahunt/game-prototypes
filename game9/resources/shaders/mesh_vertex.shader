@@ -13,13 +13,16 @@ out vec2 uv;
 out vec2 normal_uv;
 
 uniform sampler2D atlas_texture;
-uniform mat4 mvp;
+
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
 
 void main()
 {
-    gl_Position = mvp * vec4(a_position, 1);
+    gl_Position = projection * view * model * vec4(a_position, 1);
+    fragment_position = (view * model * vec4(a_position, 1)).xyz;
 
-    fragment_position = gl_Position.xyz;
     normal = a_normal;
     colour = a_colour;
     uv = a_uv;

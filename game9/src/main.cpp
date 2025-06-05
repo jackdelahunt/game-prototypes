@@ -169,7 +169,7 @@ int main() {
                 .cooldown = 0.075,
             },
         },
-        .gravity = 0.5,
+        .gravity = 1,
         .game_running = false,
         .noise = {
             .cutoff = 0.1,
@@ -232,7 +232,7 @@ int main() {
 
     spawn_entity(Entity {
         .flags = EF_PLAYER | EF_GRAVITY_AFFECTED,
-        .position = {-25, 75, 25},
+        .position = {25, 150, 0},
         .size = {1.5, 0.5, 2}
     });
 
@@ -367,25 +367,40 @@ void update_and_draw(f32 delta_time) {
             
                 const f32 SPEED = 1;
                 const f32 JUMP = 10;
-                const f32 LIFT = 0.1;
+                const f32 LIFT = 0.03;
+                const f32 PUSH = 0.4;
     
                 v3 up = {0, 1, 0};
                 v3 forward = get_forward_direction(entity.rotation);
                 v3 right = get_right_direction(entity.rotation);
 
-                f32 air_speed = length(v3{entity.velocity.x, entity.velocity.y, entity.velocity.z});
+                f32 air_speed = length(v3{entity.velocity.x, clamp(-10000, entity.velocity.y, 0), entity.velocity.z});
                 f32 pitch = forward.y;
-                f32 pitch_influence = 0;
+
+                f32 lift_influence = 0;
+                f32 push_influence = 0;
 
                 if (pitch < 0) {
-                    pitch_influence = 0;
+                    lift_influence = 0;
                 } else if (pitch < 0.5) {
-                    pitch_influence = pitch * 2;
+                    lift_influence = pitch * 2;
                 } else if (pitch < 1) {
-                    pitch_influence = 1 - pitch;
+                    lift_influence = 1 - pitch;
                 }
 
-                entity.velocity.y += pitch_influence * air_speed  * LIFT;
+                if (pitch < -0.5) {
+                    push_influence = 0;
+                } else if (pitch < 0) {
+                    push_influence = 1 + (pitch * 2);
+                } else if (pitch < 1) {
+                    push_influence = 1 - pitch;
+                }
+
+                // upward force applied
+                entity.velocity.y += lift_influence * air_speed  * LIFT;
+
+                // forward force applied
+                entity.velocity += v3{forward.x, 0, forward.z} * push_influence * PUSH;
 
                 u8 buffer[128] = {};
 
@@ -395,9 +410,14 @@ void update_and_draw(f32 delta_time) {
                 draw_text(&state.renderer, s, entity.position + v3{-8, 2, 0}, 1, BLACK);
 
                 memset(buffer, 0, 128);
-                len = sprintf((char *) buffer, "%.2f %.2f %.2f", pitch, pitch_influence, air_speed);
+                len = sprintf((char *) buffer, "%.2f %.2f %.2f", pitch, lift_influence, air_speed);
                 s = make_slice(buffer, len);
                 draw_text(&state.renderer, s, entity.position + v3{-8, -2, 0}, 1, BLACK);
+
+                memset(buffer, 0, 128);
+                len = sprintf((char *) buffer, "%.2f", push_influence);
+                s = make_slice(buffer, len);
+                draw_text(&state.renderer, s, entity.position + v3{8, -3, 0}, 1, RED);
 
                 if (state.window.mouse_captured) {
                     f32 sensitivity = 0.1;

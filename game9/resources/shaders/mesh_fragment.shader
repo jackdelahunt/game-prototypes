@@ -29,6 +29,13 @@ void main()
 
     vec4 diffuse_light = sun_colour * max(dot(normal, sun_direction), 0);
 
-    frag_colour = sample_colour * (ambient_light + diffuse_light);
+    float specularStrength = 0.6;
+    // view-space so viewer is always at (0,0,0), so viewDir is (0,0,0) - Position => -Position
+    vec3 viewDir = normalize(-fragment_position); 
+    vec3 reflectDir = reflect(-sun_direction, normal);  
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
+    vec4 specular = specularStrength * spec * sun_colour; 
+
+    frag_colour = sample_colour * (ambient_light + diffuse_light + specular);
     normal_colour = texture(atlas_texture, normal_uv);
 } 
