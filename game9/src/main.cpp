@@ -156,9 +156,9 @@ int main() {
         },
         .renderer = {
             .clear_colour = {0.8, 1, 1, 1},
-            .ambient_light = {0.5, 0.5, 0.5, 1},
-            .sun_colour = {0.8, 0.8, 0.5, 1},
-            .sun_direction = {-0.25, 0.6, -0.5},
+            .ambient_light = {0.1, 0.1, 0.1, 1},
+            .sun_colour = {1, 1, 1, 1},
+            .sun_direction = {-0.25, 0.8, -0.3},
         },
         .editor = {
             .visable = false,
@@ -173,7 +173,7 @@ int main() {
         .game_running = false,
         .noise = {
             .cutoff = 0.1,
-            .frequency = 0.006
+            .frequency = 0.1
         },
     };
 
@@ -722,13 +722,13 @@ void update_and_draw_editor(f32 delta_time) {
                 ImVec2 image_size(360 * 1.777, 360);
     
                 ImGui::Text("Depth buffer");
-                ImGui::Image(state.renderer.unlit_frame_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Image(state.renderer.frame_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
 
                 ImGui::Text("Normal buffer");
-                ImGui::Image(state.renderer.unlit_frame_buffer.normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Image(state.renderer.frame_buffer.normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
 
                 ImGui::Text("Colour buffer");
-                ImGui::Image(state.renderer.unlit_frame_buffer.colour_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Image(state.renderer.frame_buffer.colour_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
             }
 
             ImGui::End();

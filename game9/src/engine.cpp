@@ -361,7 +361,7 @@ struct Renderer {
 
     Font font;
 
-    FrameBuffer unlit_frame_buffer;
+    FrameBuffer frame_buffer;
 
     u32 vertex_array_id;
     u32 vertex_buffer_id;
@@ -370,6 +370,7 @@ struct Renderer {
     Shader default_shader;
     Shader mesh_shader;
     Shader lighting_shader;
+    Shader post_processing_shader;
 
     u32 atlas_texture_id;
     u32 font_texture_id;
@@ -424,6 +425,7 @@ void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_ani
 void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
 void draw_light(Renderer *renderer, v3 position, f32 radius, v4 colour, f32 intensity);
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
+Quad *push_screen_quad(Renderer *renderer, v4 color);
 
 void toggle_wireframe(Renderer *renderer);
 f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
@@ -624,12 +626,12 @@ bool init_renderer(Renderer *renderer, Window *window) {
     }
 
     { // init frame buffers
-         renderer->unlit_frame_buffer = FrameBuffer {
+         renderer->frame_buffer = FrameBuffer {
             .width =  window->width,
             .height =  window->height
         };
     
-        bool ok = init_frame_buffer(&renderer->unlit_frame_buffer);
+        bool ok = init_frame_buffer(&renderer->frame_buffer);
         if (!ok) {
             printf("failed to init unlit frame buffer\n");
             return false;
@@ -659,16 +661,6 @@ bool load_shaders(Renderer *renderer) {
     assign_texture_slot(&renderer->default_shader, "atlas_texture", 0);
     assign_texture_slot(&renderer->default_shader, "font_texture", 1);
 
-    ok = init_shader(&renderer->lighting_shader, "resources/shaders/default_vertex.shader", "resources/shaders/lighting_fragment.shader");
-    if (!ok) {
-        printf("Error when creating lighting shader program\n");
-        return false;
-    }
-
-    assign_texture_slot(&renderer->lighting_shader, "scene_texture", 0);
-    assign_texture_slot(&renderer->lighting_shader, "normals_texture", 1);
-    assign_texture_slot(&renderer->lighting_shader, "depth_texture", 2);
-
     ok = init_shader(&renderer->mesh_shader, "resources/shaders/mesh_vertex.shader", "resources/shaders/mesh_fragment.shader");
     if (!ok) {
         printf("Error when creating chunk shader program\n");
@@ -676,6 +668,14 @@ bool load_shaders(Renderer *renderer) {
     }
 
     assign_texture_slot(&renderer->mesh_shader, "atlas_texture", 0);
+
+    ok = init_shader(&renderer->post_processing_shader, "resources/shaders/default_vertex.shader", "resources/shaders/post_processing_fragment.shader");
+    if (!ok) {
+        printf("Error when creating post processing shader program\n");
+        return false;
+    }
+
+    assign_texture_slot(&renderer->post_processing_shader, "scene_texture", 0);
 
     return true;
 }
@@ -989,6 +989,8 @@ void new_frame(Renderer *renderer, Window *window, Camera camera) {
         renderer->clear_colour.a
     );
 
+
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer->frame_buffer.id);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     glViewport(0, 0, window->width, window->height);
@@ -997,19 +999,47 @@ void new_frame(Renderer *renderer, Window *window, Camera camera) {
 }
 
 void draw_frame(Renderer *renderer, Window *window) {
-    glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
+    { // finish first render pass by drawing imediate quads
+        glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
+    
+        glBindVertexArray(renderer->vertex_array_id);
+        glUseProgram(renderer->default_shader.id);
+    
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
+    
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, renderer->font_texture_id);
+    
+        glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
+    
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
 
-    glBindVertexArray(renderer->vertex_array_id);
-    glUseProgram(renderer->default_shader.id);
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
+    { // second render pass - post processing
+        reset(&renderer->quads);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glViewport(0, 0, window->width, window->height);
 
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, renderer->font_texture_id);
+        printf("F %llu %llu\n", renderer->frame_buffer.width, renderer->frame_buffer.height);
+        printf("W %d %d\n", window->width, window->height);
 
-    glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
+        Quad *quad = push_screen_quad(renderer, WHITE);
+    
+        glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
+        glBindVertexArray(renderer->vertex_array_id);
+ 
+        glUseProgram(renderer->post_processing_shader.id);
+ 
+        // set the input texture
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, renderer->frame_buffer.colour_attachment);
+
+        glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
+    }
 
     draw_imgui_frame();
 }
@@ -1276,6 +1306,49 @@ Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color,
     quad->vertices[1].draw_type = (i32) draw_type;
     quad->vertices[2].draw_type = (i32) draw_type;
     quad->vertices[3].draw_type = (i32) draw_type;
+
+    return quad;
+}
+
+Quad *push_screen_quad(Renderer *renderer, v4 color) {
+    const v4 top_left      = {-1,   1, 0, 1};
+    const v4 top_right     = { 1,   1, 0, 1};
+    const v4 bottom_right  = { 1,  -1, 0, 1};
+    const v4 bottom_left   = {-1,  -1, 0, 1};
+
+    v2 uvs[4] = {
+        {0, 1},
+        {1, 1},
+        {1, 0},
+        {0, 0},
+    };
+
+    Quad *quad = push(&renderer->quads);
+
+    quad->vertices[0].position = top_left;
+    quad->vertices[1].position = top_right;
+    quad->vertices[2].position = bottom_right;
+    quad->vertices[3].position = bottom_left;
+                
+    quad->vertices[0].colour = color;
+    quad->vertices[1].colour = color;
+    quad->vertices[2].colour = color;
+    quad->vertices[3].colour = color;
+
+    quad->vertices[0].uv = uvs[0];
+    quad->vertices[1].uv = uvs[1];
+    quad->vertices[2].uv = uvs[2];
+    quad->vertices[3].uv = uvs[3];
+
+    quad->vertices[0].normal_uv = uvs[0];
+    quad->vertices[1].normal_uv = uvs[1];
+    quad->vertices[2].normal_uv = uvs[2];
+    quad->vertices[3].normal_uv = uvs[3];
+
+    quad->vertices[0].draw_type = 0;
+    quad->vertices[1].draw_type = 0;
+    quad->vertices[2].draw_type = 0;
+    quad->vertices[3].draw_type = 0;
 
     return quad;
 }
