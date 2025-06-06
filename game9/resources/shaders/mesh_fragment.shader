@@ -1,6 +1,7 @@
 #version 460 core
 
 in vec3 fragment_position;
+in vec4 fragment_sun_position;
 in vec3 normal;
 in vec4 colour;
 in vec2 uv;
@@ -10,16 +11,62 @@ layout(location = 0) out vec4 frag_colour;
 layout(location = 1) out vec4 normal_colour;
 
 uniform sampler2D atlas_texture;
-uniform vec4 ambient_light;
-uniform vec3 sun_direction;
-uniform vec4 sun_colour;
+uniform sampler2D shadow_map;
+
+uniform vec3 ambient_light;
+uniform vec3 sun_position;
+uniform vec3 sun_colour;
+
+vec3 diffuse_calculation() {
+    vec3 sun_direction = normalize(sun_position - fragment_position);
+    float diffuse = max(dot(sun_direction, normal), 0);
+
+    return sun_colour * diffuse;
+}
+
+vec3 specular_calculation() {
+    float specularStrength = 0.6;
+    vec3 viewDir = normalize(-fragment_position); 
+    vec3 sun_direction = normalize(sun_position - fragment_position);
+    vec3 reflectDir = reflect(-sun_direction, normal);  
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
+    vec3 specular = specularStrength * spec * sun_colour; 
+
+    return specular;
+}
+
+float shadow_calculation(vec4 fragPosLightSpace)
+{
+    vec3 shadow_coords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    shadow_coords = shadow_coords * 0.5 + 0.5; 
+
+    float closest_depth = texture(shadow_map, shadow_coords.xy).r;
+    float current_depth = shadow_coords.z;
+
+    vec3 sun_direction = normalize(sun_position - fragment_position);
+    float bias = max(0.05 * (1.0 - dot(normal, sun_direction)), 0.005);  
+
+#if 0
+    float shadow = current_depth - bias > closest_depth  ? 1.0 : 0.0;
+#else
+    float shadow = 0.0;
+    vec2 texel_size = 1.0 / textureSize(shadow_map, 0);
+    for(int x = -1; x <= 1; ++x)
+    {
+        for(int y = -1; y <= 1; ++y)
+        {
+            float pcfDepth = texture(shadow_map, shadow_coords.xy + vec2(x, y) * texel_size).r; 
+            shadow += current_depth - bias > pcfDepth  ? 1.0 : 0.0;        
+        }    
+    }
+    shadow /= 9.0;
+#endif
+
+    return shadow;
+}
 
 void main()
 {
-    // frag_colour = vec4(vec3(gl_FragCoord.z), 1.0);
-    // frag_colour = vec4(fragment_position.x, fragment_position.x, fragment_position.x, 1.0);
-    // return;
-
     vec4 sample_colour = texture(atlas_texture, uv) * colour;
 
     // remove if 0 alpha so the empty pixels in the texture
@@ -29,15 +76,12 @@ void main()
         discard;
     }
 
-    vec4 diffuse_light = sun_colour * max(dot(normal, sun_direction), 0);
+    vec3 diffuse_light = diffuse_calculation(); 
+    vec3 specular = specular_calculation();
+    float shadow = shadow_calculation(fragment_sun_position);
 
-    float specularStrength = 2.0;
-    // view-space so viewer is always at (0,0,0), so viewDir is (0,0,0) - Position => -Position
-    vec3 viewDir = normalize(-fragment_position); 
-    vec3 reflectDir = reflect(-sun_direction, normal);  
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
-    vec4 specular = specularStrength * spec * sun_colour; 
+    vec4 lighting = vec4(ambient_light + (1.0 - shadow) * (diffuse_light + specular), 1);
 
-    frag_colour = sample_colour * (ambient_light + diffuse_light + specular);
+    frag_colour = sample_colour * lighting;
     normal_colour = texture(atlas_texture, normal_uv);
 } 

@@ -217,7 +217,8 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 /////////////////////////////////////////////////////////////////////////////
 //////////////////////////////// @renderer //////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
-#define MAX_QUADS 300000
+#define MAX_QUADS 200000
+#define MAX_MESHES 1000
 #define MAX_LIGHTS 20
 #define MAX_SPRITES 256
 #define MAX_TEXTURES 256
@@ -357,10 +358,11 @@ struct Renderer {
     RenderMode mode;
 
     v4 clear_colour;
-    v4 ambient_light;
-    v4 sun_colour;
-    v3 sun_direction;
+    v3 ambient_light;
+    v3 sun_colour;
+    v3 sun_position;
 
+    FixedArray<Mesh> meshes;
     FixedArray<Quad> quads;
     StackArray<Light, MAX_LIGHTS> lights;
 
@@ -386,8 +388,8 @@ struct Renderer {
 
     Shader default_shader;
     Shader mesh_shader;
-    Shader lighting_shader;
     Shader post_processing_shader;
+    Shader sun_shader;
 
     u32 atlas_texture_id;
     u32 font_texture_id;
@@ -448,9 +450,8 @@ void toggle_wireframe(Renderer *renderer);
 f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
 
 // Mesh API
-Mesh new_mesh(v3 position, i64 quad_count);
+Mesh *new_mesh(Renderer *renderer, v3 position, i64 quad_count);
 MeshQuad *push_quad(Mesh *mesh, v3 positions[4], v3 normals[4], v4 color, v2 uvs[4], v2 normal_uvs[4]);
-void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position);
 void reset_mesh(Mesh *mesh);
 void upload_mesh(Mesh *mesh);
 
@@ -522,6 +523,7 @@ v3 get_up_direction(v3 rotation) {
 
 bool init_renderer(Renderer *renderer, Window *window) {
     renderer->quads = new_fixed_array<Quad>(MAX_QUADS);
+    renderer->meshes = new_fixed_array<Mesh>(MAX_MESHES);
 
     { // init opengl
         GLenum result = glewInit();
@@ -660,7 +662,7 @@ bool init_renderer(Renderer *renderer, Window *window) {
             .height =  window->height
         };
     
-        ok = init_frame_buffer(&renderer->sun_frame_buffer, FB_DEPTH_ATTACHMENT);
+        ok = init_frame_buffer(&renderer->sun_frame_buffer, FB_DEPTH_ATTACHMENT | FB_DISABLE_DRAW_BUFFER | FB_DISABLE_READ_BUFFER);
         if (!ok) {
             printf("failed to init sun frame buffer\n");
             return false;
@@ -692,11 +694,12 @@ bool load_shaders(Renderer *renderer) {
 
     ok = init_shader(&renderer->mesh_shader, "resources/shaders/mesh_vertex.shader", "resources/shaders/mesh_fragment.shader");
     if (!ok) {
-        printf("Error when creating chunk shader program\n");
+        printf("Error when creating mesh shader program\n");
         return false;
     }
 
     assign_texture_slot(&renderer->mesh_shader, "atlas_texture", 0);
+    assign_texture_slot(&renderer->mesh_shader, "shadow_map", 1);
 
     ok = init_shader(&renderer->post_processing_shader, "resources/shaders/default_vertex.shader", "resources/shaders/post_processing_fragment.shader");
     if (!ok) {
@@ -706,12 +709,20 @@ bool load_shaders(Renderer *renderer) {
 
     assign_texture_slot(&renderer->post_processing_shader, "scene_texture", 0);
 
+    ok = init_shader(&renderer->sun_shader, "resources/shaders/sun_vertex.shader", "resources/shaders/sun_fragment.shader");
+    if (!ok) {
+        printf("Error when creating sun shader program\n");
+        return false;
+    }
+
     return true;
 }
 
 void delete_shaders(Renderer *renderer) {
     glDeleteProgram(renderer->default_shader.id);
-    glDeleteProgram(renderer->lighting_shader.id);
+    glDeleteProgram(renderer->mesh_shader.id);
+    glDeleteProgram(renderer->post_processing_shader.id);
+    glDeleteProgram(renderer->sun_shader.id);
 }
 
 Sprite *load_sprite(Renderer *renderer, string albedo_path, string normal_path) {
@@ -1019,16 +1030,138 @@ void new_frame(Renderer *renderer, Window *window, Camera camera) {
         renderer->clear_colour.a
     );
 
-
-    glBindFramebuffer(GL_FRAMEBUFFER, renderer->frame_buffer.id);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glViewport(0, 0, window->width, window->height);
-
     new_imgui_frame();
 }
 
 void draw_frame(Renderer *renderer, Window *window) {
+    m4 sun_space = {};
+
+    renderer->mode = RenderMode::ORTHOGRAPHIC;
+
+    for (Mesh &mesh : renderer->meshes) {
+        glBindFramebuffer(GL_FRAMEBUFFER, renderer->sun_frame_buffer.id);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glViewport(0, 0, window->width, window->height);
+
+        m4 model_matrix = HMM_M4D(1.0f);
+        model_matrix = HMM_MulM4(model_matrix, HMM_Translate(mesh.position));
+
+        m4 view = HMM_LookAt_LH(
+            renderer->sun_position, 
+            {0, 0, 0}, 
+            {0, 1, 0}
+        );
+
+        f32 aspect = (f32) window->width / (f32) window->height;
+        f32 orthographic_size = 100;
+
+        m4 projection = HMM_Orthographic_LH_NO(
+            -orthographic_size * aspect,  // left
+             orthographic_size * aspect,  // right
+            -orthographic_size,           // bottom
+             orthographic_size,           // top
+             0.1, 
+             500 
+        );
+
+        sun_space = HMM_MulM4(projection, view);
+
+        glUseProgram(renderer->sun_shader.id);
+
+        glUniformMatrix4fv(
+            glGetUniformLocation(renderer->sun_shader.id, "model"),
+            1,
+            false,
+            (f32 *) &model_matrix.Columns[0]
+        );
+
+        glUniformMatrix4fv(
+            glGetUniformLocation(renderer->sun_shader.id, "sun_space"),
+            1,
+            false,
+            (f32 *) &sun_space.Columns[0]
+        );
+
+        GL_CALL(glBindVertexArray(mesh.vertex_array_id));
+
+        // glCullFace(GL_FRONT);
+        GL_CALL(glDrawElements(GL_TRIANGLES, 6 * mesh.quads.len, GL_UNSIGNED_INT, 0));
+        // glCullFace(GL_BACK);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    renderer->mode = RenderMode::PERSPECTIVE;
+
+    for (Mesh &mesh : renderer->meshes) {
+        glBindFramebuffer(GL_FRAMEBUFFER, renderer->frame_buffer.id);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glViewport(0, 0, window->width, window->height);
+
+        m4 model_matrix = HMM_M4D(1.0f);
+        model_matrix = HMM_MulM4(model_matrix, HMM_Translate(mesh.position));
+
+        glUseProgram(renderer->mesh_shader.id);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, renderer->sun_frame_buffer.depth_attachment);
+
+        glUniformMatrix4fv(
+            glGetUniformLocation(renderer->mesh_shader.id, "model"),
+            1,
+            false,
+            (f32 *) &model_matrix.Columns[0]
+        );
+
+        glUniformMatrix4fv(
+            glGetUniformLocation(renderer->mesh_shader.id, "view"),
+            1,
+            false,
+            (f32 *) &renderer->view_matrix.Columns[0]
+        );
+
+        m4 *projection = renderer->mode == RenderMode::PERSPECTIVE ? &renderer->projection_matrix : &renderer->projection_matrix_ortho;
+
+        glUniformMatrix4fv(
+            glGetUniformLocation(renderer->mesh_shader.id, "projection"),
+            1,
+            false,
+            (f32 *) &projection->Columns[0]
+        );
+
+        glUniformMatrix4fv(
+            glGetUniformLocation(renderer->mesh_shader.id, "sun_space"),
+            1,
+            false,
+            (f32 *) &sun_space.Columns[0]
+        );
+
+        glUniform3f(
+            glGetUniformLocation(renderer->mesh_shader.id, "ambient_light"),
+            renderer->ambient_light.r, renderer->ambient_light.g, renderer->ambient_light.b
+        );
+
+        glUniform3f(
+            glGetUniformLocation(renderer->mesh_shader.id, "sun_position"),
+            renderer->sun_position.x, renderer->sun_position.y, renderer->sun_position.z
+        );
+
+        glUniform3f(
+            glGetUniformLocation(renderer->mesh_shader.id, "sun_colour"),
+            renderer->sun_colour.r, renderer->sun_colour.g, renderer->sun_colour.b
+        );
+
+        GL_CALL(glBindVertexArray(mesh.vertex_array_id));
+        GL_CALL(glDrawElements(GL_TRIANGLES, 6 * mesh.quads.len, GL_UNSIGNED_INT, 0));
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
     { // finish first render pass by drawing imediate quads
+        glBindFramebuffer(GL_FRAMEBUFFER, renderer->frame_buffer.id);
+
         glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
     
@@ -1042,7 +1175,6 @@ void draw_frame(Renderer *renderer, Window *window) {
         glBindTexture(GL_TEXTURE_2D, renderer->font_texture_id);
     
         glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
-    
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
@@ -1050,9 +1182,6 @@ void draw_frame(Renderer *renderer, Window *window) {
         reset(&renderer->quads);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glViewport(0, 0, window->width, window->height);
-
-        printf("F %llu %llu\n", renderer->frame_buffer.width, renderer->frame_buffer.height);
-        printf("W %d %d\n", window->width, window->height);
 
         Quad *quad = push_screen_quad(renderer, WHITE);
     
@@ -1395,8 +1524,9 @@ f32 texture_aspect_ratio(Renderer *renderer, Texture *texture) {
     return (f32) texture->width / (f32) texture->height;
 }
 
-Mesh new_mesh(v3 position, i64 quad_count) {
-    Mesh mesh = Mesh {
+Mesh *new_mesh(Renderer *renderer, v3 position, i64 quad_count) {
+    Mesh *mesh = push(&renderer->meshes);
+    *mesh = Mesh {
         .position = position,
         .quads = new_fixed_array<MeshQuad>(quad_count),
     };
@@ -1406,20 +1536,20 @@ Mesh new_mesh(v3 position, i64 quad_count) {
         glGenVertexArrays(1, &vertex_array);
         glBindVertexArray(vertex_array);
 
-        mesh.vertex_array_id = vertex_array;
+        mesh->vertex_array_id = vertex_array;
     }
 
     { // vertex buffer
         u32 vertex_buffer;
         glGenBuffers(1, &vertex_buffer);
         glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(MeshQuad) * mesh.quads.slice.len, mesh.quads.slice.ptr, GL_DYNAMIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(MeshQuad) * mesh->quads.slice.len, mesh->quads.slice.ptr, GL_DYNAMIC_DRAW);
 
-        mesh.vertex_buffer_id = vertex_buffer;
+        mesh->vertex_buffer_id = vertex_buffer;
     }
 
     { // index buffer
-        const i64 index_buffer_length = mesh.quads.slice.len * 6;
+        const i64 index_buffer_length = mesh->quads.slice.len * 6;
         Slice<u32> indices = mem_alloc<u32>(index_buffer_length);
 
         i64 i = 0;
@@ -1446,7 +1576,7 @@ Mesh new_mesh(v3 position, i64 quad_count) {
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u32) * index_buffer_length, indices.ptr, GL_STATIC_DRAW);
 
-        mesh.index_buffer_id = index_buffer;
+        mesh->index_buffer_id = index_buffer;
 
         mem_free(indices);
     }
@@ -1513,59 +1643,6 @@ MeshQuad *push_quad(Mesh *mesh, v3 positions[4], v3 normals[4], v4 color, v2 uvs
     return quad;
 }
 
-void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position) {
-    m4 model_matrix = HMM_M4D(1.0f);
-    model_matrix = HMM_MulM4(model_matrix, HMM_Translate(position));
-
-    glUseProgram(renderer->mesh_shader.id);
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
-
-    glUniformMatrix4fv(
-        glGetUniformLocation(renderer->mesh_shader.id, "model"),
-        1,
-        false,
-        (f32 *) &model_matrix.Columns[0]
-    );
-
-    glUniformMatrix4fv(
-        glGetUniformLocation(renderer->mesh_shader.id, "view"),
-        1,
-        false,
-        (f32 *) &renderer->view_matrix.Columns[0]
-    );
-
-    m4 *projection = renderer->mode == RenderMode::PERSPECTIVE ? &renderer->projection_matrix : &renderer->projection_matrix_ortho;
-
-    glUniformMatrix4fv(
-        glGetUniformLocation(renderer->mesh_shader.id, "projection"),
-        1,
-        false,
-        (f32 *) &projection->Columns[0]
-    );
-
-    glUniform4f(
-        glGetUniformLocation(renderer->mesh_shader.id, "ambient_light"),
-        renderer->ambient_light.r, renderer->ambient_light.g, renderer->ambient_light.b, renderer->ambient_light.a
-    );
-
-    v3 direction = norm(renderer->sun_direction);
-
-    glUniform3f(
-        glGetUniformLocation(renderer->mesh_shader.id, "sun_direction"),
-        direction.x, direction.y, direction.z
-    );
-
-    glUniform4f(
-        glGetUniformLocation(renderer->mesh_shader.id, "sun_colour"),
-        renderer->sun_colour.r, renderer->sun_colour.g, renderer->sun_colour.b, renderer->sun_colour.a
-    );
-
-    GL_CALL(glBindVertexArray(mesh->vertex_array_id));
-    GL_CALL(glDrawElements(GL_TRIANGLES, 6 * mesh->quads.len, GL_UNSIGNED_INT, 0));
-}
-
 void reset_mesh(Mesh *mesh) {
     reset(&mesh->quads);
 }
@@ -1600,7 +1677,6 @@ bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, frame_buffer->depth_attachment, 0);
-        append(&draw_buffers, (GLenum) GL_COLOR_ATTACHMENT1);
     }
 
     if (BIT_SET(options, FB_NORMAL_ATTACHMENT)) {
@@ -1611,6 +1687,7 @@ bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, frame_buffer->normals_attachment, 0);
+        append(&draw_buffers, (GLenum) GL_COLOR_ATTACHMENT1);
     }
 
     if (BIT_SET(options, FB_DISABLE_READ_BUFFER)) {

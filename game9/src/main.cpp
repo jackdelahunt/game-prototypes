@@ -15,8 +15,8 @@
 #include <fstream>
 #include <string>
 
-// Total: 37:00
-// Started: 00:00
+// Total: 45:00
+// Started: 11:00
 
 #define ALLOW_EDITOR 1
 #define MAX_ENTITIES 2000
@@ -87,7 +87,7 @@ struct Chunk {
 
     v3 position;
     v3 size;
-    Mesh mesh;
+    Mesh *mesh;
     Slice<BlockType> blocks;
 };
 
@@ -120,7 +120,7 @@ void update_and_draw(f32 delta_time);
 void physics(f32 delta_time);
 void update_and_draw_editor(f32 delta_time);
 
-Chunk new_chunk(v3i position, v3i size);
+Chunk new_chunk(Renderer *renderer, v3i position, v3i size);
 void generate_mesh(Chunk *chunk);
 void generate_blocks(Chunk *chunk);
 bool set_block(Chunk *chunk, ChunkPosition position, BlockType block);
@@ -158,9 +158,9 @@ int main() {
         .renderer = {
             .mode = RenderMode::PERSPECTIVE,
             .clear_colour = {0.8, 1, 1, 1},
-            .ambient_light = {0.1, 0.1, 0.1, 1},
-            .sun_colour = {1, 1, 1, 1},
-            .sun_direction = {-0.25, 0.8, -0.3},
+            .ambient_light = v3{0.6, 0.6, 0.6},
+            .sun_colour = v3{1, 1, 1},
+            .sun_position = {100, 100, -100},
         },
         .editor = {
             .visable = false,
@@ -240,11 +240,11 @@ int main() {
 
 
     Chunk *chunk = push(&state.chunks);
-    *chunk = new_chunk({}, {30, 100, 30});
+    *chunk = new_chunk(&state.renderer, {}, {30, 100, 30});
 
     generate_blocks(chunk);
     generate_mesh(chunk);
-    upload_mesh(&chunk->mesh);
+    upload_mesh(chunk->mesh);
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
         f64 current_time    = state.time;
@@ -269,17 +269,15 @@ int main() {
 
         for (Chunk &chunk : state.chunks) {
             if (chunk.dirty) {
-                reset_mesh(&chunk.mesh);
+                reset_mesh(chunk.mesh);
                 generate_mesh(&chunk);
-                upload_mesh(&chunk.mesh);
+                upload_mesh(chunk.mesh);
                 chunk.dirty = false;
             }
 
-            draw_mesh(&state.renderer, &chunk.mesh, chunk.position); 
         }
 
         draw_frame(&state.renderer, &state.window); 
-
         swap_buffers(&state.window);
     }
 
@@ -633,9 +631,9 @@ void update_and_draw_editor(f32 delta_time) {
                 ImGui::SliderFloat3("Camera rotation", &state.camera.rotation[0], -360, 360);
                 ImGui::SliderFloat("Ortho Size", &state.camera.orthographic_size, 1, 100);
                 ImGui::SliderFloat4("Clear colour", &state.renderer.clear_colour[0], 0, 1);
-                ImGui::SliderFloat4("Ambient light", &state.renderer.ambient_light[0], 0, 1);
-                ImGui::SliderFloat4("Sun colour", &state.renderer.sun_colour[0], 0, 1);
-                ImGui::SliderFloat3("Sun direction", &state.renderer.sun_direction[0], -1, 1);
+                ImGui::SliderFloat3("Ambient light", &state.renderer.ambient_light[0], 0, 1);
+                ImGui::SliderFloat3("Sun colour", &state.renderer.sun_colour[0], 0, 1);
+                ImGui::SliderFloat3("Sun position", &state.renderer.sun_position[0], -1, 1);
                 if (ImGui::Button("Toggle projection")) {
                     if (state.renderer.mode == RenderMode::PERSPECTIVE) {
                         state.renderer.mode = RenderMode::ORTHOGRAPHIC;
@@ -686,11 +684,11 @@ void update_and_draw_editor(f32 delta_time) {
 
             if(ImGui::Button("Build")) {
                 Chunk *chunk = push(&state.chunks);
-                *chunk = new_chunk(builder.position, builder.size);
+                *chunk = new_chunk(&state.renderer, builder.position, builder.size);
 
                 generate_blocks(chunk);
                 generate_mesh(chunk);
-                upload_mesh(&chunk->mesh);
+                upload_mesh(chunk->mesh);
             }
 
             ImGui::SeparatorText("Sculptor");
@@ -730,15 +728,18 @@ void update_and_draw_editor(f32 delta_time) {
     
             if(ImGui::CollapsingHeader("Render outputs")) {
                 ImVec2 image_size(360 * 1.777, 360);
-    
+
+                ImGui::Text("Colour buffer");
+                ImGui::Image(state.renderer.frame_buffer.colour_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+
                 ImGui::Text("Depth buffer");
                 ImGui::Image(state.renderer.frame_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
 
                 ImGui::Text("Normal buffer");
                 ImGui::Image(state.renderer.frame_buffer.normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
 
-                ImGui::Text("Colour buffer");
-                ImGui::Image(state.renderer.frame_buffer.colour_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Text("Sub depth buffer");
+                ImGui::Image(state.renderer.sun_frame_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
             }
 
             ImGui::End();
@@ -746,14 +747,14 @@ void update_and_draw_editor(f32 delta_time) {
     }
 }
 
-Chunk new_chunk(v3i position, v3i size) {
+Chunk new_chunk(Renderer *renderer, v3i position, v3i size) {
     i64 blocks = size.x * size.y * size.z;
 
     return Chunk {
         .dirty = false,
         .position = as_floats(position),
         .size = as_floats(size),
-        .mesh = new_mesh(as_floats(position), blocks * 6),
+        .mesh = new_mesh(renderer, as_floats(position), blocks * 6),
         .blocks = mem_alloc<BlockType>(blocks)
     };
 }
@@ -815,7 +816,7 @@ void generate_mesh(Chunk *chunk) {
 
             v3 normals[4] = {up_normal, up_normal, up_normal, up_normal};
 
-            push_quad(&chunk->mesh, positions, normals, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs);
+            push_quad(chunk->mesh, positions, normals, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs);
         }
 
         if (down == BlockType::AIR) {
@@ -828,7 +829,7 @@ void generate_mesh(Chunk *chunk) {
 
             v3 normals[4] = {down_normal, down_normal, down_normal, down_normal};
 
-            push_quad(&chunk->mesh, positions, normals, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs);
+            push_quad(chunk->mesh, positions, normals, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs);
         }
 
         if (left == BlockType::AIR) {
@@ -841,7 +842,7 @@ void generate_mesh(Chunk *chunk) {
 
             v3 normals[4] = {left_normal, left_normal, left_normal, left_normal};
 
-            push_quad(&chunk->mesh, positions, normals, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs);
+            push_quad(chunk->mesh, positions, normals, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs);
         }
 
 
@@ -855,7 +856,7 @@ void generate_mesh(Chunk *chunk) {
 
             v3 normals[4] = {right_normal, right_normal, right_normal, right_normal};
 
-            push_quad(&chunk->mesh, positions, normals, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs);
+            push_quad(chunk->mesh, positions, normals, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs);
         }
 
 
@@ -869,7 +870,7 @@ void generate_mesh(Chunk *chunk) {
 
             v3 normals[4] = {front_normal, front_normal, front_normal, front_normal};
 
-            push_quad(&chunk->mesh, positions, normals, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs);
+            push_quad(chunk->mesh, positions, normals, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs);
         }
 
 
@@ -883,7 +884,7 @@ void generate_mesh(Chunk *chunk) {
 
             v3 normals[4] = {back_normal, back_normal, back_normal, back_normal};
 
-            push_quad(&chunk->mesh, positions, normals, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs);
+            push_quad(chunk->mesh, positions, normals, colour, sprite->albedo->uvs, state.renderer.default_normal->uvs);
         }
     }
 }
