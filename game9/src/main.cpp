@@ -15,8 +15,8 @@
 #include <fstream>
 #include <string>
 
-// Total: 45:00
-// Started: 11:00
+// Total: 47:30
+// Started: 15:00
 
 #define ALLOW_EDITOR 1
 #define MAX_ENTITIES 2000
@@ -721,16 +721,21 @@ void update_and_draw_editor(f32 delta_time) {
             if(ImGui::CollapsingHeader("Render outputs")) {
                 ImVec2 image_size(360 * 1.777, 360);
 
-                ImGui::Text("Colour buffer");
-                ImGui::Image(state.renderer.frame_buffer.colour_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+                FrameBuffer *fb = &state.renderer.g_buffer;
 
-                ImGui::Text("Depth buffer");
-                ImGui::Image(state.renderer.frame_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Text("Position buffer");
+                ImGui::Image(fb->position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
 
                 ImGui::Text("Normal buffer");
-                ImGui::Image(state.renderer.frame_buffer.normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Image(fb->normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
 
-                ImGui::Text("Sub depth buffer");
+                ImGui::Text("Albedo buffer");
+                ImGui::Image(fb->albedo_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+
+                ImGui::Text("Depth buffer");
+                ImGui::Image(fb->depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+
+                ImGui::Text("Sun depth buffer");
                 ImGui::Image(state.renderer.sun_frame_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
             }
 

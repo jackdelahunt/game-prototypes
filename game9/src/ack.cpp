@@ -122,7 +122,7 @@ FixedArray<T> new_fixed_array(i64 size) {
 
 template <typename T>
 void append(FixedArray<T> *array, T value) {
-    assert(array->len < array->slice.len);
+    ASSERT(array->len < array->slice.len);
 
     array->slice[array->len] = value;
     array->len += 1;
@@ -130,7 +130,7 @@ void append(FixedArray<T> *array, T value) {
 
 template <typename T>
 T* push(FixedArray<T> *array) {
-    assert(array->len < array->slice.len);
+    ASSERT(array->len < array->slice.len);
 
     T *ptr = &array->slice[array->len];
     array->len++;
@@ -144,7 +144,7 @@ void reset(FixedArray<T> *array) {
 
 template <typename T>
 void swap_remove(FixedArray<T> *array, i64 index) {
-    assert(index < array->len);
+    ASSERT(index < array->len);
 
     array->slice[index] = array->slice[array->len - 1];
     array->len -= 1;
@@ -171,7 +171,7 @@ struct StackArray {
 
 template <typename T, i64 N>
 void append(StackArray<T, N> *array, T value) {
-    assert(array->len < N);
+    ASSERT(array->len < N);
 
     array->data[array->len] = value;
     array->len += 1;
@@ -179,7 +179,7 @@ void append(StackArray<T, N> *array, T value) {
 
 template <typename T, i64 N>
 T* push(StackArray<T, N> *array) {
-    assert(array->len < N);
+    ASSERT(array->len < N);
 
     T *ptr = &array->data[array->len];
     array->len++;
@@ -193,7 +193,7 @@ void reset(StackArray<T, N> *array) {
 
 template <typename T, i64 N>
 void swap_remove(StackArray<T, N> *array, i64 index) {
-    assert(index < array->len);
+    ASSERT(index < array->len);
 
     array->data[index] = array->data[array->len - 1];
     array->len -= 1;

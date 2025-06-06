@@ -318,11 +318,12 @@ struct Font {
 };
 
 enum FrameBufferOptions {
-    FB_COLOUR_ATTACHMENT        = 1 << 0,
+    FB_POSITION_ATTACHMENT      = 1 << 0,
     FB_NORMAL_ATTACHMENT        = 1 << 1,
-    FB_DEPTH_ATTACHMENT         = 1 << 2,
-    FB_DISABLE_READ_BUFFER      = 1 << 3,
-    FB_DISABLE_DRAW_BUFFER      = 1 << 4,
+    FB_ALBEDO_ATTACHMENT        = 1 << 2,
+    FB_DEPTH_ATTACHMENT         = 1 << 3,
+    FB_DISABLE_READ_BUFFER      = 1 << 4,
+    FB_DISABLE_DRAW_BUFFER      = 1 << 5,
 };
 
 struct FrameBuffer {
@@ -330,9 +331,10 @@ struct FrameBuffer {
     i64 width;
     i64 height;
 
-    u32 colour_attachment;
-    u32 depth_attachment;
+    u32 position_attachment;
     u32 normals_attachment;
+    u32 albedo_attachment;
+    u32 depth_attachment;
 };
 
 struct Shader {
@@ -378,6 +380,7 @@ struct Renderer {
 
     Font font;
 
+    FrameBuffer g_buffer;
     FrameBuffer frame_buffer;
     FrameBuffer sun_frame_buffer;
 
@@ -385,6 +388,7 @@ struct Renderer {
     u32 vertex_buffer_id;
     u32 index_buffer_id;
 
+    Shader geometry_shader;
     Shader default_shader;
     Shader mesh_shader;
     Shader post_processing_shader;
@@ -678,12 +682,23 @@ bool init_renderer(Renderer *renderer, Window *window) {
     }
 
     { // init frame buffers
+        renderer->g_buffer = FrameBuffer {
+            .width =  window->width,
+            .height =  window->height
+        };
+    
+        bool ok = init_frame_buffer(&renderer->g_buffer, FB_POSITION_ATTACHMENT | FB_NORMAL_ATTACHMENT | FB_ALBEDO_ATTACHMENT | FB_DEPTH_ATTACHMENT);
+        if (!ok) {
+            printf("failed to init gbuffer frame buffer\n");
+            return false;
+        }
+
          renderer->frame_buffer = FrameBuffer {
             .width =  window->width,
             .height =  window->height
         };
     
-        bool ok = init_frame_buffer(&renderer->frame_buffer, FB_COLOUR_ATTACHMENT | FB_NORMAL_ATTACHMENT | FB_DEPTH_ATTACHMENT);
+        ok = init_frame_buffer(&renderer->frame_buffer, FB_POSITION_ATTACHMENT | FB_NORMAL_ATTACHMENT | FB_ALBEDO_ATTACHMENT | FB_DEPTH_ATTACHMENT);
         if (!ok) {
             printf("failed to init default frame buffer\n");
             return false;
@@ -715,7 +730,16 @@ bool init_renderer(Renderer *renderer, Window *window) {
 }
 
 bool load_shaders(Renderer *renderer) {
-    bool ok = init_shader(&renderer->default_shader, "resources/shaders/default_vertex.shader", "resources/shaders/default_fragment.shader");
+    bool ok = init_shader(&renderer->geometry_shader, "resources/shaders/geometry_vertex.shader", "resources/shaders/geometry_fragment.shader");
+    if (!ok) {
+        printf("Error when creating geometry shader program\n");
+        return false;
+    }
+
+    assign_texture_slot(&renderer->geometry_shader, "atlas_texture", 0);
+    assign_texture_slot(&renderer->geometry_shader, "font_texture", 1);
+
+    ok = init_shader(&renderer->default_shader, "resources/shaders/default_vertex.shader", "resources/shaders/default_fragment.shader");
     if (!ok) {
         printf("Error when creating default shader program\n");
         return false;
@@ -751,6 +775,7 @@ bool load_shaders(Renderer *renderer) {
 }
 
 void delete_shaders(Renderer *renderer) {
+    glDeleteProgram(renderer->geometry_shader.id);
     glDeleteProgram(renderer->default_shader.id);
     glDeleteProgram(renderer->mesh_shader.id);
     glDeleteProgram(renderer->post_processing_shader.id);
@@ -1107,6 +1132,7 @@ void draw_frame(Renderer *renderer, Window *window) {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
+#if 0
     // scene render
     for (Mesh &mesh : renderer->meshes) {
         glBindFramebuffer(GL_FRAMEBUFFER, renderer->frame_buffer.id);
@@ -1137,8 +1163,41 @@ void draw_frame(Renderer *renderer, Window *window) {
         GL_CALL(glDrawElements(GL_TRIANGLES, 6 * mesh.quads.len, GL_UNSIGNED_INT, 0));
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
+#endif
 
-    { // imediete mode quads
+#if 1
+    for (Mesh &mesh : renderer->meshes) {
+        glBindFramebuffer(GL_FRAMEBUFFER, renderer->g_buffer.id);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glViewport(0, 0, window->width, window->height);
+
+        m4 model_matrix = HMM_M4D(1.0f);
+        model_matrix = HMM_MulM4(model_matrix, HMM_Translate(mesh.position));
+
+        use_shader(renderer->geometry_shader);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, renderer->sun_frame_buffer.depth_attachment);
+
+        set_uniform_m4(renderer->geometry_shader, "model", &model_matrix);
+        set_uniform_m4(renderer->geometry_shader, "view", &renderer->view_matrix);
+        set_uniform_m4(renderer->geometry_shader, "projection", &renderer->projection_matrix);
+        set_uniform_m4(renderer->geometry_shader, "sun_space", &sun_space);
+
+        set_uniform_v3(renderer->geometry_shader, "ambient_light", renderer->ambient_light);
+        set_uniform_v3(renderer->geometry_shader, "sun_position", renderer->sun_position);
+        set_uniform_v3(renderer->geometry_shader, "sun_colour", renderer->sun_colour);
+
+        GL_CALL(glBindVertexArray(mesh.vertex_array_id));
+        GL_CALL(glDrawElements(GL_TRIANGLES, 6 * mesh.quads.len, GL_UNSIGNED_INT, 0));
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+#endif
+
+    if (false) { // imediete mode quads
         glBindFramebuffer(GL_FRAMEBUFFER, renderer->frame_buffer.id);
 
         glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
@@ -1173,7 +1232,7 @@ void draw_frame(Renderer *renderer, Window *window) {
  
         // set the input texture
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, renderer->frame_buffer.colour_attachment);
+        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.albedo_attachment);
 
         glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
     }
@@ -1636,17 +1695,41 @@ bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options) {
     glCreateFramebuffers(1, &frame_buffer->id);
     glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer->id);
 
-    StackArray<GLenum, 2> draw_buffers = {};
+    StackArray<GLenum, 3> draw_buffers = {};
 
-    if (BIT_SET(options, FB_COLOUR_ATTACHMENT)) {
-        glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->colour_attachment);
-        glBindTexture(GL_TEXTURE_2D, frame_buffer->colour_attachment);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, frame_buffer->width, frame_buffer->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    if (BIT_SET(options, FB_POSITION_ATTACHMENT)) {
+        glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->position_attachment);
+        glBindTexture(GL_TEXTURE_2D, frame_buffer->position_attachment);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, frame_buffer->width, frame_buffer->height, 0, GL_RGBA, GL_FLOAT, NULL);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); 
 
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frame_buffer->colour_attachment, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frame_buffer->position_attachment, 0);
         append(&draw_buffers, (GLenum) GL_COLOR_ATTACHMENT0);
+    }
+
+    if (BIT_SET(options, FB_NORMAL_ATTACHMENT)) {
+        glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->normals_attachment);
+        glBindTexture(GL_TEXTURE_2D, frame_buffer->normals_attachment);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, frame_buffer->width, frame_buffer->height, 0, GL_RGBA, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, frame_buffer->normals_attachment, 0);
+        append(&draw_buffers, (GLenum) GL_COLOR_ATTACHMENT1);
+    }
+
+    if (BIT_SET(options, FB_ALBEDO_ATTACHMENT)) {
+        glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->albedo_attachment);
+        glBindTexture(GL_TEXTURE_2D, frame_buffer->albedo_attachment);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, frame_buffer->width, frame_buffer->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, frame_buffer->albedo_attachment, 0);
+        append(&draw_buffers, (GLenum) GL_COLOR_ATTACHMENT2);
     }
 
     if (BIT_SET(options, FB_DEPTH_ATTACHMENT)) {
@@ -1657,17 +1740,6 @@ bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, frame_buffer->depth_attachment, 0);
-    }
-
-    if (BIT_SET(options, FB_NORMAL_ATTACHMENT)) {
-        glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->normals_attachment);
-        glBindTexture(GL_TEXTURE_2D, frame_buffer->normals_attachment);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, frame_buffer->width, frame_buffer->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, frame_buffer->normals_attachment, 0);
-        append(&draw_buffers, (GLenum) GL_COLOR_ATTACHMENT1);
     }
 
     if (BIT_SET(options, FB_DISABLE_READ_BUFFER)) {
