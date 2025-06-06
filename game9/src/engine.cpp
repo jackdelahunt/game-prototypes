@@ -355,7 +355,6 @@ enum class RenderMode {
 
 struct Renderer {
     bool wireframe;
-    RenderMode mode;
 
     v4 clear_colour;
     v3 ambient_light;
@@ -413,6 +412,12 @@ v3 get_up_direction(Camera camera);
 v3 get_forward_direction(v3 rotation);
 v3 get_right_direction(v3 rotation);
 v3 get_up_direction(v3 rotation);
+
+// Shader API
+void use_shader(Shader shader);
+void set_uniform_m4(Shader shader, string name, m4 *matrix);
+void set_uniform_v3(Shader shader, string name, v3 vector);
+void set_uniform_v4(Shader shader, string name, v4 vector);
 
 // Renderer init API
 bool init_renderer(Renderer *renderer, Window *window);
@@ -519,6 +524,33 @@ v3 get_right_direction(v3 rotation) {
 
 v3 get_up_direction(v3 rotation) {
     return {0, 1, 0};
+}
+
+void use_shader(Shader shader) {
+    glUseProgram(shader.id);
+}
+
+void set_uniform_m4(Shader shader, string name, m4 *matrix) {
+    glUniformMatrix4fv(
+        glGetUniformLocation(shader.id, name.c()),
+        1,
+        false,
+        (f32 *) &matrix->Columns[0]
+    );
+}
+
+void set_uniform_v3(Shader shader, string name, v3 vector) {
+    glUniform3f(
+        glGetUniformLocation(shader.id, name.c()),
+        vector.x, vector.y, vector.z 
+    );
+}
+
+void set_uniform_v4(Shader shader, string name, v4 vector) {
+    glUniform4f(
+        glGetUniformLocation(shader.id, name.c()),
+        vector.x, vector.y, vector.z, vector.w
+    );
 }
 
 bool init_renderer(Renderer *renderer, Window *window) {
@@ -1036,8 +1068,7 @@ void new_frame(Renderer *renderer, Window *window, Camera camera) {
 void draw_frame(Renderer *renderer, Window *window) {
     m4 sun_space = {};
 
-    renderer->mode = RenderMode::ORTHOGRAPHIC;
-
+    // scene render from sun POV
     for (Mesh &mesh : renderer->meshes) {
         glBindFramebuffer(GL_FRAMEBUFFER, renderer->sun_frame_buffer.id);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1066,33 +1097,17 @@ void draw_frame(Renderer *renderer, Window *window) {
 
         sun_space = HMM_MulM4(projection, view);
 
-        glUseProgram(renderer->sun_shader.id);
-
-        glUniformMatrix4fv(
-            glGetUniformLocation(renderer->sun_shader.id, "model"),
-            1,
-            false,
-            (f32 *) &model_matrix.Columns[0]
-        );
-
-        glUniformMatrix4fv(
-            glGetUniformLocation(renderer->sun_shader.id, "sun_space"),
-            1,
-            false,
-            (f32 *) &sun_space.Columns[0]
-        );
+        use_shader(renderer->sun_shader);
+        set_uniform_m4(renderer->sun_shader, "model", &model_matrix);
+        set_uniform_m4(renderer->sun_shader, "sun_space", &sun_space);
 
         GL_CALL(glBindVertexArray(mesh.vertex_array_id));
-
-        // glCullFace(GL_FRONT);
         GL_CALL(glDrawElements(GL_TRIANGLES, 6 * mesh.quads.len, GL_UNSIGNED_INT, 0));
-        // glCullFace(GL_BACK);
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
-    renderer->mode = RenderMode::PERSPECTIVE;
-
+    // scene render
     for (Mesh &mesh : renderer->meshes) {
         glBindFramebuffer(GL_FRAMEBUFFER, renderer->frame_buffer.id);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1101,7 +1116,7 @@ void draw_frame(Renderer *renderer, Window *window) {
         m4 model_matrix = HMM_M4D(1.0f);
         model_matrix = HMM_MulM4(model_matrix, HMM_Translate(mesh.position));
 
-        glUseProgram(renderer->mesh_shader.id);
+        use_shader(renderer->mesh_shader);
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
@@ -1109,64 +1124,29 @@ void draw_frame(Renderer *renderer, Window *window) {
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, renderer->sun_frame_buffer.depth_attachment);
 
-        glUniformMatrix4fv(
-            glGetUniformLocation(renderer->mesh_shader.id, "model"),
-            1,
-            false,
-            (f32 *) &model_matrix.Columns[0]
-        );
+        set_uniform_m4(renderer->mesh_shader, "model", &model_matrix);
+        set_uniform_m4(renderer->mesh_shader, "view", &renderer->view_matrix);
+        set_uniform_m4(renderer->mesh_shader, "projection", &renderer->projection_matrix);
+        set_uniform_m4(renderer->mesh_shader, "sun_space", &sun_space);
 
-        glUniformMatrix4fv(
-            glGetUniformLocation(renderer->mesh_shader.id, "view"),
-            1,
-            false,
-            (f32 *) &renderer->view_matrix.Columns[0]
-        );
-
-        m4 *projection = renderer->mode == RenderMode::PERSPECTIVE ? &renderer->projection_matrix : &renderer->projection_matrix_ortho;
-
-        glUniformMatrix4fv(
-            glGetUniformLocation(renderer->mesh_shader.id, "projection"),
-            1,
-            false,
-            (f32 *) &projection->Columns[0]
-        );
-
-        glUniformMatrix4fv(
-            glGetUniformLocation(renderer->mesh_shader.id, "sun_space"),
-            1,
-            false,
-            (f32 *) &sun_space.Columns[0]
-        );
-
-        glUniform3f(
-            glGetUniformLocation(renderer->mesh_shader.id, "ambient_light"),
-            renderer->ambient_light.r, renderer->ambient_light.g, renderer->ambient_light.b
-        );
-
-        glUniform3f(
-            glGetUniformLocation(renderer->mesh_shader.id, "sun_position"),
-            renderer->sun_position.x, renderer->sun_position.y, renderer->sun_position.z
-        );
-
-        glUniform3f(
-            glGetUniformLocation(renderer->mesh_shader.id, "sun_colour"),
-            renderer->sun_colour.r, renderer->sun_colour.g, renderer->sun_colour.b
-        );
+        set_uniform_v3(renderer->mesh_shader, "ambient_light", renderer->ambient_light);
+        set_uniform_v3(renderer->mesh_shader, "sun_position", renderer->sun_position);
+        set_uniform_v3(renderer->mesh_shader, "sun_colour", renderer->sun_colour);
 
         GL_CALL(glBindVertexArray(mesh.vertex_array_id));
         GL_CALL(glDrawElements(GL_TRIANGLES, 6 * mesh.quads.len, GL_UNSIGNED_INT, 0));
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
-    { // finish first render pass by drawing imediate quads
+    { // imediete mode quads
         glBindFramebuffer(GL_FRAMEBUFFER, renderer->frame_buffer.id);
 
         glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
     
         glBindVertexArray(renderer->vertex_array_id);
-        glUseProgram(renderer->default_shader.id);
+
+        use_shader(renderer->default_shader);
     
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
@@ -1178,7 +1158,7 @@ void draw_frame(Renderer *renderer, Window *window) {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
-    if (true) { // second render pass - post processing
+    { // post processing
         reset(&renderer->quads);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glViewport(0, 0, window->width, window->height);
@@ -1189,7 +1169,7 @@ void draw_frame(Renderer *renderer, Window *window) {
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
         glBindVertexArray(renderer->vertex_array_id);
  
-        glUseProgram(renderer->post_processing_shader.id);
+        use_shader(renderer->post_processing_shader);
  
         // set the input texture
         glActiveTexture(GL_TEXTURE0);

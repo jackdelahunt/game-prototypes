@@ -156,7 +156,6 @@ int main() {
             .mouse_captured = true, 
         },
         .renderer = {
-            .mode = RenderMode::PERSPECTIVE,
             .clear_colour = {0.8, 1, 1, 1},
             .ambient_light = v3{0.6, 0.6, 0.6},
             .sun_colour = v3{1, 1, 1},
@@ -634,13 +633,6 @@ void update_and_draw_editor(f32 delta_time) {
                 ImGui::SliderFloat3("Ambient light", &state.renderer.ambient_light[0], 0, 1);
                 ImGui::SliderFloat3("Sun colour", &state.renderer.sun_colour[0], 0, 1);
                 ImGui::SliderFloat3("Sun position", &state.renderer.sun_position[0], -1, 1);
-                if (ImGui::Button("Toggle projection")) {
-                    if (state.renderer.mode == RenderMode::PERSPECTIVE) {
-                        state.renderer.mode = RenderMode::ORTHOGRAPHIC;
-                    } else {
-                        state.renderer.mode = RenderMode::PERSPECTIVE;
-                    }
-                }
             }
        
             {
