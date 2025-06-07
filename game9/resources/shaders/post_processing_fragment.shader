@@ -21,24 +21,6 @@ void main()
 {
     vec4 sample_colour = texture(scene_texture, uv);
 
-#if 0
-    if (brightness(sample_colour) < 0.2) {
-        sample_colour = change_brightness(sample_colour, 0.2);
-    } 
-    else if (brightness(frag_colour) < 0.4) {
-        sample_colour = change_brightness(sample_colour, 0.4);
-    }
-    else if (brightness(frag_colour) < 0.6) {
-        sample_colour = change_brightness(sample_colour, 0.6);
-    }
-    else if (brightness(frag_colour) < 0.8) {
-        sample_colour = change_brightness(sample_colour, 0.8);
-    }
-    else {
-        sample_colour = change_brightness(sample_colour, 1);
-    }
-#endif
-
     frag_colour = sample_colour;
 
     // game correction - same as sRGB but it is only applied on the final fragment colour

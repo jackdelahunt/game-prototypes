@@ -15,8 +15,8 @@
 #include <fstream>
 #include <string>
 
-// Total: 50:00
-// Started: 17:00
+// Total: 53:30
+// Started: 20:30
 
 #define ALLOW_EDITOR 1
 #define MAX_ENTITIES 2000
@@ -160,6 +160,8 @@ int main() {
             .ambient_light = v3{0.6, 0.6, 0.6},
             .sun_colour = v3{1, 1, 1},
             .sun_position = {100, 100, -100},
+            .ssao_radius = 0.8,
+            .ssao_bias = 0.025,
         },
         .editor = {
             .visable = false,
@@ -619,7 +621,7 @@ void update_and_draw_editor(f32 delta_time) {
             }
 
             { // frame time plot
-                const i64 BUFFER_SIZE = 128;
+                const i64 BUFFER_SIZE = 1024;
                 static f32 frame_times[BUFFER_SIZE] = {};
 
                 for (i64 i = BUFFER_SIZE - 1; i > 0; i--) {
@@ -654,10 +656,16 @@ void update_and_draw_editor(f32 delta_time) {
                 ImGui::SliderFloat3("Camera position", &state.camera.position[0], -50, 50);
                 ImGui::SliderFloat3("Camera rotation", &state.camera.rotation[0], -360, 360);
                 ImGui::SliderFloat("Ortho Size", &state.camera.orthographic_size, 1, 100);
+            }
+
+            {
+                ImGui::SeparatorText("Renderer");
                 ImGui::SliderFloat4("Clear colour", &state.renderer.clear_colour[0], 0, 1);
                 ImGui::SliderFloat3("Ambient light", &state.renderer.ambient_light[0], 0, 1);
                 ImGui::SliderFloat3("Sun colour", &state.renderer.sun_colour[0], 0, 1);
-                ImGui::SliderFloat3("Sun position", &state.renderer.sun_position[0], -1, 1);
+                ImGui::SliderFloat3("Sun position", &state.renderer.sun_position[0], -100, 100);
+                ImGui::SliderFloat("SSAO radius", &state.renderer.ssao_radius, 0, 2);
+                ImGui::SliderFloat("SSAO bias", &state.renderer.ssao_bias, 0, 0.2);
             }
        
             {
@@ -774,6 +782,9 @@ void update_and_draw_editor(f32 delta_time) {
 
                 ImGui::Text("SSAO buffer position");
                 ImGui::Image(state.renderer.ssao_frame_buffer.position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+
+                ImGui::Text("SSAO blur position");
+                ImGui::Image(state.renderer.ssao_blur_frame_buffer.position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
             }
 
             ImGui::End();

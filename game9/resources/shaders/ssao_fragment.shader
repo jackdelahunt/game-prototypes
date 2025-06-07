@@ -12,9 +12,10 @@ uniform mat4 projection;
 
 uniform vec3 samples[64];
 
+uniform float radius;
+uniform float bias;
+
 int kernelSize = 64;
-float radius = 0.8;
-float bias = 0.025;
 
 const vec2 noiseScale = vec2(1920.0/4.0, 1080.0/4.0); 
 
@@ -23,6 +24,10 @@ void main()
     vec3 fragPos   = texture(position_map, uv).xyz;
     vec3 normal    = texture(normal_map, uv).rgb;
     vec3 randomVec = texture(noise_map, uv * noiseScale).xyz;
+
+    if (length(fragPos) < 0.0) {
+        discard;
+    }
 
     vec3 tangent   = normalize(randomVec - normal * dot(randomVec, normal));
     vec3 bitangent = cross(normal, tangent);

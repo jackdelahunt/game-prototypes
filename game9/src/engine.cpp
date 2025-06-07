@@ -106,7 +106,6 @@ bool init_window(Window *window, string title) {
     return true;
 }
 
-
 void set_mouse_captured(Window *window, bool captured) {
     window->mouse_captured = captured;
 
@@ -372,6 +371,8 @@ struct Renderer {
 
     std::vector<v3> ssao_kernal;
     std::vector<v3> ssao_noise;
+    f32 ssao_radius;
+    f32 ssao_bias;
 
     FixedArray<Mesh> meshes;
     FixedArray<Quad> quads;
@@ -393,6 +394,7 @@ struct Renderer {
     FrameBuffer g_buffer;
     FrameBuffer sun_frame_buffer;
     FrameBuffer ssao_frame_buffer;
+    FrameBuffer ssao_blur_frame_buffer;
     FrameBuffer lighting_frame_buffer;
 
     u32 vertex_array_id;
@@ -404,6 +406,7 @@ struct Renderer {
     Shader post_processing_shader;
     Shader sun_shader;
     Shader ssao_shader;
+    Shader blur_shader;
     Shader lighting_shader;
 
     u32 atlas_texture_id;
@@ -432,6 +435,7 @@ v3 get_up_direction(v3 rotation);
 
 // Shader API
 void use_shader(Shader shader);
+void set_uniform_f32(Shader shader, string name, f32 value);
 void set_uniform_m4(Shader shader, string name, m4 *matrix);
 void set_uniform_v3(Shader shader, string name, v3 vector);
 void set_uniform_v4(Shader shader, string name, v4 vector);
@@ -547,6 +551,10 @@ v3 get_up_direction(v3 rotation) {
 
 void use_shader(Shader shader) {
     glUseProgram(shader.id);
+}
+
+void set_uniform_f32(Shader shader, string name, f32 value) {
+    glUniform1f(glGetUniformLocation(shader.id, name.c()), value);
 }
 
 void set_uniform_m4(Shader shader, string name, m4 *matrix) {
@@ -730,6 +738,17 @@ bool init_renderer(Renderer *renderer, Window *window) {
             return false;
         }
 
+        renderer->ssao_blur_frame_buffer = FrameBuffer {
+            .width =  window->width,
+            .height =  window->height
+        };
+    
+        ok = init_frame_buffer(&renderer->ssao_blur_frame_buffer, FB_POSITION_ATTACHMENT);
+        if (!ok) {
+            printf("failed to init ssao blur frame buffer\n");
+            return false;
+        }
+
          renderer->lighting_frame_buffer = FrameBuffer {
             .width =  window->width,
             .height =  window->height
@@ -845,6 +864,15 @@ bool load_shaders(Renderer *renderer) {
     assign_texture_slot(&renderer->ssao_shader, "position_map", 0);
     assign_texture_slot(&renderer->ssao_shader, "normal_map", 1);
     assign_texture_slot(&renderer->ssao_shader, "noise_map", 2);
+
+
+    ok = init_shader(&renderer->blur_shader, "Blur shader", "resources/shaders/blur_vertex.shader", "resources/shaders/blur_fragment.shader");
+    if (!ok) {
+        printf("Error when creating blur shader program\n");
+        return false;
+    }
+
+    assign_texture_slot(&renderer->blur_shader, "ssao_map", 0);
 
     ok = init_shader(&renderer->lighting_shader, "Lighting shader", "resources/shaders/lighting_vertex.shader", "resources/shaders/lighting_fragment.shader");
     if (!ok) {
@@ -1182,6 +1210,8 @@ void new_frame(Renderer *renderer, Window *window, Camera camera) {
 void draw_frame(Renderer *renderer, Window *window) {
     m4 sun_space = {};
 
+    glClearColor(0, 0, 0, 1);
+
     // scene render from sun POV
     for (Mesh &mesh : renderer->meshes) {
         glBindFramebuffer(GL_FRAMEBUFFER, renderer->sun_frame_buffer.id);
@@ -1296,6 +1326,8 @@ void draw_frame(Renderer *renderer, Window *window) {
         glBindTexture(GL_TEXTURE_2D, renderer->noise_texture_id);
 
         set_uniform_m4(renderer->ssao_shader, "projection", &renderer->projection_matrix);
+        set_uniform_f32(renderer->ssao_shader, "radius", renderer->ssao_radius);
+        set_uniform_f32(renderer->ssao_shader, "bias", renderer->ssao_bias);
 
         for (i64 i = 0; i < renderer->ssao_kernal.size(); i++) {
             char buffer[32] = {};
@@ -1308,6 +1340,38 @@ void draw_frame(Renderer *renderer, Window *window) {
         glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
+
+    { // ssao blur
+        glBindFramebuffer(GL_FRAMEBUFFER, renderer->ssao_blur_frame_buffer.id);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glViewport(0, 0, window->width, window->height);
+
+        reset(&renderer->quads);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glViewport(0, 0, window->width, window->height);
+
+        Quad *quad = push_screen_quad(renderer, WHITE);
+    
+        glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
+        glBindVertexArray(renderer->vertex_array_id);
+ 
+        use_shader(renderer->blur_shader);
+ 
+        // set the input texture
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, renderer->ssao_frame_buffer.position_attachment);
+
+        glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    glClearColor(
+        renderer->clear_colour.r,
+        renderer->clear_colour.g,
+        renderer->clear_colour.b,
+        renderer->clear_colour.a
+    );
 
     { // lighting pass
         glBindFramebuffer(GL_FRAMEBUFFER, renderer->lighting_frame_buffer.id);
@@ -1338,7 +1402,7 @@ void draw_frame(Renderer *renderer, Window *window) {
         glBindTexture(GL_TEXTURE_2D, renderer->sun_frame_buffer.depth_attachment);
 
         glActiveTexture(GL_TEXTURE5);
-        glBindTexture(GL_TEXTURE_2D, renderer->ssao_frame_buffer.position_attachment);
+        glBindTexture(GL_TEXTURE_2D, renderer->ssao_blur_frame_buffer.position_attachment);
 
         set_uniform_m4(renderer->lighting_shader, "sun_space", &sun_space);
         set_uniform_v3(renderer->lighting_shader, "ambient_light", renderer->ambient_light);
