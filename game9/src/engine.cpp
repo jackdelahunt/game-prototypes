@@ -1,11 +1,13 @@
 #ifndef ENGINE_CPP
 #define ENGINE_CPP
 
-#include <cassert>
-#include <cstring>
+#include <assert.h>
+#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <random>
 
 #include "libs/libs.h"
 #include "ack.cpp"
@@ -321,9 +323,10 @@ enum FrameBufferOptions {
     FB_POSITION_ATTACHMENT      = 1 << 0,
     FB_NORMAL_ATTACHMENT        = 1 << 1,
     FB_ALBEDO_ATTACHMENT        = 1 << 2,
-    FB_DEPTH_ATTACHMENT         = 1 << 3,
-    FB_DISABLE_READ_BUFFER      = 1 << 4,
-    FB_DISABLE_DRAW_BUFFER      = 1 << 5,
+    FB_SSAO_ATTACHMENT          = 1 << 3,
+    FB_DEPTH_ATTACHMENT         = 1 << 4,
+    FB_DISABLE_READ_BUFFER      = 1 << 5,
+    FB_DISABLE_DRAW_BUFFER      = 1 << 6,
 };
 
 struct FrameBuffer {
@@ -334,6 +337,7 @@ struct FrameBuffer {
     u32 position_attachment;
     u32 normals_attachment;
     u32 albedo_attachment;
+    u32 ssao_attachment;
     u32 depth_attachment;
 };
 
@@ -364,6 +368,9 @@ struct Renderer {
     v3 sun_colour;
     v3 sun_position;
 
+    std::vector<v3> ssao_kernal;
+    std::vector<v3> ssao_noise;
+
     FixedArray<Mesh> meshes;
     FixedArray<Quad> quads;
     StackArray<Light, MAX_LIGHTS> lights;
@@ -383,6 +390,7 @@ struct Renderer {
 
     FrameBuffer g_buffer;
     FrameBuffer sun_frame_buffer;
+    FrameBuffer ssao_frame_buffer;
 
     u32 vertex_array_id;
     u32 vertex_buffer_id;
@@ -392,9 +400,11 @@ struct Renderer {
     Shader geometry_shader;
     Shader post_processing_shader;
     Shader sun_shader;
+    Shader ssao_shader;
 
     u32 atlas_texture_id;
     u32 font_texture_id;
+    u32 noise_texture_id;
 };
 
 v4 WHITE            = {1, 1, 1, 1};
@@ -486,6 +496,8 @@ void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, 
 void print(v2 vector);
 void print(v3 vector);
 void print(v4 vector);
+
+f32 accel_lerp(f32 a, f32 b, f32 f);
 
 v3 get_forward_direction(Camera camera) {
     // pitch    - x
@@ -702,6 +714,17 @@ bool init_renderer(Renderer *renderer, Window *window) {
             printf("failed to init sun frame buffer\n");
             return false;
         }
+
+         renderer->ssao_frame_buffer = FrameBuffer {
+            .width =  window->width,
+            .height =  window->height
+        };
+    
+        ok = init_frame_buffer(&renderer->ssao_frame_buffer, FB_POSITION_ATTACHMENT);
+        if (!ok) {
+            printf("failed to init ssao frame buffer\n");
+            return false;
+        }
     }
 
     { // load default normal texture
@@ -712,6 +735,55 @@ bool init_renderer(Renderer *renderer, Window *window) {
         }
 
         renderer->default_normal = texture;
+    }
+
+    { // generate ssao kernal
+        std::uniform_real_distribution<f32> random_floats(0.0, 1.0); // random floats between [0.0, 1.0]
+        std::default_random_engine generator;
+        renderer->ssao_kernal = std::vector<v3>();
+
+        for (i64 i = 0; i < 64; i++)
+        {
+            v3 sample {
+                random_floats(generator) * 2.0f - 1.0f, 
+                random_floats(generator) * 2.0f - 1.0f, 
+                random_floats(generator)
+            };
+
+            sample  = norm(sample);
+            sample *= random_floats(generator);
+
+            float scale = f32(i) / 64.0f;
+
+            scale = accel_lerp(0.1f, 1.0f, scale * scale);
+            sample *= scale;
+            renderer->ssao_kernal.push_back(sample);
+        }
+    }
+
+    { // generate ssao noise texture
+        std::uniform_real_distribution<f32> random_floats(0.0, 1.0); // random floats between [0.0, 1.0]
+        std::default_random_engine generator;
+        renderer->ssao_noise = std::vector<v3>();
+
+        for (i64 i = 0; i < 16; i++)
+        {
+            v3 noise{
+                random_floats(generator) * 2.0f - 1.0f, 
+                random_floats(generator) * 2.0f - 1.0f, 
+                0.0f
+            }; 
+
+            renderer->ssao_noise.push_back(noise);
+        }  
+
+        glGenTextures(1, &renderer->noise_texture_id);
+        glBindTexture(GL_TEXTURE_2D, renderer->noise_texture_id);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 4, 4, 0, GL_RGB, GL_FLOAT, &renderer->ssao_noise[0]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);  
     }
 
     return true;
@@ -743,12 +815,23 @@ bool load_shaders(Renderer *renderer) {
     }
 
     assign_texture_slot(&renderer->post_processing_shader, "scene_texture", 0);
+    assign_texture_slot(&renderer->post_processing_shader, "ssao_texture", 1);
 
     ok = init_shader(&renderer->sun_shader, "Sun shader", "resources/shaders/sun_vertex.shader", "resources/shaders/sun_fragment.shader");
     if (!ok) {
         printf("Error when creating sun shader program\n");
         return false;
     }
+
+    ok = init_shader(&renderer->ssao_shader, "SSAO shader", "resources/shaders/ssao_vertex.shader", "resources/shaders/ssao_fragment.shader");
+    if (!ok) {
+        printf("Error when creating ssao shader program\n");
+        return false;
+    }
+
+    assign_texture_slot(&renderer->ssao_shader, "position_map", 0);
+    assign_texture_slot(&renderer->ssao_shader, "normal_map", 1);
+    assign_texture_slot(&renderer->ssao_shader, "noise_map", 2);
 
     return true;
 }
@@ -1161,6 +1244,47 @@ void draw_frame(Renderer *renderer, Window *window) {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
+    { // ssao
+        glBindFramebuffer(GL_FRAMEBUFFER, renderer->ssao_frame_buffer.id);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glViewport(0, 0, window->width, window->height);
+
+        reset(&renderer->quads);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glViewport(0, 0, window->width, window->height);
+
+        Quad *quad = push_screen_quad(renderer, WHITE);
+    
+        glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
+        glBindVertexArray(renderer->vertex_array_id);
+ 
+        use_shader(renderer->ssao_shader);
+ 
+        // set the input texture
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.position_attachment);
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.normals_attachment);
+
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, renderer->noise_texture_id);
+
+        set_uniform_m4(renderer->ssao_shader, "projection", &renderer->projection_matrix);
+
+        for (i64 i = 0; i < renderer->ssao_kernal.size(); i++) {
+            char buffer[32] = {};
+            i64 len = sprintf(buffer, "samples[%llu]", i);
+            string name = make_slice((u8 *)buffer, len);
+
+            set_uniform_v3(renderer->ssao_shader, name, renderer->ssao_kernal[i]);
+        }
+
+        glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
     { // post processing
         reset(&renderer->quads);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1177,6 +1301,9 @@ void draw_frame(Renderer *renderer, Window *window) {
         // set the input texture
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.albedo_attachment);
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, renderer->ssao_frame_buffer.position_attachment);
 
         glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
     }
@@ -1639,7 +1766,7 @@ bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options) {
     glCreateFramebuffers(1, &frame_buffer->id);
     glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer->id);
 
-    StackArray<GLenum, 3> draw_buffers = {};
+    StackArray<GLenum, 4> draw_buffers = {};
 
     if (BIT_SET(options, FB_POSITION_ATTACHMENT)) {
         glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->position_attachment);
@@ -1674,6 +1801,17 @@ bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options) {
 
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, frame_buffer->albedo_attachment, 0);
         append(&draw_buffers, (GLenum) GL_COLOR_ATTACHMENT2);
+    }
+
+    if (BIT_SET(options, FB_SSAO_ATTACHMENT)) {
+        glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->ssao_attachment);
+        glBindTexture(GL_TEXTURE_2D, frame_buffer->ssao_attachment);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, frame_buffer->width, frame_buffer->height, 0, GL_RED, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, frame_buffer->ssao_attachment, 0);
+        append(&draw_buffers, (GLenum) GL_COLOR_ATTACHMENT3);
     }
 
     if (BIT_SET(options, FB_DEPTH_ATTACHMENT)) {
@@ -1885,6 +2023,10 @@ void print(v3 vector) {
 
 void print(v4 vector) {
     printf("{x: %f, y: %f, z: %f, w: %f}\n", vector.x, vector.y, vector.z, vector.w);
+}
+
+f32 accel_lerp(f32 a, f32 b, f32 f) {
+    return a + f * (b - a);
 }
 
 ////////////////////////////////////////////////////////////////////////////

@@ -15,7 +15,7 @@
 #include <fstream>
 #include <string>
 
-// Total: 47:30
+// Total: 50:00
 // Started: 15:00
 
 #define ALLOW_EDITOR 1
@@ -747,6 +747,9 @@ void update_and_draw_editor(f32 delta_time) {
                 ImVec2 image_size(360 * 1.777, 360);
 
                 FrameBuffer *fb = &state.renderer.g_buffer;
+
+                ImGui::Text("SSAO buffer");
+                ImGui::Image(state.renderer.ssao_frame_buffer.position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
 
                 ImGui::Text("Position buffer");
                 ImGui::Image(fb->position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));

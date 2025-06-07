@@ -8,6 +8,7 @@ flat in int draw_type;
 layout(location = 0) out vec4 frag_colour;
 
 uniform sampler2D scene_texture;
+uniform sampler2D ssao_texture;
 
 float brightness(vec4 colour) {
     return (colour.r + colour.g + colour.b) * 0.33;
@@ -19,27 +20,33 @@ vec4 change_brightness(vec4 colour, float brightness) {
 
 void main()
 {
-    frag_colour = texture(scene_texture, uv);
+    vec4 sample_colour = texture(scene_texture, uv) * colour;
+    float occlusion = length(texture(ssao_texture, uv).rgb);
+    if (occlusion < 0.3) {
+        occlusion = 0;
+    }
 
 #if 0
-    if (brightness(frag_colour) < 0.2) {
-        frag_colour = change_brightness(frag_colour, 0.2);
+    if (brightness(sample_colour) < 0.2) {
+        sample_colour = change_brightness(sample_colour, 0.2);
     } 
     else if (brightness(frag_colour) < 0.4) {
-        frag_colour = change_brightness(frag_colour, 0.4);
+        sample_colour = change_brightness(sample_colour, 0.4);
     }
     else if (brightness(frag_colour) < 0.6) {
-        frag_colour = change_brightness(frag_colour, 0.6);
+        sample_colour = change_brightness(sample_colour, 0.6);
     }
     else if (brightness(frag_colour) < 0.8) {
-        frag_colour = change_brightness(frag_colour, 0.8);
+        sample_colour = change_brightness(sample_colour, 0.8);
     }
     else {
-        frag_colour = change_brightness(frag_colour, 1);
+        sample_colour = change_brightness(sample_colour, 1);
     }
 #endif
 
-    frag_colour *= colour;
+    sample_colour = change_brightness(sample_colour, 1 - occlusion);
+
+    frag_colour = sample_colour;
   
     // game correction - same as sRGB but it is only applied on the final fragment colour
     float gamma = 2.2;
