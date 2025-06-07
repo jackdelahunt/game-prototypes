@@ -16,7 +16,7 @@ int kernelSize = 64;
 float radius = 0.8;
 float bias = 0.025;
 
-const vec2 noiseScale = vec2(800.0/4.0, 600.0/4.0); 
+const vec2 noiseScale = vec2(1920.0/4.0, 1080.0/4.0); 
 
 void main()
 {
@@ -44,7 +44,7 @@ void main()
         occlusion += (sampleDepth >= samplePos.z + bias ? 1.0 : 0.0) * rangeCheck;  
     }
 
-    occlusion = 1.0 - (occlusion / kernelSize);
+    occlusion = (occlusion / kernelSize);
 
     frag_colour = vec4(occlusion, occlusion, occlusion, 1);
 } 

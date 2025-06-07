@@ -16,7 +16,7 @@
 #include <string>
 
 // Total: 50:00
-// Started: 15:00
+// Started: 17:00
 
 #define ALLOW_EDITOR 1
 #define MAX_ENTITIES 2000
@@ -748,23 +748,32 @@ void update_and_draw_editor(f32 delta_time) {
 
                 FrameBuffer *fb = &state.renderer.g_buffer;
 
-                ImGui::Text("SSAO buffer");
-                ImGui::Image(state.renderer.ssao_frame_buffer.position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Text("g_buffer position");
+                ImGui::Image(state.renderer.g_buffer.position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
 
-                ImGui::Text("Position buffer");
-                ImGui::Image(fb->position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Text("g_buffer normal");
+                ImGui::Image(state.renderer.g_buffer.normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
 
-                ImGui::Text("Normal buffer");
-                ImGui::Image(fb->normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Text("g_buffer view normal");
+                ImGui::Image(state.renderer.g_buffer.view_normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
 
-                ImGui::Text("Albedo buffer");
-                ImGui::Image(fb->albedo_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Text("g_buffer albedo");
+                ImGui::Image(state.renderer.g_buffer.albedo_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
 
-                ImGui::Text("Depth buffer");
-                ImGui::Image(fb->depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Text("g_buffer sun position");
+                ImGui::Image(state.renderer.g_buffer.sun_position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
 
-                ImGui::Text("Sun depth buffer");
+                ImGui::Text("g_buffer depth");
+                ImGui::Image(state.renderer.g_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+
+                ImGui::Text("lighting buffer position");
+                ImGui::Image(state.renderer.lighting_frame_buffer.position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+
+                ImGui::Text("sun buffer depth");
                 ImGui::Image(state.renderer.sun_frame_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+
+                ImGui::Text("SSAO buffer position");
+                ImGui::Image(state.renderer.ssao_frame_buffer.position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
             }
 
             ImGui::End();

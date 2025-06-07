@@ -322,11 +322,12 @@ struct Font {
 enum FrameBufferOptions {
     FB_POSITION_ATTACHMENT      = 1 << 0,
     FB_NORMAL_ATTACHMENT        = 1 << 1,
-    FB_ALBEDO_ATTACHMENT        = 1 << 2,
-    FB_SSAO_ATTACHMENT          = 1 << 3,
-    FB_DEPTH_ATTACHMENT         = 1 << 4,
-    FB_DISABLE_READ_BUFFER      = 1 << 5,
-    FB_DISABLE_DRAW_BUFFER      = 1 << 6,
+    FB_VIEW_NORMAL_ATTACHMENT   = 1 << 2,
+    FB_ALBEDO_ATTACHMENT        = 1 << 3,
+    FB_SUN_POSITION_ATTACHMENT  = 1 << 4,
+    FB_DEPTH_ATTACHMENT         = 1 << 5,
+    FB_DISABLE_READ_BUFFER      = 1 << 6,
+    FB_DISABLE_DRAW_BUFFER      = 1 << 7,
 };
 
 struct FrameBuffer {
@@ -336,8 +337,9 @@ struct FrameBuffer {
 
     u32 position_attachment;
     u32 normals_attachment;
+    u32 view_normals_attachment;
     u32 albedo_attachment;
-    u32 ssao_attachment;
+    u32 sun_position_attachment;
     u32 depth_attachment;
 };
 
@@ -391,6 +393,7 @@ struct Renderer {
     FrameBuffer g_buffer;
     FrameBuffer sun_frame_buffer;
     FrameBuffer ssao_frame_buffer;
+    FrameBuffer lighting_frame_buffer;
 
     u32 vertex_array_id;
     u32 vertex_buffer_id;
@@ -401,6 +404,7 @@ struct Renderer {
     Shader post_processing_shader;
     Shader sun_shader;
     Shader ssao_shader;
+    Shader lighting_shader;
 
     u32 atlas_texture_id;
     u32 font_texture_id;
@@ -698,7 +702,7 @@ bool init_renderer(Renderer *renderer, Window *window) {
             .height =  window->height
         };
     
-        ok = init_frame_buffer(&renderer->g_buffer, FB_POSITION_ATTACHMENT | FB_NORMAL_ATTACHMENT | FB_ALBEDO_ATTACHMENT | FB_DEPTH_ATTACHMENT);
+        ok = init_frame_buffer(&renderer->g_buffer, FB_POSITION_ATTACHMENT | FB_NORMAL_ATTACHMENT | FB_VIEW_NORMAL_ATTACHMENT | FB_ALBEDO_ATTACHMENT | FB_SUN_POSITION_ATTACHMENT | FB_DEPTH_ATTACHMENT);
         if (!ok) {
             printf("failed to init default frame buffer\n");
             return false;
@@ -723,6 +727,17 @@ bool init_renderer(Renderer *renderer, Window *window) {
         ok = init_frame_buffer(&renderer->ssao_frame_buffer, FB_POSITION_ATTACHMENT);
         if (!ok) {
             printf("failed to init ssao frame buffer\n");
+            return false;
+        }
+
+         renderer->lighting_frame_buffer = FrameBuffer {
+            .width =  window->width,
+            .height =  window->height
+        };
+
+        ok = init_frame_buffer(&renderer->lighting_frame_buffer, FB_POSITION_ATTACHMENT);
+        if (!ok) {
+            printf("failed to init lighting frame buffer\n");
             return false;
         }
     }
@@ -815,7 +830,6 @@ bool load_shaders(Renderer *renderer) {
     }
 
     assign_texture_slot(&renderer->post_processing_shader, "scene_texture", 0);
-    assign_texture_slot(&renderer->post_processing_shader, "ssao_texture", 1);
 
     ok = init_shader(&renderer->sun_shader, "Sun shader", "resources/shaders/sun_vertex.shader", "resources/shaders/sun_fragment.shader");
     if (!ok) {
@@ -833,6 +847,19 @@ bool load_shaders(Renderer *renderer) {
     assign_texture_slot(&renderer->ssao_shader, "normal_map", 1);
     assign_texture_slot(&renderer->ssao_shader, "noise_map", 2);
 
+    ok = init_shader(&renderer->lighting_shader, "Lighting shader", "resources/shaders/lighting_vertex.shader", "resources/shaders/lighting_fragment.shader");
+    if (!ok) {
+        printf("Error when creating lighting shader program\n");
+        return false;
+    }
+
+    assign_texture_slot(&renderer->lighting_shader, "position_map", 0);
+    assign_texture_slot(&renderer->lighting_shader, "normal_map", 1);
+    assign_texture_slot(&renderer->lighting_shader, "albedo_map", 2);
+    assign_texture_slot(&renderer->lighting_shader, "sun_position_map", 3);
+    assign_texture_slot(&renderer->lighting_shader, "shadow_map", 4);
+    assign_texture_slot(&renderer->lighting_shader, "ssao_map", 5);
+
     return true;
 }
 
@@ -841,6 +868,8 @@ void delete_shaders(Renderer *renderer) {
     glDeleteProgram(renderer->geometry_shader.id);
     glDeleteProgram(renderer->post_processing_shader.id);
     glDeleteProgram(renderer->sun_shader.id);
+    glDeleteProgram(renderer->ssao_shader.id);
+    glDeleteProgram(renderer->lighting_shader.id);
 }
 
 Sprite *load_sprite(Renderer *renderer, string albedo_path, string normal_path) {
@@ -1244,7 +1273,7 @@ void draw_frame(Renderer *renderer, Window *window) {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
-    { // ssao
+    if (true) { // ssao
         glBindFramebuffer(GL_FRAMEBUFFER, renderer->ssao_frame_buffer.id);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glViewport(0, 0, window->width, window->height);
@@ -1266,7 +1295,7 @@ void draw_frame(Renderer *renderer, Window *window) {
         glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.position_attachment);
 
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.normals_attachment);
+        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.view_normals_attachment);
 
         glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_2D, renderer->noise_texture_id);
@@ -1285,9 +1314,50 @@ void draw_frame(Renderer *renderer, Window *window) {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
+    { // lighting pass
+        glBindFramebuffer(GL_FRAMEBUFFER, renderer->lighting_frame_buffer.id);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glViewport(0, 0, window->width, window->height);
+
+        Quad *quad = push_screen_quad(renderer, WHITE);
+    
+        glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
+        glBindVertexArray(renderer->vertex_array_id);
+ 
+        use_shader(renderer->lighting_shader);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.position_attachment);
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.normals_attachment);
+
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.albedo_attachment);
+
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.sun_position_attachment);
+
+        glActiveTexture(GL_TEXTURE4);
+        glBindTexture(GL_TEXTURE_2D, renderer->sun_frame_buffer.depth_attachment);
+
+        glActiveTexture(GL_TEXTURE5);
+        glBindTexture(GL_TEXTURE_2D, renderer->ssao_frame_buffer.position_attachment);
+
+        set_uniform_m4(renderer->lighting_shader, "sun_space", &sun_space);
+        set_uniform_v3(renderer->lighting_shader, "ambient_light", renderer->ambient_light);
+        set_uniform_v3(renderer->lighting_shader, "sun_position", renderer->sun_position);
+        set_uniform_v3(renderer->lighting_shader, "sun_colour", renderer->sun_colour);
+
+        glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
     { // post processing
         reset(&renderer->quads);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
         glViewport(0, 0, window->width, window->height);
 
         Quad *quad = push_screen_quad(renderer, WHITE);
@@ -1300,10 +1370,7 @@ void draw_frame(Renderer *renderer, Window *window) {
  
         // set the input texture
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.albedo_attachment);
-
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, renderer->ssao_frame_buffer.position_attachment);
+        glBindTexture(GL_TEXTURE_2D, renderer->lighting_frame_buffer.position_attachment);
 
         glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
     }
@@ -1766,7 +1833,7 @@ bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options) {
     glCreateFramebuffers(1, &frame_buffer->id);
     glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer->id);
 
-    StackArray<GLenum, 4> draw_buffers = {};
+    StackArray<GLenum, 5> draw_buffers = {};
 
     if (BIT_SET(options, FB_POSITION_ATTACHMENT)) {
         glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->position_attachment);
@@ -1792,6 +1859,17 @@ bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options) {
         append(&draw_buffers, (GLenum) GL_COLOR_ATTACHMENT1);
     }
 
+    if (BIT_SET(options, FB_VIEW_NORMAL_ATTACHMENT)) {
+        glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->view_normals_attachment);
+        glBindTexture(GL_TEXTURE_2D, frame_buffer->view_normals_attachment);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, frame_buffer->width, frame_buffer->height, 0, GL_RGBA, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, frame_buffer->view_normals_attachment, 0);
+        append(&draw_buffers, (GLenum) GL_COLOR_ATTACHMENT2);
+    }
+
     if (BIT_SET(options, FB_ALBEDO_ATTACHMENT)) {
         glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->albedo_attachment);
         glBindTexture(GL_TEXTURE_2D, frame_buffer->albedo_attachment);
@@ -1799,19 +1877,21 @@ bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, frame_buffer->albedo_attachment, 0);
-        append(&draw_buffers, (GLenum) GL_COLOR_ATTACHMENT2);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, frame_buffer->albedo_attachment, 0);
+        append(&draw_buffers, (GLenum) GL_COLOR_ATTACHMENT3);
     }
 
-    if (BIT_SET(options, FB_SSAO_ATTACHMENT)) {
-        glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->ssao_attachment);
-        glBindTexture(GL_TEXTURE_2D, frame_buffer->ssao_attachment);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, frame_buffer->width, frame_buffer->height, 0, GL_RED, GL_FLOAT, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    if (BIT_SET(options, FB_SUN_POSITION_ATTACHMENT)) {
+        glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->sun_position_attachment);
+        glBindTexture(GL_TEXTURE_2D, frame_buffer->sun_position_attachment);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, frame_buffer->width, frame_buffer->height, 0, GL_RGBA, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); 
 
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, frame_buffer->ssao_attachment, 0);
-        append(&draw_buffers, (GLenum) GL_COLOR_ATTACHMENT3);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT4, GL_TEXTURE_2D, frame_buffer->sun_position_attachment, 0);
+        append(&draw_buffers, (GLenum) GL_COLOR_ATTACHMENT4);
     }
 
     if (BIT_SET(options, FB_DEPTH_ATTACHMENT)) {

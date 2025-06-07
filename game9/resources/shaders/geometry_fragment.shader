@@ -10,7 +10,9 @@ in vec2 normal_uv;
 
 layout(location = 0) out vec4 g_position;
 layout(location = 1) out vec4 g_normal;
-layout(location = 2) out vec4 g_albedo;
+layout(location = 2) out vec4 g_view_normal;
+layout(location = 3) out vec4 g_albedo;
+layout(location = 4) out vec4 g_sun_position;
 
 uniform sampler2D atlas_texture;
 uniform sampler2D shadow_map;
@@ -85,6 +87,8 @@ void main()
     vec4 lighting = vec4(ambient_light + (1.0 - shadow) * (diffuse_light + specular), 1);
 
     g_position = vec4(fragment_position, 1);
-    g_normal = vec4(normalize(view_normal), 1);
-    g_albedo = sample_colour * lighting;
+    g_normal = vec4(normal, 1); 
+    g_view_normal = vec4(normalize(view_normal), 1); 
+    g_albedo = sample_colour;
+    g_sun_position = fragment_sun_position;
 } 
