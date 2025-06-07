@@ -338,6 +338,7 @@ struct FrameBuffer {
 };
 
 struct Shader {
+    string debug_name;
     u32 id;
 };
 
@@ -381,16 +382,14 @@ struct Renderer {
     Font font;
 
     FrameBuffer g_buffer;
-    FrameBuffer frame_buffer;
     FrameBuffer sun_frame_buffer;
 
     u32 vertex_array_id;
     u32 vertex_buffer_id;
     u32 index_buffer_id;
 
-    Shader geometry_shader;
     Shader default_shader;
-    Shader mesh_shader;
+    Shader geometry_shader;
     Shader post_processing_shader;
     Shader sun_shader;
 
@@ -466,7 +465,7 @@ void upload_mesh(Mesh *mesh);
 
 bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options);
 
-bool init_shader(Shader *shader, string vertex_shader_path, string fragment_shader_path);
+bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, string fragment_shader_path);
 void assign_texture_slot(Shader *shader, string texture_name, i32 slot);
 
 v2 screen_position_to_world_position(v2 screen_position, Camera camera, Window *window);
@@ -682,23 +681,12 @@ bool init_renderer(Renderer *renderer, Window *window) {
     }
 
     { // init frame buffers
-        renderer->g_buffer = FrameBuffer {
+         renderer->g_buffer = FrameBuffer {
             .width =  window->width,
             .height =  window->height
         };
     
-        bool ok = init_frame_buffer(&renderer->g_buffer, FB_POSITION_ATTACHMENT | FB_NORMAL_ATTACHMENT | FB_ALBEDO_ATTACHMENT | FB_DEPTH_ATTACHMENT);
-        if (!ok) {
-            printf("failed to init gbuffer frame buffer\n");
-            return false;
-        }
-
-         renderer->frame_buffer = FrameBuffer {
-            .width =  window->width,
-            .height =  window->height
-        };
-    
-        ok = init_frame_buffer(&renderer->frame_buffer, FB_POSITION_ATTACHMENT | FB_NORMAL_ATTACHMENT | FB_ALBEDO_ATTACHMENT | FB_DEPTH_ATTACHMENT);
+        ok = init_frame_buffer(&renderer->g_buffer, FB_POSITION_ATTACHMENT | FB_NORMAL_ATTACHMENT | FB_ALBEDO_ATTACHMENT | FB_DEPTH_ATTACHMENT);
         if (!ok) {
             printf("failed to init default frame buffer\n");
             return false;
@@ -730,16 +718,7 @@ bool init_renderer(Renderer *renderer, Window *window) {
 }
 
 bool load_shaders(Renderer *renderer) {
-    bool ok = init_shader(&renderer->geometry_shader, "resources/shaders/geometry_vertex.shader", "resources/shaders/geometry_fragment.shader");
-    if (!ok) {
-        printf("Error when creating geometry shader program\n");
-        return false;
-    }
-
-    assign_texture_slot(&renderer->geometry_shader, "atlas_texture", 0);
-    assign_texture_slot(&renderer->geometry_shader, "font_texture", 1);
-
-    ok = init_shader(&renderer->default_shader, "resources/shaders/default_vertex.shader", "resources/shaders/default_fragment.shader");
+    bool ok = init_shader(&renderer->default_shader, "Default shader", "resources/shaders/default_vertex.shader", "resources/shaders/default_fragment.shader");
     if (!ok) {
         printf("Error when creating default shader program\n");
         return false;
@@ -748,16 +727,16 @@ bool load_shaders(Renderer *renderer) {
     assign_texture_slot(&renderer->default_shader, "atlas_texture", 0);
     assign_texture_slot(&renderer->default_shader, "font_texture", 1);
 
-    ok = init_shader(&renderer->mesh_shader, "resources/shaders/mesh_vertex.shader", "resources/shaders/mesh_fragment.shader");
+    ok = init_shader(&renderer->geometry_shader, "Geometry shader", "resources/shaders/geometry_vertex.shader", "resources/shaders/geometry_fragment.shader");
     if (!ok) {
         printf("Error when creating mesh shader program\n");
         return false;
     }
 
-    assign_texture_slot(&renderer->mesh_shader, "atlas_texture", 0);
-    assign_texture_slot(&renderer->mesh_shader, "shadow_map", 1);
+    assign_texture_slot(&renderer->geometry_shader, "atlas_texture", 0);
+    assign_texture_slot(&renderer->geometry_shader, "shadow_map", 1);
 
-    ok = init_shader(&renderer->post_processing_shader, "resources/shaders/default_vertex.shader", "resources/shaders/post_processing_fragment.shader");
+    ok = init_shader(&renderer->post_processing_shader, "Post processing shader", "resources/shaders/default_vertex.shader", "resources/shaders/post_processing_fragment.shader");
     if (!ok) {
         printf("Error when creating post processing shader program\n");
         return false;
@@ -765,7 +744,7 @@ bool load_shaders(Renderer *renderer) {
 
     assign_texture_slot(&renderer->post_processing_shader, "scene_texture", 0);
 
-    ok = init_shader(&renderer->sun_shader, "resources/shaders/sun_vertex.shader", "resources/shaders/sun_fragment.shader");
+    ok = init_shader(&renderer->sun_shader, "Sun shader", "resources/shaders/sun_vertex.shader", "resources/shaders/sun_fragment.shader");
     if (!ok) {
         printf("Error when creating sun shader program\n");
         return false;
@@ -775,9 +754,8 @@ bool load_shaders(Renderer *renderer) {
 }
 
 void delete_shaders(Renderer *renderer) {
-    glDeleteProgram(renderer->geometry_shader.id);
     glDeleteProgram(renderer->default_shader.id);
-    glDeleteProgram(renderer->mesh_shader.id);
+    glDeleteProgram(renderer->geometry_shader.id);
     glDeleteProgram(renderer->post_processing_shader.id);
     glDeleteProgram(renderer->sun_shader.id);
 }
@@ -1132,40 +1110,7 @@ void draw_frame(Renderer *renderer, Window *window) {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
-#if 0
     // scene render
-    for (Mesh &mesh : renderer->meshes) {
-        glBindFramebuffer(GL_FRAMEBUFFER, renderer->frame_buffer.id);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glViewport(0, 0, window->width, window->height);
-
-        m4 model_matrix = HMM_M4D(1.0f);
-        model_matrix = HMM_MulM4(model_matrix, HMM_Translate(mesh.position));
-
-        use_shader(renderer->mesh_shader);
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
-
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, renderer->sun_frame_buffer.depth_attachment);
-
-        set_uniform_m4(renderer->mesh_shader, "model", &model_matrix);
-        set_uniform_m4(renderer->mesh_shader, "view", &renderer->view_matrix);
-        set_uniform_m4(renderer->mesh_shader, "projection", &renderer->projection_matrix);
-        set_uniform_m4(renderer->mesh_shader, "sun_space", &sun_space);
-
-        set_uniform_v3(renderer->mesh_shader, "ambient_light", renderer->ambient_light);
-        set_uniform_v3(renderer->mesh_shader, "sun_position", renderer->sun_position);
-        set_uniform_v3(renderer->mesh_shader, "sun_colour", renderer->sun_colour);
-
-        GL_CALL(glBindVertexArray(mesh.vertex_array_id));
-        GL_CALL(glDrawElements(GL_TRIANGLES, 6 * mesh.quads.len, GL_UNSIGNED_INT, 0));
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    }
-#endif
-
-#if 1
     for (Mesh &mesh : renderer->meshes) {
         glBindFramebuffer(GL_FRAMEBUFFER, renderer->g_buffer.id);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1195,10 +1140,9 @@ void draw_frame(Renderer *renderer, Window *window) {
         GL_CALL(glDrawElements(GL_TRIANGLES, 6 * mesh.quads.len, GL_UNSIGNED_INT, 0));
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
-#endif
 
-    if (false) { // imediete mode quads
-        glBindFramebuffer(GL_FRAMEBUFFER, renderer->frame_buffer.id);
+    { // imediete mode quads
+        glBindFramebuffer(GL_FRAMEBUFFER, renderer->g_buffer.id);
 
         glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
@@ -1767,7 +1711,7 @@ bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options) {
     return true;
 }
 
-bool init_shader(Shader *shader, string vertex_shader_path, string fragment_shader_path) {
+bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, string fragment_shader_path) {
     const i64 buffer_size = 640;
     i32 compile_status = 0;
     i32 link_status = 0;
@@ -1775,13 +1719,13 @@ bool init_shader(Shader *shader, string vertex_shader_path, string fragment_shad
     
     string vertex_shader_source = read_file(vertex_shader_path);
     if (vertex_shader_source.len == 0) {
-        printf("failed to load vertex shader");
+        printf("%s: failed to load vertex shader file\n", debug_name.c());
         return false;
     }
 
     string fragment_shader_source = read_file(fragment_shader_path);
     if (fragment_shader_source.len == 0) {
-        printf("failed to load default fragment shader");
+        printf("%s: failed to load default fragment shader file\n", debug_name.c());
         return false;
     }
 
@@ -1793,7 +1737,7 @@ bool init_shader(Shader *shader, string vertex_shader_path, string fragment_shad
     glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &compile_status);
     if (compile_status == 0) {
         glGetShaderInfoLog(vertex_shader, buffer_size, nullptr, &error_buffer[0]);
-        printf("failed to compile vertex shader: %s", error_buffer);
+        printf("%s: failed to compile vertex shader: %s\n", debug_name.c(), error_buffer);
         return false;
     }
 
@@ -1805,7 +1749,7 @@ bool init_shader(Shader *shader, string vertex_shader_path, string fragment_shad
     glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &compile_status);
     if (compile_status == 0) {
         glGetShaderInfoLog(fragment_shader, buffer_size, nullptr, &error_buffer[0]);
-        printf("failed to compile fragment shader: %s", error_buffer);
+        printf("%s: failed to compile fragment shader: %s\n", debug_name.c(), error_buffer);
         return false;
     }
 
@@ -1819,13 +1763,14 @@ bool init_shader(Shader *shader, string vertex_shader_path, string fragment_shad
 
     if (link_status == 0) {
         glGetProgramInfoLog(shader_program, buffer_size, nullptr, &error_buffer[0]);
-        printf("failed to link shader program: %s", error_buffer);
+        printf("%s: failed to link shader program: %s\n", debug_name.c(), error_buffer);
         return false;
     }
  
     shader->id = shader_program; 
+    shader->debug_name = debug_name;
 
-    printf("Compiled and linked shader program\n");
+    printf("Compiled and linked %s\n", debug_name.c());
 
     return true;
 }

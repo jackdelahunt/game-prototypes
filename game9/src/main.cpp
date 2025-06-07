@@ -604,6 +604,8 @@ void update_and_draw_editor(f32 delta_time) {
     if(state.editor.visable) {
         ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_NoDockingOverCentralNode);
 
+        // ImGui::ShowDemoWindow();
+
         {
             ImGui::Begin("Inspector");
         
@@ -614,6 +616,29 @@ void update_and_draw_editor(f32 delta_time) {
                 ImGui::Text("IM quads: %llu", state.im_quads_last_frame);
                 ImGui::Text("Total triangles: %llu", (state.im_quads_last_frame + state.chunk_quads_last_frame) * 2);
                 ImGui::Text("FPS: %f", 1.0f / delta_time);
+            }
+
+            { // frame time plot
+                const i64 BUFFER_SIZE = 128;
+                static f32 frame_times[BUFFER_SIZE] = {};
+
+                for (i64 i = BUFFER_SIZE - 1; i > 0; i--) {
+                    frame_times[i - 1] = frame_times[i];
+                }
+
+                frame_times[BUFFER_SIZE - 1] = delta_time * 1000;
+
+                f32 average = 0;
+                for (i64 i = 0 - 1; i < BUFFER_SIZE; i++) {
+                    average += frame_times[i];
+                }
+
+                average /= (f32) BUFFER_SIZE;
+
+                char overlay[32] = {};
+                sprintf(overlay, "avg %f", average);
+
+                ImGui::PlotLines("Frame times", frame_times, BUFFER_SIZE, 0, overlay, -1, 1, ImVec2(300, 100));
             }
 
             {

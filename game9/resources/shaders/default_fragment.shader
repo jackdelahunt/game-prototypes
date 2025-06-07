@@ -5,19 +5,18 @@ in vec2 uv;
 in vec2 normal_uv;
 flat in int draw_type;
 
-layout(location = 0) out vec4 frag_colour;
-layout(location = 1) out vec4 normal_colour;
+layout(location = 0) out vec4 g_position;
+layout(location = 1) out vec4 g_normal;
+layout(location = 2) out vec4 g_albedo;
 
 uniform sampler2D atlas_texture;
 uniform sampler2D font_texture;
 
 void main()
 {
-    normal_colour = vec4(0, 0, 1, 1);
-
     // rectangle
     if (draw_type == 0) {
-        frag_colour = colour;
+        g_albedo = colour;
     }
 
     // circle
@@ -27,7 +26,7 @@ void main()
             discard;
         }
 
-        frag_colour = colour;
+        g_albedo = colour;
     }
 
     // texture
@@ -41,12 +40,11 @@ void main()
             discard;
         }
 
-        frag_colour = final_colour;
-        normal_colour = texture(atlas_texture, normal_uv);
+        g_albedo = final_colour;
     }
 
     // font
     if (draw_type == 3) {
-        frag_colour = texture(font_texture, uv).r * colour;
+        g_albedo = texture(font_texture, uv).r * colour;
     }
 } 
