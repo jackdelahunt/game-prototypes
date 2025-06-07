@@ -12,9 +12,6 @@ out vec3 normal;
 out vec3 view_normal;
 out vec4 colour;
 out vec2 uv;
-out vec2 normal_uv;
-
-uniform sampler2D atlas_texture;
 
 uniform mat4 model;
 uniform mat4 view;
@@ -35,5 +32,4 @@ void main()
     normal = a_normal;
     colour = a_colour;
     uv = a_uv;
-    normal_uv = a_normal_uv;
 }

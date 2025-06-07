@@ -821,7 +821,6 @@ bool load_shaders(Renderer *renderer) {
     }
 
     assign_texture_slot(&renderer->geometry_shader, "atlas_texture", 0);
-    assign_texture_slot(&renderer->geometry_shader, "shadow_map", 1);
 
     ok = init_shader(&renderer->post_processing_shader, "Post processing shader", "resources/shaders/default_vertex.shader", "resources/shaders/post_processing_fragment.shader");
     if (!ok) {
@@ -1244,10 +1243,6 @@ void draw_frame(Renderer *renderer, Window *window) {
         set_uniform_m4(renderer->geometry_shader, "projection", &renderer->projection_matrix);
         set_uniform_m4(renderer->geometry_shader, "sun_space", &sun_space);
 
-        set_uniform_v3(renderer->geometry_shader, "ambient_light", renderer->ambient_light);
-        set_uniform_v3(renderer->geometry_shader, "sun_position", renderer->sun_position);
-        set_uniform_v3(renderer->geometry_shader, "sun_colour", renderer->sun_colour);
-
         GL_CALL(glBindVertexArray(mesh.vertex_array_id));
         GL_CALL(glDrawElements(GL_TRIANGLES, 6 * mesh.quads.len, GL_UNSIGNED_INT, 0));
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -1273,7 +1268,7 @@ void draw_frame(Renderer *renderer, Window *window) {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
-    if (true) { // ssao
+    { // ssao
         glBindFramebuffer(GL_FRAMEBUFFER, renderer->ssao_frame_buffer.id);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glViewport(0, 0, window->width, window->height);

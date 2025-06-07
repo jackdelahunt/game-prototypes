@@ -674,10 +674,10 @@ void update_and_draw_editor(f32 delta_time) {
                     ImGui::PushID(i);
 
                     if(ImGui::Button("TP")) {
-                        chunk->position = as_floats(world_to_chunk_position(state.camera.position));
+                        chunk->mesh->position = as_floats(world_to_chunk_position(state.camera.position));
                     }
 
-                    ImGui::InputFloat3("Position", &chunk->position[0]);
+                    ImGui::InputFloat3("Position", &chunk->mesh->position[0]);
                     ImGui::InputFloat3("Size", &chunk->size[0]);
                     ImGui::PopID();
                 }
