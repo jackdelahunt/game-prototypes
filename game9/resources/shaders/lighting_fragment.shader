@@ -69,20 +69,19 @@ float shadow_calculation(vec3 fragment_position, vec3 fragment_normal, vec4 frag
 void main()
 {
     vec3 fragment_position = texture(position_map, uv).rgb;
+    if (length(fragment_position) < 0.1) {
+        discard;
+    }
+
     vec3 fragment_normal = texture(normal_map, uv).rgb;
     vec3 fragment_albedo = texture(albedo_map, uv).rgb;
     vec4 fragment_sun_position = texture(sun_position_map, uv);
     float fragment_ssao = length(texture(ssao_map, uv).rgb);
 
-    if (length(fragment_position) < 0.1) {
-        discard;
-    }
-
     vec3 diffuse_light = diffuse_calculation(fragment_position, fragment_normal); 
     vec3 specular_light = specular_calculation(fragment_position, fragment_normal);
     float shadow = shadow_calculation(fragment_position, fragment_normal, fragment_sun_position);
 
-    vec3 lighting = (ambient_light * fragment_ssao) + (1.0 - shadow) * (diffuse_light + specular_light);
-
+    vec3 lighting = (ambient_light * (1.0 - fragment_ssao)) + (1.0 - shadow) * (diffuse_light + specular_light);
     g_position = vec4(fragment_albedo * lighting, 1);
 } 

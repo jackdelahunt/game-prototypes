@@ -15,8 +15,8 @@
 #include <fstream>
 #include <string>
 
-// Total: 53:30
-// Started: 20:30
+// Total: 54:30
+// Started: 12:30
 
 #define ALLOW_EDITOR 1
 #define MAX_ENTITIES 2000
@@ -162,6 +162,7 @@ int main() {
             .sun_position = {100, 100, -100},
             .ssao_radius = 0.8,
             .ssao_bias = 0.025,
+            .ssao_noise_scale = {480, 270},
         },
         .editor = {
             .visable = false,
@@ -666,6 +667,7 @@ void update_and_draw_editor(f32 delta_time) {
                 ImGui::SliderFloat3("Sun position", &state.renderer.sun_position[0], -100, 100);
                 ImGui::SliderFloat("SSAO radius", &state.renderer.ssao_radius, 0, 2);
                 ImGui::SliderFloat("SSAO bias", &state.renderer.ssao_bias, 0, 0.2);
+                ImGui::SliderFloat2("SSAO noise", &state.renderer.ssao_noise_scale[0], 0, 1000);
             }
        
             {

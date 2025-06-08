@@ -223,6 +223,7 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 #define MAX_LIGHTS 20
 #define MAX_SPRITES 256
 #define MAX_TEXTURES 256
+#define SSAO_SAMPLES 48
 
 struct MeshVertex {
     v3 position;
@@ -373,6 +374,7 @@ struct Renderer {
     std::vector<v3> ssao_noise;
     f32 ssao_radius;
     f32 ssao_bias;
+    v2 ssao_noise_scale;
 
     FixedArray<Mesh> meshes;
     FixedArray<Quad> quads;
@@ -437,6 +439,7 @@ v3 get_up_direction(v3 rotation);
 void use_shader(Shader shader);
 void set_uniform_f32(Shader shader, string name, f32 value);
 void set_uniform_m4(Shader shader, string name, m4 *matrix);
+void set_uniform_v2(Shader shader, string name, v2 vector);
 void set_uniform_v3(Shader shader, string name, v3 vector);
 void set_uniform_v4(Shader shader, string name, v4 vector);
 
@@ -566,6 +569,13 @@ void set_uniform_m4(Shader shader, string name, m4 *matrix) {
     );
 }
 
+void set_uniform_v2(Shader shader, string name, v2 vector) {
+    glUniform2f(
+        glGetUniformLocation(shader.id, name.c()),
+        vector.x, vector.y
+    );
+}
+
 void set_uniform_v3(Shader shader, string name, v3 vector) {
     glUniform3f(
         glGetUniformLocation(shader.id, name.c()),
@@ -583,6 +593,7 @@ void set_uniform_v4(Shader shader, string name, v4 vector) {
 bool init_renderer(Renderer *renderer, Window *window) {
     renderer->quads = new_fixed_array<Quad>(MAX_QUADS);
     renderer->meshes = new_fixed_array<Mesh>(MAX_MESHES);
+    renderer->ssao_noise_scale = {f32(window->width) * 0.25f, f32(window->height) * 0.25f};
 
     { // init opengl
         GLenum result = glewInit();
@@ -776,7 +787,7 @@ bool init_renderer(Renderer *renderer, Window *window) {
         std::default_random_engine generator;
         renderer->ssao_kernal = std::vector<v3>();
 
-        for (i64 i = 0; i < 64; i++)
+        for (i64 i = 0; i < SSAO_SAMPLES; i++)
         {
             v3 sample {
                 random_floats(generator) * 2.0f - 1.0f, 
@@ -787,7 +798,7 @@ bool init_renderer(Renderer *renderer, Window *window) {
             sample  = norm(sample);
             sample *= random_floats(generator);
 
-            float scale = f32(i) / 64.0f;
+            float scale = f32(i) / f32(SSAO_SAMPLES);
 
             scale = accel_lerp(0.1f, 1.0f, scale * scale);
             sample *= scale;
@@ -1328,6 +1339,7 @@ void draw_frame(Renderer *renderer, Window *window) {
         set_uniform_m4(renderer->ssao_shader, "projection", &renderer->projection_matrix);
         set_uniform_f32(renderer->ssao_shader, "radius", renderer->ssao_radius);
         set_uniform_f32(renderer->ssao_shader, "bias", renderer->ssao_bias);
+        set_uniform_v2(renderer->ssao_shader, "noise_scale", renderer->ssao_noise_scale);
 
         for (i64 i = 0; i < renderer->ssao_kernal.size(); i++) {
             char buffer[32] = {};
