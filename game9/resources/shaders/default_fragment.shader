@@ -2,12 +2,13 @@
 
 in vec4 colour;
 in vec2 uv;
-in vec2 normal_uv;
 flat in int draw_type;
 
 layout(location = 0) out vec4 g_position;
 layout(location = 1) out vec4 g_normal;
-layout(location = 2) out vec4 g_albedo;
+layout(location = 2) out vec4 g_view_normal;
+layout(location = 3) out vec4 g_albedo;
+layout(location = 4) out vec4 g_sun_position;
 
 uniform sampler2D atlas_texture;
 uniform sampler2D font_texture;

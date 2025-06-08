@@ -8,15 +8,13 @@ layout (location = 4) in int a_draw_type;
 
 out vec4 colour;
 out vec2 uv;
-out vec2 normal_uv;
 out int draw_type;
 
 void main()
 {
-    gl_Position = a_position;
-
     colour = a_colour;
     uv = a_uv;
-    normal_uv = a_normal_uv;
     draw_type = a_draw_type;
+
+    gl_Position = a_position;
 }

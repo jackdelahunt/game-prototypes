@@ -22,7 +22,6 @@ vec3 diffuse_calculation(vec3 position, vec3 normal) {
     return sun_colour * diffuse;
 }
 
-
 vec3 specular_calculation(vec3 position, vec3 normal) {
     float specularStrength = 0.6;
 

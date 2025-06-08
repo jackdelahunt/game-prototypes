@@ -1,3 +1,5 @@
+#include "libs/FastNoiseLite/FastNoiseLite.h"
+#include "libs/imgui/imgui.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -15,7 +17,9 @@
 #include <fstream>
 #include <string>
 
-// Total: 54:30
+// https://auburn.github.io/FastNoiseLite/
+
+// Total: 58:30
 // Started: 12:30
 
 #define ALLOW_EDITOR 1
@@ -62,6 +66,13 @@ struct Editor {
         i32 radius;
         f32 cooldown;
     } sculptor;
+
+    struct {
+        bool enabled;
+        v3 colour;
+        i32 range;
+        i32 radius;
+    } paint_brush;
 };
 
 enum EntityFlags {
@@ -89,7 +100,22 @@ struct Chunk {
     v3 size;
     Mesh *mesh;
     Slice<BlockType> blocks;
+    Slice<v3> colours; // no alpha
 };
+
+struct ChunkNoiseOptions {
+    FastNoiseLite::NoiseType noise_type;
+    FastNoiseLite::FractalType fractal_type;
+    i32 seed;
+    f32 cutoff;
+    f32 frequency;
+    i32 octaves;
+    f32 lacunarity;
+    f32 gain;
+    f32 weighted_strength;
+    f32 ping_pong_strength;
+};
+
 
 struct State {
     Camera camera;
@@ -101,15 +127,10 @@ struct State {
     i64 chunk_quads_last_frame;
     i64 im_quads_last_frame;
 
-    StackArray<Chunk, 10> chunks;
+    Chunk chunk;
 
     f32 gravity;
     bool game_running;
-
-    struct {
-        f32 cutoff;
-        f32 frequency;
-    } noise;
 
     f64 time;
 
@@ -122,9 +143,18 @@ void update_and_draw_editor(f32 delta_time);
 
 Chunk new_chunk(Renderer *renderer, v3i position, v3i size);
 void generate_mesh(Chunk *chunk);
-void generate_blocks(Chunk *chunk);
+
+void generate_empty(Chunk *chunk);
+void generate_platform(Chunk *chunk);
+void generate_from_noise(Chunk *chunk, ChunkNoiseOptions options);
+void paint_single(Chunk *chunk, v3 colour);
+void paint_gradient(Chunk *chunk, v3 start, v3 end, bool vertical);
+
 bool set_block(Chunk *chunk, ChunkPosition position, BlockType block);
 void set_block_radius(Chunk *chunk, ChunkPosition centre, BlockType block, i32 radius);
+bool set_colour(Chunk *chunk, ChunkPosition position, v3 colour);
+void set_colour_radius(Chunk *chunk, ChunkPosition centre, v3 colour, i32 radius);
+
 ChunkPosition block_index_to_chunk_position(Chunk *chunk, i64 index);
 i32 chunk_position_to_block_index(Chunk *chunk, ChunkPosition position);
 BlockType get_block_neighbour(Chunk *chunk, ChunkPosition position, v3i offset);
@@ -172,13 +202,15 @@ int main() {
                 .radius = 4,
                 .cooldown = 0.075,
             },
+            .paint_brush = {
+                .enabled = false,
+                .colour = {0.2, 0.8, 0.2},
+                .range = 50,
+                .radius = 4,
+            },
         },
         .gravity = 1,
         .game_running = false,
-        .noise = {
-            .cutoff = 0.1,
-            .frequency = 0.1
-        },
     };
 
     { // init engine stuff
@@ -241,12 +273,9 @@ int main() {
     });
 
 
-    Chunk *chunk = push(&state.chunks);
-    *chunk = new_chunk(&state.renderer, {}, {30, 100, 30});
-
-    generate_blocks(chunk);
-    generate_mesh(chunk);
-    upload_mesh(chunk->mesh);
+    state.chunk = new_chunk(&state.renderer, {}, {50, 60, 50});
+    generate_platform(&state.chunk);
+    paint_single(&state.chunk, {0.3, 0.3, 0.3});
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
         f64 current_time    = state.time;
@@ -269,14 +298,11 @@ int main() {
 #endif
         physics(delta_time);  
 
-        for (Chunk &chunk : state.chunks) {
-            if (chunk.dirty) {
-                reset_mesh(chunk.mesh);
-                generate_mesh(&chunk);
-                upload_mesh(chunk.mesh);
-                chunk.dirty = false;
-            }
-
+        if (state.chunk.dirty) {
+            reset_mesh(state.chunk.mesh);
+            generate_mesh(&state.chunk);
+            upload_mesh(state.chunk.mesh);
+            state.chunk.dirty = false;
         }
 
         draw_frame(&state.renderer, &state.window); 
@@ -289,8 +315,6 @@ int main() {
 }
 
 void update_and_draw(f32 delta_time) {
-    draw_cube(&state.renderer, {}, {1, 1, 1}, {}, alpha(RED, 0.5));
-
     if (KEYS[GLFW_KEY_F5] == InputState::DOWN) {
         state.game_running = !state.game_running; 
     }
@@ -490,46 +514,7 @@ void physics(f32 delta_time) {
             entity->velocity = norm(entity->velocity) * MAX_SPEED;
         }
 
-        // v3 drag = -(entity->velocity * entity->velocity * 0.0007);
-        // entity->velocity += drag;
-
         entity->position += entity->velocity * delta_time;
-
-        for (Chunk &chunk : state.chunks) {
-            // adjusting position as this collision detection's position is centred 
-            // and the chunk position is the bottom left corner
-            bool in_chunk = point_collision(entity->position, chunk.position + (chunk.size * 0.5), chunk.size);
-            if (!in_chunk) {
-                continue;
-            }
-
-            for (i64 i = 0; i < chunk.blocks.len; i++) {
-                if (chunk.blocks[i] == BlockType::AIR) {
-                    continue;
-                }
-
-                ChunkPosition chunk_position = block_index_to_chunk_position(&chunk, i);
-                v3 block_world_position = chunk.position + (as_floats(chunk_position) * V_BLOCK_SIZE);
-
-                CubeCollision info = cube_collision(entity->position, entity->size, block_world_position, V_BLOCK_SIZE);
-                if (!info.collision) {
-                    continue;
-                }
-
-                if (info.overlap.x < info.overlap.y && info.overlap.x < info.overlap.z) {
-                    entity->position.x -= sign(info.distance.x) * info.overlap.x;
-                    entity->velocity.x = 0;
-                }
-                else if (info.overlap.y < info.overlap.x && info.overlap.y < info.overlap.z) {
-                    entity->position.y -= sign(info.distance.y) * info.overlap.y;
-                    entity->velocity.y = 0;
-                }
-                else if (info.overlap.z < info.overlap.x && info.overlap.z < info.overlap.y) {
-                    entity->position.z -= sign(info.distance.z) * info.overlap.z;
-                    entity->velocity.z = 0;
-                }
-            }
-        }
     }
 }
 
@@ -539,70 +524,106 @@ void update_and_draw_editor(f32 delta_time) {
         set_mouse_captured(&state.window, !state.editor.visable);
     }
 
-    if (state.editor.sculptor.enabled) {
-        for (Chunk &chunk : state.chunks) {
-            bool hit = false;
-            bool too_close = false;
-            i32 radius = state.editor.sculptor.radius;
+    if (state.editor.sculptor.enabled) {{ SCOPE
+        bool hit = false;
+        bool too_close = false;
+        i32 radius = state.editor.sculptor.radius;
+ 
+        ChunkPosition target_position = get_block_looking_at(&state.chunk, state.camera, state.editor.sculptor.range, &hit);
+        if (!hit) {
+            break;
+        }
     
-            ChunkPosition target_position = get_block_looking_at(&chunk, state.camera, state.editor.sculptor.range, &hit);
-            if (!hit) {
-                continue;
-            }
+        v3 centre = state.chunk.position + as_floats(target_position);
     
-            v3 centre = chunk.position + as_floats(target_position);
+        if (length(state.camera.position - centre) < 1.5 * (f32) radius) {
+            too_close = true;
+        }
     
-            if (length(state.camera.position - centre) < 1.5 * (f32) radius) {
-                too_close = true;
-            }
+        i32 start_offset = -state.editor.sculptor.radius;
+        i32 end_offset = -start_offset;
     
-            i32 start_offset = -state.editor.sculptor.radius;
-            i32 end_offset = -start_offset;
-    
-            for (i32 z = start_offset; z <= end_offset; z++) {
-                for (i32 y = start_offset; y <= end_offset; y++) {
-                    for (i32 x = start_offset; x <= end_offset; x++) {
-                        v3 offset_position = centre + as_floats(v3i{x, y, z});
-                        f32 distance = length(offset_position - centre);
+        for (i32 z = start_offset; z <= end_offset; z++) {
+            for (i32 y = start_offset; y <= end_offset; y++) {
+                for (i32 x = start_offset; x <= end_offset; x++) {
+                    v3 offset_position = centre + as_floats(v3i{x, y, z});
+                    f32 distance = length(offset_position - centre);
                        
-                        // draw if in radius but also draw if close to the edge of the radius
-                        // this reduces the amount of cubes we are drawing for no reason - 02/06/25
-                        if (distance <= (f32) radius && distance > f32(radius - BLOCK_SIZE)) {
-                            v4 cube_colour = GREEN;
-                            if (too_close) {
-                                cube_colour = RED;
-                            }
-    
-                            draw_cube(&state.renderer, offset_position, {BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE}, {}, alpha(cube_colour, 0.4));
+                    // draw if in radius but also draw if close to the edge of the radius
+                    // this reduces the amount of cubes we are drawing for no reason - 02/06/25
+                    if (distance <= (f32) radius && distance > f32(radius - BLOCK_SIZE)) {
+                        v4 cube_colour = GREEN;
+                        if (too_close) {
+                            cube_colour = RED;
                         }
+ 
+                        draw_cube(&state.renderer, offset_position, {BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE}, {}, alpha(cube_colour, 0.4));
                     }
                 }
             }
+        }
     
     
-            static f32 cooldown_timer = 0;
+        static f32 cooldown_timer = 0;
             
-            cooldown_timer -= delta_time;
-            if (cooldown_timer < 0) {
-                cooldown_timer = 0;
-            }
+        cooldown_timer -= delta_time;
+        if (cooldown_timer < 0) {
+            cooldown_timer = 0;
+        }
     
-            // check all these here because we still want to see the brush cubes
-            // even though it is disabled for whatever reason
-            if(state.editor.visable || too_close || cooldown_timer > 0) {
-                break;
-            }
+        // check all these here because we still want to see the brush cubes
+        // even though it is disabled for whatever reason
+        if(state.editor.visable || too_close || cooldown_timer > 0) {
+            break;
+        }
     
-            if(MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::PRESSED) {
-                set_block_radius(&chunk, target_position, BlockType::AIR, radius);
-                cooldown_timer = state.editor.sculptor.cooldown;
-            }
-            else if(MOUSE.buttons[GLFW_MOUSE_BUTTON_2] == InputState::PRESSED) {
-                set_block_radius(&chunk, target_position, BlockType::BRICK, radius);
-                cooldown_timer = state.editor.sculptor.cooldown;
+        if(MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::PRESSED) {
+            set_block_radius(&state.chunk, target_position, BlockType::AIR, radius);
+            cooldown_timer = state.editor.sculptor.cooldown;
+        }
+        else if(MOUSE.buttons[GLFW_MOUSE_BUTTON_2] == InputState::PRESSED) {
+            set_block_radius(&state.chunk, target_position, BlockType::BRICK, radius);
+            cooldown_timer = state.editor.sculptor.cooldown;
+        }
+    }}
+
+    if (state.editor.paint_brush.enabled) {{ SCOPE
+        bool hit = false;
+        i32 radius = state.editor.paint_brush.radius;
+ 
+        ChunkPosition target_position = get_block_looking_at(&state.chunk, state.camera, state.editor.paint_brush.range, &hit);
+        if (!hit) {
+            break;
+        }
+    
+        v3 centre = state.chunk.position + as_floats(target_position);
+    
+        i32 start_offset = -state.editor.paint_brush.radius;
+        i32 end_offset = -start_offset;
+    
+        for (i32 z = start_offset; z <= end_offset; z++) {
+            for (i32 y = start_offset; y <= end_offset; y++) {
+                for (i32 x = start_offset; x <= end_offset; x++) {
+                    v3 offset_position = centre + as_floats(v3i{x, y, z});
+                    f32 distance = length(offset_position - centre);
+                       
+                    // draw if in radius but also draw if close to the edge of the radius
+                    // this reduces the amount of cubes we are drawing for no reason - 02/06/25
+                    if (distance <= (f32) radius && distance > f32(radius - BLOCK_SIZE)) {
+                        draw_cube(&state.renderer, offset_position, {BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE}, {}, alpha(GREEN, 0.4));
+                    }
+                }
             }
         }
-    }
+    
+        if(state.editor.visable) {
+            break;
+        }
+    
+        if(MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::PRESSED) {
+            set_colour_radius(&state.chunk, target_position, state.editor.paint_brush.colour, radius);
+        }
+    }}
 
     if(state.editor.visable) {
         ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_NoDockingOverCentralNode);
@@ -670,59 +691,132 @@ void update_and_draw_editor(f32 delta_time) {
                 ImGui::SliderFloat2("SSAO noise", &state.renderer.ssao_noise_scale[0], 0, 1000);
             }
        
-            {
-                ImGui::SeparatorText("Chunk generation");
-                ImGui::SliderFloat("Cutoff", &state.noise.cutoff, 0, 1);
-                ImGui::SliderFloat("Frequency", &state.noise.frequency, 0, 0.4);
-            }
-
-            {
-                ImGui::SeparatorText("Chunk list");
-                for (i64 i = 0; i < state.chunks.len; i++) {
-                    Chunk *chunk = &state.chunks[i];
-
-                    ImGui::PushID(i);
-
-                    if(ImGui::Button("TP")) {
-                        chunk->mesh->position = as_floats(world_to_chunk_position(state.camera.position));
-                    }
-
-                    ImGui::InputFloat3("Position", &chunk->mesh->position[0]);
-                    ImGui::InputFloat3("Size", &chunk->size[0]);
-                    ImGui::PopID();
-                }
-            }
-        
             ImGui::End();
         }
     
         {
             ImGui::Begin("Tools");
 
-            ImGui::SeparatorText("Chunk builder");
+            ImGui::SeparatorText("Chunk editor");
 
-            static struct {
-                v3i position = {0, 0, 0};
-                v3i size = {50, 50, 50};
-            } builder;  
-
-            ImGui::InputInt3("Position", &builder.position[0]);
-            ImGui::InputInt3("Size", &builder.size[0]);
-
-            if(ImGui::Button("Build")) {
-                Chunk *chunk = push(&state.chunks);
-                *chunk = new_chunk(&state.renderer, builder.position, builder.size);
-
-                generate_blocks(chunk);
-                generate_mesh(chunk);
-                upload_mesh(chunk->mesh);
+            if(ImGui::Button("Clear to empty")) {
+                generate_empty(&state.chunk);
             }
 
-            ImGui::SeparatorText("Sculptor");
-            ImGui::Checkbox("Enabled", &state.editor.sculptor.enabled);
-            ImGui::SliderInt("Range", &state.editor.sculptor.range, 10, 200);
-            ImGui::SliderInt("Radius", &state.editor.sculptor.radius, 1, 10);
-            ImGui::SliderFloat("Cooldown", &state.editor.sculptor.cooldown, 0, 0.5);
+            ImGui::SameLine();
+
+            if(ImGui::Button("Clear to platform")) {
+                generate_platform(&state.chunk);
+            }
+
+            ImGui::InputFloat3("Size", &state.chunk.size[0]);
+
+            if (ImGui::CollapsingHeader("Generate blocks")) {
+                static ChunkNoiseOptions options = {
+                    .noise_type = FastNoiseLite::NoiseType_Perlin,
+                    .fractal_type = FastNoiseLite::FractalType_None,
+                    .seed = 420,
+                    .cutoff = 0.1,
+                    .frequency = 0.1,
+                    .octaves = 3,
+                    .lacunarity = 2,
+                    .gain = 0.5,
+                    .weighted_strength = 0,
+                    .ping_pong_strength = 2,
+                };
+
+                const char* noise_types[] = { "Open Simplex 2", "Open Simplex 2S", "Cellular", "Perlin", "Value Cubic", "Value" };
+                const char* fractal_types[] = { "None", "FBm", "Ridged", "Ping Pong" };
+
+                ImGui::SeparatorText("Basic options");
+                ImGui::Combo("Noise", (i32 *) &options.noise_type, noise_types, IM_ARRAYSIZE(noise_types));
+                ImGui::SliderInt("Seed", &options.seed, 0, 5000);
+                ImGui::SliderFloat("Cutoff", &options.cutoff, -1, 1);
+                ImGui::SliderFloat("Frequency", &options.frequency, 0, 0.5);
+
+                ImGui::SeparatorText("Fractal options");
+                ImGui::Combo("Fractal", (i32 *) &options.fractal_type, fractal_types, IM_ARRAYSIZE(fractal_types));
+
+                if (options.fractal_type == FastNoiseLite::FractalType_None) {
+                    ImGui::BeginDisabled();
+                }
+
+                ImGui::SliderInt("Octaves", &options.octaves, 0, 8);
+                ImGui::SliderFloat("Lacunarity", &options.lacunarity, 0, 10);
+                ImGui::SliderFloat("Gain", &options.gain, 0, 5);
+                ImGui::SliderFloat("Weighted strength", &options.weighted_strength, 0, 5);
+                ImGui::SliderFloat("Ping Pong strength", &options.ping_pong_strength, 0, 5);
+
+                if (options.fractal_type == FastNoiseLite::FractalType_None) {
+                    ImGui::EndDisabled();
+                }
+
+                if(ImGui::Button("Generate")) {
+                    generate_from_noise(&state.chunk, options);
+                }
+            }
+
+            if (ImGui::CollapsingHeader("Generate colours")) {
+
+                {
+                    ImGui::SeparatorText("Single colour");
+                    ImGui::PushID("Single colour");
+
+                    static v3 single_colour = v3{0.8, 0.3, 0.8};
+                    ImGui::ColorEdit3("Colour", &single_colour[0], 0);
+
+                    if(ImGui::Button("Paint")) {
+                        paint_single(&state.chunk, single_colour);
+                    }
+
+                    ImGui::PopID();
+                }
+
+                {
+                    ImGui::SeparatorText("Gradient");
+                    ImGui::PushID("Gradient");
+
+                    static v3 start_colour = v3{0, 0, 0};
+                    static v3 end_colour = v3{1, 1, 1};
+                    static i32 direction = 1;
+
+                    const char* directions[] = { "Horizontal", "Vertical" };
+
+                    ImGui::Combo("Direction", &direction, directions, IM_ARRAYSIZE(directions));
+                    ImGui::ColorEdit3("Start", &start_colour[0], 0);
+                    ImGui::ColorEdit3("End", &end_colour[0], 0);
+
+                    if(ImGui::Button("Paint")) {
+                        paint_gradient(&state.chunk, start_colour, end_colour, direction == 1);
+                    }
+
+                    ImGui::PopID();
+                }
+            }
+
+            {
+                ImGui::SeparatorText("Sculptor");
+                ImGui::PushID("Sculptor");
+
+                ImGui::Checkbox("Enabled", &state.editor.sculptor.enabled);
+                ImGui::SliderInt("Range", &state.editor.sculptor.range, 10, 200);
+                ImGui::SliderInt("Radius", &state.editor.sculptor.radius, 1, 10);
+                ImGui::SliderFloat("Cooldown", &state.editor.sculptor.cooldown, 0, 0.5);
+
+                ImGui::PopID();
+            }
+
+            {
+                ImGui::SeparatorText("Paint Brush");
+                ImGui::PushID("Paint Brush");
+
+                ImGui::Checkbox("Enabled", &state.editor.paint_brush.enabled);
+                ImGui::ColorEdit3("Colour", &state.editor.paint_brush.colour[0], 0);
+                ImGui::SliderInt("Range", &state.editor.paint_brush.range, 10, 200);
+                ImGui::SliderInt("Radius", &state.editor.paint_brush.radius, 1, 10);
+
+                ImGui::PopID();
+            }
 
             ImGui::End();
         }
@@ -795,14 +889,15 @@ void update_and_draw_editor(f32 delta_time) {
 }
 
 Chunk new_chunk(Renderer *renderer, v3i position, v3i size) {
-    i64 blocks = size.x * size.y * size.z;
+    i64 block_count = size.x * size.y * size.z;
 
     return Chunk {
         .dirty = false,
         .position = as_floats(position),
         .size = as_floats(size),
-        .mesh = new_mesh(renderer, as_floats(position), blocks * 6),
-        .blocks = mem_alloc<BlockType>(blocks)
+        .mesh = new_mesh(renderer, as_floats(position), block_count * 6),
+        .blocks = mem_alloc<BlockType>(block_count),
+        .colours = mem_alloc<v3>(block_count)
     };
 }
 
@@ -817,8 +912,8 @@ void generate_mesh(Chunk *chunk) {
         ChunkPosition chunk_position = block_index_to_chunk_position(chunk, i);
         v3 position = as_floats(chunk_position);
 
-        v4 colour = {0.8, position.y / (f32) chunk->size.y, 0.3, 1};
-        // v4 colour = WHITE;
+        v3 rgb = chunk->colours[i];
+        v4 colour = {rgb.r, rgb.g, rgb.b, 1};
 
         BlockType up    = get_block_neighbour(chunk, chunk_position, {0, 1, 0});
         BlockType down  = get_block_neighbour(chunk, chunk_position, {0, -1, 0});
@@ -936,12 +1031,37 @@ void generate_mesh(Chunk *chunk) {
     }
 }
 
-void generate_blocks(Chunk *chunk) {
+void generate_empty(Chunk *chunk) {
     memset(chunk->blocks.ptr, 0, sizeof(BlockType) * chunk->blocks.len);
+    chunk->dirty = true;
+}
+
+void generate_platform(Chunk *chunk) {
+    memset(chunk->blocks.ptr, 0, sizeof(BlockType) * chunk->blocks.len);
+    chunk->dirty = true;
+
+    for (i32 z = 0; z < chunk->size.z; z++) {
+        for (i32 x = 0; x < chunk->size.x; x++) {
+            i64 index = chunk_position_to_block_index(chunk, {x, 0, z});
+            chunk->blocks[index] = BlockType::BRICK;
+        }
+    }
+}
+
+void generate_from_noise(Chunk *chunk, ChunkNoiseOptions options) {
+    memset(chunk->blocks.ptr, 0, sizeof(BlockType) * chunk->blocks.len);
+    chunk->dirty = true;
 
     FastNoiseLite noise;
-    noise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
-    noise.SetFrequency(state.noise.frequency);
+    noise.SetNoiseType(options.noise_type);
+    noise.SetSeed(options.seed);
+    noise.SetFrequency(options.frequency);
+    noise.SetFractalType(options.fractal_type);
+    noise.SetFractalOctaves(options.octaves);
+    noise.SetFractalLacunarity(options.lacunarity);
+    noise.SetFractalGain(options.gain);
+    noise.SetFractalWeightedStrength(options.weighted_strength);
+    noise.SetFractalPingPongStrength(options.ping_pong_strength);
 
     i64 index = 0;
 
@@ -949,10 +1069,49 @@ void generate_blocks(Chunk *chunk) {
         for (i64 y = 0; y < chunk->size.y; y++) {
             for (i64 x = 0; x < chunk->size.x; x++) {
                 f32 n = noise.GetNoise((f32) x, (f32) y, (f32) z);
-                    
-                if (n > state.noise.cutoff) {
+
+                if (n > options.cutoff) {
                     chunk->blocks[index] = BlockType::BRICK;
                 }
+
+                index++;
+            }
+        }
+    }
+}
+
+void paint_single(Chunk *chunk, v3 colour) {
+    chunk->dirty = true;
+
+    for (i64 i = 0; i < chunk->colours.len; i++) {
+        chunk->colours[i] = colour;
+    }
+}
+
+void paint_gradient(Chunk *chunk, v3 start, v3 end, bool vertical) {
+    chunk->dirty = true;
+
+    i64 index = 0;
+
+    for (i64 z = 0; z < chunk->size.z; z++) {
+        for (i64 y = 0; y < chunk->size.y; y++) {
+            for (i64 x = 0; x < chunk->size.x; x++) {
+
+                f32 t = 0;
+
+                if (vertical) {
+                    t = (f32) y / (f32) chunk->size.y;
+                } else {
+                    t = (f32) x / (f32) chunk->size.x;
+                }
+
+                v3 colour = {
+                    lerp(start.r, t, end.r),
+                    lerp(start.g, t, end.g),
+                    lerp(start.b, t, end.b),
+                };
+
+                chunk->colours[index] = colour;
 
                 index++;
             }
@@ -979,6 +1138,31 @@ void set_block_radius(Chunk *chunk, ChunkPosition centre, BlockType block, i32 r
                  
                 if (length(as_floats(block_position) - as_floats(centre)) <= (f32) radius) {
                     set_block(chunk, block_position, block);
+                }
+            }
+        }
+    }
+}
+
+bool set_colour(Chunk *chunk, ChunkPosition position, v3 colour) {
+    i32 index = chunk_position_to_block_index(chunk, position);
+
+    if (index < 0 || index >= chunk->blocks.len) {
+        return false;
+    }
+
+    chunk->colours[index] = colour;
+    chunk->dirty = true;
+}
+
+void set_colour_radius(Chunk *chunk, ChunkPosition centre, v3 colour, i32 radius) {
+    for (i32 z = -radius; z <= radius; z++) {
+        for (i32 y = -radius; y <= radius; y++) {
+            for (i32 x = -radius; x <= radius; x++) {
+                ChunkPosition block_position = centre + v3i{x, y, z};
+                 
+                if (length(as_floats(block_position) - as_floats(centre)) <= (f32) radius) {
+                    set_colour(chunk, block_position, colour);
                 }
             }
         }
