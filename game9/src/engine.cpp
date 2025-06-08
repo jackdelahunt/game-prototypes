@@ -1168,7 +1168,7 @@ bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel
         .bitmap_data = (u8 *) malloc(width * height),
     };
 
-    Slice<u8> font_data = read_file(path.c());
+    string font_data = read_entire_file(path);
     if (font_data.len == 0) {
         printf("failed to load font \"%s\"\n", path.c());
         return false;
@@ -2006,13 +2006,13 @@ bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, s
     i32 link_status = 0;
     char error_buffer[buffer_size];
     
-    string vertex_shader_source = read_file(vertex_shader_path);
+    string vertex_shader_source = read_entire_file(vertex_shader_path);
     if (vertex_shader_source.len == 0) {
         printf("%s: failed to load vertex shader file\n", debug_name.c());
         return false;
     }
 
-    string fragment_shader_source = read_file(fragment_shader_path);
+    string fragment_shader_source = read_entire_file(fragment_shader_path);
     if (fragment_shader_source.len == 0) {
         printf("%s: failed to load default fragment shader file\n", debug_name.c());
         return false;

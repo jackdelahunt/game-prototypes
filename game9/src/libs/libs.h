@@ -10,7 +10,5 @@
 #include "stb/stb.h"
 #include "miniaudio/miniaudio.h"
 #include "FastNoiseLite/FastNoiseLite.h"
-#include "json/nlohmann/json.hpp"
-using json = nlohmann::json;
 
 #endif

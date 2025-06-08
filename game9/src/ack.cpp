@@ -80,6 +80,11 @@ Slice<T> make_slice(T *data, i64 len) {
 }
 
 template <typename T>
+Slice<u8> as_raw(Slice<T> slice) {
+    return make_slice((u8 *) slice.ptr, sizeof(T) * slice.len);
+}
+
+template <typename T>
 Slice<T> mem_alloc(i64 len) {
     i64 bytes = len * sizeof(T);
 
@@ -202,10 +207,7 @@ void swap_remove(StackArray<T, N> *array, i64 index) {
 f32 rand_f32();
 f32 rand_f32_negative();
 i64 rand_i64();
-string read_file(string path);
-bool file_exists(const char *path);
-bool copy_file(const char *path, const char *new_path);
-std::string read_entire_file(const char *path);
+string read_entire_file(string path);
 
 // 0 -> 1
 f32 rand_f32() {
@@ -222,7 +224,47 @@ i64 rand_i64() {
     return (i64) rand();
 }
 
-string read_file(string path) {
+struct File {
+    string path;
+    FILE *handle;
+};
+
+File new_file(string path) {
+    return File {
+        .path = path,
+        .handle = NULL,
+    };
+}
+
+bool create_file(File *file) {
+    file->handle = fopen(file->path.c(), "wb");
+    if (file->handle == NULL) {
+        return false;
+    }
+
+    return true;
+}
+
+bool write_file(File *file, Slice<u8> bytes) {
+    ASSERT(file->handle != NULL);
+
+    i64 written = fwrite(bytes.ptr, 1, bytes.len, file->handle);
+
+    if (written != bytes.len) {
+        return false;
+    }
+
+    return true;
+}
+
+void close_file(File *file) {
+    ASSERT(file->handle != NULL);
+
+    fclose(file->handle);
+    file->handle = NULL;
+}
+
+string read_entire_file(string path) {
     FILE *file = fopen(path.c(), "rb");
     if (file == nullptr) {
         return {};
@@ -239,36 +281,6 @@ string read_file(string path) {
     data[file_size] = 0; // null terminate
 
     return make_slice(data, file_size);
-}
-
-bool file_exists(const char *path) {
-    return std::filesystem::exists(path) && std::filesystem::is_regular_file(path);
-}
-
-bool copy_file(const char *path, const char *new_path) {
-    if (!file_exists(path)) {
-        return false;
-    }
-
-    std::ifstream src(path, std::ios::binary);
-    std::ofstream dst(new_path, std::ios::binary);
-
-    if (!src || !dst) return false;
-
-    dst << src.rdbuf();
-
-    return src && dst;
-}
-
-std::string read_entire_file(const char *path) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) {
-        return ""; // Could also throw or handle error differently
-    }
-
-    std::ostringstream ss;
-    ss << file.rdbuf();
-    return ss.str();
 }
 
 #endif

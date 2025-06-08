@@ -1,5 +1,3 @@
-#include "libs/FastNoiseLite/FastNoiseLite.h"
-#include "libs/imgui/imgui.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -11,11 +9,6 @@
 #include <string.h>
 #include <time.h>
 #include <stdlib.h>
-
-// cursed c++ headers to get saving working
-#include <vector>
-#include <fstream>
-#include <string>
 
 // https://auburn.github.io/FastNoiseLite/
 
@@ -161,14 +154,9 @@ BlockType get_block_neighbour(Chunk *chunk, ChunkPosition position, v3i offset);
 ChunkPosition get_block_looking_at(Chunk *chunk, Camera camera, i32 range, bool *hit);
 ChunkPosition world_to_chunk_position(v3 position);
 
+bool save_chunk(Chunk *chunk);
+
 Entity *spawn_entity(Entity entity);
-
-void to_json(json& j, const Entity& entity);
-void from_json(const json& j, Entity& entity);
-
-void backup_scene();
-void save_scene(State *state);
-void load_scene(State *state);
 
 Sprite *get_sprite(SpriteHandle handle);
 
@@ -689,6 +677,42 @@ void update_and_draw_editor(f32 delta_time) {
                 ImGui::SliderFloat("SSAO radius", &state.renderer.ssao_radius, 0, 2);
                 ImGui::SliderFloat("SSAO bias", &state.renderer.ssao_bias, 0, 0.2);
                 ImGui::SliderFloat2("SSAO noise", &state.renderer.ssao_noise_scale[0], 0, 1000);
+
+                if(ImGui::CollapsingHeader("Render outputs")) {
+                    ImVec2 image_size(360 * 1.777, 360);
+    
+                    FrameBuffer *fb = &state.renderer.g_buffer;
+    
+                    ImGui::Text("g_buffer position");
+                    ImGui::Image(state.renderer.g_buffer.position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+    
+                    ImGui::Text("g_buffer normal");
+                    ImGui::Image(state.renderer.g_buffer.normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+    
+                    ImGui::Text("g_buffer view normal");
+                    ImGui::Image(state.renderer.g_buffer.view_normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+    
+                    ImGui::Text("g_buffer albedo");
+                    ImGui::Image(state.renderer.g_buffer.albedo_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+    
+                    ImGui::Text("g_buffer sun position");
+                    ImGui::Image(state.renderer.g_buffer.sun_position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+    
+                    ImGui::Text("g_buffer depth");
+                    ImGui::Image(state.renderer.g_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+    
+                    ImGui::Text("lighting buffer position");
+                    ImGui::Image(state.renderer.lighting_frame_buffer.position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+    
+                    ImGui::Text("sun buffer depth");
+                    ImGui::Image(state.renderer.sun_frame_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+    
+                    ImGui::Text("SSAO buffer position");
+                    ImGui::Image(state.renderer.ssao_frame_buffer.position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+    
+                    ImGui::Text("SSAO blur position");
+                    ImGui::Image(state.renderer.ssao_blur_frame_buffer.position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+                }
             }
        
             ImGui::End();
@@ -699,6 +723,18 @@ void update_and_draw_editor(f32 delta_time) {
 
             ImGui::SeparatorText("Chunk editor");
 
+            if(ImGui::Button("Save to file")) {
+                bool ok = save_chunk(&state.chunk);
+                if (!ok) {
+                    printf("error saving chunk to file\n");
+                }
+            }
+
+            ImGui::SameLine();
+
+            if(ImGui::Button("Load from file")) {
+            }
+
             if(ImGui::Button("Clear to empty")) {
                 generate_empty(&state.chunk);
             }
@@ -708,8 +744,6 @@ void update_and_draw_editor(f32 delta_time) {
             if(ImGui::Button("Clear to platform")) {
                 generate_platform(&state.chunk);
             }
-
-            ImGui::InputFloat3("Size", &state.chunk.size[0]);
 
             if (ImGui::CollapsingHeader("Generate blocks")) {
                 static ChunkNoiseOptions options = {
@@ -828,60 +862,13 @@ void update_and_draw_editor(f32 delta_time) {
                 load_shaders(&state.renderer);
             }
         
-            if(ImGui::Button("Save scene")) {
-                save_scene(&state);
-            }
-        
-            ImGui::SameLine();
-            if(ImGui::Button("Load scene")) {
-                load_scene(&state);
-            }
-    
             if(ImGui::Button("Toggle wireframe")) {
                 toggle_wireframe(&state.renderer);
             }
     
             if(ImGui::Button("Toggle V-sync")) {
                 toggle_vsync(&state.window);
-            }
-    
-            ImGui::Separator();
-    
-            if(ImGui::CollapsingHeader("Render outputs")) {
-                ImVec2 image_size(360 * 1.777, 360);
-
-                FrameBuffer *fb = &state.renderer.g_buffer;
-
-                ImGui::Text("g_buffer position");
-                ImGui::Image(state.renderer.g_buffer.position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
-
-                ImGui::Text("g_buffer normal");
-                ImGui::Image(state.renderer.g_buffer.normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
-
-                ImGui::Text("g_buffer view normal");
-                ImGui::Image(state.renderer.g_buffer.view_normals_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
-
-                ImGui::Text("g_buffer albedo");
-                ImGui::Image(state.renderer.g_buffer.albedo_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
-
-                ImGui::Text("g_buffer sun position");
-                ImGui::Image(state.renderer.g_buffer.sun_position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
-
-                ImGui::Text("g_buffer depth");
-                ImGui::Image(state.renderer.g_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
-
-                ImGui::Text("lighting buffer position");
-                ImGui::Image(state.renderer.lighting_frame_buffer.position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
-
-                ImGui::Text("sun buffer depth");
-                ImGui::Image(state.renderer.sun_frame_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
-
-                ImGui::Text("SSAO buffer position");
-                ImGui::Image(state.renderer.ssao_frame_buffer.position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
-
-                ImGui::Text("SSAO blur position");
-                ImGui::Image(state.renderer.ssao_blur_frame_buffer.position_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
-            }
+            } 
 
             ImGui::End();
         }
@@ -1236,110 +1223,32 @@ ChunkPosition world_to_chunk_position(v3 position) {
     };
 }
 
+bool save_chunk(Chunk *chunk) {
+    File file = new_file("resources/chunks/first.chunk");
+
+    bool ok = create_file(&file);
+    if (!ok) {
+        return false;
+    }
+
+    ok = write_file(&file, as_raw(chunk->blocks));
+    if (!ok) {
+        return false;
+    }
+
+    ok = write_file(&file, as_raw(chunk->colours));
+    if (!ok) {
+        return false;
+    }
+
+    close_file(&file);
+}
+
 Entity *spawn_entity(Entity entity) {
     Entity *ptr = push(&state.entities);
     *ptr = entity;
 
     return ptr;
-}
-
-void backup_scene() {
-    if (!file_exists(DEFAULT_SAVE_FILE)) {
-        return;
-    }
-
-    char backup_path[128];
-    sprintf(backup_path, "resources/saves/backups/scene_%llu.json", rand_i64());
-
-    bool saved_backup = copy_file(DEFAULT_SAVE_FILE, backup_path);
-    if (saved_backup) {
-        printf("Created backup save to \"%s\"\n", backup_path);
-    }
-}
-
-void save_scene(State *state) {
-    backup_scene(); 
-
-    std::vector<Entity> entities_copy(state->entities.len);
-
-    for(i64 i = 0; i < state->entities.len; i++) {
-        entities_copy[i] = state->entities[i];
-    }
-
-    json j;
-    j["entities"] = entities_copy;
-
-    { // save to file
-        std::ofstream file(DEFAULT_SAVE_FILE);
-
-        std::string output = j.dump(2);
-        i64 bytes = output.size();
-
-        file << output;
-        file.close();
-
-        printf("Created save to \"%s\" [%llu bytes]\n", DEFAULT_SAVE_FILE, bytes);
-    }
-}
-
-
-void load_scene(State *state) {
-    std::string saved_data = read_entire_file(DEFAULT_SAVE_FILE);
-    if (saved_data.size() == 0) {
-        printf("Could not load scene file at \"%s\"\n", DEFAULT_SAVE_FILE);
-        return;
-    }
-
-    json j = json::parse(saved_data, nullptr, false);
-    if (j.is_discarded() || !j.contains("entities")) {
-        printf("Failed to parse scene JSON or 'entities' not found.\n");
-        return;
-    }
-
-    std::vector<Entity> loaded_entities = j["entities"].get<std::vector<Entity>>();
-
-    // Assuming state->entities is a resizable container or has assign function
-    state->entities.len = loaded_entities.size();
-    for (size_t i = 0; i < loaded_entities.size(); ++i) {
-        state->entities[i] = loaded_entities[i];
-    }
-
-    printf("Loaded scene from \"%s\" with %llu entities\n", DEFAULT_SAVE_FILE, (u64)loaded_entities.size());
-}
-
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(v2, x, y)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(v3, x, y, z)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(v4, x, y, z, w)
-
-void to_json(json& j, const Entity& entity) {
-    j = json{
-        {"flags",           entity.flags},
-        {"position",        entity.position},
-        {"size",            entity.size},
-        {"rotation",        entity.rotation},
-        {"velocity",        entity.velocity},
-        {"color",           entity.color},
-        {"sprite",          entity.sprite},
-        {"animation_cycle", entity.animation_cycle},
-        {"light_colour",    entity.light_colour},
-        {"light_intensity", entity.light_intensity},
-        {"light_radius",    entity.light_radius},
-    };
-}
-
-
-void from_json(const json& j, Entity& entity) {
-    j.at("flags").get_to(entity.flags);
-    j.at("position").get_to(entity.position);
-    j.at("size").get_to(entity.size);
-    j.at("rotation").get_to(entity.rotation);
-    j.at("velocity").get_to(entity.velocity);
-    j.at("color").get_to(entity.color);
-    j.at("sprite").get_to(entity.sprite);
-    j.at("animation_cycle").get_to(entity.animation_cycle);
-    j.at("light_colour").get_to(entity.light_colour);
-    j.at("light_intensity").get_to(entity.light_intensity);
-    j.at("light_radius").get_to(entity.light_radius);
 }
 
 Sprite *get_sprite(SpriteHandle handle) {
