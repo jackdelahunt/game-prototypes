@@ -12,12 +12,18 @@
 
 // https://auburn.github.io/FastNoiseLite/
 
-// Total: 58:30
-// Started: 12:30
+// Total: 59:30
+// Started: 14:00
 
 #define ALLOW_EDITOR 1
 #define MAX_ENTITIES 2000
 #define DEFAULT_SAVE_FILE "resources/saves/scene.json"
+
+#define TEXT_INPUT_LEN 64
+
+#define CHUNK_W 70
+#define CHUNK_D 70
+#define CHUNK_H 70
 
 enum SpriteHandle {
     SH_NONE,
@@ -52,6 +58,8 @@ struct Entity {
 
 struct Editor {
     bool visable;
+
+    char input_buffer[TEXT_INPUT_LEN];
 
     struct {
         bool enabled;
@@ -117,13 +125,7 @@ struct State {
     SoundEngine sound_engine;
     Editor editor;
 
-    i64 chunk_quads_last_frame;
-    i64 im_quads_last_frame;
-
     Chunk chunk;
-
-    f32 gravity;
-    bool game_running;
 
     f64 time;
 
@@ -134,7 +136,7 @@ void update_and_draw(f32 delta_time);
 void physics(f32 delta_time);
 void update_and_draw_editor(f32 delta_time);
 
-Chunk new_chunk(Renderer *renderer, v3i position, v3i size);
+Chunk new_chunk(Renderer *renderer);
 void generate_mesh(Chunk *chunk);
 
 void generate_empty(Chunk *chunk);
@@ -154,7 +156,8 @@ BlockType get_block_neighbour(Chunk *chunk, ChunkPosition position, v3i offset);
 ChunkPosition get_block_looking_at(Chunk *chunk, Camera camera, i32 range, bool *hit);
 ChunkPosition world_to_chunk_position(v3 position);
 
-bool save_chunk(Chunk *chunk);
+bool save_chunk(Chunk *chunk, const char *name);
+bool load_chunk(Chunk *chunk, const char *name);
 
 Entity *spawn_entity(Entity entity);
 
@@ -184,6 +187,7 @@ int main() {
         },
         .editor = {
             .visable = false,
+            .input_buffer = {},
             .sculptor = {
                 .enabled = false,
                 .range = 50,
@@ -197,8 +201,6 @@ int main() {
                 .radius = 4,
             },
         },
-        .gravity = 1,
-        .game_running = false,
     };
 
     { // init engine stuff
@@ -254,16 +256,13 @@ int main() {
         srand(time(NULL));
     }
 
-    spawn_entity(Entity {
-        .flags = EF_PLAYER | EF_GRAVITY_AFFECTED,
-        .position = {25, 150, 0},
-        .size = {1.5, 0.5, 2}
-    });
+    state.chunk = new_chunk(&state.renderer);
+    bool loaded = load_chunk(&state.chunk, "example.chunk");
 
-
-    state.chunk = new_chunk(&state.renderer, {}, {50, 60, 50});
-    generate_platform(&state.chunk);
-    paint_single(&state.chunk, {0.3, 0.3, 0.3});
+    if (!loaded) {
+        generate_platform(&state.chunk);
+        paint_single(&state.chunk, {0.3, 0.3, 0.3});
+    }
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
         f64 current_time    = state.time;
@@ -275,7 +274,6 @@ int main() {
             glfwSetWindowShouldClose(state.window.glfw_window, GLFW_TRUE);
         }
 
-        state.im_quads_last_frame = state.renderer.quads.len;
         new_frame(&state.renderer, &state.window, state.camera);
 
         poll_inputs(); 
@@ -303,11 +301,7 @@ int main() {
 }
 
 void update_and_draw(f32 delta_time) {
-    if (KEYS[GLFW_KEY_F5] == InputState::DOWN) {
-        state.game_running = !state.game_running; 
-    }
-
-    if (!state.game_running) { // update editor camera
+    if (!state.editor.visable) { // update editor camera
         state.camera.mode = CameraMode::FIRST_PERSON;
 
         v3 input = {};
@@ -357,99 +351,6 @@ void update_and_draw(f32 delta_time) {
             }
         }
     }
-
-    for (Entity &entity : state.entities) {
-        if (state.game_running) {
-            if (BIT_SET(entity.flags, EF_PLAYER)) {
-                v3 input = {};
-    
-                if (KEYS[GLFW_KEY_A] == InputState::PRESSED) {
-                    input.x -= 1;
-                }
-            
-                if (KEYS[GLFW_KEY_D] == InputState::PRESSED) {
-                    input.x += 1;
-                }
-                
-                if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
-                    input.z += 1;
-                }
-            
-                if (KEYS[GLFW_KEY_S] == InputState::PRESSED) {
-                    input.z -= 1;
-                }
-            
-                const f32 SPEED = 1;
-                const f32 JUMP = 10;
-                const f32 LIFT = 0.03;
-                const f32 PUSH = 0.4;
-    
-                v3 up = {0, 1, 0};
-                v3 forward = get_forward_direction(entity.rotation);
-                v3 right = get_right_direction(entity.rotation);
-
-                f32 air_speed = length(v3{entity.velocity.x, clamp(-10000, entity.velocity.y, 0), entity.velocity.z});
-                f32 pitch = forward.y;
-
-                f32 lift_influence = 0;
-                f32 push_influence = 0;
-
-                if (pitch < 0) {
-                    lift_influence = 0;
-                } else if (pitch < 0.5) {
-                    lift_influence = pitch * 2;
-                } else if (pitch < 1) {
-                    lift_influence = 1 - pitch;
-                }
-
-                if (pitch < -0.5) {
-                    push_influence = 0;
-                } else if (pitch < 0) {
-                    push_influence = 1 + (pitch * 2);
-                } else if (pitch < 1) {
-                    push_influence = 1 - pitch;
-                }
-
-                // upward force applied
-                entity.velocity.y += lift_influence * air_speed  * LIFT;
-
-                // forward force applied
-                entity.velocity += v3{forward.x, 0, forward.z} * push_influence * PUSH;
-
-                u8 buffer[128] = {};
-
-                memset(buffer, 0, 128);
-                i64 len = sprintf((char *) buffer, "%.2f %.2f %.2f", entity.velocity.x, entity.velocity.y, entity.velocity.z);
-                string s = make_slice(buffer, len);
-                draw_text(&state.renderer, s, entity.position + v3{-8, 2, 0}, 1, BLACK);
-
-                memset(buffer, 0, 128);
-                len = sprintf((char *) buffer, "%.2f %.2f %.2f", pitch, lift_influence, air_speed);
-                s = make_slice(buffer, len);
-                draw_text(&state.renderer, s, entity.position + v3{-8, -2, 0}, 1, BLACK);
-
-                memset(buffer, 0, 128);
-                len = sprintf((char *) buffer, "%.2f", push_influence);
-                s = make_slice(buffer, len);
-                draw_text(&state.renderer, s, entity.position + v3{8, -3, 0}, 1, RED);
-
-                if (state.window.mouse_captured) {
-                    f32 sensitivity = 0.1;
-                    v2 mouse_input = MOUSE.delta;
-            
-                    if(length(mouse_input) != 0) { 
-                        entity.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
-                    }
-                }
-
-                state.camera.mode = CameraMode::THIRD_PERSON;
-                state.camera.position = entity.position - (forward * 5) + v3{0, 2, 0};
-                state.camera.target = entity.position + v3{0, 1, 0};
-            }
-        }
-
-        draw_cube(&state.renderer, entity.position, entity.size, entity.rotation, WHITE);
-    }
 }
 
 // AABB detection for a point against a box where the position is centred on the box
@@ -486,16 +387,8 @@ CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size)
 }
 
 void physics(f32 delta_time) {
-    if (!state.game_running) {
-        return;
-    }
-
     for (int i = 0; i < state.entities.len; i++) {
         Entity* entity = &state.entities[i];
-
-        if (BIT_SET(entity->flags, EF_GRAVITY_AFFECTED)) {
-            entity->velocity.y -= state.gravity;
-        }
 
         const f32 MAX_SPEED = 50;
         if (length(entity->velocity) > MAX_SPEED) {
@@ -624,9 +517,6 @@ void update_and_draw_editor(f32 delta_time) {
             { 
                 v3 direction = get_forward_direction(state.camera);
                 ImGui::Text("Looking: {%.2f, %.2f, %.2f}", direction.x, direction.y ,direction.z);
-                ImGui::Text("Chunk quads: %llu", state.chunk_quads_last_frame);
-                ImGui::Text("IM quads: %llu", state.im_quads_last_frame);
-                ImGui::Text("Total triangles: %llu", (state.im_quads_last_frame + state.chunk_quads_last_frame) * 2);
                 ImGui::Text("FPS: %f", 1.0f / delta_time);
             }
 
@@ -654,12 +544,6 @@ void update_and_draw_editor(f32 delta_time) {
             }
 
             {
-                ImGui::SeparatorText("World");
-                ImGui::Checkbox("Running", &state.game_running);
-                ImGui::SliderFloat("Gravity", &state.gravity, 0, 20);
-            }
-
-            {
                 ImGui::SeparatorText("Camera");
                 state.camera.mode == CameraMode::FIRST_PERSON ? ImGui::Text("Mode: FP") : ImGui::Text("Mode: TP");
                 ImGui::SliderFloat("FOV", &state.camera.fov, 1, 360);
@@ -670,6 +554,18 @@ void update_and_draw_editor(f32 delta_time) {
 
             {
                 ImGui::SeparatorText("Renderer");
+
+                if(ImGui::Button("Reload Shaders")) {
+                    delete_shaders(&state.renderer);
+                    load_shaders(&state.renderer);
+                }
+
+                ImGui::SameLine();
+            
+                if(ImGui::Button("Toggle V-sync")) {
+                    toggle_vsync(&state.window);
+                } 
+
                 ImGui::SliderFloat4("Clear colour", &state.renderer.clear_colour[0], 0, 1);
                 ImGui::SliderFloat3("Ambient light", &state.renderer.ambient_light[0], 0, 1);
                 ImGui::SliderFloat3("Sun colour", &state.renderer.sun_colour[0], 0, 1);
@@ -723,18 +619,6 @@ void update_and_draw_editor(f32 delta_time) {
 
             ImGui::SeparatorText("Chunk editor");
 
-            if(ImGui::Button("Save to file")) {
-                bool ok = save_chunk(&state.chunk);
-                if (!ok) {
-                    printf("error saving chunk to file\n");
-                }
-            }
-
-            ImGui::SameLine();
-
-            if(ImGui::Button("Load from file")) {
-            }
-
             if(ImGui::Button("Clear to empty")) {
                 generate_empty(&state.chunk);
             }
@@ -743,6 +627,27 @@ void update_and_draw_editor(f32 delta_time) {
 
             if(ImGui::Button("Clear to platform")) {
                 generate_platform(&state.chunk);
+            }
+
+            if (ImGui::CollapsingHeader("Save and Load")) {
+                ImGui::TextDisabled("Name of chunk file in resources/chunks/");
+                ImGui::InputTextWithHint("##", "creation.chunk", state.editor.input_buffer, TEXT_INPUT_LEN - 1);
+    
+                if(ImGui::Button("Save to file")) {
+                    bool ok = save_chunk(&state.chunk, state.editor.input_buffer);
+                    if (!ok) {
+                        printf("error saving chunk to file\n");
+                    }
+                }
+    
+                ImGui::SameLine();
+    
+                if(ImGui::Button("Load from file")) {
+                    bool ok = load_chunk(&state.chunk, state.editor.input_buffer);
+                    if (!ok) {
+                        printf("Error loading chunk from file\n");
+                    }
+                }
             }
 
             if (ImGui::CollapsingHeader("Generate blocks")) {
@@ -854,35 +759,20 @@ void update_and_draw_editor(f32 delta_time) {
 
             ImGui::End();
         }
-
-        {
-            ImGui::Begin("Options");
-            if(ImGui::Button("Reload Shaders")) {
-                delete_shaders(&state.renderer);
-                load_shaders(&state.renderer);
-            }
-        
-            if(ImGui::Button("Toggle wireframe")) {
-                toggle_wireframe(&state.renderer);
-            }
-    
-            if(ImGui::Button("Toggle V-sync")) {
-                toggle_vsync(&state.window);
-            } 
-
-            ImGui::End();
-        }
     }
 }
 
-Chunk new_chunk(Renderer *renderer, v3i position, v3i size) {
-    i64 block_count = size.x * size.y * size.z;
+Chunk new_chunk(Renderer *renderer) {
+    v3 position = v3{0, 0, 0};
+    v3 size = v3{CHUNK_W, CHUNK_H, CHUNK_D};
+
+    i64 block_count = i64(size.x) * i64(size.y) * i64(size.z);
 
     return Chunk {
         .dirty = false,
-        .position = as_floats(position),
-        .size = as_floats(size),
-        .mesh = new_mesh(renderer, as_floats(position), block_count * 6),
+        .position = position,
+        .size = size,
+        .mesh = new_mesh(renderer, position, block_count * 6),
         .blocks = mem_alloc<BlockType>(block_count),
         .colours = mem_alloc<v3>(block_count)
     };
@@ -1223,25 +1113,79 @@ ChunkPosition world_to_chunk_position(v3 position) {
     };
 }
 
-bool save_chunk(Chunk *chunk) {
-    File file = new_file("resources/chunks/first.chunk");
+bool save_chunk(Chunk *chunk, const char *name) {
+    u8 path_buffer[64] = {};
+    i64 len = sprintf((char *) path_buffer, "resources/chunks/%s", name);
+    Slice<u8> path = make_slice(path_buffer, len);
+
+    File file = new_file(path);
 
     bool ok = create_file(&file);
     if (!ok) {
         return false;
     }
 
-    ok = write_file(&file, as_raw(chunk->blocks));
+    ok = write_file(&file, as_bytes(&chunk->size));
     if (!ok) {
         return false;
     }
 
-    ok = write_file(&file, as_raw(chunk->colours));
+    ok = write_file(&file, as_bytes(chunk->blocks));
+    if (!ok) {
+        return false;
+    }
+
+    ok = write_file(&file, as_bytes(chunk->colours));
     if (!ok) {
         return false;
     }
 
     close_file(&file);
+}
+
+bool load_chunk(Chunk *chunk, const char *name) {
+    const i64 SIZE_START    = 0;
+    const i64 SIZE_END      = SIZE_START + sizeof(v3);
+
+    const i64 BLOCKS_START  = SIZE_END;
+    const i64 BLOCKS_END    = BLOCKS_START + (chunk->blocks.len * sizeof(BlockType));
+
+    const i64 COLOURS_START = BLOCKS_END;
+    const i64 COLOURS_END   = COLOURS_START + (chunk->colours.len * sizeof(v3));
+
+    u8 path_buffer[64] = {};
+    i64 len = sprintf((char *) path_buffer, "resources/chunks/%s", name);
+    Slice<u8> path = make_slice(path_buffer, len);
+
+    File file = new_file(path);
+    Slice<u8> bytes = read_entire_file(&file);
+
+    if (bytes.len == 0) {
+        printf("Failed reading file: \"%s\"\n", path.c());
+        return false;
+    }
+
+    Slice<u8> size_bytes    = bytes.slice(SIZE_START, SIZE_END);
+    Slice<u8> block_bytes   = bytes.slice(BLOCKS_START, BLOCKS_END);
+    Slice<u8> colour_bytes  = bytes.slice(COLOURS_START, COLOURS_END);
+
+    v3 *size                = as_value<v3>(size_bytes);
+    Slice<BlockType> blocks = as_slice<BlockType>(block_bytes);
+    Slice<v3> colours       = as_slice<v3>(colour_bytes);
+
+    chunk->size = *size;
+
+    for (i64 i = 0; i < chunk->blocks.len; i++) {
+        chunk->blocks[i] = blocks[i];
+    }
+
+    for (i64 i = 0; i < chunk->colours.len; i++) {
+        chunk->colours[i] = colours[i];
+    }
+
+    chunk->dirty = true;
+
+    return true;
 }
 
 Entity *spawn_entity(Entity entity) {

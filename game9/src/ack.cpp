@@ -4,13 +4,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-// cursed c++ headers to get saving working
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <string>
-#include <filesystem>
+#include <string.h>
 
 #define ASSERT(x) if (!(x)) __debugbreak();
 #define BIT_SET(a, b) ((a & b) != 0)
@@ -80,8 +74,25 @@ Slice<T> make_slice(T *data, i64 len) {
 }
 
 template <typename T>
-Slice<u8> as_raw(Slice<T> slice) {
+Slice<u8> as_bytes(Slice<T> slice) {
     return make_slice((u8 *) slice.ptr, sizeof(T) * slice.len);
+}
+
+template <typename T>
+Slice<u8> as_bytes(T *ptr) {
+    return make_slice((u8 *) ptr, sizeof(T));
+}
+
+template <typename T>
+T *as_value(Slice<u8> slice) {
+    ASSERT(slice.len == sizeof(T));
+
+    return (T *) slice.ptr;
+}
+
+template <typename T>
+Slice<T> as_slice(Slice<u8> slice) {
+    return make_slice((T *) slice.ptr, slice.len / sizeof(T));
 }
 
 template <typename T>
@@ -243,6 +254,26 @@ bool create_file(File *file) {
     }
 
     return true;
+}
+
+Slice<u8> read_entire_file(File *file) {
+    file->handle = fopen(file->path.c(), "rb");
+    if (file->handle == NULL) {
+        return {};
+    }
+
+    fseek(file->handle, 0, SEEK_END);
+    i64 file_size = ftell(file->handle);
+    fseek(file->handle, 0, SEEK_SET);
+
+    
+    Slice<u8> bytes = mem_alloc<u8>(file_size);
+    fread(bytes.ptr, file_size, 1, file->handle);
+    fclose(file->handle);
+
+    file->handle = NULL;
+    
+    return bytes;
 }
 
 bool write_file(File *file, Slice<u8> bytes) {
