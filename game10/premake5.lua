@@ -35,6 +35,7 @@ project "game10"
         "gdi32",
         "shell32",
         "D3D11",
+        "src/libs/glfw/glfw3_mt.lib",
     }
 
     filter "configurations:Debug"

@@ -3,25 +3,13 @@
 #include <d3dcompiler.h>
 #include <wrl.h>
 
-#include <iostream>
-
-#include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
+#include "engine.cpp"
+#include "libs/libs.h"
 
 // Total: 02:00
 // Started: 12:30
-
-enum class InputState {
-    UP,
-    DOWN,
-    PRESSED
-};
-
-StackArray<InputState, 348> KEYS = {};
-
-template <typename T>
-using ComPtr = Microsoft::WRL::ComPtr<T>;
 
 ID3D11Device*            g_pd3dDevice = nullptr;
 ID3D11DeviceContext*     g_pd3dDeviceContext = nullptr;
@@ -32,8 +20,6 @@ ID3D11RenderTargetView*  g_mainRenderTargetView = nullptr;
 
 bool create_device_d3d(HWND window_handle);
 void create_render_target();
-
-ComPtr<ID3DBlob> compile_shader(string path);
 
 LRESULT CALLBACK winproc(HWND window_handle, UINT message, WPARAM w_param, LPARAM l_param);
 
@@ -79,8 +65,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // Setup Platform/Renderer backends
     ImGui_ImplWin32_Init(window_handle);
     ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
-
-    ComPtr<ID3DBlob> blob = compile_shader("resources/shaders/vs.hlsl");
 
     bool running = true;
     v4 clear_colour = {0.7, 0.7, 1, 1};
@@ -176,38 +160,6 @@ void create_render_target() {
     g_pSwapChain->GetBuffer(0, IID_PPV_ARGS(&pBackBuffer));
     g_pd3dDevice->CreateRenderTargetView(pBackBuffer, nullptr, &g_mainRenderTargetView);
     pBackBuffer->Release();
-}
-
-
-ComPtr<ID3DBlob> compile_shader(string path) {
-    UINT compileFlags = D3DCOMPILE_ENABLE_STRICTNESS;
-
-    ComPtr<ID3DBlob> blob = nullptr;
-    ComPtr<ID3DBlob> error = nullptr;
-
-    HRESULT result =  D3DCompileFromFile(
-        path.w(),
-        nullptr,
-        D3D_COMPILE_STANDARD_FILE_INCLUDE,
-        "Main",
-        "vs_5_0",
-        compileFlags,
-        0,
-        &blob,
-        &error
-    );
-
-    if (FAILED(result)) {
-        std::cout << "D3D11: Failed to read shader from file\n";
-        if (error != nullptr) {
-            std::cout << "D3D11: With message: " << 
-            static_cast<const char*>(error->GetBufferPointer()) << "\n";
-        }
-
-        return nullptr;
-    }
-
-    return blob;
 }
 
 // Forward declare message handler from imgui_impl_win32.cpp
