@@ -3,13 +3,13 @@
 #include <d3dcompiler.h>
 #include <wrl.h>
 
+#include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
 #include "engine.cpp"
-#include "libs/libs.h"
 
 // Total: 02:00
-// Started: 12:30
+// Started: 13:30
 
 ID3D11Device*            g_pd3dDevice = nullptr;
 ID3D11DeviceContext*     g_pd3dDeviceContext = nullptr;
@@ -21,40 +21,18 @@ ID3D11RenderTargetView*  g_mainRenderTargetView = nullptr;
 bool create_device_d3d(HWND window_handle);
 void create_render_target();
 
-LRESULT CALLBACK winproc(HWND window_handle, UINT message, WPARAM w_param, LPARAM l_param);
+int main() {
+    Window window = {};
+    bool ok = init_window(&window, "game10");
+    if (!ok) {
+        OutputDebugStringA("Failed to init window");
+    }
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-    WNDCLASSW window_class = {
-        .style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC,
-        .lpfnWndProc = (WNDPROC) winproc,
-        .hInstance = GetModuleHandleW(NULL),
-        .hIcon = LoadIcon(NULL, IDI_WINLOGO),
-        .hCursor = LoadCursor(NULL, IDC_ARROW),
-        .lpszClassName = L"WindowClass"
-    };
-
-    RegisterClassW(&window_class);
-
-    HWND window_handle = CreateWindowW(
-        window_class.lpszClassName,
-        L"game10",
-        WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT,
-        CW_USEDEFAULT,
-        1920,
-        1080,
-        NULL,
-        NULL,
-        window_class.hInstance,
-        NULL
-    );
+    HWND window_handle = win32_window(&window);
 
     if (!create_device_d3d(window_handle)) {
         return 1;
     }
-
-    ShowWindow(window_handle, SW_SHOW);
-    UpdateWindow(window_handle);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -63,31 +41,23 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     ImGui::StyleColorsDark();
 
     // Setup Platform/Renderer backends
-    ImGui_ImplWin32_Init(window_handle);
+    ImGui_ImplGlfw_InitForOther(window.glfw_window, true);
     ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
 
     bool running = true;
     v4 clear_colour = {0.7, 0.7, 1, 1};
 
     while (running) {
-        MSG msg;
-        while (PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE)) {
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
-
-            if (msg.message == WM_QUIT) {
-                running = false;
-            }
-        }
-
-
-        if (KEYS[VK_ESCAPE] == InputState::DOWN) {
+        if (KEYS[GLFW_KEY_ESCAPE] == InputState::DOWN) {
             running = false;
+            glfwSetWindowShouldClose(window.glfw_window, GLFW_TRUE);
         }
+
+        poll_inputs();
 
         // Start the Dear ImGui frame
         ImGui_ImplDX11_NewFrame();
-        ImGui_ImplWin32_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
         // ImGui::ShowDemoWindow();
@@ -108,11 +78,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     }
 
     ImGui_ImplDX11_Shutdown();
-    ImGui_ImplWin32_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
-    DestroyWindow(window_handle);
-    UnregisterClassW(window_class.lpszClassName, window_class.hInstance);
+    glfwTerminate();
 
     return 0;
 }
@@ -161,49 +130,3 @@ void create_render_target() {
     g_pd3dDevice->CreateRenderTargetView(pBackBuffer, nullptr, &g_mainRenderTargetView);
     pBackBuffer->Release();
 }
-
-// Forward declare message handler from imgui_impl_win32.cpp
-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-LRESULT CALLBACK winproc(HWND window_handle, UINT message, WPARAM w_param, LPARAM l_param) {
-    if (ImGui_ImplWin32_WndProcHandler(window_handle, message, w_param, l_param)) {
-        return true;
-    }
-
-    switch (message) {
-        case WM_DESTROY: {
-            PostQuitMessage(0);
-        } break;
-        case WM_KEYDOWN: {
-            if (w_param < KEYS.size) {
-                if (KEYS[w_param] == InputState::UP) {
-                    KEYS[w_param] = InputState::DOWN;
-                } 
-                else if (KEYS[w_param] == InputState::DOWN) {
-                    KEYS[w_param] = InputState::PRESSED;
-                }
-            }
-        } break;
-        case WM_KEYUP: {
-            if (w_param < KEYS.size) {
-                KEYS[w_param] = InputState::UP;
-            }
-        } break;
-        // case WM_CLOSE:
-        // case WM_ERASEBKGND:
-        // case WM_LBUTTONDOWN:
-        // case WM_RBUTTONDOWN:
-        // case WM_LBUTTONUP:
-        // case WM_RBUTTONUP:
-        // case WM_MOUSEMOVE:
-        // case WM_MOUSEWHEEL:
-        // case WM_CHAR:
-        // case WM_SIZING:
-        default: {
-            return DefWindowProcW(window_handle, message, w_param, l_param);
-        }
-    }
-
-    return 0;
-}
-

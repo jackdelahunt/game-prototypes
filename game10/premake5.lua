@@ -3,7 +3,7 @@ workspace "Engine"
     location "build"	
 
 project "game10"
-    kind "WindowedApp"
+    kind "ConsoleApp"
     language "C++"
     cppdialect "C++20"
     staticruntime "On"
@@ -22,7 +22,7 @@ project "game10"
         "src/main.cpp",
         "src/libs/imgui/imgui*.cpp",
         "src/libs/imgui/backends/imgui_impl_dx11.cpp",
-        "src/libs/imgui/backends/imgui_impl_win32.cpp",
+        "src/libs/imgui/backends/imgui_impl_glfw.cpp",
     }
 
     includedirs {

@@ -39,6 +39,7 @@ struct {
 } MOUSE;
 
 bool init_window(Window *window, string title);
+HWND win32_window(Window *window);
 void set_mouse_captured(Window *window, bool captured);
 void poll_inputs();
 void swap_buffers(Window *window);
@@ -62,17 +63,12 @@ bool init_window(Window *window, string title) {
         .height = mode->height,
         .title = title,
         .vsync = true,
-        .mouse_captured = true,
+        .mouse_captured = false,
     };
  
     glfwWindowHint(GLFW_MAXIMIZED, GL_TRUE);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-#if REPORT_GL_ERRORS
-    glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
-#endif
 
     window->glfw_window = glfwCreateWindow(window->width, window->height, window->title.c(), NULL, NULL);
     if (window->glfw_window == nullptr) {
@@ -92,6 +88,10 @@ bool init_window(Window *window, string title) {
     glfwSetMouseButtonCallback(window->glfw_window, glfw_mouse_button_callback);
 
     return true;
+}
+
+HWND win32_window(Window *window) {
+    return glfwGetWin32Window(window->glfw_window);
 }
 
 void set_mouse_captured(Window *window, bool captured) {
