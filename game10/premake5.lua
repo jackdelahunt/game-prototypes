@@ -6,7 +6,6 @@ project "game10"
     kind "ConsoleApp"
     language "C++"
     cppdialect "C++20"
-    staticruntime "On"
 
     location "build/engine"
     debugdir "."
@@ -21,21 +20,23 @@ project "game10"
     files {
         "src/main.cpp",
         "src/libs/imgui/imgui*.cpp",
-        "src/libs/imgui/backends/imgui_impl_dx11.cpp",
-        "src/libs/imgui/backends/imgui_impl_glfw.cpp",
+        "src/libs/miniaudio/miniaudio.c"
     }
 
     includedirs {
-        "src/libs",
         "src/libs/imgui",
+        "src/libs",
+        "src/libs/glew/include"
     }
 
     links {
         "user32",
         "gdi32",
         "shell32",
-        "D3D11",
+        "opengl32",
+
         "src/libs/glfw/glfw3_mt.lib",
+        "src/libs/glew/lib/Release/x64/glew32s.lib",
     }
 
     filter "configurations:Debug"

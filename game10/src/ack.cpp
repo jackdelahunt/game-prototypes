@@ -64,10 +64,6 @@ struct Slice { // TODO: do safety checks in slices
     const char *c() {
         return (const char *) this->ptr;
     }
-
-    const wchar_t *w() {
-        return (const wchar_t *) this->ptr;
-    }
 };
 
 typedef Slice<u8> string;
@@ -177,7 +173,6 @@ struct StackArray {
     i64 len;
 
     T& operator[](i64 index) {
-        ASSERT(index >= 0 && index < this->size);
         return this->data[index];
     }
 

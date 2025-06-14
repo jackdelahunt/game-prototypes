@@ -1,11 +1,14 @@
 #ifndef LIBS_H
 #define LIBS_H
 
+#define GLEW_STATIC
+#include "glew/include/GL/glew.h"
 #include "glfw/glfw3.h"
-#define GLFW_EXPOSE_NATIVE_WIN32
-#include "glfw/glfw3native.h"
 #include "imgui/imgui.h"
-#include "imgui/backends/imgui_impl_glfw.h"
-#include "imgui/backends/imgui_impl_dx11.h"
+#include "imgui/imgui_impl_glfw.h"
+#include "imgui/imgui_impl_opengl3.h"
+#include "stb/stb.h"
+#include "miniaudio/miniaudio.h"
+#include "FastNoiseLite/FastNoiseLite.h"
 
 #endif
