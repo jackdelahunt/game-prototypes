@@ -6,6 +6,7 @@ project "game10"
     kind "ConsoleApp"
     language "C++"
     cppdialect "C++20"
+    staticruntime "On"
 
     location "build/engine"
     debugdir "."
@@ -27,7 +28,6 @@ project "game10"
         "src/libs/imgui",
         "src/libs",
         "src/libs/glew/include",
-        "src/libs/assimp/include"
     }
 
     links {
@@ -38,10 +38,10 @@ project "game10"
 
         "src/libs/glfw/glfw3_mt.lib",
         "src/libs/glew/lib/Release/x64/glew32s.lib",
-        "src/libs/assimp/lib/Release/assimp-vc143-mt.lib",
     }
 
     filter "configurations:Debug"
+
     targetdir "build/bin/debug"
     defines { "DEBUG" }
     symbols "On"

@@ -10,18 +10,11 @@
 #include <time.h>
 #include <stdlib.h>
 
-// Total: 00:00
-// Started: 22:30
+// Total: 01:00
+// Started: 1:30
 
 #define ALLOW_EDITOR 1
 #define MAX_ENTITIES 2000
-#define DEFAULT_SAVE_FILE "resources/saves/scene.json"
-
-#define TEXT_INPUT_LEN 64
-
-#define CHUNK_W 70
-#define CHUNK_D 70
-#define CHUNK_H 70
 
 enum SpriteHandle {
     SH_NONE,
@@ -56,8 +49,6 @@ struct Entity {
 
 struct Editor {
     bool visable;
-
-    char input_buffer[TEXT_INPUT_LEN];
 
     struct {
         bool enabled;
@@ -126,7 +117,6 @@ int main() {
         },
         .editor = {
             .visable = false,
-            .input_buffer = {},
             .sculptor = {
                 .enabled = false,
                 .range = 50,
