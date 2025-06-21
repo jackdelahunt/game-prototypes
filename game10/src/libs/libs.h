@@ -10,5 +10,8 @@
 #include "stb/stb.h"
 #include "miniaudio/miniaudio.h"
 #include "FastNoiseLite/FastNoiseLite.h"
+#include "assimp/include/assimp/Importer.hpp"
+#include "assimp/include/assimp/scene.h"
+#include "assimp/include/assimp/postprocess.h"
 
 #endif

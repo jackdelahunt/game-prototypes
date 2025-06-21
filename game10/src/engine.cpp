@@ -5,7 +5,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include <random>
 
@@ -28,7 +27,7 @@
 struct Window {
     i32 width;
     i32 height;
-    string title;
+    str title;
 
     GLFWwindow *glfw_window;
 
@@ -50,7 +49,7 @@ struct {
     StackArray<InputState, 8> buttons;
 } MOUSE;
 
-bool init_window(Window *window, string title);
+bool init_window(Window *window, str title);
 void set_mouse_captured(Window *window, bool captured);
 void poll_inputs();
 void swap_buffers(Window *window);
@@ -60,7 +59,7 @@ void glfw_mouse_move_callback(GLFWwindow* window, f64 x, f64 y);
 void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 mods);
 void glfw_error_callback(int error_code, const char* description);
 
-bool init_window(Window *window, string title) {
+bool init_window(Window *window, str title) {
     if (glfwInit() == 0) {
         printf("Failed to init glfw\n");
         return false;
@@ -337,7 +336,7 @@ struct FrameBuffer {
 };
 
 struct Shader {
-    string debug_name;
+    str debug_name;
     u32 id;
 };
 
@@ -431,24 +430,24 @@ v3 get_up_direction(v3 rotation);
 
 // Shader API
 void use_shader(Shader shader);
-void set_uniform_f32(Shader shader, string name, f32 value);
-void set_uniform_m4(Shader shader, string name, m4 *matrix);
-void set_uniform_v2(Shader shader, string name, v2 vector);
-void set_uniform_v3(Shader shader, string name, v3 vector);
-void set_uniform_v4(Shader shader, string name, v4 vector);
+void set_uniform_f32(Shader shader, str name, f32 value);
+void set_uniform_m4(Shader shader, str name, m4 *matrix);
+void set_uniform_v2(Shader shader, str name, v2 vector);
+void set_uniform_v3(Shader shader, str name, v3 vector);
+void set_uniform_v4(Shader shader, str name, v4 vector);
 
 // Renderer init API
 bool init_renderer(Renderer *renderer, Window *window);
 bool load_shaders(Renderer *renderer);
 void delete_shaders(Renderer *renderer);
-Sprite *load_sprite(Renderer *renderer, string albedo_path, string normal_path);
-Sprite *load_animated_sprite(Renderer *renderer, string albedo_path, i64 cell_count, f32 animation_length);
-Texture *load_texture(Renderer *renderer, string path);
-Texture *load_animated_texture(Renderer *renderer, string path, i64 cell_count, f32 animation_length);
+Sprite *load_sprite(Renderer *renderer, str albedo_path, str normal_path);
+Sprite *load_animated_sprite(Renderer *renderer, str albedo_path, i64 cell_count, f32 animation_length);
+Texture *load_texture(Renderer *renderer, str path);
+Texture *load_animated_texture(Renderer *renderer, str path, i64 cell_count, f32 animation_length);
 bool build_atlas(Renderer *renderer);
 u32 upload_texture_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
 u32 upload_font_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
-bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel_height);
+bool load_font(Renderer *renderer, str path, i64 width, i64 height, f32 pixel_height);
 
 // Renderer frame API
 void new_frame(Renderer *renderer, Window *window, Camera camera);
@@ -464,7 +463,7 @@ void draw_sprite(Renderer *renderer, Sprite *sprite, v3 position, v2 size, f32 r
 void draw_animated_sprite(Renderer *renderer, Sprite *sprite, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
 void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color);
 void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
-void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
+void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 color);
 void draw_light(Renderer *renderer, v3 position, f32 radius, v4 colour, f32 intensity);
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
 Quad *push_screen_quad(Renderer *renderer, v4 color);
@@ -474,14 +473,14 @@ f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
 
 // Mesh API
 Mesh *new_mesh(Renderer *renderer, FixedArray<MeshVertex> vertices, FixedArray<u32> indices);
-Mesh *load_model(Renderer *renderer, string path);
+Mesh *load_model(Renderer *renderer, str path);
 void reset_mesh(Mesh *mesh);
 void upload_mesh(Mesh *mesh);
 
 bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options);
 
-bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, string fragment_shader_path);
-void assign_texture_slot(Shader *shader, string texture_name, i32 slot);
+bool init_shader(Shader *shader, str debug_name, str vertex_shader_path, str fragment_shader_path);
+void assign_texture_slot(Shader *shader, str texture_name, i32 slot);
 
 v2 screen_position_to_world_position(v2 screen_position, Camera camera, Window *window);
 v2 screen_position_to_ndc(v2 screen_position, Window *window);
@@ -550,11 +549,11 @@ void use_shader(Shader shader) {
     glUseProgram(shader.id);
 }
 
-void set_uniform_f32(Shader shader, string name, f32 value) {
+void set_uniform_f32(Shader shader, str name, f32 value) {
     glUniform1f(glGetUniformLocation(shader.id, name.c()), value);
 }
 
-void set_uniform_m4(Shader shader, string name, m4 *matrix) {
+void set_uniform_m4(Shader shader, str name, m4 *matrix) {
     glUniformMatrix4fv(
         glGetUniformLocation(shader.id, name.c()),
         1,
@@ -563,21 +562,21 @@ void set_uniform_m4(Shader shader, string name, m4 *matrix) {
     );
 }
 
-void set_uniform_v2(Shader shader, string name, v2 vector) {
+void set_uniform_v2(Shader shader, str name, v2 vector) {
     glUniform2f(
         glGetUniformLocation(shader.id, name.c()),
         vector.x, vector.y
     );
 }
 
-void set_uniform_v3(Shader shader, string name, v3 vector) {
+void set_uniform_v3(Shader shader, str name, v3 vector) {
     glUniform3f(
         glGetUniformLocation(shader.id, name.c()),
         vector.x, vector.y, vector.z 
     );
 }
 
-void set_uniform_v4(Shader shader, string name, v4 vector) {
+void set_uniform_v4(Shader shader, str name, v4 vector) {
     glUniform4f(
         glGetUniformLocation(shader.id, name.c()),
         vector.x, vector.y, vector.z, vector.w
@@ -911,7 +910,7 @@ void delete_shaders(Renderer *renderer) {
     glDeleteProgram(renderer->mesh_shader.id);
 }
 
-Sprite *load_sprite(Renderer *renderer, string albedo_path, string normal_path) {
+Sprite *load_sprite(Renderer *renderer, str albedo_path, str normal_path) {
     Texture *albedo = load_texture(renderer, albedo_path);
     Texture *normal = NULL;
 
@@ -929,7 +928,7 @@ Sprite *load_sprite(Renderer *renderer, string albedo_path, string normal_path) 
 }
 
 
-Sprite *load_animated_sprite(Renderer *renderer, string albedo_path, i64 cell_count, f32 animation_length) {
+Sprite *load_animated_sprite(Renderer *renderer, str albedo_path, i64 cell_count, f32 animation_length) {
     Texture *albedo = load_animated_texture(renderer, albedo_path, cell_count, animation_length);
 
     Sprite *sprite = push(&renderer->sprites);
@@ -941,7 +940,7 @@ Sprite *load_animated_sprite(Renderer *renderer, string albedo_path, i64 cell_co
     return sprite;
 }
 
-Texture *load_texture(Renderer *renderer, string path) {
+Texture *load_texture(Renderer *renderer, str path) {
     i32 width       = 0;
     i32 height      = 0;
     i32 channels    = 0;
@@ -971,7 +970,7 @@ Texture *load_texture(Renderer *renderer, string path) {
     return texture;
 }
 
-Texture *load_animated_texture(Renderer *renderer, string path, i64 cell_count, f32 animation_length) {
+Texture *load_animated_texture(Renderer *renderer, str path, i64 cell_count, f32 animation_length) {
     Texture *texture = load_texture(renderer, path);
     if(texture == NULL) {
         return NULL;
@@ -1161,7 +1160,7 @@ u32 upload_font_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data) {
     return texture_id;
 }
 
-bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel_height) {
+bool load_font(Renderer *renderer, str path, i64 width, i64 height, f32 pixel_height) {
     Font font = Font{
         .width = width,
         .height = height,
@@ -1169,7 +1168,7 @@ bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel
         .bitmap_data = (u8 *) malloc(width * height),
     };
 
-    string font_data = read_entire_file(path);
+    str font_data = read_entire_file(path);
     if (font_data.len == 0) {
         printf("failed to load font \"%s\"\n", path.c());
         return false;
@@ -1360,7 +1359,7 @@ void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_ani
     push_quad(renderer, position, size, {0, 0, rotation}, color, sub_texture->uvs, {}, DrawType::TEXTURE);
 }
 
-void draw_text(Renderer *renderer, string text, v3 position, f32 font_size, v4 color) {
+void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 color) {
     if (text.len == 0) {
         return;
     }
@@ -1627,7 +1626,7 @@ Mesh *new_mesh(Renderer *renderer, FixedArray<MeshVertex> vertices, FixedArray<u
     return mesh;
 }
 
-Mesh *load_model(Renderer *renderer, string path) {
+Mesh *load_model(Renderer *renderer, str path) {
     return NULL;
 }
 
@@ -1736,19 +1735,19 @@ bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options) {
     return true;
 }
 
-bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, string fragment_shader_path) {
+bool init_shader(Shader *shader, str debug_name, str vertex_shader_path, str fragment_shader_path) {
     const i64 buffer_size = 640;
     i32 compile_status = 0;
     i32 link_status = 0;
     char error_buffer[buffer_size];
     
-    string vertex_shader_source = read_entire_file(vertex_shader_path);
+    str vertex_shader_source = read_entire_file(vertex_shader_path);
     if (vertex_shader_source.len == 0) {
         printf("%s: failed to load vertex shader file\n", debug_name.c());
         return false;
     }
 
-    string fragment_shader_source = read_entire_file(fragment_shader_path);
+    str fragment_shader_source = read_entire_file(fragment_shader_path);
     if (fragment_shader_source.len == 0) {
         printf("%s: failed to load default fragment shader file\n", debug_name.c());
         return false;
@@ -1800,7 +1799,7 @@ bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, s
     return true;
 }
 
-void assign_texture_slot(Shader *shader, string texture_name, i32 slot) {
+void assign_texture_slot(Shader *shader, str texture_name, i32 slot) {
     glUseProgram(shader->id);
     glUniform1i(glGetUniformLocation(shader->id, texture_name.c()), slot);
     glUseProgram(0);
@@ -1934,7 +1933,7 @@ bool init_sound_engine(SoundEngine *sound_engine);
 bool load_sounds(SoundEngine *sound_engine);
 void play_sound(SoundEngine *sound_engine, SoundHandle handle);
 
-string sound_path(SoundHandle handle);
+str sound_path(SoundHandle handle);
 
 bool init_sound_engine(SoundEngine *sound_engine) {
     ma_result result = ma_engine_init(NULL, &sound_engine->engine);
@@ -1950,7 +1949,7 @@ bool load_sounds(SoundEngine *sound_engine) {
     for (i64 i = 0; i < sound_engine->sounds.size; i++) {
         SoundHandle handle = (SoundHandle) i;
 
-        string path = sound_path(handle);
+        str path = sound_path(handle);
         ma_sound *sound = &sound_engine->sounds[i];
 
         ma_result result = ma_sound_init_from_file(&sound_engine->engine, path.c(), 0, NULL, NULL, sound);
@@ -1970,7 +1969,7 @@ void play_sound(SoundEngine *sound_engine, SoundHandle handle) {
     ma_sound_start(sound);
 }
 
-string sound_path(SoundHandle handle) {
+str sound_path(SoundHandle handle) {
     switch (handle) {
         case SH_DASH: 
             return "resources/sounds/dash.wav";

@@ -66,7 +66,7 @@ struct Slice { // TODO: do safety checks in slices
     }
 };
 
-typedef Slice<u8> string;
+typedef Slice<u8> str;
 
 template <typename T>
 Slice<T> make_slice(T *data, i64 len) {
@@ -218,7 +218,7 @@ void swap_remove(StackArray<T, N> *array, i64 index) {
 f32 rand_f32();
 f32 rand_f32_negative();
 i64 rand_i64();
-string read_entire_file(string path);
+str read_entire_file(str path);
 
 // 0 -> 1
 f32 rand_f32() {
@@ -236,11 +236,11 @@ i64 rand_i64() {
 }
 
 struct File {
-    string path;
+    str path;
     FILE *handle;
 };
 
-File new_file(string path) {
+File new_file(str path) {
     return File {
         .path = path,
         .handle = NULL,
@@ -295,7 +295,7 @@ void close_file(File *file) {
     file->handle = NULL;
 }
 
-string read_entire_file(string path) {
+str read_entire_file(str path) {
     FILE *file = fopen(path.c(), "rb");
     if (file == nullptr) {
         return {};

@@ -28,6 +28,7 @@ project "game10"
         "src/libs/imgui",
         "src/libs",
         "src/libs/glew/include",
+        "src/libs/assimp/include",
     }
 
     links {
@@ -38,6 +39,7 @@ project "game10"
 
         "src/libs/glfw/glfw3_mt.lib",
         "src/libs/glew/lib/Release/x64/glew32s.lib",
+        "src/libs/assimp/lib/x64/assimp-vc143-mt.lib"
     }
 
     filter "configurations:Debug"

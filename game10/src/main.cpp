@@ -10,6 +10,9 @@
 #include <time.h>
 #include <stdlib.h>
 
+#include <string>
+#include <iostream>
+
 // Total: 01:00
 // Started: 1:30
 
@@ -92,6 +95,30 @@ void update_and_draw_editor(f32 delta_time);
 Entity *spawn_entity(Entity entity);
 
 Sprite *get_sprite(SpriteHandle handle);
+
+bool DoTheImportThing(std::string pFile) {
+  // Create an instance of the Importer class
+  Assimp::Importer importer;
+
+  // And have it read the given file with some example postprocessing
+  // Usually - if speed is not the most important aspect for you - you'll
+  // probably to request more postprocessing than we do in this example.
+  const aiScene* scene = importer.ReadFile( pFile,
+    aiProcess_CalcTangentSpace       |
+    aiProcess_Triangulate            |
+    aiProcess_JoinIdenticalVertices  |
+    aiProcess_SortByPType);
+
+  // If the import failed, report it
+  if (nullptr == scene) {
+    return false;
+  }
+
+  // Now we can access the file's contents.
+
+  // We're done. Everything will be cleaned up by the importer destructor
+  return true;
+}
 
 int main() {
     state = State {
@@ -180,10 +207,17 @@ int main() {
         if (!ok) {
             printf("failed to load sounds\n");
             return 1;
-        } 
+        }
+
+        ok = DoTheImportThing("resources/models/cube/cube.obj");
+        if (!ok) {
+            printf("failed to load model\n");
+            return 1;
+        }
 
         srand(time(NULL));
     }
+
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
         f64 current_time    = state.time;
