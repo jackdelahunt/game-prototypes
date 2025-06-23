@@ -227,6 +227,7 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 struct MeshVertex {
     v3 position;
     v3 normal;
+    v2 texture_uv;
 };
 
 struct Vertex {
@@ -341,12 +342,17 @@ struct Shader {
 };
 
 struct Mesh {
-    FixedArray<MeshVertex> vertices;
-    FixedArray<u32> indices;
+    Slice<MeshVertex> vertices;
+    Slice<u32> indices;
 
     u32 vertex_array_id;
     u32 vertex_buffer_id;
     u32 index_buffer_id;
+};
+
+struct Model {
+    Texture *texture;
+    Mesh *mesh;
 };
 
 enum class RenderMode {
@@ -473,7 +479,9 @@ f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
 
 // Mesh API
 Mesh *new_mesh(Renderer *renderer, FixedArray<MeshVertex> vertices, FixedArray<u32> indices);
-Mesh *load_model(Renderer *renderer, str path);
+Mesh *new_quad_mesh(Renderer *renderer);
+Model load_model(Renderer *renderer, str path);
+void processNode(Renderer *renderer, aiNode *node, const aiScene *scene);
 void reset_mesh(Mesh *mesh);
 void upload_mesh(Mesh *mesh);
 
@@ -1227,15 +1235,15 @@ void draw_frame(Renderer *renderer, Window *window) {
         m4 model_matrix = HMM_M4D(1.0f);
         use_shader(renderer->mesh_shader);
 
-        set_uniform_m4(renderer->geometry_shader, "model", &model_matrix);
-        set_uniform_m4(renderer->geometry_shader, "view", &renderer->view_matrix);
-        set_uniform_m4(renderer->geometry_shader, "projection", &renderer->projection_matrix);
+        set_uniform_m4(renderer->mesh_shader, "model", &model_matrix);
+        set_uniform_m4(renderer->mesh_shader, "view", &renderer->view_matrix);
+        set_uniform_m4(renderer->mesh_shader, "projection", &renderer->projection_matrix);
 
         GL_CALL(glBindVertexArray(mesh.vertex_array_id));
         GL_CALL(glDrawElements(GL_TRIANGLES, mesh.indices.len, GL_UNSIGNED_INT, 0));
     }
 
-    { // imediete mode quads
+    if (false) { // imediete mode quads
         glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
     
@@ -1578,7 +1586,7 @@ f32 texture_aspect_ratio(Renderer *renderer, Texture *texture) {
     return (f32) texture->width / (f32) texture->height;
 }
 
-Mesh *new_mesh(Renderer *renderer, FixedArray<MeshVertex> vertices, FixedArray<u32> indices) {
+Mesh *new_mesh(Renderer *renderer, Slice<MeshVertex> vertices, Slice<u32> indices) {
     Mesh *mesh = push(&renderer->meshes);
     *mesh = Mesh {
         .vertices = vertices,
@@ -1597,7 +1605,7 @@ Mesh *new_mesh(Renderer *renderer, FixedArray<MeshVertex> vertices, FixedArray<u
         u32 vertex_buffer;
         glGenBuffers(1, &vertex_buffer);
         glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(MeshVertex) * mesh->vertices.slice.len, mesh->vertices.slice.ptr, GL_DYNAMIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(MeshVertex) * mesh->vertices.len, mesh->vertices.ptr, GL_DYNAMIC_DRAW);
 
         mesh->vertex_buffer_id = vertex_buffer;
     }
@@ -1606,17 +1614,19 @@ Mesh *new_mesh(Renderer *renderer, FixedArray<MeshVertex> vertices, FixedArray<u
         u32 index_buffer;
         glGenBuffers(1, &index_buffer);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u32) * indices.slice.len, indices.slice.ptr, GL_STATIC_DRAW);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u32) * indices.len, indices.ptr, GL_STATIC_DRAW);
 
         mesh->index_buffer_id = index_buffer;
     }
 
     { // vertex attributes
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, position));   // position
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, normal));     // normal
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, position));
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, normal));
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, texture_uv));
 
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
+        glEnableVertexAttribArray(2);
     }
 
     glBindVertexArray(0);
@@ -1626,9 +1636,71 @@ Mesh *new_mesh(Renderer *renderer, FixedArray<MeshVertex> vertices, FixedArray<u
     return mesh;
 }
 
-Mesh *load_model(Renderer *renderer, str path) {
-    return NULL;
+Model load_model(Renderer *renderer, str path) {
+  // Create an instance of the Importer class
+  Assimp::Importer importer;
+
+  const aiScene *scene = importer.ReadFile(path.c(), aiProcess_Triangulate | aiProcess_FlipUVs);	
+
+    if(scene == NULL || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
+        printf("assimp error: %s\n", importer.GetErrorString());
+    }
+
+    // load and create mesh
+    ASSERT(scene->mRootNode->mNumChildren == 1);
+
+    processNode(renderer, scene->mRootNode, scene);
+
+    return {};
 }
+
+void processNode(Renderer *renderer, aiNode *node, const aiScene *scene) {
+    // process all the node's meshes (if any)
+    for(unsigned int i = 0; i < node->mNumMeshes; i++) {
+        aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
+
+        Slice<MeshVertex> vertices = mem_alloc<MeshVertex>(mesh->mNumVertices);
+        Slice<u32> indices = mem_alloc<u32>(mesh->mNumFaces * 3);
+
+        for(i64 v = 0; v < mesh->mNumVertices; v++) {
+            MeshVertex vertex = {};
+
+            vertex.position.x = mesh->mVertices[v].x;
+            vertex.position.y = mesh->mVertices[v].y;
+            vertex.position.z = mesh->mVertices[v].z;
+
+            vertex.normal.x = mesh->mVertices[v].x;
+            vertex.normal.y = mesh->mVertices[v].y;
+            vertex.normal.z = mesh->mVertices[v].z;
+
+            if(mesh->mTextureCoords[0]) {
+                vertex.texture_uv.x = mesh->mTextureCoords[0][v].x;
+                vertex.texture_uv.y = mesh->mTextureCoords[0][v].y;
+            }
+
+            vertices[v] = vertex;
+        }
+
+        i64 index = 0;
+
+        for(i64 f = 0; f < mesh->mNumFaces; f++) {
+            aiFace face = mesh->mFaces[f];
+
+            for(i64 j = 0; j < face.mNumIndices; j++) {
+                indices[index] = face.mIndices[j];
+                index++;
+            }
+        }
+
+        new_mesh(renderer, vertices, indices);
+    }
+
+    // then do the same for each of its children
+    for(i64 i = 0; i < node->mNumChildren; i++)
+    {
+        processNode(renderer, node->mChildren[i], scene);
+    }
+}  
 
 void upload_mesh(Mesh *mesh) {
     glBindBuffer(GL_ARRAY_BUFFER, mesh->vertex_buffer_id);
