@@ -1,7 +1,5 @@
 #include "libs/libs.h"
 #include "ack.cpp"
-
-i64 ID = 0;
 #include "math.cpp"
 #include "engine.cpp"
 
@@ -21,13 +19,8 @@ i64 ID = 0;
 #define ALLOW_EDITOR 1
 #define MAX_ENTITIES 2000
 
-enum SpriteHandle {
-    SH_NONE,
-    SH_BRICK,
-    SH_COUNT_
-};
-
-Sprite *sprites[SH_COUNT_];
+Model *cube_model;
+Model *iso_model;
 
 struct Entity {
     // meta
@@ -40,16 +33,7 @@ struct Entity {
     v3 velocity;
 
     // rendering
-    v4 color;
-    SpriteHandle sprite;
-
-    // animated texture
-    f32 animation_cycle;
-
-    // light
-    v4 light_colour;
-    f32 light_intensity;
-    f32 light_radius;
+    Model *model;
 };
 
 struct Editor {
@@ -95,8 +79,6 @@ void physics(f32 delta_time);
 void update_and_draw_editor(f32 delta_time);
 
 Entity *spawn_entity(Entity entity);
-
-Sprite *get_sprite(SpriteHandle handle);
 
 enum class TokenType {
     EQUAL
@@ -209,23 +191,6 @@ int main() {
             return 1;
         }
 
-        { // load and build all sprites
-            Sprite *sprite = NULL;
-
-            sprite = load_sprite(&state.renderer, "resources/textures/brick.png", "");
-            if (sprite == NULL) {
-                return 1;
-            }
-
-            sprites[SH_BRICK] = sprite;
-        }
-
-        ok = build_atlas(&state.renderer);
-        if (!ok) {
-            printf("failed to build texture atlas\n");
-            return 1;
-        }
-
         ok = load_font(&state.renderer, "resources/fonts/LibreBaskerville.ttf", 1000, 1000, 160);
         if (!ok) {
             printf("failed to load font\n");
@@ -244,13 +209,21 @@ int main() {
             return 1;
         }
 
-        load_model(&state.renderer, "resources/models/ico/ico.obj");
+        cube_model = load_model(&state.renderer, "resources/models/cuber/cube.obj", "resources/models/cuber/Texture.png");
+        iso_model = load_model(&state.renderer, "resources/models/ico/ico.obj", "resources/models/ico/Texture.png");
 
         srand(time(NULL));
     }
 
-    Texture *cube_texture = load_texture(&state.renderer, "resources/models/ico/Texture.png");
-    ID = upload_texture_to_gpu(&state.renderer, 64, 64, cube_texture->data);
+    spawn_entity(Entity {
+        .position = {0, 0, 0},
+        .model = cube_model,
+    });
+
+    spawn_entity(Entity {
+        .position = {10, 0, 0},
+        .model = iso_model,
+    });
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
         f64 current_time    = state.time;
@@ -333,7 +306,9 @@ void update_and_draw(f32 delta_time) {
         }
     }
 
-    draw_cube(&state.renderer, {0, 0, 5}, {1, 1, 1}, {}, RED);
+    for (Entity &entity : state.entities) {
+        draw_model(&state.renderer, entity.position, entity.model);
+    }
 }
 
 // AABB detection for a point against a box where the position is centred on the box
@@ -503,12 +478,4 @@ Entity *spawn_entity(Entity entity) {
     *ptr = entity;
 
     return ptr;
-}
-
-Sprite *get_sprite(SpriteHandle handle) {
-    if(handle == SH_NONE) {
-        return NULL;
-    }
-
-    return sprites[handle];
 }

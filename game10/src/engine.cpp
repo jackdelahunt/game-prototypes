@@ -218,8 +218,10 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 /////////////////////////////////////////////////////////////////////////////
 //////////////////////////////// @renderer //////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
-#define MAX_QUADS 200000
-#define MAX_MESHES 1000
+#define MAX_QUADS 5000
+#define MAX_RENDER_COMMANDS 1000
+#define MAX_MESHES 128
+#define MAX_MODELS 128
 #define MAX_LIGHTS 20
 #define MAX_SPRITES 256
 #define MAX_TEXTURES 256
@@ -296,17 +298,7 @@ struct Texture {
 };
 
 struct RenderTexture {
-    i64 width;
-    i64 height;
-    u8 *data;
-};
-
-struct Sprite {
-    Texture *albedo;
-    Texture *normal;
-};
-
-struct Atlas {
+    u32 id;
     i64 width;
     i64 height;
     u8 *data;
@@ -367,6 +359,11 @@ enum class RenderMode {
     ORTHOGRAPHIC
 };
 
+struct RenderCommand {
+    v3 position;
+    Model *model;
+};
+
 struct Renderer {
     bool wireframe;
 
@@ -382,19 +379,17 @@ struct Renderer {
     v2 ssao_noise_scale;
 
     FixedArray<Mesh> meshes;
+    FixedArray<Model> models;
     FixedArray<Quad> quads;
-    StackArray<Light, MAX_LIGHTS> lights;
+    FixedArray<RenderCommand> commands;
 
     m4 view_matrix;
     m4 projection_matrix;
     m4 projection_matrix_ortho;
 
-    StackArray<Sprite, MAX_SPRITES> sprites;
     StackArray<Texture, MAX_TEXTURES> textures;
 
     Texture *default_normal;
-
-    Atlas atlas;
 
     Font font;
 
@@ -453,8 +448,6 @@ void set_uniform_v4(Shader shader, str name, v4 vector);
 bool init_renderer(Renderer *renderer, Window *window);
 bool load_shaders(Renderer *renderer);
 void delete_shaders(Renderer *renderer);
-Sprite *load_sprite(Renderer *renderer, str albedo_path, str normal_path);
-Sprite *load_animated_sprite(Renderer *renderer, str albedo_path, i64 cell_count, f32 animation_length);
 Texture *load_texture(Renderer *renderer, str path);
 Texture *load_animated_texture(Renderer *renderer, str path, i64 cell_count, f32 animation_length);
 bool build_atlas(Renderer *renderer);
@@ -472,12 +465,10 @@ void draw_imgui_frame();
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
 void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 color);
-void draw_sprite(Renderer *renderer, Sprite *sprite, v3 position, v2 size, f32 rotation, v4 color);
-void draw_animated_sprite(Renderer *renderer, Sprite *sprite, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
 void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color);
 void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 color);
-void draw_light(Renderer *renderer, v3 position, f32 radius, v4 colour, f32 intensity);
+void draw_model(Renderer *renderer, v3 position, Model *model);
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
 Quad *push_screen_quad(Renderer *renderer, v4 color);
 
@@ -487,8 +478,7 @@ f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
 // Mesh API
 Mesh *new_mesh(Renderer *renderer, FixedArray<MeshVertex> vertices, FixedArray<u32> indices);
 Mesh *new_quad_mesh(Renderer *renderer);
-Model load_model(Renderer *renderer, str path);
-void processNode(Renderer *renderer, aiNode *node, const aiScene *scene);
+Model *load_model(Renderer *renderer, str mesh_path, str albedo_path);
 void reset_mesh(Mesh *mesh);
 void upload_mesh(Mesh *mesh);
 
@@ -601,6 +591,8 @@ void set_uniform_v4(Shader shader, str name, v4 vector) {
 bool init_renderer(Renderer *renderer, Window *window) {
     renderer->quads = new_fixed_array<Quad>(MAX_QUADS);
     renderer->meshes = new_fixed_array<Mesh>(MAX_MESHES);
+    renderer->models = new_fixed_array<Model>(MAX_MODELS);
+    renderer->commands = new_fixed_array<RenderCommand>(MAX_RENDER_COMMANDS);
     renderer->ssao_noise_scale = {f32(window->width) * 0.25f, f32(window->height) * 0.25f};
 
     { // init opengl
@@ -927,36 +919,6 @@ void delete_shaders(Renderer *renderer) {
     glDeleteProgram(renderer->mesh_shader.id);
 }
 
-Sprite *load_sprite(Renderer *renderer, str albedo_path, str normal_path) {
-    Texture *albedo = load_texture(renderer, albedo_path);
-    Texture *normal = NULL;
-
-    if (normal_path.len != 0) {
-        normal = load_texture(renderer, normal_path);
-    }
-
-    Sprite *sprite = push(&renderer->sprites);
-    *sprite = Sprite {
-        .albedo = albedo,
-        .normal = normal
-    };
-
-    return sprite;
-}
-
-
-Sprite *load_animated_sprite(Renderer *renderer, str albedo_path, i64 cell_count, f32 animation_length) {
-    Texture *albedo = load_animated_texture(renderer, albedo_path, cell_count, animation_length);
-
-    Sprite *sprite = push(&renderer->sprites);
-    *sprite = Sprite {
-        .albedo = albedo,
-        .normal = NULL
-    };
-
-    return sprite;
-}
-
 Texture *load_texture(Renderer *renderer, str path) {
     i32 width       = 0;
     i32 height      = 0;
@@ -1220,6 +1182,7 @@ bool load_font(Renderer *renderer, str path, i64 width, i64 height, f32 pixel_he
 
 void new_frame(Renderer *renderer, Window *window, Camera camera) {
     reset(&renderer->quads);
+    reset(&renderer->commands);
 
     renderer->view_matrix = get_view_matrix(camera);
     renderer->projection_matrix = get_projection_matrix(camera, (f32) window->width / (f32) window->height);
@@ -1239,9 +1202,10 @@ void draw_frame(Renderer *renderer, Window *window) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glViewport(0, 0, window->width, window->height);
 
-    // scene render
-    for (Mesh &mesh : renderer->meshes) {
+    for (RenderCommand &command : renderer->commands) {
         m4 model_matrix = HMM_M4D(1.0f);
+        model_matrix = HMM_MulM4(model_matrix, HMM_Translate(command.position));
+
         use_shader(renderer->mesh_shader);
 
         set_uniform_m4(renderer->mesh_shader, "model", &model_matrix);
@@ -1249,10 +1213,10 @@ void draw_frame(Renderer *renderer, Window *window) {
         set_uniform_m4(renderer->mesh_shader, "projection", &renderer->projection_matrix);
 
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, ID);
+        glBindTexture(GL_TEXTURE_2D, command.model->texture.id);
 
-        GL_CALL(glBindVertexArray(mesh.vertex_array_id));
-        GL_CALL(glDrawElements(GL_TRIANGLES, mesh.indices.len, GL_UNSIGNED_INT, 0));
+        GL_CALL(glBindVertexArray(command.model->mesh->vertex_array_id));
+        GL_CALL(glDrawElements(GL_TRIANGLES, command.model->mesh->indices.len, GL_UNSIGNED_INT, 0));
     }
 
     if (false) { // imediete mode quads
@@ -1328,55 +1292,6 @@ void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 color) 
     push_quad(renderer, position + (v3{   0,  0.5,    0} * size), {size.x, size.z}, v3{-90,   0, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // top
     push_quad(renderer, position + (v3{   0, -0.5,    0} * size), {size.x, size.z}, v3{ 90,   0, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // bottom
     push_quad(renderer, position + (v3{   0,    0,  0.5} * size), {size.x, size.y}, v3{  0, 180, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // back
-}
-
-void draw_sprite(Renderer *renderer, Sprite *sprite, v3 position, v2 size, f32 rotation, v4 color) {
-    v2 *normal_uvs = NULL; // need to use pointer here because stupid C reasons
-
-    if (sprite->normal == NULL) {
-        normal_uvs = renderer->default_normal->uvs;
-    } else  {
-        normal_uvs = sprite->normal->uvs;
-    }
-
-    push_quad(renderer, position, size, {0, 0, rotation}, color, sprite->albedo->uvs, normal_uvs, DrawType::TEXTURE);
-}
-
-void draw_animated_sprite(Renderer *renderer, Sprite *sprite, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color) {
-    f32 animation_progress = time_in_animation / sprite->albedo->animation_length;
-    animation_progress = clamp(0, animation_progress, 1);
-
-    i64 sub_texture_count = sprite->albedo->sub_textures.len;
-    i64 sub_texture_index = (i64)(animation_progress * sub_texture_count);
-    
-    if (sub_texture_index >= sub_texture_count) {
-        sub_texture_index = sub_texture_count - 1;
-    }
-
-    Texture *sub_texture = &sprite->albedo->sub_textures[sub_texture_index];
-
-    push_quad(renderer, position, size, {0, 0, rotation}, color, sub_texture->uvs, renderer->default_normal->uvs, DrawType::TEXTURE);
-}
-
-void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color) {
-    assert(texture->type == TextureType::SINGLE);
-
-    push_quad(renderer, position, size, {0, 0, rotation}, color, texture->uvs, normal_texture->uvs, DrawType::TEXTURE);
-}
-
-void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color) {
-    f32 animation_progress = time_in_animation / texture->animation_length;
-    animation_progress = clamp(0, animation_progress, 1);
-
-    i64 sub_texture_count = texture->sub_textures.len;
-    i64 sub_texture_index = (i64)(animation_progress * sub_texture_count);
-    
-    if (sub_texture_index >= sub_texture_count) {
-        sub_texture_index = sub_texture_count - 1;
-    }
-
-    Texture *sub_texture = &texture->sub_textures[sub_texture_index];
-    push_quad(renderer, position, size, {0, 0, rotation}, color, sub_texture->uvs, {}, DrawType::TEXTURE);
 }
 
 void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 color) {
@@ -1468,19 +1383,10 @@ void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 colo
     mem_free(glyphs);
 }
 
-void draw_light(Renderer *renderer, v3 position, f32 radius, v4 colour, f32 intensity) {
-    Light *light = push(&renderer->lights);
-
-    m4 view_projection_matrix = HMM_MulM4(renderer->projection_matrix, renderer->view_matrix);
-
-    // light data is sent to the GPU in NDC so using view projection 
-    // matrix for the transformation
-    *light = Light {
-        .position = HMM_MulM4V4(view_projection_matrix, v4{position.x, position.y, position.z, 1}).xy,
-        .radius = length(HMM_MulM4V4(view_projection_matrix, {radius, 0, 0, 0}).xy) * 2,
-        .colour = colour,
-        .intensity = intensity
-    };
+void draw_model(Renderer *renderer, v3 position, Model *model) {
+    RenderCommand *command = push(&renderer->commands);
+    command->position = position;
+    command->model = model;
 }
 
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type) {
@@ -1648,69 +1554,71 @@ Mesh *new_mesh(Renderer *renderer, Slice<MeshVertex> vertices, Slice<u32> indice
     return mesh;
 }
 
-Model load_model(Renderer *renderer, str path) {
+Model *load_model(Renderer *renderer, str mesh_path, str albedo_path) {
     // Create an instance of the Importer class
     Assimp::Importer importer;
     
-    const aiScene *scene = importer.ReadFile(path.c(), aiProcess_Triangulate | aiProcess_MakeLeftHanded);	
+    const aiScene *scene = importer.ReadFile(mesh_path.c(), aiProcess_Triangulate | aiProcess_MakeLeftHanded);	
     if(scene == NULL || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
         printf("assimp error: %s\n", importer.GetErrorString());
     }
 
+    // only assuming one child and one mesh for now
     ASSERT(scene->mRootNode->mNumChildren == 1);
+    aiNode *node = scene->mRootNode->mChildren[0];
 
-    processNode(renderer, scene->mRootNode, scene);
+    ASSERT(node->mNumMeshes == 1);
+    aiMesh *mesh = scene->mMeshes[node->mMeshes[0]];
 
-    return {};
+    Slice<MeshVertex> vertices = mem_alloc<MeshVertex>(mesh->mNumVertices);
+    Slice<u32> indices = mem_alloc<u32>(mesh->mNumFaces * 3);
+
+    for(i64 v = 0; v < mesh->mNumVertices; v++) {
+        MeshVertex vertex = {};
+        vertex.position.x = mesh->mVertices[v].x;
+        vertex.position.y = mesh->mVertices[v].y;
+        vertex.position.z = mesh->mVertices[v].z;
+
+        vertex.normal.x = mesh->mVertices[v].x;
+        vertex.normal.y = mesh->mVertices[v].y;
+        vertex.normal.z = mesh->mVertices[v].z;
+
+        if(mesh->mTextureCoords[0]) {
+            vertex.texture_uv.x = mesh->mTextureCoords[0][v].x;
+            vertex.texture_uv.y = mesh->mTextureCoords[0][v].y;
+        }
+
+        vertices[v] = vertex;
+    }
+
+    i64 index = 0;
+
+    for(i64 f = 0; f < mesh->mNumFaces; f++) {
+        aiFace face = mesh->mFaces[f];
+        for(i64 j = 0; j < face.mNumIndices; j++) {
+            indices[index] = face.mIndices[j];
+            index++;
+        }
+    }
+
+    Mesh *model_mesh = new_mesh(renderer, vertices, indices);
+
+    Texture *texture = load_texture(renderer, albedo_path);
+    u32 id = upload_texture_to_gpu(renderer, texture->width, texture->height, texture->data);
+
+    // TODO: stop doing this conversion at some point
+    RenderTexture model_texture =  RenderTexture {
+        .id = id,
+        .width = texture->width,
+        .height = texture->height,
+        .data = texture->data
+    };
+
+    Model *model = push(&renderer->models);
+    *model = Model {.texture = model_texture, .mesh = model_mesh};
+
+    return model;
 }
-
-void processNode(Renderer *renderer, aiNode *node, const aiScene *scene) {
-    // process all the node's meshes (if any)
-    for(unsigned int i = 0; i < node->mNumMeshes; i++) {
-        aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
-
-        Slice<MeshVertex> vertices = mem_alloc<MeshVertex>(mesh->mNumVertices);
-        Slice<u32> indices = mem_alloc<u32>(mesh->mNumFaces * 3);
-
-        for(i64 v = 0; v < mesh->mNumVertices; v++) {
-            MeshVertex vertex = {};
-
-            vertex.position.x = mesh->mVertices[v].x;
-            vertex.position.y = mesh->mVertices[v].y;
-            vertex.position.z = mesh->mVertices[v].z;
-
-            vertex.normal.x = mesh->mVertices[v].x;
-            vertex.normal.y = mesh->mVertices[v].y;
-            vertex.normal.z = mesh->mVertices[v].z;
-
-            if(mesh->mTextureCoords[0]) {
-                vertex.texture_uv.x = mesh->mTextureCoords[0][v].x;
-                vertex.texture_uv.y = mesh->mTextureCoords[0][v].y;
-            }
-
-            vertices[v] = vertex;
-        }
-
-        i64 index = 0;
-
-        for(i64 f = 0; f < mesh->mNumFaces; f++) {
-            aiFace face = mesh->mFaces[f];
-
-            for(i64 j = 0; j < face.mNumIndices; j++) {
-                indices[index] = face.mIndices[j];
-                index++;
-            }
-        }
-
-        new_mesh(renderer, vertices, indices);
-    }
-
-    // then do the same for each of its children
-    for(i64 i = 0; i < node->mNumChildren; i++)
-    {
-        processNode(renderer, node->mChildren[i], scene);
-    }
-}  
 
 void upload_mesh(Mesh *mesh) {
     glBindBuffer(GL_ARRAY_BUFFER, mesh->vertex_buffer_id);
