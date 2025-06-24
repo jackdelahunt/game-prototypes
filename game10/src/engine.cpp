@@ -361,6 +361,8 @@ enum class RenderMode {
 
 struct RenderCommand {
     v3 position;
+    v3 rotation;
+    v3 scale;
     Model *model;
 };
 
@@ -437,12 +439,27 @@ v3 get_right_direction(v3 rotation);
 v3 get_up_direction(v3 rotation);
 
 // Shader API
+bool init_shader(Shader *shader, str debug_name, str vertex_shader_path, str fragment_shader_path);
+void assign_texture_slot(Shader *shader, str texture_name, i32 slot);
 void use_shader(Shader shader);
 void set_uniform_f32(Shader shader, str name, f32 value);
 void set_uniform_m4(Shader shader, str name, m4 *matrix);
 void set_uniform_v2(Shader shader, str name, v2 vector);
 void set_uniform_v3(Shader shader, str name, v3 vector);
 void set_uniform_v4(Shader shader, str name, v4 vector);
+
+// Mesh API
+Mesh *new_mesh(Renderer *renderer, FixedArray<MeshVertex> vertices, FixedArray<u32> indices);
+Mesh *new_quad_mesh(Renderer *renderer);
+void reset_mesh(Mesh *mesh);
+void upload_mesh(Mesh *mesh);
+
+// Model API
+Model *load_model(Renderer *renderer, str mesh_path, str albedo_path);
+
+// Render Texture API
+RenderTexture load_render_texture(Renderer *renderer, str path);
+void upload_texture_to_gpu(Renderer *renderer, RenderTexture *texture);
 
 // Renderer init API
 bool init_renderer(Renderer *renderer, Window *window);
@@ -468,24 +485,14 @@ void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 color);
 void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color);
 void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 color);
-void draw_model(Renderer *renderer, v3 position, Model *model);
+void draw_model(Renderer *renderer, v3 position, v3 scale, v3 rotation, Model *model);
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
 Quad *push_screen_quad(Renderer *renderer, v4 color);
 
 void toggle_wireframe(Renderer *renderer);
 f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
 
-// Mesh API
-Mesh *new_mesh(Renderer *renderer, FixedArray<MeshVertex> vertices, FixedArray<u32> indices);
-Mesh *new_quad_mesh(Renderer *renderer);
-Model *load_model(Renderer *renderer, str mesh_path, str albedo_path);
-void reset_mesh(Mesh *mesh);
-void upload_mesh(Mesh *mesh);
-
 bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options);
-
-bool init_shader(Shader *shader, str debug_name, str vertex_shader_path, str fragment_shader_path);
-void assign_texture_slot(Shader *shader, str texture_name, i32 slot);
 
 v2 screen_position_to_world_position(v2 screen_position, Camera camera, Window *window);
 v2 screen_position_to_ndc(v2 screen_position, Window *window);
@@ -550,6 +557,76 @@ v3 get_up_direction(v3 rotation) {
     return {0, 1, 0};
 }
 
+bool init_shader(Shader *shader, str debug_name, str vertex_shader_path, str fragment_shader_path) {
+    const i64 buffer_size = 640;
+    i32 compile_status = 0;
+    i32 link_status = 0;
+    char error_buffer[buffer_size];
+    
+    str vertex_shader_source = read_entire_file(vertex_shader_path);
+    if (vertex_shader_source.len == 0) {
+        printf("%s: failed to load vertex shader file\n", debug_name.c());
+        return false;
+    }
+
+    str fragment_shader_source = read_entire_file(fragment_shader_path);
+    if (fragment_shader_source.len == 0) {
+        printf("%s: failed to load default fragment shader file\n", debug_name.c());
+        return false;
+    }
+
+    u32 vertex_shader = glCreateShader(GL_VERTEX_SHADER);
+
+    glShaderSource(vertex_shader, 1, (char **) &vertex_shader_source.ptr, NULL);
+    glCompileShader(vertex_shader);
+
+    glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &compile_status);
+    if (compile_status == 0) {
+        glGetShaderInfoLog(vertex_shader, buffer_size, nullptr, &error_buffer[0]);
+        printf("%s: failed to compile vertex shader: %s\n", debug_name.c(), error_buffer);
+        return false;
+    }
+
+    u32 fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+
+    glShaderSource(fragment_shader, 1, (char**) &fragment_shader_source.ptr, NULL);
+    glCompileShader(fragment_shader);
+
+    glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &compile_status);
+    if (compile_status == 0) {
+        glGetShaderInfoLog(fragment_shader, buffer_size, nullptr, &error_buffer[0]);
+        printf("%s: failed to compile fragment shader: %s\n", debug_name.c(), error_buffer);
+        return false;
+    }
+
+    u32 shader_program = glCreateProgram();
+
+    glAttachShader(shader_program, vertex_shader);
+    glAttachShader(shader_program, fragment_shader);
+    glLinkProgram(shader_program); 
+
+    glGetProgramiv(shader_program, GL_LINK_STATUS, &link_status);
+
+    if (link_status == 0) {
+        glGetProgramInfoLog(shader_program, buffer_size, nullptr, &error_buffer[0]);
+        printf("%s: failed to link shader program: %s\n", debug_name.c(), error_buffer);
+        return false;
+    }
+ 
+    shader->id = shader_program; 
+    shader->debug_name = debug_name;
+
+    printf("Compiled and linked %s\n", debug_name.c());
+
+    return true;
+}
+
+void assign_texture_slot(Shader *shader, str texture_name, i32 slot) {
+    glUseProgram(shader->id);
+    glUniform1i(glGetUniformLocation(shader->id, texture_name.c()), slot);
+    glUseProgram(0);
+}
+
 void use_shader(Shader shader) {
     glUseProgram(shader.id);
 }
@@ -586,6 +663,158 @@ void set_uniform_v4(Shader shader, str name, v4 vector) {
         glGetUniformLocation(shader.id, name.c()),
         vector.x, vector.y, vector.z, vector.w
     );
+}
+
+Mesh *new_mesh(Renderer *renderer, Slice<MeshVertex> vertices, Slice<u32> indices) {
+    Mesh *mesh = push(&renderer->meshes);
+    *mesh = Mesh {
+        .vertices = vertices,
+        .indices = indices
+    };
+
+    { // vertex array
+        u32 vertex_array;
+        glGenVertexArrays(1, &vertex_array);
+        glBindVertexArray(vertex_array);
+
+        mesh->vertex_array_id = vertex_array;
+    }
+
+    { // vertex buffer
+        u32 vertex_buffer;
+        glGenBuffers(1, &vertex_buffer);
+        glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(MeshVertex) * mesh->vertices.len, mesh->vertices.ptr, GL_DYNAMIC_DRAW);
+
+        mesh->vertex_buffer_id = vertex_buffer;
+    }
+
+    { // index buffer
+        u32 index_buffer;
+        glGenBuffers(1, &index_buffer);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u32) * indices.len, indices.ptr, GL_STATIC_DRAW);
+
+        mesh->index_buffer_id = index_buffer;
+    }
+
+    { // vertex attributes
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, position));
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, normal));
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, texture_uv));
+
+        glEnableVertexAttribArray(0);
+        glEnableVertexAttribArray(1);
+        glEnableVertexAttribArray(2);
+    }
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+    return mesh;
+}
+
+void upload_mesh(Mesh *mesh) {
+    glBindBuffer(GL_ARRAY_BUFFER, mesh->vertex_buffer_id);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(MeshVertex) * mesh->vertices.len, &mesh->vertices[0]);
+}
+
+Model *load_model(Renderer *renderer, str mesh_path, str albedo_path) {
+    // Create an instance of the Importer class
+    Assimp::Importer importer;
+    
+    const aiScene *scene = importer.ReadFile(mesh_path.c(), aiProcess_Triangulate | aiProcess_MakeLeftHanded);	
+    if(scene == NULL || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
+        printf("assimp error: %s\n", importer.GetErrorString());
+    }
+
+    // only assuming one child and one mesh for now
+    ASSERT(scene->mRootNode->mNumChildren == 1);
+    aiNode *node = scene->mRootNode->mChildren[0];
+
+    ASSERT(node->mNumMeshes == 1);
+    aiMesh *mesh = scene->mMeshes[node->mMeshes[0]];
+
+    Slice<MeshVertex> vertices = mem_alloc<MeshVertex>(mesh->mNumVertices);
+    Slice<u32> indices = mem_alloc<u32>(mesh->mNumFaces * 3);
+
+    for(i64 v = 0; v < mesh->mNumVertices; v++) {
+        MeshVertex vertex = {};
+        vertex.position.x = mesh->mVertices[v].x;
+        vertex.position.y = mesh->mVertices[v].y;
+        vertex.position.z = mesh->mVertices[v].z;
+
+        vertex.normal.x = mesh->mVertices[v].x;
+        vertex.normal.y = mesh->mVertices[v].y;
+        vertex.normal.z = mesh->mVertices[v].z;
+
+        if(mesh->mTextureCoords[0]) {
+            vertex.texture_uv.x = mesh->mTextureCoords[0][v].x;
+            vertex.texture_uv.y = mesh->mTextureCoords[0][v].y;
+        }
+
+        vertices[v] = vertex;
+    }
+
+    i64 index = 0;
+
+    for(i64 f = 0; f < mesh->mNumFaces; f++) {
+        aiFace face = mesh->mFaces[f];
+        for(i64 j = 0; j < face.mNumIndices; j++) {
+            indices[index] = face.mIndices[j];
+            index++;
+        }
+    }
+
+    Mesh *model_mesh = new_mesh(renderer, vertices, indices);
+
+    RenderTexture texture = load_render_texture(renderer, albedo_path);
+    upload_texture_to_gpu(renderer, &texture);
+
+    Model *model = push(&renderer->models);
+    *model = Model {.texture = texture, .mesh = model_mesh};
+
+    return model;
+}
+
+RenderTexture load_render_texture(Renderer *renderer, str path) {
+    i32 width       = 0;
+    i32 height      = 0;
+    i32 channels    = 0;
+    u8 *image_data  = nullptr;
+
+    stbi_set_flip_vertically_on_load(true);
+
+    image_data = stbi_load(path.c(), &width, &height, &channels, 4);
+    if (!image_data) {
+        printf("Failed to load texture: %s\n", path.c());
+        return {};
+    }
+
+    printf("Loaded texture with path \"%s\" [%dx%d] %d bytes\n", path.c(), width, height, width * height * channels);
+
+    return RenderTexture {
+        .id = 0,
+        .width = width,
+        .height = height,
+        .data = image_data,
+    };
+}
+
+void upload_texture_to_gpu(Renderer *renderer, RenderTexture *texture) {
+    glGenTextures(1, &texture->id);
+
+    glBindTexture(GL_TEXTURE_2D, texture->id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texture->width, texture->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, texture->data);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 bool init_renderer(Renderer *renderer, Window *window) {
@@ -1205,6 +1434,10 @@ void draw_frame(Renderer *renderer, Window *window) {
     for (RenderCommand &command : renderer->commands) {
         m4 model_matrix = HMM_M4D(1.0f);
         model_matrix = HMM_MulM4(model_matrix, HMM_Translate(command.position));
+        model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command.rotation.x * HMM_DegToRad, {1, 0, 0}));
+        model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command.rotation.y * HMM_DegToRad, {0, 1, 0}));
+        model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command.rotation.z * HMM_DegToRad, {0, 0, 1}));
+        model_matrix = HMM_MulM4(model_matrix, HMM_Scale({command.scale.x, command.scale.y, 1}));
 
         use_shader(renderer->mesh_shader);
 
@@ -1383,9 +1616,11 @@ void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 colo
     mem_free(glyphs);
 }
 
-void draw_model(Renderer *renderer, v3 position, Model *model) {
+void draw_model(Renderer *renderer, v3 position, v3 scale, v3 rotation, Model *model) {
     RenderCommand *command = push(&renderer->commands);
     command->position = position;
+    command->rotation = rotation;
+    command->scale = scale;
     command->model = model;
 }
 
@@ -1504,127 +1739,6 @@ f32 texture_aspect_ratio(Renderer *renderer, Texture *texture) {
     return (f32) texture->width / (f32) texture->height;
 }
 
-Mesh *new_mesh(Renderer *renderer, Slice<MeshVertex> vertices, Slice<u32> indices) {
-    Mesh *mesh = push(&renderer->meshes);
-    *mesh = Mesh {
-        .vertices = vertices,
-        .indices = indices
-    };
-
-    { // vertex array
-        u32 vertex_array;
-        glGenVertexArrays(1, &vertex_array);
-        glBindVertexArray(vertex_array);
-
-        mesh->vertex_array_id = vertex_array;
-    }
-
-    { // vertex buffer
-        u32 vertex_buffer;
-        glGenBuffers(1, &vertex_buffer);
-        glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(MeshVertex) * mesh->vertices.len, mesh->vertices.ptr, GL_DYNAMIC_DRAW);
-
-        mesh->vertex_buffer_id = vertex_buffer;
-    }
-
-    { // index buffer
-        u32 index_buffer;
-        glGenBuffers(1, &index_buffer);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u32) * indices.len, indices.ptr, GL_STATIC_DRAW);
-
-        mesh->index_buffer_id = index_buffer;
-    }
-
-    { // vertex attributes
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, position));
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, normal));
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, texture_uv));
-
-        glEnableVertexAttribArray(0);
-        glEnableVertexAttribArray(1);
-        glEnableVertexAttribArray(2);
-    }
-
-    glBindVertexArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-    return mesh;
-}
-
-Model *load_model(Renderer *renderer, str mesh_path, str albedo_path) {
-    // Create an instance of the Importer class
-    Assimp::Importer importer;
-    
-    const aiScene *scene = importer.ReadFile(mesh_path.c(), aiProcess_Triangulate | aiProcess_MakeLeftHanded);	
-    if(scene == NULL || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-        printf("assimp error: %s\n", importer.GetErrorString());
-    }
-
-    // only assuming one child and one mesh for now
-    ASSERT(scene->mRootNode->mNumChildren == 1);
-    aiNode *node = scene->mRootNode->mChildren[0];
-
-    ASSERT(node->mNumMeshes == 1);
-    aiMesh *mesh = scene->mMeshes[node->mMeshes[0]];
-
-    Slice<MeshVertex> vertices = mem_alloc<MeshVertex>(mesh->mNumVertices);
-    Slice<u32> indices = mem_alloc<u32>(mesh->mNumFaces * 3);
-
-    for(i64 v = 0; v < mesh->mNumVertices; v++) {
-        MeshVertex vertex = {};
-        vertex.position.x = mesh->mVertices[v].x;
-        vertex.position.y = mesh->mVertices[v].y;
-        vertex.position.z = mesh->mVertices[v].z;
-
-        vertex.normal.x = mesh->mVertices[v].x;
-        vertex.normal.y = mesh->mVertices[v].y;
-        vertex.normal.z = mesh->mVertices[v].z;
-
-        if(mesh->mTextureCoords[0]) {
-            vertex.texture_uv.x = mesh->mTextureCoords[0][v].x;
-            vertex.texture_uv.y = mesh->mTextureCoords[0][v].y;
-        }
-
-        vertices[v] = vertex;
-    }
-
-    i64 index = 0;
-
-    for(i64 f = 0; f < mesh->mNumFaces; f++) {
-        aiFace face = mesh->mFaces[f];
-        for(i64 j = 0; j < face.mNumIndices; j++) {
-            indices[index] = face.mIndices[j];
-            index++;
-        }
-    }
-
-    Mesh *model_mesh = new_mesh(renderer, vertices, indices);
-
-    Texture *texture = load_texture(renderer, albedo_path);
-    u32 id = upload_texture_to_gpu(renderer, texture->width, texture->height, texture->data);
-
-    // TODO: stop doing this conversion at some point
-    RenderTexture model_texture =  RenderTexture {
-        .id = id,
-        .width = texture->width,
-        .height = texture->height,
-        .data = texture->data
-    };
-
-    Model *model = push(&renderer->models);
-    *model = Model {.texture = model_texture, .mesh = model_mesh};
-
-    return model;
-}
-
-void upload_mesh(Mesh *mesh) {
-    glBindBuffer(GL_ARRAY_BUFFER, mesh->vertex_buffer_id);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(MeshVertex) * mesh->vertices.len, &mesh->vertices[0]);
-}
-
 bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options) {
     glCreateFramebuffers(1, &frame_buffer->id);
     glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer->id);
@@ -1723,76 +1837,6 @@ bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options) {
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     return true;
-}
-
-bool init_shader(Shader *shader, str debug_name, str vertex_shader_path, str fragment_shader_path) {
-    const i64 buffer_size = 640;
-    i32 compile_status = 0;
-    i32 link_status = 0;
-    char error_buffer[buffer_size];
-    
-    str vertex_shader_source = read_entire_file(vertex_shader_path);
-    if (vertex_shader_source.len == 0) {
-        printf("%s: failed to load vertex shader file\n", debug_name.c());
-        return false;
-    }
-
-    str fragment_shader_source = read_entire_file(fragment_shader_path);
-    if (fragment_shader_source.len == 0) {
-        printf("%s: failed to load default fragment shader file\n", debug_name.c());
-        return false;
-    }
-
-    u32 vertex_shader = glCreateShader(GL_VERTEX_SHADER);
-
-    glShaderSource(vertex_shader, 1, (char **) &vertex_shader_source.ptr, NULL);
-    glCompileShader(vertex_shader);
-
-    glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &compile_status);
-    if (compile_status == 0) {
-        glGetShaderInfoLog(vertex_shader, buffer_size, nullptr, &error_buffer[0]);
-        printf("%s: failed to compile vertex shader: %s\n", debug_name.c(), error_buffer);
-        return false;
-    }
-
-    u32 fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-
-    glShaderSource(fragment_shader, 1, (char**) &fragment_shader_source.ptr, NULL);
-    glCompileShader(fragment_shader);
-
-    glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &compile_status);
-    if (compile_status == 0) {
-        glGetShaderInfoLog(fragment_shader, buffer_size, nullptr, &error_buffer[0]);
-        printf("%s: failed to compile fragment shader: %s\n", debug_name.c(), error_buffer);
-        return false;
-    }
-
-    u32 shader_program = glCreateProgram();
-
-    glAttachShader(shader_program, vertex_shader);
-    glAttachShader(shader_program, fragment_shader);
-    glLinkProgram(shader_program); 
-
-    glGetProgramiv(shader_program, GL_LINK_STATUS, &link_status);
-
-    if (link_status == 0) {
-        glGetProgramInfoLog(shader_program, buffer_size, nullptr, &error_buffer[0]);
-        printf("%s: failed to link shader program: %s\n", debug_name.c(), error_buffer);
-        return false;
-    }
- 
-    shader->id = shader_program; 
-    shader->debug_name = debug_name;
-
-    printf("Compiled and linked %s\n", debug_name.c());
-
-    return true;
-}
-
-void assign_texture_slot(Shader *shader, str texture_name, i32 slot) {
-    glUseProgram(shader->id);
-    glUniform1i(glGetUniformLocation(shader->id, texture_name.c()), slot);
-    glUseProgram(0);
 }
 
 v2 screen_position_to_world_position(v2 screen_position, Camera camera, Window *window) {
