@@ -13,8 +13,8 @@
 #include <string>
 #include <iostream>
 
-// Total: 01:00
-// Started: 1:30
+// Total: 09:00
+// Started: 23:00
 
 #define ALLOW_EDITOR 1
 #define MAX_ENTITIES 2000
@@ -210,24 +210,10 @@ int main() {
             return 1;
         }
 
-        cube_model = load_model(&state.renderer, "resources/models/cuber/cube.obj", "resources/models/cuber/Texture.png");
-        iso_model = load_model(&state.renderer, "resources/models/ico/ico.obj", "resources/models/ico/Texture.png");
-        tree_model = load_model(&state.renderer, "resources/models/tree/tree.obj", "resources/models/tree/Texture.png");
+        tree_model = load_model(&state.renderer, "resources/models/tree/tree.obj");
 
         srand(time(NULL));
     }
-
-    spawn_entity(Entity {
-        .position = {0, 0, 0},
-        .size = {1, 1, 1},
-        .model = cube_model,
-    });
-
-    spawn_entity(Entity {
-        .position = {10, 0, 0},
-        .size = {1, 1, 1},
-        .model = iso_model,
-    });
 
     spawn_entity(Entity {
         .position = {-10, 0, 0},
@@ -317,7 +303,7 @@ void update_and_draw(f32 delta_time) {
     }
 
     for (Entity &entity : state.entities) {
-        draw_model(&state.renderer, entity.position, entity.size, entity.rotation + v3{0, (f32) state.time * 50, 0}, entity.model);
+        draw_model(&state.renderer, entity.position, entity.size, entity.rotation, entity.model, SUN_YELLOW);
     }
 }
 

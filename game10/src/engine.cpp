@@ -350,7 +350,6 @@ struct Mesh {
 };
 
 struct Model {
-    RenderTexture texture;
     Mesh *mesh;
 };
 
@@ -364,6 +363,7 @@ struct RenderCommand {
     v3 rotation;
     v3 scale;
     Model *model;
+    v4 colour;
 };
 
 struct Renderer {
@@ -455,7 +455,7 @@ void reset_mesh(Mesh *mesh);
 void upload_mesh(Mesh *mesh);
 
 // Model API
-Model *load_model(Renderer *renderer, str mesh_path, str albedo_path);
+Model *load_model(Renderer *renderer, str mesh_path);
 
 // Render Texture API
 RenderTexture load_render_texture(Renderer *renderer, str path);
@@ -485,7 +485,7 @@ void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 color);
 void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color);
 void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 color);
-void draw_model(Renderer *renderer, v3 position, v3 scale, v3 rotation, Model *model);
+void draw_model(Renderer *renderer, v3 position, v3 scale, v3 rotation, Model *model, v4 colour);
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
 Quad *push_screen_quad(Renderer *renderer, v4 color);
 
@@ -720,7 +720,7 @@ void upload_mesh(Mesh *mesh) {
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(MeshVertex) * mesh->vertices.len, &mesh->vertices[0]);
 }
 
-Model *load_model(Renderer *renderer, str mesh_path, str albedo_path) {
+Model *load_model(Renderer *renderer, str mesh_path) {
     // Create an instance of the Importer class
     Assimp::Importer importer;
     
@@ -769,11 +769,8 @@ Model *load_model(Renderer *renderer, str mesh_path, str albedo_path) {
 
     Mesh *model_mesh = new_mesh(renderer, vertices, indices);
 
-    RenderTexture texture = load_render_texture(renderer, albedo_path);
-    upload_texture_to_gpu(renderer, &texture);
-
     Model *model = push(&renderer->models);
-    *model = Model {.texture = texture, .mesh = model_mesh};
+    *model = Model {.mesh = model_mesh};
 
     return model;
 }
@@ -1133,8 +1130,6 @@ bool load_shaders(Renderer *renderer) {
         return false;
     }
 
-    assign_texture_slot(&renderer->mesh_shader, "albedo", 0);
-
     return true;
 }
 
@@ -1444,9 +1439,7 @@ void draw_frame(Renderer *renderer, Window *window) {
         set_uniform_m4(renderer->mesh_shader, "model", &model_matrix);
         set_uniform_m4(renderer->mesh_shader, "view", &renderer->view_matrix);
         set_uniform_m4(renderer->mesh_shader, "projection", &renderer->projection_matrix);
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, command.model->texture.id);
+        set_uniform_v4(renderer->mesh_shader, "colour", command.colour);
 
         GL_CALL(glBindVertexArray(command.model->mesh->vertex_array_id));
         GL_CALL(glDrawElements(GL_TRIANGLES, command.model->mesh->indices.len, GL_UNSIGNED_INT, 0));
@@ -1616,12 +1609,13 @@ void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 colo
     mem_free(glyphs);
 }
 
-void draw_model(Renderer *renderer, v3 position, v3 scale, v3 rotation, Model *model) {
+void draw_model(Renderer *renderer, v3 position, v3 scale, v3 rotation, Model *model, v4 colour) {
     RenderCommand *command = push(&renderer->commands);
     command->position = position;
     command->rotation = rotation;
     command->scale = scale;
     command->model = model;
+    command->colour = colour;
 }
 
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type) {
