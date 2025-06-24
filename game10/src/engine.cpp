@@ -8,6 +8,7 @@
 
 #include <random>
 
+#include "libs/assimp/include/assimp/postprocess.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -294,6 +295,12 @@ struct Texture {
     Slice<Texture> sub_textures;
 };
 
+struct RenderTexture {
+    i64 width;
+    i64 height;
+    u8 *data;
+};
+
 struct Sprite {
     Texture *albedo;
     Texture *normal;
@@ -351,7 +358,7 @@ struct Mesh {
 };
 
 struct Model {
-    Texture *texture;
+    RenderTexture texture;
     Mesh *mesh;
 };
 
@@ -905,6 +912,8 @@ bool load_shaders(Renderer *renderer) {
         return false;
     }
 
+    assign_texture_slot(&renderer->mesh_shader, "albedo", 0);
+
     return true;
 }
 
@@ -1238,6 +1247,9 @@ void draw_frame(Renderer *renderer, Window *window) {
         set_uniform_m4(renderer->mesh_shader, "model", &model_matrix);
         set_uniform_m4(renderer->mesh_shader, "view", &renderer->view_matrix);
         set_uniform_m4(renderer->mesh_shader, "projection", &renderer->projection_matrix);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, ID);
 
         GL_CALL(glBindVertexArray(mesh.vertex_array_id));
         GL_CALL(glDrawElements(GL_TRIANGLES, mesh.indices.len, GL_UNSIGNED_INT, 0));
@@ -1637,16 +1649,14 @@ Mesh *new_mesh(Renderer *renderer, Slice<MeshVertex> vertices, Slice<u32> indice
 }
 
 Model load_model(Renderer *renderer, str path) {
-  // Create an instance of the Importer class
-  Assimp::Importer importer;
-
-  const aiScene *scene = importer.ReadFile(path.c(), aiProcess_Triangulate | aiProcess_FlipUVs);	
-
+    // Create an instance of the Importer class
+    Assimp::Importer importer;
+    
+    const aiScene *scene = importer.ReadFile(path.c(), aiProcess_Triangulate | aiProcess_MakeLeftHanded);	
     if(scene == NULL || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
         printf("assimp error: %s\n", importer.GetErrorString());
     }
 
-    // load and create mesh
     ASSERT(scene->mRootNode->mNumChildren == 1);
 
     processNode(renderer, scene->mRootNode, scene);

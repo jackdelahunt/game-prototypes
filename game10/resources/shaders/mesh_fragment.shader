@@ -11,6 +11,8 @@ in vec2 texture_uv;
 
 out vec4 frag;
 
+uniform sampler2D albedo;
+
 void main() {
-    frag = vec4(normal, 1);
+    frag = texture(albedo, texture_uv);
 } 

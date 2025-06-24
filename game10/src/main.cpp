@@ -1,5 +1,7 @@
 #include "libs/libs.h"
 #include "ack.cpp"
+
+i64 ID = 0;
 #include "math.cpp"
 #include "engine.cpp"
 
@@ -152,7 +154,7 @@ int main() {
     *b = 20;
     *c = 30;
 
-    Slice<Token> tokens = tokenise_config_file(&allocator, "main.config");
+    Slice<Token> tokens = tokenise_config_file(&allocator, "start.config");
 
     state = State {
         .camera = {
@@ -242,11 +244,13 @@ int main() {
             return 1;
         }
 
-        load_model(&state.renderer, "resources/models/cuber/cube.fbx");
+        load_model(&state.renderer, "resources/models/ico/ico.obj");
 
         srand(time(NULL));
     }
 
+    Texture *cube_texture = load_texture(&state.renderer, "resources/models/ico/Texture.png");
+    ID = upload_texture_to_gpu(&state.renderer, 64, 64, cube_texture->data);
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
         f64 current_time    = state.time;
