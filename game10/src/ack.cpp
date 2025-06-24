@@ -215,6 +215,82 @@ void swap_remove(StackArray<T, N> *array, i64 index) {
     array->len -= 1;
 }
 
+struct Allocator {
+    i64 end;
+    Slice<u8> bytes;
+};
+
+Allocator new_allocator(i64 byte_count) {
+    return Allocator {
+        .end = 0,
+        .bytes = mem_alloc<u8>(byte_count)
+    };
+}
+
+void reset(Allocator *allocator) {
+    allocator->end = 0;
+}
+
+
+template <typename T>
+T *alloc(Allocator *allocator) {
+    const i64 SIZE = sizeof(T);
+
+    ASSERT(allocator->end + SIZE <= allocator->bytes.len);
+
+    T *ptr = (T *) &allocator->bytes[allocator->end];
+    allocator->end += SIZE;
+
+    return ptr;
+}
+
+template <typename T>
+Slice<T> alloc_slice(Allocator *allocator, i64 size) {
+    i64 byte_count = sizeof(T) * size;
+
+    ASSERT(allocator->end + byte_count <= allocator->bytes.len);
+
+    Slice<u8> bytes = allocator->bytes.slice(allocator->end, allocator->end + byte_count);
+    allocator->end += byte_count;
+
+    return make_slice((T *) bytes.ptr, size);
+}
+
+
+template <typename T>
+struct DynamicArray {
+    Allocator *allocator;
+    Slice <T> slice;
+    i64 len;
+
+    T& operator[](i64 index) {
+        return this->data[index];
+    }
+
+    T* begin() {
+        return slice.ptr;
+    }
+
+    T* end() {
+        return slice.ptr + len;
+    }
+};
+
+template <typename T>
+DynamicArray<T> new_dynamic_array(Allocator *allocator, i64 start_size) {
+    return DynamicArray<T> {
+        .allocator = allocator,
+        .slice = alloc_slice<T>(allocator, start_size),
+        .len = 0,
+    };
+}
+
+template <typename T>
+void append(DynamicArray<T> *array, T value) {
+    array->slice[array->len] = value;
+    array->len += 1;
+}
+
 f32 rand_f32();
 f32 rand_f32_negative();
 i64 rand_i64();

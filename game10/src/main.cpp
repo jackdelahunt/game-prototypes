@@ -96,7 +96,64 @@ Entity *spawn_entity(Entity entity);
 
 Sprite *get_sprite(SpriteHandle handle);
 
+enum class TokenType {
+    EQUAL
+};
+
+struct Token {
+    TokenType type;
+};
+
+bool is_delim(char c) {
+    switch (c) {
+        case ' ':
+        case '\n':
+            return true;
+        default:
+            return false;
+    }
+}
+
+Slice<Token> tokenise_config_file(Allocator *allocator, str path) {
+    File file = new_file(path);
+    Slice<u8> bytes = read_entire_file(&file);
+
+    DynamicArray<Token> tokens = new_dynamic_array<Token>(allocator, bytes.len);
+
+    i64 character = 0;
+
+    while (character < bytes.len) {
+        char c = (char) bytes[character];
+
+        switch (c) {
+            case ' ':
+            case '\n':
+            case '\r':
+            case '\t':
+                character++;
+                continue;
+        }
+
+        printf("%c\n", c);
+
+        character++;
+    }
+
+    return {};
+}
+
 int main() {
+    Allocator allocator = new_allocator(1024);
+    i64 *a = alloc<i64>(&allocator);
+    i64 *b = alloc<i64>(&allocator);
+    i64 *c = alloc<i64>(&allocator);
+
+    *a = 10;
+    *b = 20;
+    *c = 30;
+
+    Slice<Token> tokens = tokenise_config_file(&allocator, "main.config");
+
     state = State {
         .camera = {
             .mode = CameraMode::FIRST_PERSON,
