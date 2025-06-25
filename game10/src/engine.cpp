@@ -230,7 +230,6 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 struct MeshVertex {
     v3 position;
     v3 normal;
-    v2 texture_uv;
 };
 
 struct Vertex {
@@ -428,7 +427,7 @@ v4 BLUE             = {0, 0, 1, 1};
 
 v4 ORANGE           = {1, 0.64, 0.1, 1};
 v4 CORNFLOUR_BLUE   = {0.35, 0.80, 0.80, 1};
-v4 SUN_YELLOW       = {1, 0.95, 0.5, 1};
+v4 SUN_YELLOW       = {0.9, 0.9, 0.3, 1};
 
 // Camera API
 v3 get_forward_direction(Camera camera);
@@ -473,6 +472,7 @@ u32 upload_font_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
 bool load_font(Renderer *renderer, str path, i64 width, i64 height, f32 pixel_height);
 
 // Renderer frame API
+void clear_frame(Renderer *renderer, v4 colour);
 void new_frame(Renderer *renderer, Window *window, Camera camera);
 void draw_frame(Renderer *renderer, Window *window);
 void new_imgui_frame();
@@ -701,11 +701,9 @@ Mesh *new_mesh(Renderer *renderer, Slice<MeshVertex> vertices, Slice<u32> indice
     { // vertex attributes
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, position));
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, normal));
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, texture_uv));
 
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
-        glEnableVertexAttribArray(2);
     }
 
     glBindVertexArray(0);
@@ -724,7 +722,7 @@ Model *load_model(Renderer *renderer, str mesh_path) {
     // Create an instance of the Importer class
     Assimp::Importer importer;
     
-    const aiScene *scene = importer.ReadFile(mesh_path.c(), aiProcess_Triangulate | aiProcess_MakeLeftHanded);	
+    const aiScene *scene = importer.ReadFile(mesh_path.c(), aiProcess_Triangulate | aiProcess_MakeLeftHanded | aiProcess_GenSmoothNormals);	
     if(scene == NULL || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
         printf("assimp error: %s\n", importer.GetErrorString());
     }
@@ -745,14 +743,12 @@ Model *load_model(Renderer *renderer, str mesh_path) {
         vertex.position.y = mesh->mVertices[v].y;
         vertex.position.z = mesh->mVertices[v].z;
 
-        vertex.normal.x = mesh->mVertices[v].x;
-        vertex.normal.y = mesh->mVertices[v].y;
-        vertex.normal.z = mesh->mVertices[v].z;
+        vertex.normal.x = mesh->mNormals[v].x;
+        vertex.normal.y = mesh->mNormals[v].y;
+        vertex.normal.z = mesh->mNormals[v].z;
 
-        if(mesh->mTextureCoords[0]) {
-            vertex.texture_uv.x = mesh->mTextureCoords[0][v].x;
-            vertex.texture_uv.y = mesh->mTextureCoords[0][v].y;
-        }
+        // is this needed ?
+        // vertex.normal = norm(vertex.normal);
 
         vertices[v] = vertex;
     }
@@ -1404,6 +1400,17 @@ bool load_font(Renderer *renderer, str path, i64 width, i64 height, f32 pixel_he
     return true;
 }
 
+void clear_frame(Renderer *renderer, v4 colour) {
+    glClearColor(
+        colour.r,
+        colour.g,
+        colour.b,
+        1 
+    );
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+}
+
 void new_frame(Renderer *renderer, Window *window, Camera camera) {
     reset(&renderer->quads);
     reset(&renderer->commands);
@@ -1412,53 +1419,90 @@ void new_frame(Renderer *renderer, Window *window, Camera camera) {
     renderer->projection_matrix = get_projection_matrix(camera, (f32) window->width / (f32) window->height);
     renderer->projection_matrix_ortho = get_projection_matrix_ortho(camera, (f32) window->width / (f32) window->height);
 
-    glClearColor(
-        renderer->clear_colour.r,
-        renderer->clear_colour.g,
-        renderer->clear_colour.b,
-        renderer->clear_colour.a
-    );
-
     new_imgui_frame();
 }
 
 void draw_frame(Renderer *renderer, Window *window) {
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glViewport(0, 0, window->width, window->height);
+    { // geometry pass
+        glBindFramebuffer(GL_FRAMEBUFFER, renderer->g_buffer.id);
+   
+        clear_frame(renderer, {0, 0, 0, 1});
+        glViewport(0, 0, window->width, window->height);
+        // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
-    for (RenderCommand &command : renderer->commands) {
-        m4 model_matrix = HMM_M4D(1.0f);
-        model_matrix = HMM_MulM4(model_matrix, HMM_Translate(command.position));
-        model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command.rotation.x * HMM_DegToRad, {1, 0, 0}));
-        model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command.rotation.y * HMM_DegToRad, {0, 1, 0}));
-        model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command.rotation.z * HMM_DegToRad, {0, 0, 1}));
-        model_matrix = HMM_MulM4(model_matrix, HMM_Scale({command.scale.x, command.scale.y, 1}));
-
-        use_shader(renderer->mesh_shader);
-
-        set_uniform_m4(renderer->mesh_shader, "model", &model_matrix);
-        set_uniform_m4(renderer->mesh_shader, "view", &renderer->view_matrix);
-        set_uniform_m4(renderer->mesh_shader, "projection", &renderer->projection_matrix);
-        set_uniform_v4(renderer->mesh_shader, "colour", command.colour);
-
-        GL_CALL(glBindVertexArray(command.model->mesh->vertex_array_id));
-        GL_CALL(glDrawElements(GL_TRIANGLES, command.model->mesh->indices.len, GL_UNSIGNED_INT, 0));
+        for (RenderCommand &command : renderer->commands) {
+            m4 model_matrix = HMM_M4D(1.0f);
+            model_matrix = HMM_MulM4(model_matrix, HMM_Translate(command.position));
+            model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command.rotation.x * HMM_DegToRad, {1, 0, 0}));
+            model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command.rotation.y * HMM_DegToRad, {0, 1, 0}));
+            model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command.rotation.z * HMM_DegToRad, {0, 0, 1}));
+            model_matrix = HMM_MulM4(model_matrix, HMM_Scale({command.scale.x, command.scale.y, command.scale.z}));
+    
+            use_shader(renderer->mesh_shader);
+    
+            set_uniform_m4(renderer->mesh_shader, "model", &model_matrix);
+            set_uniform_m4(renderer->mesh_shader, "view", &renderer->view_matrix);
+            set_uniform_m4(renderer->mesh_shader, "projection", &renderer->projection_matrix);
+            set_uniform_v4(renderer->mesh_shader, "colour", command.colour);
+    
+            GL_CALL(glBindVertexArray(command.model->mesh->vertex_array_id));
+            GL_CALL(glDrawElements(GL_TRIANGLES, command.model->mesh->indices.len, GL_UNSIGNED_INT, 0));
+        }
+    
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
-    if (false) { // imediete mode quads
+
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+    { // lighting pass
+        glBindFramebuffer(GL_FRAMEBUFFER, renderer->lighting_frame_buffer.id);
+        clear_frame(renderer, renderer->clear_colour);
+        glViewport(0, 0, window->width, window->height);
+
+        Quad *quad = push_screen_quad(renderer, WHITE);
+    
         glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
-    
         glBindVertexArray(renderer->vertex_array_id);
+ 
+        use_shader(renderer->lighting_shader);
 
-        use_shader(renderer->default_shader);
-    
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
-    
+        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.position_attachment);
+
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, renderer->font_texture_id);
+        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.normals_attachment);
+
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.albedo_attachment);
+
+        set_uniform_v3(renderer->lighting_shader, "ambient_light", renderer->ambient_light);
+        set_uniform_v3(renderer->lighting_shader, "sun_position", renderer->sun_position);
+        set_uniform_v3(renderer->lighting_shader, "sun_colour", renderer->sun_colour);
+
+        glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    { // post processing
+        reset(&renderer->quads);
+
+        clear_frame(renderer, renderer->clear_colour);
+        glViewport(0, 0, window->width, window->height);
+
+        Quad *quad = push_screen_quad(renderer, WHITE);
     
+        glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
+        glBindVertexArray(renderer->vertex_array_id);
+ 
+        use_shader(renderer->post_processing_shader);
+ 
+        // set the input texture
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, renderer->lighting_frame_buffer.position_attachment);
+
         glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
     }
 

@@ -13,15 +13,15 @@
 #include <string>
 #include <iostream>
 
-// Total: 09:00
-// Started: 23:00
+// Total: 11:00
+// Started: 2:30
 
 #define ALLOW_EDITOR 1
 #define MAX_ENTITIES 2000
 
 Model *cube_model;
-Model *iso_model;
 Model *tree_model;
+Model *monkey_model;
 
 struct Entity {
     // meta
@@ -210,7 +210,9 @@ int main() {
             return 1;
         }
 
+        cube_model = load_model(&state.renderer, "resources/models/cuber/cube.obj");
         tree_model = load_model(&state.renderer, "resources/models/tree/tree.obj");
+        monkey_model = load_model(&state.renderer, "resources/models/monkey/monkey.obj");
 
         srand(time(NULL));
     }
@@ -219,6 +221,18 @@ int main() {
         .position = {-10, 0, 0},
         .size = {1, 1, 1},
         .model = tree_model,
+    });
+
+    spawn_entity(Entity {
+        .position = {0, 0, 0},
+        .size = {1, 1, 1},
+        .model = cube_model,
+    });
+
+    spawn_entity(Entity {
+        .position = {10, 0, 0},
+        .size = {3, 3, 3},
+        .model = monkey_model,
     });
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
@@ -303,7 +317,7 @@ void update_and_draw(f32 delta_time) {
     }
 
     for (Entity &entity : state.entities) {
-        draw_model(&state.renderer, entity.position, entity.size, entity.rotation, entity.model, SUN_YELLOW);
+        draw_model(&state.renderer, entity.position, entity.size, entity.rotation, entity.model, {0.4, 0.4, 0.4, 1});
     }
 }
 
@@ -417,6 +431,12 @@ void update_and_draw_editor(f32 delta_time) {
             
                 if(ImGui::Button("Toggle V-sync")) {
                     toggle_vsync(&state.window);
+                } 
+
+                ImGui::SameLine();
+            
+                if(ImGui::Button("Toggle wireframe")) {
+                    toggle_wireframe(&state.renderer);
                 } 
 
                 ImGui::SliderFloat4("Clear colour", &state.renderer.clear_colour[0], 0, 1);
