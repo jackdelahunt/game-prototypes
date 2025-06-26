@@ -3,8 +3,6 @@
 #include "math.cpp"
 #include "engine.cpp"
 
-#include <cmath>
-#include <cstring>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -13,7 +11,7 @@
 #include <string>
 #include <iostream>
 
-// Total: 11:00
+// Total: 05:00
 // Started: 2:30
 
 #define ALLOW_EDITOR 1
@@ -22,6 +20,8 @@
 Model *cube_model;
 Model *tree_model;
 Model *monkey_model;
+Model *rock_1_model;
+Model *rock_2_model;
 
 struct Entity {
     // meta
@@ -34,6 +34,7 @@ struct Entity {
     v3 velocity;
 
     // rendering
+    v4 colour;
     Model *model;
 };
 
@@ -154,8 +155,9 @@ int main() {
         .renderer = {
             .clear_colour = {0.8, 1, 1, 1},
             .ambient_light = v3{0.6, 0.6, 0.6},
-            .sun_colour = v3{1, 1, 1},
-            .sun_position = {100, 100, -100},
+            .sun_colour = v3{0.5, 0.5, 0.5},
+            .sun_position = {50, 100, -100},
+            .shadow_colour = v3{-1, -1, 0.5},
             .ssao_radius = 0.8,
             .ssao_bias = 0.025,
             .ssao_noise_scale = {480, 270},
@@ -213,26 +215,38 @@ int main() {
         cube_model = load_model(&state.renderer, "resources/models/cuber/cube.obj");
         tree_model = load_model(&state.renderer, "resources/models/tree/tree.obj");
         monkey_model = load_model(&state.renderer, "resources/models/monkey/monkey.obj");
+        rock_1_model = load_model(&state.renderer, "resources/models/rocks/rock_1.obj");
+        rock_2_model = load_model(&state.renderer, "resources/models/rocks/rock_2.obj");
 
         srand(time(NULL));
     }
 
     spawn_entity(Entity {
-        .position = {-10, 0, 0},
-        .size = {1, 1, 1},
-        .model = tree_model,
-    });
-
-    spawn_entity(Entity {
         .position = {0, 0, 0},
-        .size = {1, 1, 1},
+        .size = {20, 0.5, 20},
+        .colour = rgb(54, 168, 101),
         .model = cube_model,
     });
 
     spawn_entity(Entity {
-        .position = {10, 0, 0},
-        .size = {3, 3, 3},
-        .model = monkey_model,
+        .position = {0, 1, 0},
+        .size = {1, 1, 1},
+        .colour = rgb(248, 246, 156),
+        .model = rock_1_model,
+    });
+
+    spawn_entity(Entity {
+        .position = {3, 1, 0},
+        .size = {1, 1, 1},
+        .colour = rgb(248, 246, 156),
+        .model = rock_1_model,
+    });
+
+    spawn_entity(Entity {
+        .position = {0, 1, 2},
+        .size = {1, 1, 1},
+        .colour = rgb(248, 246, 156),
+        .model = rock_2_model,
     });
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
@@ -317,7 +331,7 @@ void update_and_draw(f32 delta_time) {
     }
 
     for (Entity &entity : state.entities) {
-        draw_model(&state.renderer, entity.position, entity.size, entity.rotation, entity.model, {0.4, 0.4, 0.4, 1});
+        draw_model(&state.renderer, entity.position, entity.size, entity.rotation, entity.model, entity.colour);
     }
 }
 
@@ -371,6 +385,11 @@ void update_and_draw_editor(f32 delta_time) {
     if (KEYS[GLFW_KEY_F1] == InputState::DOWN) {
         state.editor.visable = !state.editor.visable;
         set_mouse_captured(&state.window, !state.editor.visable);
+    }
+
+    if (KEYS[GLFW_KEY_F2] == InputState::DOWN) {
+        delete_shaders(&state.renderer);
+        load_shaders(&state.renderer);
     }
 
     if(state.editor.visable) {
@@ -443,6 +462,7 @@ void update_and_draw_editor(f32 delta_time) {
                 ImGui::SliderFloat3("Ambient light", &state.renderer.ambient_light[0], 0, 1);
                 ImGui::SliderFloat3("Sun colour", &state.renderer.sun_colour[0], 0, 1);
                 ImGui::SliderFloat3("Sun position", &state.renderer.sun_position[0], -100, 100);
+                ImGui::SliderFloat3("Shadow colour", &state.renderer.shadow_colour[0], -1, 1);
                 ImGui::SliderFloat("SSAO radius", &state.renderer.ssao_radius, 0, 2);
                 ImGui::SliderFloat("SSAO bias", &state.renderer.ssao_bias, 0, 0.2);
                 ImGui::SliderFloat2("SSAO noise", &state.renderer.ssao_noise_scale[0], 0, 1000);

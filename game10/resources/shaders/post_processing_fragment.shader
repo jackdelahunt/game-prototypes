@@ -33,15 +33,27 @@ vec4 cell_shade(vec4 colour, int levels) {
     return vec4(quantizedColor, 1.0);
 }
 
+vec2 pixelate(vec2 uv_coord, vec2 resolution) {
+    vec2 new_uv = vec2(uv_coord * resolution);
+    new_uv = floor(new_uv);
+    new_uv /= resolution;
+
+    return new_uv;
+}
+
+vec4 srgb(vec4 colour) {
+    float gamma = 2.2;
+    return vec4(pow(colour.rgb, vec3(1.0 / gamma)), colour.a);
+}
+
 void main()
 {
-    vec4 sample_colour = texture(scene_texture, uv);
+    vec2 texture_uv = uv;
+    // texture_uv = pixelate(texture_uv, vec2(192, 108));
+
+    vec4 sample_colour = texture(scene_texture, texture_uv);
 
     frag_colour = sample_colour;
-
     // frag_colour = cell_shade(frag_colour, 5);
-
-    // game correction - same as sRGB but it is only applied on the final fragment colour
-    float gamma = 2.2;
-    frag_colour.rgb = pow(frag_colour.rgb, vec3(1.0 / gamma));
+    // frag_colour = srgb(frag_colour);
 } 

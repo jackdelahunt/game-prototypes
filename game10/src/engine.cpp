@@ -372,6 +372,7 @@ struct Renderer {
     v3 ambient_light;
     v3 sun_colour;
     v3 sun_position;
+    v3 shadow_colour;
 
     std::vector<v3> ssao_kernal;
     std::vector<v3> ssao_noise;
@@ -501,6 +502,8 @@ m4 get_view_matrix(Camera camera);
 m4 get_projection_matrix(Camera camera, f32 aspect);
 m4 get_projection_matrix_ortho(Camera camera, f32 aspect);
 
+v4 rgb(i64 r, i64 g, i64 b);
+v4 rgba(i64 r, i64 g, i64 b, i64 a);
 v4 alpha(v4 base, f32 alpha);
 v4 brightness(v4 base, f32 brightness);
 
@@ -1480,6 +1483,7 @@ void draw_frame(Renderer *renderer, Window *window) {
         set_uniform_v3(renderer->lighting_shader, "ambient_light", renderer->ambient_light);
         set_uniform_v3(renderer->lighting_shader, "sun_position", renderer->sun_position);
         set_uniform_v3(renderer->lighting_shader, "sun_colour", renderer->sun_colour);
+        set_uniform_v3(renderer->lighting_shader, "shadow_colour", renderer->shadow_colour);
 
         glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -1934,6 +1938,19 @@ m4 get_projection_matrix_ortho(Camera camera, f32 aspect) {
          camera.near_plane, 
          camera.far_plane 
     );
+}
+
+v4 rgb(i64 r, i64 g, i64 b) {
+    return rgba(r, g, b, 255);
+}
+
+v4 rgba(i64 r, i64 g, i64 b, i64 a) {
+    return v4 {
+        (f32) r / 255.0f,
+        (f32) g / 255.0f,
+        (f32) b / 255.0f,
+        (f32) a / 255.0f,
+    };
 }
 
 v4 alpha(v4 base, f32 alpha) {

@@ -11,12 +11,31 @@ uniform sampler2D albedo_map;
 uniform vec3 ambient_light;
 uniform vec3 sun_position;
 uniform vec3 sun_colour;
+uniform vec3 shadow_colour;
 
 vec3 diffuse_calculation(vec3 position, vec3 normal) {
     vec3 sun_direction = normalize(sun_position - position);
+
+#if 0
+    float diffuse = max(dot(sun_direction, normal), 0);
+    return sun_colour * diffuse;
+#else
+    float diffuse = dot(sun_direction, normal);
+    vec3 diffuse_colour = vec3(
+        max(diffuse, shadow_colour.r),
+        max(diffuse, shadow_colour.g),
+        max(diffuse, shadow_colour.b)
+    );
+
+    return sun_colour * diffuse_colour;
+#endif
+}
+
+vec3 diffuse_colour(vec3 position, vec3 normal) {
+    vec3 sun_direction = normalize(sun_position - position);
     float diffuse = max(dot(sun_direction, normal), 0);
 
-    return sun_colour * diffuse;
+    return mix(shadow_colour, sun_colour, diffuse);
 }
 
 void main()
