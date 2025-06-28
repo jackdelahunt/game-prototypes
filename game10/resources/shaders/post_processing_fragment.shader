@@ -17,8 +17,13 @@ vec4 change_brightness(vec4 colour, float brightness) {
     return vec4(normalize(colour.rgb) * brightness, 1);
 }
 
+vec4 grayscale(vec4 colour) {
+    float gray = (colour.r + colour.g + colour.b) * 0.33;
+    return vec4(gray, gray, gray, colour.a);
+}
+
 vec4 cell_shade(vec4 colour, int levels) {
-#if 0
+#if 1
     // Convert color to grayscale luminance (or use brightness)
     float brightness = dot(colour.rgb, vec3(0.299, 0.587, 0.114));
 
@@ -31,6 +36,16 @@ vec4 cell_shade(vec4 colour, int levels) {
 
     vec3 quantizedColor = floor(colour.rgb * float(levels)) / float(levels);
     return vec4(quantizedColor, 1.0);
+}
+
+vec4 toon(vec4 colour, int levels) {
+    float gray = grayscale(colour).r;
+
+    gray *= float(levels);
+    gray = floor(gray);
+    gray /= float(levels);
+
+    return vec4(gray * colour.rgb, colour.a);
 }
 
 vec2 pixelate(vec2 uv_coord, vec2 resolution) {
@@ -54,6 +69,7 @@ void main()
     vec4 sample_colour = texture(scene_texture, texture_uv);
 
     frag_colour = sample_colour;
+    // frag_colour = toon(frag_colour, 5);
     // frag_colour = cell_shade(frag_colour, 5);
     // frag_colour = srgb(frag_colour);
 } 

@@ -8,11 +8,8 @@
 #include <time.h>
 #include <stdlib.h>
 
-#include <string>
-#include <iostream>
-
-// Total: 05:00
-// Started: 2:30
+// Total: 7:30
+// Started: 3:30
 
 #define ALLOW_EDITOR 1
 #define MAX_ENTITIES 2000
@@ -22,6 +19,7 @@ Model *tree_model;
 Model *monkey_model;
 Model *rock_1_model;
 Model *rock_2_model;
+Model *tile_model;
 
 struct Entity {
     // meta
@@ -74,6 +72,7 @@ struct State {
     f64 time;
 
     StackArray<Entity, MAX_ENTITIES> entities;
+
 } state = {};
 
 void update_and_draw(f32 delta_time);
@@ -217,36 +216,16 @@ int main() {
         monkey_model = load_model(&state.renderer, "resources/models/monkey/monkey.obj");
         rock_1_model = load_model(&state.renderer, "resources/models/rocks/rock_1.obj");
         rock_2_model = load_model(&state.renderer, "resources/models/rocks/rock_2.obj");
+        tile_model = load_model(&state.renderer, "resources/models/tile/tile.obj");
 
         srand(time(NULL));
     }
 
     spawn_entity(Entity {
-        .position = {0, 0, 0},
-        .size = {20, 0.5, 20},
-        .colour = rgb(54, 168, 101),
-        .model = cube_model,
-    });
-
-    spawn_entity(Entity {
-        .position = {0, 1, 0},
+        .position = {0, 1, -2},
         .size = {1, 1, 1},
-        .colour = rgb(248, 246, 156),
-        .model = rock_1_model,
-    });
-
-    spawn_entity(Entity {
-        .position = {3, 1, 0},
-        .size = {1, 1, 1},
-        .colour = rgb(248, 246, 156),
-        .model = rock_1_model,
-    });
-
-    spawn_entity(Entity {
-        .position = {0, 1, 2},
-        .size = {1, 1, 1},
-        .colour = rgb(248, 246, 156),
-        .model = rock_2_model,
+        .colour = WHITE,
+        .model = tile_model,
     });
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
