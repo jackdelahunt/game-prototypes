@@ -8,7 +8,7 @@
 #include <time.h>
 #include <stdlib.h>
 
-// Total: 7:30
+// Total: 9:00
 // Started: 3:30
 
 #define ALLOW_EDITOR 1
@@ -20,12 +20,13 @@ Model *monkey_model;
 Model *rock_1_model;
 Model *rock_2_model;
 Model *tile_model;
+Model *button_model;
 
 struct Entity {
     // meta
     u64 flags;
 
-    // entity
+    // base
     v3 position;
     v3 size;
     v3 rotation;
@@ -34,6 +35,8 @@ struct Entity {
     // rendering
     v4 colour;
     Model *model;
+
+    v3i grid_position;
 };
 
 struct Editor {
@@ -56,9 +59,11 @@ struct Editor {
 
 enum EntityFlags {
     EF_PLAYER           = 1 << 0,
-    EF_LIGHT            = 1 << 1,
-    EF_ANIMATED_SPRITE  = 1 << 2,
-    EF_GRAVITY_AFFECTED = 1 << 3,
+    EF_WALL             = 1 << 1,
+    EF_FLOOR            = 1 << 2,
+    EF_STONE            = 1 << 3,
+    EF_PUSHABLE         = 1 << 4,
+    EF_NON_BLOCKING     = 1 << 5,
     EF_DELETE           = 1 << 16,
 };
 
@@ -76,7 +81,10 @@ struct State {
 } state = {};
 
 void update_and_draw(f32 delta_time);
+bool move_entity(Entity *entity, v3i new_position);
+
 void physics(f32 delta_time);
+
 void update_and_draw_editor(f32 delta_time);
 
 Entity *spawn_entity(Entity entity);
@@ -142,8 +150,8 @@ int main() {
     state = State {
         .camera = {
             .mode = CameraMode::FIRST_PERSON,
-            .fov = 110,
-            .position = {10, 10, -20},
+            .fov = 90,
+            .position = {4.4, 6.7, -3},
             .near_plane = 0.1f,
             .far_plane = 500.0f,
             .orthographic_size = 75,
@@ -217,15 +225,61 @@ int main() {
         rock_1_model = load_model(&state.renderer, "resources/models/rocks/rock_1.obj");
         rock_2_model = load_model(&state.renderer, "resources/models/rocks/rock_2.obj");
         tile_model = load_model(&state.renderer, "resources/models/tile/tile.obj");
+        button_model = load_model(&state.renderer, "resources/models/button/button.obj");
 
         srand(time(NULL));
     }
 
+    i32 grid_width = 10;
+    i32 grid_depth = 10;
+
+    for (i32 z = 0; z < grid_depth; z++) {
+        for (i32 x = 0; x < grid_width; x++) {
+             spawn_entity(Entity {
+                .flags = EF_FLOOR,
+                .position = v3{(f32) x, 0, (f32) z},
+                .size = {1, 1, 1},
+                .colour = WHITE,
+                .model = tile_model,
+                .grid_position = v3i{x, 0, z},
+            });
+        }
+    }
+
     spawn_entity(Entity {
-        .position = {0, 1, -2},
-        .size = {1, 1, 1},
-        .colour = WHITE,
+        .flags = EF_PLAYER,
+        .position = v3{0, 1, 0},
+        .size = {0.5, 1, 0.5},
+        .colour = RED,
         .model = tile_model,
+        .grid_position = v3i{0, 1, 0},
+    });
+
+    spawn_entity(Entity {
+        .flags = EF_WALL,
+        .position = v3{4, 1, 1},
+        .size = {1, 1, 1},
+        .colour = rgb(71, 57, 46),
+        .model = tile_model,
+        .grid_position = v3i{4, 1, 1},
+    });
+
+    spawn_entity(Entity {
+        .flags = EF_STONE | EF_PUSHABLE,
+        .position = v3{1, 1, 1},
+        .size = {1, 1, 1},
+        .colour = brightness(WHITE, 0.6),
+        .model = tile_model,
+        .grid_position = v3i{1, 1, 1},
+    });
+
+    spawn_entity(Entity {
+        .flags = EF_NON_BLOCKING,
+        .position = v3{2, 1, 1},
+        .size = {1, 1, 1},
+        .colour = BLUE,
+        .model = button_model,
+        .grid_position = v3i{2, 1, 1},
     });
 
     while (!glfwWindowShouldClose(state.window.glfw_window)) {
@@ -258,60 +312,81 @@ int main() {
 }
 
 void update_and_draw(f32 delta_time) {
-    if (!state.editor.visable) { // update editor camera
-        state.camera.mode = CameraMode::FIRST_PERSON;
+    for (Entity &entity : state.entities) {
+        if (BIT_SET(entity.flags, EF_PLAYER)) {
+            v3i input = {};
+        
+            if (KEYS[GLFW_KEY_LEFT] == InputState::DOWN) {
+                input.x -= 1;
+            }
 
-        v3 input = {};
-    
-        if (KEYS[GLFW_KEY_A] == InputState::PRESSED) {
-            input.x -= 1;
-        }
-            
-        if (KEYS[GLFW_KEY_D] == InputState::PRESSED) {
-            input.x += 1;
-        }
-                
-        if (KEYS[GLFW_KEY_SPACE] == InputState::PRESSED) {
-            input.y += 1;
-        }
-                
-        if (KEYS[GLFW_KEY_LEFT_SHIFT] == InputState::PRESSED) {
-            input.y -= 1;
-        }
-            
-        if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
-            input.z += 1;
-        }
-         
-        if (KEYS[GLFW_KEY_S] == InputState::PRESSED) {
-            input.z -= 1;
-        }
-         
-        const f32 FLY_SPEED = 15;
- 
-        v3 forward = get_forward_direction(state.camera);
-        v3 up = {0, 1, 0};
-        v3 right = get_right_direction(state.camera);
- 
-        state.camera.position += right * (input.x * FLY_SPEED * delta_time);
-        state.camera.position += up * (input.y * FLY_SPEED * delta_time);
-        state.camera.position += forward * (input.z * FLY_SPEED * delta_time);
+            if (KEYS[GLFW_KEY_RIGHT] == InputState::DOWN) {
+                input.x += 1;
+            }
 
-        // update camera rotation (looking at)
-        if (state.window.mouse_captured) {
-            f32 sensitivity = 0.1;
-            v2 mouse_input = MOUSE.delta;
-    
-            if(length(mouse_input) != 0) {
-                state.camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
-                state.camera.rotation.x = clamp(-90, state.camera.rotation.x, 90);
+            if (KEYS[GLFW_KEY_DOWN] == InputState::DOWN) {
+                input.z -= 1;
+            }
+
+            if (KEYS[GLFW_KEY_UP] == InputState::DOWN) {
+                input.z += 1;
+            }
+
+            if (input.x != 0 || input.z != 0) {
+                v3i new_position = entity.grid_position + input;
+
+                move_entity(&entity, new_position);
             }
         }
+
+        if (entity.model != NULL) {
+            draw_model(&state.renderer, entity.position, entity.size, entity.rotation, entity.model, entity.colour);
+        }
+    }
+}
+
+bool move_entity(Entity *entity, v3i new_position) {
+    bool has_floor = false;    
+    bool is_empty = true;
+
+    v3i direction = new_position - entity->grid_position;
+
+    // first we need to check for a floor tile so we can garuntee
+    // if we try and push the other entity then there is a floor
+    // there, of course why would there be an entity there if there
+    // is no floor? I don't know... - 26/06/25
+    for (Entity &other : state.entities) {
+        if (other.grid_position == new_position - v3i{0, 1, 0}) {
+            has_floor = true;
+            break;
+        }
     }
 
-    for (Entity &entity : state.entities) {
-        draw_model(&state.renderer, entity.position, entity.size, entity.rotation, entity.model, entity.colour);
+    for (Entity &other : state.entities) {
+        if (other.grid_position == new_position) {
+            if (BIT_SET(other.flags, EF_NON_BLOCKING)) {
+                continue;
+            }
+
+            if (BIT_SET(other.flags, EF_PUSHABLE)) {
+                is_empty = move_entity(&other, other.grid_position + direction);
+            }
+            else {
+                is_empty = false;
+            }
+
+            break;
+        }
     }
+
+    if (has_floor && is_empty) {
+        entity->grid_position = new_position;
+        entity->position = as_floats(entity->grid_position);
+
+        return true;
+    }
+
+    return false;
 }
 
 // AABB detection for a point against a box where the position is centred on the box
@@ -369,6 +444,57 @@ void update_and_draw_editor(f32 delta_time) {
     if (KEYS[GLFW_KEY_F2] == InputState::DOWN) {
         delete_shaders(&state.renderer);
         load_shaders(&state.renderer);
+    }
+
+    if (!state.editor.visable) { // update editor camera
+        state.camera.mode = CameraMode::FIRST_PERSON;
+
+        v3 input = {};
+    
+        if (KEYS[GLFW_KEY_A] == InputState::PRESSED) {
+            input.x -= 1;
+        }
+            
+        if (KEYS[GLFW_KEY_D] == InputState::PRESSED) {
+            input.x += 1;
+        }
+                
+        if (KEYS[GLFW_KEY_SPACE] == InputState::PRESSED) {
+            input.y += 1;
+        }
+                
+        if (KEYS[GLFW_KEY_LEFT_SHIFT] == InputState::PRESSED) {
+            input.y -= 1;
+        }
+            
+        if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
+            input.z += 1;
+        }
+         
+        if (KEYS[GLFW_KEY_S] == InputState::PRESSED) {
+            input.z -= 1;
+        }
+         
+        const f32 FLY_SPEED = 15;
+ 
+        v3 forward = get_forward_direction(state.camera);
+        v3 up = {0, 1, 0};
+        v3 right = get_right_direction(state.camera);
+ 
+        state.camera.position += right * (input.x * FLY_SPEED * delta_time);
+        state.camera.position += up * (input.y * FLY_SPEED * delta_time);
+        state.camera.position += forward * (input.z * FLY_SPEED * delta_time);
+
+        // update camera rotation (looking at)
+        if (state.window.mouse_captured) {
+            f32 sensitivity = 0.1;
+            v2 mouse_input = MOUSE.delta;
+    
+            if(length(mouse_input) != 0) {
+                state.camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
+                state.camera.rotation.x = clamp(-90, state.camera.rotation.x, 90);
+            }
+        }
     }
 
     if(state.editor.visable) {

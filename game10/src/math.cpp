@@ -1022,6 +1022,16 @@ static inline HMM_Bool HMM_EqV4(v4 Left, v4 Right)
     return Left.x == Right.x && Left.y == Right.y && Left.z == Right.z && Left.w == Right.w;
 }
 
+static inline HMM_Bool HMM_EqV2I(v2i Left, v2i Right)
+{
+    return Left.x == Right.x && Left.y == Right.y;
+}
+
+static inline HMM_Bool HMM_EqV3I(v3i Left, v3i Right)
+{
+    return Left.x == Right.x && Left.y == Right.y && Left.z == Right.z;
+}
+
 COVERAGE(HMM_DotV2, 1)
 static inline float HMM_DotV2(v2 Left, v2 Right)
 {
@@ -3437,6 +3447,16 @@ static inline v4 &operator+=(v4 &Left, v4 Right)
     return Left = Left + Right;
 }
 
+static inline v2i &operator+=(v2i &Left, v2i Right)
+{
+    return Left = Left + Right;
+}
+
+static inline v3i &operator+=(v3i &Left, v3i Right)
+{
+    return Left = Left + Right;
+}
+
 COVERAGE(HMM_AddM2Assign, 1)
 static inline m2 &operator+=(m2 &Left, m2 Right)
 {
@@ -3659,6 +3679,16 @@ static inline HMM_Bool operator==(v4 Left, v4 Right)
 {
     ASSERT_COVERED(HMM_EqV4Op);
     return HMM_EqV4(Left, Right);
+}
+
+static inline HMM_Bool operator==(v2i Left, v2i Right)
+{
+    return HMM_EqV2I(Left, Right);
+}
+
+static inline HMM_Bool operator==(v3i Left, v3i Right)
+{
+    return HMM_EqV3I(Left, Right);
 }
 
 COVERAGE(HMM_EqV2OpNot, 1)
