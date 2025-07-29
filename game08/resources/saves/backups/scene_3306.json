@@ -1,0 +1,70 @@
+{
+  "entities": [
+    {
+      "animation_cycle": 0.0,
+      "color": {
+        "w": 1.0,
+        "x": 1.0,
+        "y": 1.0,
+        "z": 1.0
+      },
+      "flags": 0,
+      "light_colour": {
+        "w": 0.0,
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "light_intensity": 0.0,
+      "light_radius": 0.0,
+      "position": {
+        "x": 0.0,
+        "y": 250.0,
+        "z": 95.71399688720703
+      },
+      "rotation": 0.0,
+      "size": {
+        "x": 2000.0,
+        "y": 1000.0
+      },
+      "sprite": 10,
+      "velocity": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    },
+    {
+      "animation_cycle": 0.0,
+      "color": {
+        "w": 1.0,
+        "x": 1.0,
+        "y": 1.0,
+        "z": 1.0
+      },
+      "flags": 0,
+      "light_colour": {
+        "w": 0.0,
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "light_intensity": 0.0,
+      "light_radius": 0.0,
+      "position": {
+        "x": 0.0,
+        "y": 250.0,
+        "z": 81.4280014038086
+      },
+      "rotation": 0.0,
+      "size": {
+        "x": 2000.0,
+        "y": 1000.0
+      },
+      "sprite": 9,
+      "velocity": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    }
+  ]
+}

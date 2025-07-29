@@ -1,0 +1,235 @@
+{
+  "entities": [
+    {
+      "animation_cycle": 0.0,
+      "color": {
+        "w": 0.0,
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "flags": 3,
+      "light_colour": {
+        "w": 1.0,
+        "x": 1.0,
+        "y": 0.6399999856948853,
+        "z": 0.10000000149011612
+      },
+      "light_intensity": 1.0,
+      "light_radius": 400.0,
+      "position": {
+        "x": 66.40265655517578,
+        "y": 31.256954193115234,
+        "z": 0.0
+      },
+      "rotation": 0.0,
+      "size": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "sprite": 0,
+      "velocity": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    },
+    {
+      "animation_cycle": 0.0,
+      "color": {
+        "w": 1.0,
+        "x": 1.0,
+        "y": 1.0,
+        "z": 1.0
+      },
+      "flags": 0,
+      "light_colour": {
+        "w": 0.0,
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "light_intensity": 0.0,
+      "light_radius": 0.0,
+      "position": {
+        "x": 0.0,
+        "y": 250.0,
+        "z": 10.0
+      },
+      "rotation": 0.0,
+      "size": {
+        "x": 2000.0,
+        "y": 1000.0
+      },
+      "sprite": 8,
+      "velocity": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    },
+    {
+      "animation_cycle": 0.0,
+      "color": {
+        "w": 1.0,
+        "x": 1.0,
+        "y": 1.0,
+        "z": 1.0
+      },
+      "flags": 0,
+      "light_colour": {
+        "w": 0.0,
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "light_intensity": 0.0,
+      "light_radius": 0.0,
+      "position": {
+        "x": -140.0,
+        "y": 0.0,
+        "z": 10.0
+      },
+      "rotation": 0.0,
+      "size": {
+        "x": 40.0,
+        "y": 40.0
+      },
+      "sprite": 2,
+      "velocity": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    },
+    {
+      "animation_cycle": 0.0,
+      "color": {
+        "w": 1.0,
+        "x": 1.0,
+        "y": 1.0,
+        "z": 1.0
+      },
+      "flags": 0,
+      "light_colour": {
+        "w": 0.0,
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "light_intensity": 0.0,
+      "light_radius": 0.0,
+      "position": {
+        "x": -180.0,
+        "y": 0.0,
+        "z": 10.0
+      },
+      "rotation": 0.0,
+      "size": {
+        "x": 40.0,
+        "y": 40.0
+      },
+      "sprite": 3,
+      "velocity": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    },
+    {
+      "animation_cycle": 0.0,
+      "color": {
+        "w": 1.0,
+        "x": 1.0,
+        "y": 1.0,
+        "z": 1.0
+      },
+      "flags": 0,
+      "light_colour": {
+        "w": 0.0,
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "light_intensity": 0.0,
+      "light_radius": 0.0,
+      "position": {
+        "x": 0.0,
+        "y": 250.0,
+        "z": 10.0
+      },
+      "rotation": 0.0,
+      "size": {
+        "x": 2000.0,
+        "y": 1000.0
+      },
+      "sprite": 9,
+      "velocity": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    },
+    {
+      "animation_cycle": 0.0,
+      "color": {
+        "w": 1.0,
+        "x": 1.0,
+        "y": 1.0,
+        "z": 1.0
+      },
+      "flags": 0,
+      "light_colour": {
+        "w": 0.0,
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "light_intensity": 0.0,
+      "light_radius": 0.0,
+      "position": {
+        "x": 0.0,
+        "y": 250.0,
+        "z": 10.0
+      },
+      "rotation": 0.0,
+      "size": {
+        "x": 50.0,
+        "y": 50.0
+      },
+      "sprite": 1,
+      "velocity": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    },
+    {
+      "animation_cycle": 0.0,
+      "color": {
+        "w": 1.0,
+        "x": 1.0,
+        "y": 1.0,
+        "z": 1.0
+      },
+      "flags": 0,
+      "light_colour": {
+        "w": 0.0,
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "light_intensity": 0.0,
+      "light_radius": 0.0,
+      "position": {
+        "x": 0.0,
+        "y": 250.0,
+        "z": 10.0
+      },
+      "rotation": 0.0,
+      "size": {
+        "x": 2000.0,
+        "y": 1000.0
+      },
+      "sprite": 10,
+      "velocity": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    }
+  ]
+}
