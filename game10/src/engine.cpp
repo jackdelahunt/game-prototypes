@@ -52,6 +52,7 @@ struct {
 
 bool init_window(Window *window, str title);
 void set_mouse_captured(Window *window, bool captured);
+void set_window_title(Window *window, str title);
 void poll_inputs();
 void swap_buffers(Window *window);
 void toggle_vsync(Window *window);
@@ -111,6 +112,10 @@ void set_mouse_captured(Window *window, bool captured) {
 
     i32 glfw_mode = captured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL;
     glfwSetInputMode(window->glfw_window, GLFW_CURSOR, glfw_mode);
+}
+
+void set_window_title(Window *window, str title) {
+    glfwSetWindowTitle(window->glfw_window, title.c());
 }
 
 void poll_inputs() {

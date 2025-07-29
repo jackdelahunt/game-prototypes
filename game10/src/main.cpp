@@ -11,7 +11,6 @@
 // Total: 9:00
 // Started: 3:30
 
-#define ALLOW_EDITOR 1
 #define MAX_ENTITIES 2000
 
 Model *cube_model;
@@ -39,22 +38,8 @@ struct Entity {
     v3i grid_position;
 };
 
-struct Editor {
+struct DevTools {
     bool visable;
-
-    struct {
-        bool enabled;
-        i32 range;
-        i32 radius;
-        f32 cooldown;
-    } sculptor;
-
-    struct {
-        bool enabled;
-        v3 colour;
-        i32 range;
-        i32 radius;
-    } paint_brush;
 };
 
 enum EntityFlags {
@@ -67,12 +52,19 @@ enum EntityFlags {
     EF_DELETE           = 1 << 16,
 };
 
+enum class GameMode {
+    EDITOR,
+    GAME
+};
+
 struct State {
+    GameMode game_mode;
     Camera camera;
+    Camera game_camera;
     Window window;
     Renderer renderer;
     SoundEngine sound_engine;
-    Editor editor;
+    DevTools dev_tools;
 
     f64 time;
 
@@ -80,14 +72,16 @@ struct State {
 
 } state = {};
 
-void update_and_draw(f32 delta_time);
-bool move_entity(Entity *entity, v3i new_position);
+void update_global(f32 delta_time);
+void update_entities(f32 delta_time);
+void draw_entities(f32 delta_time);
 
 void physics(f32 delta_time);
 
-void update_and_draw_editor(f32 delta_time);
+void update_and_draw_dev_tools(f32 delta_time);
 
 Entity *spawn_entity(Entity entity);
+bool move_entity(Entity *entity, v3i new_position);
 
 enum class TokenType {
     EQUAL
@@ -136,19 +130,17 @@ Slice<Token> tokenise_config_file(Allocator *allocator, str path) {
 }
 
 int main() {
-    Allocator allocator = new_allocator(1024);
-    i64 *a = alloc<i64>(&allocator);
-    i64 *b = alloc<i64>(&allocator);
-    i64 *c = alloc<i64>(&allocator);
-
-    *a = 10;
-    *b = 20;
-    *c = 30;
-
-    Slice<Token> tokens = tokenise_config_file(&allocator, "start.config");
-
     state = State {
+        .game_mode = GameMode::EDITOR,
         .camera = {
+            .mode = CameraMode::FIRST_PERSON,
+            .fov = 90,
+            .position = {4.4, 6.7, -3},
+            .near_plane = 0.1f,
+            .far_plane = 500.0f,
+            .orthographic_size = 75,
+        },
+        .game_camera = {
             .mode = CameraMode::FIRST_PERSON,
             .fov = 90,
             .position = {4.4, 6.7, -3},
@@ -169,20 +161,8 @@ int main() {
             .ssao_bias = 0.025,
             .ssao_noise_scale = {480, 270},
         },
-        .editor = {
+        .dev_tools = {
             .visable = false,
-            .sculptor = {
-                .enabled = false,
-                .range = 50,
-                .radius = 4,
-                .cooldown = 0.075,
-            },
-            .paint_brush = {
-                .enabled = false,
-                .colour = {0.2, 0.8, 0.2},
-                .range = 50,
-                .radius = 4,
-            },
         },
     };
 
@@ -292,15 +272,20 @@ int main() {
             glfwSetWindowShouldClose(state.window.glfw_window, GLFW_TRUE);
         }
 
-        new_frame(&state.renderer, &state.window, state.camera);
+        Camera camera = state.game_mode == GameMode::GAME ? state.game_camera : state.camera;
+
+        new_frame(&state.renderer, &state.window, camera);
 
         poll_inputs(); 
-        update_and_draw(delta_time);
+        update_global(delta_time);
 
-#if ALLOW_EDITOR
-        update_and_draw_editor(delta_time); 
-#endif
-        physics(delta_time);  
+        if (state.game_mode == GameMode::GAME) {
+            update_entities(delta_time);
+            physics(delta_time);
+        }
+
+        draw_entities(delta_time);
+        update_and_draw_dev_tools(delta_time); 
 
         draw_frame(&state.renderer, &state.window); 
         swap_buffers(&state.window);
@@ -311,134 +296,23 @@ int main() {
     return 0;
 }
 
-void update_and_draw(f32 delta_time) {
-    for (Entity &entity : state.entities) {
-        if (BIT_SET(entity.flags, EF_PLAYER)) {
-            v3i input = {};
-        
-            if (KEYS[GLFW_KEY_LEFT] == InputState::DOWN) {
-                input.x -= 1;
-            }
-
-            if (KEYS[GLFW_KEY_RIGHT] == InputState::DOWN) {
-                input.x += 1;
-            }
-
-            if (KEYS[GLFW_KEY_DOWN] == InputState::DOWN) {
-                input.z -= 1;
-            }
-
-            if (KEYS[GLFW_KEY_UP] == InputState::DOWN) {
-                input.z += 1;
-            }
-
-            if (input.x != 0 || input.z != 0) {
-                v3i new_position = entity.grid_position + input;
-
-                move_entity(&entity, new_position);
-            }
-        }
-
-        if (entity.model != NULL) {
-            draw_model(&state.renderer, entity.position, entity.size, entity.rotation, entity.model, entity.colour);
-        }
-    }
-}
-
-bool move_entity(Entity *entity, v3i new_position) {
-    bool has_floor = false;    
-    bool is_empty = true;
-
-    v3i direction = new_position - entity->grid_position;
-
-    // first we need to check for a floor tile so we can garuntee
-    // if we try and push the other entity then there is a floor
-    // there, of course why would there be an entity there if there
-    // is no floor? I don't know... - 26/06/25
-    for (Entity &other : state.entities) {
-        if (other.grid_position == new_position - v3i{0, 1, 0}) {
-            has_floor = true;
-            break;
+void update_global(f32 delta_time) {
+    if (KEYS[GLFW_KEY_F5] == InputState::DOWN) {
+        switch (state.game_mode) {
+            case GameMode::GAME: {
+                state.game_mode = GameMode::EDITOR;
+                set_window_title(&state.window, "EDITOR");
+            } break;
+            case GameMode::EDITOR: {
+                state.game_mode = GameMode::GAME;
+                set_window_title(&state.window, "GAME");
+            } break;
         }
     }
 
-    for (Entity &other : state.entities) {
-        if (other.grid_position == new_position) {
-            if (BIT_SET(other.flags, EF_NON_BLOCKING)) {
-                continue;
-            }
-
-            if (BIT_SET(other.flags, EF_PUSHABLE)) {
-                is_empty = move_entity(&other, other.grid_position + direction);
-            }
-            else {
-                is_empty = false;
-            }
-
-            break;
-        }
-    }
-
-    if (has_floor && is_empty) {
-        entity->grid_position = new_position;
-        entity->position = as_floats(entity->grid_position);
-
-        return true;
-    }
-
-    return false;
-}
-
-// AABB detection for a point against a box where the position is centred on the box
-bool point_collision(v3 point, v3 collider_position, v3 collider_size) {
-    v3 delta_position = point - collider_position;
-    v3 bounding_box = collider_size * 0.5;
-
-    return (
-        delta_position.x >= -bounding_box.x && delta_position.x < bounding_box.x &&
-        delta_position.y >= -bounding_box.y && delta_position.y < bounding_box.y &&
-        delta_position.z >= -bounding_box.z && delta_position.z < bounding_box.z
-    );
-}
-
-struct CubeCollision {
-    bool collision;
-    v3 overlap;
-    v3 distance;
-};
-
-CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size) {
-    v3 distance = b_position - a_position;
-    v3 distance_abs = v3{ABS(distance.x), ABS(distance.y), ABS(distance.z)};
-    v3 distance_for_collision = (a_size + b_size) * 0.5; 
-
-    bool collision = distance_for_collision.x >= distance_abs.x && distance_for_collision.y >= distance_abs.y && distance_for_collision.z >= distance_abs.z;
-    v3 overlap = distance_for_collision - distance_abs;
-
-    return CubeCollision {
-        .collision = collision,
-        .overlap = overlap,
-        .distance = distance
-    };
-}
-
-void physics(f32 delta_time) {
-    for (int i = 0; i < state.entities.len; i++) {
-        Entity* entity = &state.entities[i];
-
-        const f32 MAX_SPEED = 50;
-        if (length(entity->velocity) > MAX_SPEED) {
-            entity->velocity = norm(entity->velocity) * MAX_SPEED;
-        }
-
-        entity->position += entity->velocity * delta_time;
-    }
-}
-
-void update_and_draw_editor(f32 delta_time) {
     if (KEYS[GLFW_KEY_F1] == InputState::DOWN) {
-        state.editor.visable = !state.editor.visable;
-        set_mouse_captured(&state.window, !state.editor.visable);
+        state.dev_tools.visable = !state.dev_tools.visable;
+        set_mouse_captured(&state.window, !state.dev_tools.visable);
     }
 
     if (KEYS[GLFW_KEY_F2] == InputState::DOWN) {
@@ -446,7 +320,7 @@ void update_and_draw_editor(f32 delta_time) {
         load_shaders(&state.renderer);
     }
 
-    if (!state.editor.visable) { // update editor camera
+    if (state.game_mode == GameMode::EDITOR && !state.dev_tools.visable) { // update editor camera
         state.camera.mode = CameraMode::FIRST_PERSON;
 
         v3 input = {};
@@ -496,8 +370,94 @@ void update_and_draw_editor(f32 delta_time) {
             }
         }
     }
+}
 
-    if(state.editor.visable) {
+void update_entities(f32 delta_time) {
+    for (Entity &entity : state.entities) {
+        if (BIT_SET(entity.flags, EF_PLAYER)) {
+            v3i input = {};
+        
+            if (KEYS[GLFW_KEY_LEFT] == InputState::DOWN) {
+                input.x -= 1;
+            }
+
+            if (KEYS[GLFW_KEY_RIGHT] == InputState::DOWN) {
+                input.x += 1;
+            }
+
+            if (KEYS[GLFW_KEY_DOWN] == InputState::DOWN) {
+                input.z -= 1;
+            }
+
+            if (KEYS[GLFW_KEY_UP] == InputState::DOWN) {
+                input.z += 1;
+            }
+
+            if (input.x != 0 || input.z != 0) {
+                v3i new_position = entity.grid_position + input;
+
+                move_entity(&entity, new_position);
+            }
+        }
+    }
+}
+
+void draw_entities(f32 delta_time) {
+    for (Entity &entity : state.entities) {
+        if (entity.model != NULL) {
+            draw_model(&state.renderer, entity.position, entity.size, entity.rotation, entity.model, entity.colour);
+        }
+    }
+}
+
+// AABB detection for a point against a box where the position is centred on the box
+bool point_collision(v3 point, v3 collider_position, v3 collider_size) {
+    v3 delta_position = point - collider_position;
+    v3 bounding_box = collider_size * 0.5;
+
+    return (
+        delta_position.x >= -bounding_box.x && delta_position.x < bounding_box.x &&
+        delta_position.y >= -bounding_box.y && delta_position.y < bounding_box.y &&
+        delta_position.z >= -bounding_box.z && delta_position.z < bounding_box.z
+    );
+}
+
+struct CubeCollision {
+    bool collision;
+    v3 overlap;
+    v3 distance;
+};
+
+CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size) {
+    v3 distance = b_position - a_position;
+    v3 distance_abs = v3{ABS(distance.x), ABS(distance.y), ABS(distance.z)};
+    v3 distance_for_collision = (a_size + b_size) * 0.5; 
+
+    bool collision = distance_for_collision.x >= distance_abs.x && distance_for_collision.y >= distance_abs.y && distance_for_collision.z >= distance_abs.z;
+    v3 overlap = distance_for_collision - distance_abs;
+
+    return CubeCollision {
+        .collision = collision,
+        .overlap = overlap,
+        .distance = distance
+    };
+}
+
+void physics(f32 delta_time) {
+    for (int i = 0; i < state.entities.len; i++) {
+        Entity* entity = &state.entities[i];
+
+        const f32 MAX_SPEED = 50;
+        if (length(entity->velocity) > MAX_SPEED) {
+            entity->velocity = norm(entity->velocity) * MAX_SPEED;
+        }
+
+        entity->position += entity->velocity * delta_time;
+    }
+}
+
+void update_and_draw_dev_tools(f32 delta_time) {
+    if(state.dev_tools.visable) {
         ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_NoDockingOverCentralNode);
 
         // ImGui::ShowDemoWindow();
@@ -619,4 +579,48 @@ Entity *spawn_entity(Entity entity) {
     *ptr = entity;
 
     return ptr;
+}
+
+bool move_entity(Entity *entity, v3i new_position) {
+    bool has_floor = false;    
+    bool is_empty = true;
+
+    v3i direction = new_position - entity->grid_position;
+
+    // first we need to check for a floor tile so we can garuntee
+    // if we try and push the other entity then there is a floor
+    // there, of course why would there be an entity there if there
+    // is no floor? I don't know... - 26/06/25
+    for (Entity &other : state.entities) {
+        if (other.grid_position == new_position - v3i{0, 1, 0}) {
+            has_floor = true;
+            break;
+        }
+    }
+
+    for (Entity &other : state.entities) {
+        if (other.grid_position == new_position) {
+            if (BIT_SET(other.flags, EF_NON_BLOCKING)) {
+                continue;
+            }
+
+            if (BIT_SET(other.flags, EF_PUSHABLE)) {
+                is_empty = move_entity(&other, other.grid_position + direction);
+            }
+            else {
+                is_empty = false;
+            }
+
+            break;
+        }
+    }
+
+    if (has_floor && is_empty) {
+        entity->grid_position = new_position;
+        entity->position = as_floats(entity->grid_position);
+
+        return true;
+    }
+
+    return false;
 }
