@@ -1,23 +1,33 @@
 workspace "Engine"
     configurations { "Debug", "Release", "Profile" }
-    location "build"	
+    location "build"
+
+    -- everything for each project to inherit
+    cppdialect "C++20"
+    language "C++"
+    staticruntime "On"
+    debugdir "."
+    system "Windows"
+    architecture "x86_64"
+    warnings "Off"
+    flags { "MultiProcessorCompile" }
+
+    filter "configurations:Debug"
+        defines { "DEBUG" }
+        symbols "On"
+
+    filter "configurations:Release"
+        optimize "On"
+        defines { "RELEASE" }
+
+    filter "configurations:Profile"
+        profile "On"
+        symbols "On"
+        optimize "On"
 
 project "client"
     kind "ConsoleApp"
-    language "C++"
-    cppdialect "C++20"
-    staticruntime "On"
-
     location "build/%{prj.name}"
-    debugdir "."
-
-    system "Windows"
-    architecture "x86_64"
-
-    flags { "MultiProcessorCompile" }
-
-    warnings "Off"
-
     defines { "CLIENT" }
 
     files {
@@ -39,8 +49,6 @@ project "client"
 
     filter "configurations:Debug"
         targetdir "build/bin/%{prj.name}/debug"
-        defines { "DEBUG" }
-        symbols "On"
         postbuildcommands {
             "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/debug/*.dll] %[build/bin/%{prj.name}/debug]",
             "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/debug/*.pdb] %[build/bin/%{prj.name}/debug]",
@@ -48,8 +56,6 @@ project "client"
 
     filter "configurations:Release"
         targetdir "build/bin/%{prj.name}/release"
-        optimize "On"
-        defines { "RELEASE" }
         postbuildcommands {
             "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/release/*.dll] %[build/bin/%{prj.name}/release]",
         }
@@ -65,20 +71,7 @@ project "client"
 
 project "server"
     kind "ConsoleApp"
-    language "C++"
-    cppdialect "C++20"
-    staticruntime "On"
-
     location "build/%{prj.name}"
-    debugdir "."
-
-    system "Windows"
-    architecture "x86_64"
-
-    flags { "MultiProcessorCompile" }
-
-    warnings "Off"
-
     defines { "SERVER" }
 
     files {
@@ -100,8 +93,6 @@ project "server"
 
     filter "configurations:Debug"
         targetdir "build/bin/%{prj.name}/debug"
-        defines { "DEBUG" }
-        symbols "On"
         postbuildcommands {
             "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/debug/*.dll] %[build/bin/%{prj.name}/debug]",
             "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/debug/*.pdb] %[build/bin/%{prj.name}/debug]",
@@ -109,17 +100,12 @@ project "server"
 
     filter "configurations:Release"
         targetdir "build/bin/%{prj.name}/release"
-        optimize "On"
-        defines { "RELEASE" }
         postbuildcommands {
             "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/release/*.dll] %[build/bin/%{prj.name}/release]",
         }
 
     filter "configurations:Profile"
         targetdir "build/bin/%{prj.name}/profile"
-        profile "On"
-        symbols "On"
-        optimize "On"
         postbuildcommands {
             "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/release/*.dll] %[build/bin/%{prj.name}/profile]",
         }

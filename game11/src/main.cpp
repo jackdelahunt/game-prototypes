@@ -7,7 +7,7 @@
 #include <time.h>
 #include <stdlib.h>
 
-// Total: 5:00
+// Total: 6:00
 // Started: 13:00
 
 #define MAX_ENTITIES 2000
