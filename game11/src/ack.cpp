@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define BREAKPOINT __debugbreak()
 #define ASSERT(x) if (!(x)) __debugbreak();
 #define BIT_SET(a, b) ((a & b) != 0)
 #define SET_BIT(a, b) (a) |= (b)
