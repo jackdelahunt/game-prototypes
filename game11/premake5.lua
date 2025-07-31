@@ -5,7 +5,7 @@ workspace "Engine"
     -- everything for each project to inherit
     cppdialect "C++20"
     language "C++"
-    staticruntime "On"
+    staticruntime "Off"
     debugdir "."
     system "Windows"
     architecture "x86_64"
@@ -41,7 +41,6 @@ project "client"
     links {
         "gdi32.lib",
         "winmm.lib",
-        "msvcrt.lib",
         "shell32.lib",
         "src/libs/raylib/lib/raylib.lib",
         "src/libs/GameNetworkingSockets/lib/debug/GameNetworkingSockets.lib"
@@ -85,7 +84,6 @@ project "server"
     links {
         "gdi32.lib",
         "winmm.lib",
-        "msvcrt.lib",
         "shell32.lib",
         "src/libs/raylib/lib/raylib.lib",
         "src/libs/GameNetworkingSockets/lib/debug/GameNetworkingSockets.lib"
