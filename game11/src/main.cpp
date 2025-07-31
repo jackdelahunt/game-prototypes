@@ -34,8 +34,6 @@ enum EntityFlags {
     EF_DELETE           = 1 << 16,
 };
 
-const f64 MAX_TIME = 15.0f;
-
 struct Server {
     inline static Server *instance = NULL; // used to keep server instance around for network callbacks
 
@@ -50,6 +48,9 @@ struct Server {
 };
 
 struct Client {
+    inline static Client *instance = NULL; // used to keep client instance around for network callbacks
+
+    std::thread network_thread;
     bool running;
     ISteamNetworkingSockets *interface;
     SteamNetworkingMicroseconds start_time;
@@ -78,10 +79,13 @@ void server_on_connection_changed(Server *server, SteamNetConnectionStatusChange
 void server_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info);
 void server_graceful_shutdown(Server *server);
 
-void run_client(Client *client);
+void client_run(Client *client);
+void client_thread_entry(Client *client);
+void client_on_connection_changed(Client *client, SteamNetConnectionStatusChangedCallback_t *info);
+void client_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info);
+void client_graceful_shutdown(Client *client);
 
 void networking_debug_callback(ESteamNetworkingSocketsDebugOutputType type, const char *message);
-void client_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info);
 
 int main() {
     state = State {};
@@ -93,7 +97,7 @@ int main() {
 #endif
 
 #ifdef CLIENT
-    run_client(&state.client);
+    client_run(&state.client);
     window_title = "Game11 [Client]";
 #endif
 
@@ -113,7 +117,13 @@ int main() {
         EndDrawing();
     }
 
+#ifdef SERVER
     server_graceful_shutdown(&state.server);
+#endif
+
+#ifdef CLIENT
+    client_graceful_shutdown(&state.client);
+#endif
 
     CloseWindow();
 
@@ -209,9 +219,10 @@ void server_thread_entry(Server *server) {
     server->start_time = SteamNetworkingUtils()->GetLocalTimestamp();
     SteamNetworkingUtils()->SetDebugOutputFunction(k_ESteamNetworkingSocketsDebugOutputType_Msg, networking_debug_callback);
 
+    server->interface = SteamNetworkingSockets();
+
     // init server 
     u16 port = 27020;
-    server->interface = SteamNetworkingSockets();
 
     SteamNetworkingIPAddr address; 
     address.Clear();
@@ -323,26 +334,39 @@ void server_graceful_shutdown(Server *server) {
     }
 }
 
-void run_client(Client *client) {
-    printf("Running as a client\n");
+void client_run(Client *client) {
+    if (client->running) return;
 
-    SteamDatagramErrMsg errMsg;
-    if (!GameNetworkingSockets_Init(nullptr, errMsg)) {
-    printf("GameNetworkingSockets_Init failed %s", errMsg);
+    client->network_thread = std::thread([client] () { client_thread_entry(client); });
+}
+
+void client_thread_entry(Client *client) {
+    // set this so any callbacks can then refer to the current running client
+    // this should not be used directly unless for those callbacks and needs to
+    // be cleaned up when the thread ends or aborts
+    // - 31/07/25
+    Client::instance = client;
+    client->running = true;
+
+    printf("Created client thread: %d\n", client->network_thread.get_id());
+
+    SteamDatagramErrMsg error_message;
+    if (!GameNetworkingSockets_Init(nullptr, error_message)) {
+        printf("GameNetworkingSockets_Init failed %s\n", error_message);
+        client->running = false;
         return;
     }
     
-    state.client.running = true;
-    state.client.start_time = SteamNetworkingUtils()->GetLocalTimestamp();
+    client->start_time = SteamNetworkingUtils()->GetLocalTimestamp();
     SteamNetworkingUtils()->SetDebugOutputFunction(k_ESteamNetworkingSocketsDebugOutputType_Msg, networking_debug_callback);
-    state.client.interface = SteamNetworkingSockets();
+
+    client->interface = SteamNetworkingSockets();
         
     // init client 
     u16 port = 27020;
 
     SteamNetworkingIPAddr address; 
     address.Clear();
-
     ASSERT(address.ParseString("::1"));
     address.m_port = port;
 
@@ -353,20 +377,74 @@ void run_client(Client *client) {
     SteamNetworkingConfigValue_t opt;
     opt.SetPtr(k_ESteamNetworkingConfig_Callback_ConnectionStatusChanged, (void*)client_network_connection_status_changed_callback);
 
-    state.client.connection = state.client.interface->ConnectByIPAddress(address, 1, &opt);
-    if (state.client.connection == k_HSteamNetConnection_Invalid ) {
-    printf("Failed to create connection to server\n");
-        BREAKPOINT;
+    client->connection = client->interface->ConnectByIPAddress(address, 1, &opt);
+    if (client->connection == k_HSteamNetConnection_Invalid ) {
+        printf("Failed to create connection to server\n");
+        client->running = false;
+        return;
     }
 
-    f64 time_seconds = 0;
+    printf("Client connected on port %d\n", port);
 
-    while (time_seconds < MAX_TIME && state.client.running) {
-        time_seconds = f64(SteamNetworkingUtils()->GetLocalTimestamp() - state.client.start_time) / 1000000;
+    while (client->running) {
         state.client.interface->RunCallbacks();
     }
 
-    printf("Closing client reached time limit\n");
+    printf("Shutting down client gracefully\n");
+
+    client->interface->CloseConnection(client->connection, 0, nullptr, false);
+    client->connection = k_HSteamNetConnection_Invalid;
+    GameNetworkingSockets_Kill();
+}
+
+void client_on_connection_changed(Client *client, SteamNetConnectionStatusChangedCallback_t *info) {
+    ASSERT(info->m_hConn == client->connection || client->connection == k_HSteamNetConnection_Invalid);
+
+    switch (info->m_info.m_eState) {
+        case k_ESteamNetworkingConnectionState_None:            break;
+        case k_ESteamNetworkingConnectionState_ClosedByPeer:    break;
+        case k_ESteamNetworkingConnectionState_Connecting:      break;
+        case k_ESteamNetworkingConnectionState_ProblemDetectedLocally: {
+            client->running = false;
+    
+            if (info->m_eOldState == k_ESteamNetworkingConnectionState_Connecting ) {
+                printf("Tried to connect but failed: %s\n", info->m_info.m_szEndDebug );
+            }
+            else if (info->m_info.m_eState == k_ESteamNetworkingConnectionState_ProblemDetectedLocally ) {
+                printf("Lost contact with the host: %s\n", info->m_info.m_szEndDebug );
+            }
+            else {
+                printf("Disconnected from server %s\n", info->m_info.m_szEndDebug);
+            }
+    
+            // Clean up the connection.  This is important!
+            // The connection is "closed" in the network sense, but
+            // it has not been destroyed.  We must close it on our end, too
+            // to finish up.  The reason information do not matter in this case,
+            // and we cannot linger because it's already closed on the other end,
+            // so we just pass 0's.
+            client->interface->CloseConnection(info->m_hConn, 0, nullptr, false );
+            client->connection = k_HSteamNetConnection_Invalid;
+        } break;
+        case k_ESteamNetworkingConnectionState_Connected: {
+            printf("Client connected to server\n");
+        } break;
+        default: break;
+    }
+}
+
+void client_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info) {
+    ASSERT(Client::instance != NULL && Client::instance->running);
+
+    client_on_connection_changed(Client::instance, info);
+}
+
+void client_graceful_shutdown(Client *client) {
+    client->running = false;
+
+    if (client->network_thread.joinable()) {
+        client->network_thread.join();
+    }
 }
 
 void networking_debug_callback(ESteamNetworkingSocketsDebugOutputType type, const char *message) {
@@ -375,44 +453,5 @@ void networking_debug_callback(ESteamNetworkingSocketsDebugOutputType type, cons
     if (type == k_ESteamNetworkingSocketsDebugOutputType_Bug) {
         printf("[NETWORK]: fatal error\n");
         BREAKPOINT;
-    }
-}
-
-void client_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info) {
-    ASSERT(info->m_hConn == state.client.connection || state.client.connection == k_HSteamNetConnection_Invalid );
-
-    switch (info->m_info.m_eState) {
-    case k_ESteamNetworkingConnectionState_None:
-            break;
-    case k_ESteamNetworkingConnectionState_ClosedByPeer:
-            break;
-    case k_ESteamNetworkingConnectionState_ProblemDetectedLocally: {
-            state.client.running = false;
-
-        if (info->m_eOldState == k_ESteamNetworkingConnectionState_Connecting ) {
-        printf("Tried to connect but failed: %s\n", info->m_info.m_szEndDebug );
-        }
-        else if (info->m_info.m_eState == k_ESteamNetworkingConnectionState_ProblemDetectedLocally ) {
-        printf("Lost contact with the host: %s\n", info->m_info.m_szEndDebug );
-        }
-        else {
-        printf("Disconnected from server %s\n", info->m_info.m_szEndDebug);
-        }
-
-        // Clean up the connection.  This is important!
-        // The connection is "closed" in the network sense, but
-        // it has not been destroyed.  We must close it on our end, too
-        // to finish up.  The reason information do not matter in this case,
-        // and we cannot linger because it's already closed on the other end,
-        // so we just pass 0's.
-        state.client.interface->CloseConnection(info->m_hConn, 0, nullptr, false );
-        state.client.connection = k_HSteamNetConnection_Invalid;
-        } break;
-    case k_ESteamNetworkingConnectionState_Connecting: {
-        } break;
-    case k_ESteamNetworkingConnectionState_Connected: {
-        printf("Client connected to server\n");
-        } break;
-        default: break;
     }
 }
