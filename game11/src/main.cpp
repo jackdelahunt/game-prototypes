@@ -9,8 +9,9 @@
 
 #include <string>
 #include <thread>
+#include <chrono>
 
-// Total: 6:30
+// Total: 10:00
 // Started: 13:00
 
 #define MAX_ENTITIES 2000
@@ -387,7 +388,13 @@ void client_thread_entry(Client *client) {
     printf("Client connected on port %d\n", port);
 
     while (client->running) {
-        state.client.interface->RunCallbacks();
+        client->interface->RunCallbacks();
+
+        str message = "Hello Sailor";
+
+        client->interface->SendMessageToConnection(client->connection, message.ptr, message.len, k_nSteamNetworkingSend_Reliable, NULL);            
+
+	std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 
     printf("Shutting down client gracefully\n");
