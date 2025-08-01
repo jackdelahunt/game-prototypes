@@ -10,11 +10,16 @@
 #include <string>
 #include <thread>
 #include <chrono>
+#include <mutex>
+#include <queue>
+#include <format>
 
-// Total: 10:00
-// Started: 13:00
+// Total: 12:30
+// Started: 13:30
 
 #define MAX_ENTITIES 2000
+
+#define NETWORK_DELAY_MS 50
 
 struct Entity {
     // meta
@@ -35,17 +40,25 @@ enum EntityFlags {
     EF_DELETE           = 1 << 16,
 };
 
+struct NetworkQueue {
+    std::mutex mutex;
+    std::queue<std::string> message_queue;
+};
+
 struct Server {
     inline static Server *instance = NULL; // used to keep server instance around for network callbacks
 
     std::thread network_thread;
     bool running;
+
     ISteamNetworkingSockets *interface;
     SteamNetworkingMicroseconds start_time;
     HSteamListenSocket socket;
     HSteamNetPollGroup poll_group;
-
     StackArray<HSteamNetConnection, 10> connections;
+
+    NetworkQueue in_queue;
+    NetworkQueue out_queue;
 };
 
 struct Client {
@@ -56,6 +69,9 @@ struct Client {
     ISteamNetworkingSockets *interface;
     SteamNetworkingMicroseconds start_time;
     HSteamNetConnection connection;
+
+    NetworkQueue in_queue;
+    NetworkQueue out_queue;
 };
 
 struct State {
@@ -65,7 +81,6 @@ struct State {
     Client client;
 
     StackArray<Entity, MAX_ENTITIES> entities;
-
 } state = {};
 
 void update_entities(f32 delta_time);
@@ -73,6 +88,12 @@ void draw_entities(f32 delta_time);
 void physics(f32 delta_time);
 
 Entity *spawn_entity(Entity entity);
+
+void network_queue_push(NetworkQueue *network_queue, std::string message);
+bool network_queue_pop(NetworkQueue *network_queue, std::string *out_message);
+
+bool is_server();
+bool is_client();
 
 void server_run(Server *server);
 void server_thread_entry(Server *server);
@@ -89,7 +110,6 @@ void client_graceful_shutdown(Client *client);
 void networking_debug_callback(ESteamNetworkingSocketsDebugOutputType type, const char *message);
 
 int main() {
-    state = State {};
     const char *window_title = NULL;
 
 #ifdef SERVER
@@ -105,9 +125,37 @@ int main() {
     srand(time(NULL));
 
     InitWindow(1080, 720, window_title);
+    SetTargetFPS(60);
 
     while (!WindowShouldClose()) {
         f32 delta_time = 0;
+
+        if (is_client()) {
+            { // receive from server 
+                std::string network_message;
+                while (network_queue_pop(&state.client.in_queue, &network_message)) {
+                    printf("Received: %s\n", network_message.c_str());
+                    network_queue_push(&state.client.out_queue, "Heard your message loud and clear\n");
+                }
+            }
+        }
+
+        if (is_server()) {
+            if (state.server.connections.len > 0 && IsKeyPressed(KEY_SPACE)) { // send to client
+                static i64 handshake_count = 0;
+
+                network_queue_push(&state.server.out_queue, std::format("Starting a handshake {}", handshake_count));
+                handshake_count++;
+            }
+
+            { // get back from client
+                std::string network_message;
+                while (network_queue_pop(&state.server.in_queue, &network_message)) {
+                    printf("Message received from client: %s\n", network_message.c_str());
+                }
+            }
+        }
+
         update_entities(delta_time);
         physics(delta_time);
         draw_entities(delta_time);
@@ -194,6 +242,40 @@ Entity *spawn_entity(Entity entity) {
     return ptr;
 }
 
+void network_queue_push(NetworkQueue *network_queue, std::string message) {
+    std::scoped_lock lock(network_queue->mutex);
+    network_queue->message_queue.push(message);
+}
+
+bool network_queue_pop(NetworkQueue *network_queue, std::string *out_message) {
+    std::scoped_lock lock(network_queue->mutex);
+
+    if (network_queue->message_queue.empty()) {
+        return false;
+    }
+
+    *out_message = network_queue->message_queue.front();
+    network_queue->message_queue.pop();
+
+    return true;
+}
+
+bool is_server() {
+#ifdef SERVER
+    return true;
+#else
+    return false;
+#endif
+}
+
+bool is_client() {
+#ifdef CLIENT
+    return true;
+#else
+    return false;
+#endif
+}
+
 void server_run(Server *server) {
     if (server->running) return;
 
@@ -250,27 +332,41 @@ void server_thread_entry(Server *server) {
 
     while (server->running) {
         // poll incoming messages 
-        {
-            while (state.server.running) {
-                ISteamNetworkingMessage *incoming_message = NULL;
-                int message_count = server->interface->ReceiveMessagesOnPollGroup(server->poll_group, &incoming_message, 1);
+        while (server->running) {
+            ISteamNetworkingMessage *incoming_message = NULL;
+            int message_count = server->interface->ReceiveMessagesOnPollGroup(server->poll_group, &incoming_message, 1);
 
-                if (message_count == 0) {
-                    break;
-                }
+            if (message_count == 0) {
+                break;
+            }
 
-                ASSERT(message_count == 1 && incoming_message != NULL);
+            ASSERT(message_count == 1 && incoming_message != NULL);
 
-                // using std::string to get easy null termination for ease-of-use 
-                std::string message;
-                message.assign((const char *)incoming_message->m_pData, incoming_message->m_cbSize);
-                printf("Received message from client [%d]: %s\n", incoming_message->m_conn, message.c_str());
+            // using std::string to get easy null termination for ease-of-use 
+            std::string message;
+            message.assign((const char *)incoming_message->m_pData, incoming_message->m_cbSize);
+            incoming_message->Release();
 
-                incoming_message->Release();
+            network_queue_push(&server->in_queue, message);
+        }
+
+        // send outbound messages
+        while (server->running) {
+            std::string message;
+            bool message_exists = network_queue_pop(&server->out_queue, &message);
+
+            if (!message_exists) {
+                break;
+            }
+           
+            for (HSteamNetConnection connection : server->connections) {
+                server->interface->SendMessageToConnection(connection, message.c_str(), message.size(), k_nSteamNetworkingSend_Reliable, NULL);
             }
         }
 
         server->interface->RunCallbacks();
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(NETWORK_DELAY_MS));
     }
 
     printf("Shutting down server gracefully\n");
@@ -388,13 +484,40 @@ void client_thread_entry(Client *client) {
     printf("Client connected on port %d\n", port);
 
     while (client->running) {
+        // poll incoming messages 
+        while (client->running) {
+            ISteamNetworkingMessage *incoming_message = NULL;
+            i64 message_count = client->interface->ReceiveMessagesOnConnection(client->connection, &incoming_message, 1);
+
+            if (message_count == 0) {
+                break;
+            }
+
+            ASSERT(message_count == 1 && incoming_message != NULL);
+
+            // using std::string to get easy null termination for ease-of-use 
+            std::string message;
+            message.assign((const char *)incoming_message->m_pData, incoming_message->m_cbSize);
+            incoming_message->Release();
+
+            network_queue_push(&client->in_queue, message);
+        }
+
+        // send outbound messages
+        while (client->running) {
+            std::string message;
+            bool message_exists = network_queue_pop(&client->out_queue, &message);
+
+            if (!message_exists) {
+                break;
+            }
+
+            client->interface->SendMessageToConnection(client->connection, message.c_str(), message.size(), k_nSteamNetworkingSend_Reliable, NULL);
+        }
+
         client->interface->RunCallbacks();
 
-        str message = "Hello Sailor";
-
-        client->interface->SendMessageToConnection(client->connection, message.ptr, message.len, k_nSteamNetworkingSend_Reliable, NULL);            
-
-	std::this_thread::sleep_for(std::chrono::seconds(1));
+	std::this_thread::sleep_for(std::chrono::milliseconds(NETWORK_DELAY_MS));
     }
 
     printf("Shutting down client gracefully\n");
