@@ -109,14 +109,14 @@ Slice<T> slice_from_bytes(Slice<u8> slice) {
 }
 
 template <typename T>
-T *slice_to_ptr(Slice<u8> slice) {
+T *bytes_to_ptr(Slice<u8> slice) {
     ASSERT(slice.len == sizeof(T));
 
     return (T *) slice.ptr;
 }
 
 template <typename T>
-Slice<u8> slice_from_ptr(T *ptr) {
+Slice<u8> bytes_from_ptr(T *ptr) {
     return slice_create((u8 *) ptr, sizeof(T));
 }
 
@@ -402,6 +402,7 @@ template<typename T>
 void fmt_value(DynamicArray<u8> *bytes, T value);
 
 FMT_VALUE_IMPL_PRIMITIVE(const char *, "%s")
+FMT_VALUE_IMPL_PRIMITIVE(char *, "%s")
 FMT_VALUE_IMPL_PRIMITIVE(i64, "%lld")
 FMT_VALUE_IMPL_PRIMITIVE(i32, "%d")
 FMT_VALUE_IMPL_PRIMITIVE(i16, "%hd")
@@ -462,6 +463,12 @@ str fmt(Arena *arena, str format, Args... args) {
 void logln(str s) {
     fwrite(s.ptr, 1, s.len, stdout);
     fwrite("\n", 1, 1, stdout);
+}
+
+template<typename... Args>
+void logln_fmt(Arena *arena, str format, Args... args) {
+    str s = fmt(arena, format, args...);
+    logln(s);
 }
 
 f32 rand_f32();

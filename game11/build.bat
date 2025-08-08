@@ -6,5 +6,5 @@ set msbuild_flags=-m /p:Configuration=Debug /p:Platform=x64
 
 pushd build
 MSBuild.exe %msbuild_flags% -t:client .\Engine.sln
-rem MSBuild.exe %msbuild_flags% -t:server .\Engine.sln
+MSBuild.exe %msbuild_flags% -t:server .\Engine.sln
 popd
