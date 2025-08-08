@@ -1,5 +1,6 @@
 #include "libs/libs.h"
 #include "ack.cpp"
+#include "libs/raylib/include/raylib.h"
 #include "math.cpp"
 
 #include <stdio.h>
@@ -14,8 +15,8 @@
 #include <queue>
 #include <format>
 
-// Total: 12:30
-// Started: 13:30
+// Total: 17:00
+// Started: 17:30
 
 #define MAX_ENTITIES 2000
 
@@ -35,6 +36,20 @@ struct Entity {
     v4 colour;
 };
 
+enum NetworkMessageType {
+    SPAWN_ENTITY,
+    PRINT_NUMBER_MESSAGE
+}; 
+
+struct NetworkMessage {
+    NetworkMessageType type;
+    
+    union {
+        Entity spawn_entity;
+        i64 print_number;
+    };
+}; 
+
 enum EntityFlags {
     EF_PLAYER           = 1 << 0,
     EF_DELETE           = 1 << 16,
@@ -42,7 +57,7 @@ enum EntityFlags {
 
 struct NetworkQueue {
     std::mutex mutex;
-    std::queue<std::string> message_queue;
+    std::queue<Slice<u8>> message_queue;
 };
 
 struct Server {
@@ -89,8 +104,8 @@ void physics(f32 delta_time);
 
 Entity *spawn_entity(Entity entity);
 
-void network_queue_push(NetworkQueue *network_queue, std::string message);
-bool network_queue_pop(NetworkQueue *network_queue, std::string *out_message);
+void network_queue_push(NetworkQueue *network_queue, Slice<u8> message);
+bool network_queue_pop(NetworkQueue *network_queue, Slice<u8> *out_message);
 
 bool is_server();
 bool is_client();
@@ -122,6 +137,21 @@ int main() {
     window_title = "Game11 [Client]";
 #endif
 
+    {
+        Arena arena = arena_create(1024);
+        str s = fmt(&arena, "My name is {} and I am {} years old. Am I irish? {}", "jack", 24, true);
+        logln(s);
+    }
+
+    if (false) {
+        Arena arena = arena_create(1024);
+        DynamicArray<bool> array = dynamic_array_create<bool>(&arena, 2);
+
+        for (i32 i= 0; i < 100; i++) {
+            append(&array, true);
+        }
+    }
+
     srand(time(NULL));
 
     InitWindow(1080, 720, window_title);
@@ -131,30 +161,42 @@ int main() {
         f32 delta_time = 0;
 
         if (is_client()) {
-            { // receive from server 
-                std::string network_message;
-                while (network_queue_pop(&state.client.in_queue, &network_message)) {
-                    printf("Received: %s\n", network_message.c_str());
-                    network_queue_push(&state.client.out_queue, "Heard your message loud and clear\n");
-                }
+            if (IsKeyPressed(KEY_SPACE)) {
+                Entity e = Entity {
+                    .position = {0, 0, 0},
+                    .size = {20, 20},
+                    .colour = {1, 0, 0, 1}
+                };
+
+                spawn_entity(e);
+
+                NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = e};
+
+                Slice<u8> bytes = slice_create_malloc<u8>(sizeof(message));
+                slice_copy_raw_ptr(bytes, &message);
+
+                network_queue_push(&state.client.out_queue, bytes) ;
             }
         }
 
+#if 1
         if (is_server()) {
-            if (state.server.connections.len > 0 && IsKeyPressed(KEY_SPACE)) { // send to client
-                static i64 handshake_count = 0;
+            Slice<u8> bytes;
+            while (network_queue_pop(&state.server.in_queue, &bytes)) {
+                NetworkMessage *message = (NetworkMessage *) bytes.ptr;
 
-                network_queue_push(&state.server.out_queue, std::format("Starting a handshake {}", handshake_count));
-                handshake_count++;
-            }
-
-            { // get back from client
-                std::string network_message;
-                while (network_queue_pop(&state.server.in_queue, &network_message)) {
-                    printf("Message received from client: %s\n", network_message.c_str());
+                if (message->type == PRINT_NUMBER_MESSAGE) {
+                    printf("The client told me to print a number: %lld\n", message->print_number);
+                } 
+                else if (message->type == SPAWN_ENTITY) {
+                    spawn_entity(message->spawn_entity);
+                }
+                else {
+                    printf("The client told me something I did not understand\n");
                 }
             }
         }
+#endif
 
         update_entities(delta_time);
         physics(delta_time);
@@ -186,6 +228,7 @@ void update_entities(f32 delta_time) {
 
 void draw_entities(f32 delta_time) {
     for (Entity &entity : state.entities) {
+        DrawRectangle(i32(entity.position.x), i32(entity.position.y), i32(entity.size.x), i32(entity.size.y), BLUE);
     }
 }
 
@@ -242,12 +285,12 @@ Entity *spawn_entity(Entity entity) {
     return ptr;
 }
 
-void network_queue_push(NetworkQueue *network_queue, std::string message) {
+void network_queue_push(NetworkQueue *network_queue, Slice<u8> message) {
     std::scoped_lock lock(network_queue->mutex);
     network_queue->message_queue.push(message);
 }
 
-bool network_queue_pop(NetworkQueue *network_queue, std::string *out_message) {
+bool network_queue_pop(NetworkQueue *network_queue, Slice<u8> *out_message) {
     std::scoped_lock lock(network_queue->mutex);
 
     if (network_queue->message_queue.empty()) {
@@ -342,17 +385,18 @@ void server_thread_entry(Server *server) {
 
             ASSERT(message_count == 1 && incoming_message != NULL);
 
-            // using std::string to get easy null termination for ease-of-use 
-            std::string message;
-            message.assign((const char *)incoming_message->m_pData, incoming_message->m_cbSize);
-            incoming_message->Release();
+            { // copy message contents to byte slice and add to network queue
+                Slice<u8> bytes = slice_create_malloc<u8>(incoming_message->m_cbSize);
+                slice_copy_raw_ptr(bytes, incoming_message->m_pData);
+                network_queue_push(&server->in_queue, bytes);
+            }
 
-            network_queue_push(&server->in_queue, message);
+            incoming_message->Release();
         }
 
         // send outbound messages
         while (server->running) {
-            std::string message;
+            Slice<u8> message;
             bool message_exists = network_queue_pop(&server->out_queue, &message);
 
             if (!message_exists) {
@@ -360,7 +404,7 @@ void server_thread_entry(Server *server) {
             }
            
             for (HSteamNetConnection connection : server->connections) {
-                server->interface->SendMessageToConnection(connection, message.c_str(), message.size(), k_nSteamNetworkingSend_Reliable, NULL);
+                server->interface->SendMessageToConnection(connection, message.ptr, message.len, k_nSteamNetworkingSend_Reliable, NULL);
             }
         }
 
@@ -495,24 +539,25 @@ void client_thread_entry(Client *client) {
 
             ASSERT(message_count == 1 && incoming_message != NULL);
 
-            // using std::string to get easy null termination for ease-of-use 
-            std::string message;
-            message.assign((const char *)incoming_message->m_pData, incoming_message->m_cbSize);
-            incoming_message->Release();
+            { // copy message contents to byte slice and add to network queue
+                Slice<u8> bytes = slice_create_malloc<u8>(incoming_message->m_cbSize);
+                slice_copy_raw_ptr(bytes, incoming_message->m_pData);
+                network_queue_push(&client->in_queue, bytes);
+            }
 
-            network_queue_push(&client->in_queue, message);
+            incoming_message->Release();
         }
 
         // send outbound messages
         while (client->running) {
-            std::string message;
+            Slice<u8> message;
             bool message_exists = network_queue_pop(&client->out_queue, &message);
 
             if (!message_exists) {
                 break;
             }
 
-            client->interface->SendMessageToConnection(client->connection, message.c_str(), message.size(), k_nSteamNetworkingSend_Reliable, NULL);
+            client->interface->SendMessageToConnection(client->connection, message.ptr, message.len, k_nSteamNetworkingSend_Reliable, NULL);
         }
 
         client->interface->RunCallbacks();
