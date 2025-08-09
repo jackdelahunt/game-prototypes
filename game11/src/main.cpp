@@ -8,15 +8,13 @@
 #include <time.h>
 #include <stdlib.h>
 
-#include <string>
 #include <thread>
 #include <chrono>
 #include <mutex>
 #include <queue>
-#include <format>
 
 // Total: 17:00
-// Started: 17:30
+// Started: 12:30
 
 #define MAX_ENTITIES 2000
 #define NETWORK_DELAY_MS 50
@@ -37,8 +35,10 @@ struct Entity {
     v4 colour;
 };
 
+typedef HSteamNetConnection ConnectionId;
+
 enum NetworkMessageType {
-    ASSIGN_PLAYER_ENTITY,
+    ASSIGN_CLIENT_ID,
     CLIENT_CONNECTED,
     SPAWN_ENTITY,
     SYNC_ENTITY,
@@ -48,7 +48,7 @@ struct NetworkMessage {
     NetworkMessageType type;
     
     union {
-        Entity assign_player_entity;
+        ConnectionId assign_client_id;
         u32 client_connected;
         Entity spawn_entity;
         Entity sync_entity;
@@ -77,9 +77,7 @@ struct Server {
     HSteamListenSocket socket;
     HSteamNetPollGroup poll_group;
     StackArray<HSteamNetConnection, 10> connections;
-
     NetworkQueue in_queue;
-    NetworkQueue out_queue;
 };
 
 struct Client {
@@ -91,9 +89,7 @@ struct Client {
     ISteamNetworkingSockets *interface;
     SteamNetworkingMicroseconds start_time;
     HSteamNetConnection connection;
-
     NetworkQueue in_queue;
-    NetworkQueue out_queue;
 };
 
 struct State {
@@ -106,8 +102,12 @@ struct State {
     StackArray<Entity, MAX_ENTITIES> entities;
 } state = {};
 
+void update(f32 delta_time);
 void update_network();
+void on_server_receive(NetworkMessage *message);
+void on_client_receive(NetworkMessage *message);
 void update_entities(f32 delta_time);
+
 void draw_entities(f32 delta_time);
 void physics(f32 delta_time);
 
@@ -124,12 +124,15 @@ void server_thread_entry(Server *server);
 void server_on_connection_changed(Server *server, SteamNetConnectionStatusChangedCallback_t *info);
 void server_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info);
 void server_graceful_shutdown(Server *server);
+void server_send_to_client(Server *server, Slice<u8> message, ConnectionId id);
+void server_send_to_all_clients(Server *server, Slice<u8> message, ConnectionId exclude = 0);
 
 void client_run(Client *client);
 void client_thread_entry(Client *client);
 void client_on_connection_changed(Client *client, SteamNetConnectionStatusChangedCallback_t *info);
 void client_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info);
 void client_graceful_shutdown(Client *client);
+void client_send_to_server(Client *client, Slice<u8> message);
 
 void networking_debug_callback(ESteamNetworkingSocketsDebugOutputType type, const char *message);
 
@@ -147,12 +150,6 @@ int main() {
     window_title = "Game11 [Client]";
 #endif
 
-    {
-        Arena arena = arena_create(1024);
-        str s = fmt(&arena, "My name is {} and I am {} years old. Am I irish? {}", "jack", 24, true);
-        logln(s);
-    }
-
     srand(time(NULL));
 
     InitWindow(1080, 720, window_title);
@@ -164,8 +161,7 @@ int main() {
         if (is_client()) {
         }
 
-        update_network();
-        update_entities(delta_time);
+        update(delta_time);
         physics(delta_time);
         draw_entities(delta_time);
 
@@ -188,71 +184,118 @@ int main() {
     return 0;
 }
 
+void update(f32 delta_time) {
+    update_network();
+    update_entities(delta_time);
+}
+
 void update_network() {
-    // while these get assign based on type of the game it is, and therefore are used
-    // when ever sending in or out messages, that does not mean that every type of
-    // message is valid to be sent or recieved. This is just for ease of use
-    NetworkQueue *in_queue = is_server() ? &state.server.in_queue : &state.client.in_queue;
-    NetworkQueue *out_queue = is_server() ? &state.server.out_queue : &state.client.out_queue;
+    if (is_server()) {
+        Slice<u8> bytes;
+        while (network_queue_pop(&state.server.in_queue, &bytes)) {
+            NetworkMessage *message = (NetworkMessage *) bytes.ptr;
+            on_server_receive(message);
+            slice_free(bytes);
+        }
+    }
 
-    // check incoming messages
-    Slice<u8> bytes;
-    while (network_queue_pop(in_queue, &bytes)) {
-        NetworkMessage *in = (NetworkMessage *) bytes.ptr;
+    if (is_client()) {
+        Slice<u8> bytes;
+        while (network_queue_pop(&state.client.in_queue, &bytes)) {
+            NetworkMessage *message = (NetworkMessage *) bytes.ptr;
+            on_client_receive(message);
+            slice_free(bytes);
+        }
 
-        switch (in->type) {
-            case ASSIGN_PLAYER_ENTITY: {
-                printf("Assigned id of: %u\n", in->assign_player_entity.owner);
-                state.id = in->assign_player_entity.owner;
+        for (Entity &entity : state.entities) {
+            if (entity.owner != state.id) {
+                continue;
+            }
+    
+            NetworkMessage message = NetworkMessage{.type = SYNC_ENTITY, .sync_entity = entity};
+            client_send_to_server(&state.client, bytes_from_ptr(&message));
+        }
+    }
+}
 
-                spawn_entity(in->assign_player_entity);
-            } break;
-            case CLIENT_CONNECTED: { // generated by server when a new client connects
-                u32 client_id = in->client_connected;
-                printf("New client connected, assigning id of: %u\n", client_id);
+void on_server_receive(NetworkMessage *message) {
+    switch (message->type) {
+        case CLIENT_CONNECTED: {
+            // when client connects, the server generates this message and a few things are required to happen
+            // 1. The client is assigned an id from the server
+            // 2. Any existing entities are sent to the new client to spawn
+            // 3. The player entity is spawn on all clients and is owned by the new client
+            // - 09/08/25
 
-                Entity e = Entity {
+            ConnectionId id = message->client_connected;
+
+            { // assign client id
+                NetworkMessage message = NetworkMessage{.type = ASSIGN_CLIENT_ID, .assign_client_id = id};
+                server_send_to_client(&state.server, bytes_from_ptr(&message), id);
+                printf("New client connected, assigning id of: %u\n", id);
+            }
+
+            { // spawn any entities on new client
+                for (Entity &entity : state.entities) {
+                    NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = entity};
+                    server_send_to_client(&state.server, bytes_from_ptr(&message), id);
+                }
+            }
+
+            { // spawn new player entity on all clients
+                Entity new_player = Entity {
                     .flags = EF_PLAYER,
-                    .owner = client_id,
+                    .owner = id,
                     .position = {50, 50, 0},
                     .size = {50, 50},
                     .colour = {1, 0, 0, 1}
                 };
 
-                NetworkMessage message = NetworkMessage{.type = ASSIGN_PLAYER_ENTITY, .assign_player_entity = e};
-                network_queue_push(out_queue, bytes_from_ptr(&message));
+                spawn_entity(new_player);
 
-                spawn_entity(e);
-                network_queue_push(out_queue, bytes_from_ptr(&message));
-            } break;
-            case SPAWN_ENTITY: {
-                spawn_entity(in->spawn_entity);
-            } break;
-            case SYNC_ENTITY: {
-                for (Entity &entity : state.entities) {
-                    if (entity.owner != in->sync_entity.owner) {
-                        continue;
-                    }
-
-                    entity = in->sync_entity;
+                NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = new_player};
+                server_send_to_all_clients(&state.server, bytes_from_ptr(&message));
+            }
+        } break;
+        case SPAWN_ENTITY: {
+            spawn_entity(message->spawn_entity);
+        } break;
+        case SYNC_ENTITY: {
+            for (Entity &entity : state.entities) {
+                if (entity.owner == message->sync_entity.owner) {
+                    entity = message->sync_entity;
+                    NetworkMessage message = NetworkMessage{.type = SYNC_ENTITY, .sync_entity = entity};
+                    server_send_to_all_clients(&state.server, bytes_from_ptr(&message), entity.owner);
+                    break;
                 }
-            } break;
-            default: {
-                logln("WARNING unknown message sent");
-            } break;
-        }
-
-        slice_free(bytes);
+            }
+        } break;
+        default: {
+            logln("WARNING unknown message sent");
+        } break;
     }
+}
 
-    // sync any entities that need to 
-    for (Entity &entity : state.entities) {
-        if (entity.owner != state.id) {
-            continue;
-        }
-
-        NetworkMessage message = NetworkMessage{.type = SYNC_ENTITY, .sync_entity = entity};
-        network_queue_push(out_queue, bytes_from_ptr(&message));
+void on_client_receive(NetworkMessage *message) {
+    switch (message->type) {
+        case ASSIGN_CLIENT_ID: {
+            state.id = message->assign_client_id;
+            printf("Assigned id of: %u\n", state.id);
+        } break;
+        case SPAWN_ENTITY: {
+            spawn_entity(message->spawn_entity);
+        } break;
+        case SYNC_ENTITY: {
+            for (Entity &entity : state.entities) {
+                if (entity.owner == message->sync_entity.owner) {
+                    entity = message->sync_entity;
+                    break;
+                }
+            }
+        } break;
+        default: {
+            logln("WARNING unknown message sent");
+        } break;
     }
 }
 
@@ -458,22 +501,6 @@ void server_thread_entry(Server *server) {
             incoming_message->Release();
         }
 
-        // send outbound messages
-        while (server->running) {
-            Slice<u8> message;
-            bool message_exists = network_queue_pop(&server->out_queue, &message);
-
-            if (!message_exists) {
-                break;
-            }
-           
-            for (HSteamNetConnection connection : server->connections) {
-                server->interface->SendMessageToConnection(connection, message.ptr, message.len, k_nSteamNetworkingSend_Reliable, NULL);
-            }
-
-            slice_free(message);
-        }
-
         server->interface->RunCallbacks();
 
 	std::this_thread::sleep_for(std::chrono::milliseconds(NETWORK_DELAY_MS));
@@ -539,6 +566,18 @@ void server_graceful_shutdown(Server *server) {
 
     if (server->network_thread.joinable()) {
         server->network_thread.join();
+    }
+}
+
+void server_send_to_client(Server *server, Slice<u8> message, ConnectionId id) {
+    server->interface->SendMessageToConnection(id, message.ptr, message.len, k_nSteamNetworkingSend_Reliable, NULL);
+}
+
+void server_send_to_all_clients(Server *server, Slice<u8> message, ConnectionId exclude) {
+    for (ConnectionId id : server->connections) {
+        if (exclude != 0 && id == exclude) continue;
+
+        server->interface->SendMessageToConnection(id, message.ptr, message.len, k_nSteamNetworkingSend_Reliable, NULL);
     }
 }
 
@@ -617,20 +656,6 @@ void client_thread_entry(Client *client) {
             incoming_message->Release();
         }
 
-        // send outbound messages
-        while (client->running) {
-            Slice<u8> message;
-            bool message_exists = network_queue_pop(&client->out_queue, &message);
-
-            if (!message_exists) {
-                break;
-            }
-
-            client->interface->SendMessageToConnection(client->connection, message.ptr, message.len, k_nSteamNetworkingSend_Reliable, NULL);
-
-            slice_free(message);
-        }
-
         client->interface->RunCallbacks();
 
 	std::this_thread::sleep_for(std::chrono::milliseconds(NETWORK_DELAY_MS));
@@ -691,6 +716,10 @@ void client_graceful_shutdown(Client *client) {
     if (client->network_thread.joinable()) {
         client->network_thread.join();
     }
+}
+
+void client_send_to_server(Client *client, Slice<u8> message) {
+    client->interface->SendMessageToConnection(client->connection, message.ptr, message.len, k_nSteamNetworkingSend_Reliable, NULL);
 }
 
 void networking_debug_callback(ESteamNetworkingSocketsDebugOutputType type, const char *message) {
