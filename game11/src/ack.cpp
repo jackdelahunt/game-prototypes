@@ -1,6 +1,7 @@
 #ifndef ACK_CPP
 #define ACK_CPP
 
+#include <mutex>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -337,7 +338,6 @@ DynamicArray<T> dynamic_array_create(Arena *arena, i64 capacity) {
     };
 }
 
-
 template <typename T>
 void dynamic_array_maybe_grow(DynamicArray<T> *array, i64 required_slots) {
     i64 capacity_needed = array->len + required_slots;
@@ -458,10 +458,67 @@ str fmt(Arena *arena, str format, Args... args) {
     return bytes.slice.slice(0, bytes.len);
 }
 
+struct LogOptions {
+    const char *thread_name;
+    const char *thread_colour;
+};
+
+void logln(str s);
+template<typename... Args>
+void logln_fmt(Arena *arena, str format, Args... args);
+void log_set_thread_options(LogOptions options);
+void log_thread_name();
+
+f32 rand_f32();
+f32 rand_f32_negative();
+i64 rand_i64();
+str read_entire_file(str path);
+
 // @log
+#define RESET_ASCII_CODE         "\033[0m"
+
+// Regular colors
+#define BLACK_ASCII_CODE         "\033[30m"
+#define RED_ASCII_CODE           "\033[31m"
+#define GREEN_ASCII_CODE         "\033[32m"
+#define YELLOW_ASCII_CODE        "\033[33m"
+#define BLUE_ASCII_CODE          "\033[34m"
+#define MAGENTA_ASCII_CODE       "\033[35m"
+#define CYAN_ASCII_CODE          "\033[36m"
+#define WHITE_ASCII_CODE         "\033[37m"
+
+// Bright colors
+#define BRIGHT_BLACK_ASCII_CODE  "\033[90m"
+#define BRIGHT_RED_ASCII_CODE    "\033[91m"
+#define BRIGHT_GREEN_ASCII_CODE  "\033[92m"
+#define BRIGHT_YELLOW_ASCII_CODE "\033[93m"
+#define BRIGHT_BLUE_ASCII_CODE   "\033[94m"
+#define BRIGHT_MAGENTA_ASCII_CODE "\033[95m"
+#define BRIGHT_CYAN_ASCII_CODE   "\033[96m"
+#define BRIGHT_WHITE_ASCII_CODE  "\033[97m"
+
+thread_local LogOptions _options = LogOptions {
+    .thread_name = NULL,
+    .thread_colour = NULL,
+};
+
+std::mutex log_mutex;
+
 void logln(str s) {
+    log_mutex.lock();
+
+    if (_options.thread_colour != NULL) {
+        printf("%s", _options.thread_colour);
+    }
+
+    log_thread_name();
+
+    printf(RESET_ASCII_CODE);
+
     fwrite(s.ptr, 1, s.len, stdout);
     fwrite("\n", 1, 1, stdout);
+
+    log_mutex.unlock();
 }
 
 template<typename... Args>
@@ -470,10 +527,19 @@ void logln_fmt(Arena *arena, str format, Args... args) {
     logln(s);
 }
 
-f32 rand_f32();
-f32 rand_f32_negative();
-i64 rand_i64();
-str read_entire_file(str path);
+void log_set_thread_options(LogOptions options) {
+    _options = options;
+}
+
+void log_thread_name() {
+    const char *name = "?";
+
+    if (_options.thread_name != NULL) {
+        name = _options.thread_name;
+    }
+
+    printf("[%s] ", name); 
+}
 
 // 0 -> 1
 f32 rand_f32() {

@@ -1,23 +1,17 @@
 #include "libs/libs.h"
 #include "ack.cpp"
-#include "libs/raylib/include/raylib.h"
 #include "math.cpp"
+#include "net.cpp"
 
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
 #include <stdlib.h>
 
-#include <thread>
-#include <chrono>
-#include <mutex>
-#include <queue>
-
-// Total: 20:30
-// Started: 16:00
+// Total: 24:00
+// Started: 21:00
 
 #define MAX_ENTITIES 2000
-#define NETWORK_DELAY_MS 50
 #define SERVER_ID 1
 
 // @entity
@@ -38,8 +32,6 @@ struct Entity {
     // bullet
     u32 bullet_origin;
 };
-
-typedef HSteamNetConnection ConnectionId;
 
 enum NetworkMessageType {
     ASSIGN_CLIENT_ID,
@@ -67,44 +59,12 @@ enum EntityFlags {
     EF_DELETE           = 1 << 16,
 };
 
-struct NetworkQueue {
-    std::mutex mutex;
-    std::queue<Slice<u8>> messages;
-};
-
-// @server
-struct Server {
-    inline static Server *instance = NULL; // used to keep server instance around for network callbacks
-
-    Arena arena;
-    bool running;
-
-    std::thread network_thread;
-    ISteamNetworkingSockets *interface;
-    SteamNetworkingMicroseconds start_time;
-    HSteamListenSocket socket;
-    HSteamNetPollGroup poll_group;
-    StackArray<HSteamNetConnection, 10> connections;
-    NetworkQueue in_queue;
-};
-
-// @client
-struct Client {
-    inline static Client *instance = NULL; // used to keep client instance around for network callbacks
-
-    Arena arena;
-    bool running;
-    std::thread network_thread;
-    ISteamNetworkingSockets *interface;
-    SteamNetworkingMicroseconds start_time;
-    HSteamNetConnection connection;
-    NetworkQueue in_queue;
-};
-
 // @state
 struct State {
     u32 id;
     f64 time;
+
+    Arena arena;
 
     const char *title;
     v2 window_size;
@@ -113,7 +73,12 @@ struct State {
     Client client;
 
     StackArray<Entity, MAX_ENTITIES> entities;
-} state = {};
+};
+
+thread_local State state = {};
+
+void start_client_instance(i32 argc, const char **argv);
+void start_server_instance(i32 argc, const char **argv);
 
 void update(f32 delta_time);
 void update_network();
@@ -125,35 +90,14 @@ void draw_entities(f32 delta_time);
 void physics(f32 delta_time);
 
 u32 new_entity_id();
-Entity *spawn_entity_local(Entity entity);
-void spawn_entity_on_server(Entity entity);
-void delete_entity_local(u32 id);
-void delete_entity_on_server(u32 id);
+Entity *local_spawn_entity(Entity entity);
+void server_spawn_entity(Entity entity);
+void local_delete_entity(u32 id);
+void server_delete_entity(u32 id);
 Entity *get_entity_with_id(u32 id);
 bool entities_overlap(Entity *a, Entity *b);
 
-void network_queue_push(NetworkQueue *network_queue, Slice<u8> message);
-bool network_queue_pop(NetworkQueue *network_queue, Slice<u8> *out_message);
-
-bool is_server();
-bool is_client();
-
-void server_run(Server *server);
-void server_thread_entry(Server *server);
-void server_on_connection_changed(Server *server, SteamNetConnectionStatusChangedCallback_t *info);
-void server_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info);
-void server_graceful_shutdown(Server *server);
-void server_send_to_client(Server *server, Slice<u8> message, ConnectionId id);
-void server_send_to_all_clients(Server *server, Slice<u8> message, ConnectionId exclude = 0);
-
-void client_run(Client *client, const char *server_ip);
-void client_thread_entry(Client *client, const char *server_ip);
-void client_on_connection_changed(Client *client, SteamNetConnectionStatusChangedCallback_t *info);
-void client_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info);
-void client_graceful_shutdown(Client *client);
-void client_send_to_server(Client *client, Slice<u8> message);
-
-void networking_debug_callback(ESteamNetworkingSocketsDebugOutputType type, const char *message);
+void server_on_new_connection(Server *server, ConnectionId id);
 
 v2 v2_cast(Vector2 v);
 v3 v3_cast(Vector2 v);
@@ -161,19 +105,43 @@ v3 v3_cast(Vector3 v);
 
 // @main
 int main(i32 argc, const char **argv) {
-    state.title = is_server() ? "Game11 [Server]" : "Game11 [Client]";
+    log_set_thread_options(LogOptions {
+        .thread_name = "CLIENT",
+        .thread_colour = GREEN_ASCII_CODE,
+    });
+
+    logln("Hello from the main thread");
+
+    bool ok = init_networking();
+    if (!ok) {
+        printf("CRASH: failed to init networking\n");
+        return 1;
+    }
+
+    std::thread server_thread = std::thread([argc, argv] () {
+        log_set_thread_options(LogOptions {
+            .thread_name = "SERVER",
+            .thread_colour = YELLOW_ASCII_CODE,
+        });
+
+        logln("Hello from the server thread");
+
+        start_server_instance(argc, argv);
+    });
+
+    start_client_instance(argc, argv);
+}
+
+void start_client_instance(i32 argc, const char **argv) {
+    state.title = "Game11";
     state.window_size = v2{1080, 720};
+    state.arena = arena_create(10 * 1024 * 1024);
 
-#ifdef SERVER
-    state.id = SERVER_ID;
-    server_run(&state.server);
-#endif
-
-#ifdef CLIENT
     client_run(&state.client, argc > 1 ? argv[1] : NULL);
-#endif
 
     srand(time(NULL));
+
+    SetTraceLogLevel(LOG_ERROR);
 
     InitWindow(i32(state.window_size.x), i32(state.window_size.y), state.title);
     SetTargetFPS(60);
@@ -190,17 +158,26 @@ int main(i32 argc, const char **argv) {
         EndDrawing();
     }
 
-#ifdef SERVER
-    server_graceful_shutdown(&state.server);
-#endif
-
-#ifdef CLIENT
     client_graceful_shutdown(&state.client);
-#endif
 
     CloseWindow();
+}
 
-    return 0;
+void start_server_instance(i32 argc, const char **argv) {
+    state.id = SERVER_ID;
+    state.arena = arena_create(10 * 1024 * 1024);
+    state.server.on_new_connection = server_on_new_connection;
+
+    server_run(&state.server);
+
+    while (true) {
+        f32 delta_time = 0.05;
+
+        update(delta_time);
+        physics(delta_time);
+    }
+
+    server_graceful_shutdown(&state.server);
 }
 
 void update(f32 delta_time) {
@@ -280,7 +257,7 @@ void on_server_receive(NetworkMessage *message) {
                     .colour = RED 
                 };
 
-                spawn_entity_local(new_player);
+                local_spawn_entity(new_player);
 
                 NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = new_player};
                 server_send_to_all_clients(&state.server, bytes_from_ptr(&message));
@@ -290,7 +267,7 @@ void on_server_receive(NetworkMessage *message) {
             Entity entity = message->spawn_entity;
             entity.id = new_entity_id();
 
-            spawn_entity_local(entity);
+            local_spawn_entity(entity);
             NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = entity};
             server_send_to_all_clients(&state.server, bytes_from_ptr(&message));
         } break;
@@ -306,7 +283,7 @@ void on_server_receive(NetworkMessage *message) {
         case DELETE_ENTITY: {
             u32 id = message->delete_entity;
 
-            delete_entity_local(id);
+            local_delete_entity(id);
             NetworkMessage message = NetworkMessage{.type = DELETE_ENTITY, .delete_entity = id};
             server_send_to_all_clients(&state.server, bytes_from_ptr(&message));
         } break;
@@ -323,7 +300,7 @@ void on_client_receive(NetworkMessage *message) {
             printf("Assigned id of: %u\n", state.id);
         } break;
         case SPAWN_ENTITY: {
-            spawn_entity_local(message->spawn_entity);
+            local_spawn_entity(message->spawn_entity);
         } break;
         case SYNC_ENTITY: {
             Entity *entity = get_entity_with_id(message->sync_entity.id);
@@ -332,7 +309,7 @@ void on_client_receive(NetworkMessage *message) {
             }
         } break;
         case DELETE_ENTITY: {
-            delete_entity_local(message->delete_entity);
+            local_delete_entity(message->delete_entity);
         } break;
         default: {
             logln("WARNING unknown message sent");
@@ -382,7 +359,7 @@ void update_entities(f32 delta_time) {
                     .bullet_origin = entity.id,
                 };
 
-                spawn_entity_on_server(bullet);
+                server_spawn_entity(bullet);
             }
 
             // bullet collision detection
@@ -399,7 +376,7 @@ void update_entities(f32 delta_time) {
                     continue;
                 }
 
-                delete_entity_on_server(other.id);
+                server_delete_entity(other.id);
             }
         }
 
@@ -446,14 +423,14 @@ u32 new_entity_id() {
     return id++;
 }
 
-Entity *spawn_entity_local(Entity entity) {
+Entity *local_spawn_entity(Entity entity) {
     Entity *ptr = push(&state.entities);
     *ptr = entity;
 
     return ptr;
 }
 
-void delete_entity_local(u32 id) {
+void local_delete_entity(u32 id) {
     for (i64 i = 0; i < state.entities.len; i++) {
         Entity *entity = &state.entities[i];
 
@@ -464,12 +441,12 @@ void delete_entity_local(u32 id) {
     }
 }
 
-void spawn_entity_on_server(Entity entity) {
+void server_spawn_entity(Entity entity) {
     NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = entity};
     client_send_to_server(&state.client, bytes_from_ptr(&message));
 }
 
-void delete_entity_on_server(u32 id) {
+void server_delete_entity(u32 id) {
     NetworkMessage message = NetworkMessage{.type = DELETE_ENTITY, .delete_entity = id};
     client_send_to_server(&state.client, bytes_from_ptr(&message));
 }
@@ -503,361 +480,9 @@ bool entities_overlap(Entity *a, Entity *b) {
     return overlapX && overlapY;
 }
 
-void network_queue_push(NetworkQueue *network_queue, Slice<u8> message) {
-    std::scoped_lock lock(network_queue->mutex);
-
-    Slice<u8> message_copy = slice_create_malloc<u8>(message.len);
-    slice_copy(message_copy, message);
-
-    network_queue->messages.push(message_copy);
-}
-
-bool network_queue_pop(NetworkQueue *network_queue, Slice<u8> *out_message) {
-    std::scoped_lock lock(network_queue->mutex);
-
-    if (network_queue->messages.empty()) {
-        return false;
-    }
-
-    *out_message = network_queue->messages.front();
-    network_queue->messages.pop();
-
-    return true;
-}
-
-bool is_server() {
-#ifdef SERVER
-    return true;
-#else
-    return false;
-#endif
-}
-
-bool is_client() {
-#ifdef CLIENT
-    return true;
-#else
-    return false;
-#endif
-}
-
-void server_run(Server *server) {
-    if (server->running) return;
-
-    server->arena = arena_create(20 * 1024 * 1024); // 20MB
-
-    server->network_thread = std::thread([server] () { server_thread_entry(server); });
-}
-
-void server_thread_entry(Server *server) {
-    // set this so any callbacks can then refer to the current running server
-    // this should not be used directly unless for those callbacks and needs to
-    // be cleaned up when the thread ends or aborts
-    // - 31/07/25
-    Server::instance = server;
-    server->running = true;
-
-    logln("Created server thread");
-
-    SteamDatagramErrMsg error_message;
-    if (!GameNetworkingSockets_Init(nullptr, error_message)) {
-        logln_fmt(&server->arena, "GameNetworkingSockets_Init failed {}", error_message);
-        server->running = false;
-        return;
-    }
-    
-    server->start_time = SteamNetworkingUtils()->GetLocalTimestamp();
-    SteamNetworkingUtils()->SetDebugOutputFunction(k_ESteamNetworkingSocketsDebugOutputType_Msg, networking_debug_callback);
-
-    server->interface = SteamNetworkingSockets();
-
-    // init server 
-    u16 port = 27020;
-
-    SteamNetworkingIPAddr address; 
-    address.Clear();
-
-    address.ParseString("0.0.0.0");
-    address.m_port = port;
-
-    SteamNetworkingConfigValue_t opt;
-    opt.SetPtr(k_ESteamNetworkingConfig_Callback_ConnectionStatusChanged, (void*)server_network_connection_status_changed_callback);
-
-    server->socket = server->interface->CreateListenSocketIP(address, 1, &opt);
-    if (server->socket == k_HSteamListenSocket_Invalid) {
-        logln_fmt(&server->arena, "Error creating socket, failed to listen on port {}", port);
-        server->running = false;
-        return;
-    }
-    
-    state.server.poll_group = state.server.interface->CreatePollGroup();
-    if (state.server.poll_group == k_HSteamNetPollGroup_Invalid) {
-        logln_fmt(&server->arena, "Error creating poll group, failed to listen on port {}", port);
-        server->running = false;
-        return;
-    }
-    
-    logln_fmt(&server->arena, "Server listening on port {}", port);
-
-    while (server->running) {
-        // poll incoming messages 
-        while (server->running) {
-            ISteamNetworkingMessage *incoming_message = NULL;
-            int message_count = server->interface->ReceiveMessagesOnPollGroup(server->poll_group, &incoming_message, 1);
-
-            if (message_count == 0) {
-                break;
-            }
-
-            ASSERT(message_count == 1 && incoming_message != NULL);
-
-            { // copy message contents to byte slice and add to network queue
-                Slice<u8> bytes = slice_create_malloc<u8>(incoming_message->m_cbSize);
-                slice_copy_raw_ptr(bytes, incoming_message->m_pData);
-                network_queue_push(&server->in_queue, bytes);
-            }
-
-            incoming_message->Release();
-        }
-
-        server->interface->RunCallbacks();
-
-	std::this_thread::sleep_for(std::chrono::milliseconds(NETWORK_DELAY_MS));
-    }
-
-    logln("Shutting down server gracefully");
-
-    for (HSteamNetConnection connection : server->connections) {
-        server->interface->CloseConnection(connection, 0, "Server shutdown", true);
-    }
-
-    reset(&server->connections);
-
-    server->interface->CloseListenSocket(server->socket);
-    server->socket = k_HSteamListenSocket_Invalid;
-
-    server->interface->DestroyPollGroup(server->poll_group);
-    server->poll_group = k_HSteamNetPollGroup_Invalid;
-
-    GameNetworkingSockets_Kill();
-}
-
-void server_on_connection_changed(Server *server, SteamNetConnectionStatusChangedCallback_t *info) {
-    switch (info->m_info.m_eState) {
-        case k_ESteamNetworkingConnectionState_None:                    break;
-        case k_ESteamNetworkingConnectionState_ClosedByPeer:            break;
-        case k_ESteamNetworkingConnectionState_ProblemDetectedLocally:  break;
-        case k_ESteamNetworkingConnectionState_Connected:               break;
-        case k_ESteamNetworkingConnectionState_Connecting: {
-            logln_fmt(&server->arena, "Connection request from {}", info->m_info.m_szConnectionDescription);
-    
-            if (server->interface->AcceptConnection(info->m_hConn) != k_EResultOK) {
-                // This could fail.  If the remote host tried to connect, but then
-                // disconnected, the connection may already be half closed.  Just
-                // destroy whatever we have on our side.
-                server->interface->CloseConnection(info->m_hConn, 0, nullptr, false);
-                logln("Can't accept connection");
-                break;
-            }
-    
-            if (!server->interface->SetConnectionPollGroup(info->m_hConn, server->poll_group)) {
-                server->interface->CloseConnection(info->m_hConn, 0, nullptr, false );
-                logln("Failed to set poll group for connection");
-                break;
-            }
-    
-            append(&server->connections, info->m_hConn);
-            NetworkMessage message = NetworkMessage{.type = CLIENT_CONNECTED, .client_connected = info->m_hConn};
-            network_queue_push(&state.server.in_queue, bytes_from_ptr(&message));
-        } break;
-        default: break;
-    }
-}
-
-void server_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info) {
-    ASSERT(Server::instance != NULL && Server::instance->running);
-
-    server_on_connection_changed(Server::instance, info);
-}
-
-void server_graceful_shutdown(Server *server) {
-    server->running = false;
-
-    if (server->network_thread.joinable()) {
-        server->network_thread.join();
-    }
-}
-
-void server_send_to_client(Server *server, Slice<u8> message, ConnectionId id) {
-    server->interface->SendMessageToConnection(id, message.ptr, message.len, k_nSteamNetworkingSend_Reliable, NULL);
-}
-
-void server_send_to_all_clients(Server *server, Slice<u8> message, ConnectionId exclude) {
-    for (ConnectionId id : server->connections) {
-        if (exclude != 0 && id == exclude) continue;
-
-        server->interface->SendMessageToConnection(id, message.ptr, message.len, k_nSteamNetworkingSend_Reliable, NULL);
-    }
-}
-
-void client_run(Client *client, const char *server_ip) {
-    if (client->running) return;
-
-    client->arena = arena_create(20 * 1024 * 1024); // 20MB
-
-    client->network_thread = std::thread([client, server_ip] () { client_thread_entry(client, server_ip); });
-}
-
-void client_thread_entry(Client *client, const char *server_ip) {
-    // set this so any callbacks can then refer to the current running client
-    // this should not be used directly unless for those callbacks and needs to
-    // be cleaned up when the thread ends or aborts
-    // - 31/07/25
-    Client::instance = client;
-    client->running = true;
-
-    logln("Created client thread");
-
-    SteamDatagramErrMsg error_message;
-    if (!GameNetworkingSockets_Init(nullptr, error_message)) {
-        logln_fmt(&client->arena, "GameNetworkingSockets_Init failed: {}", error_message);
-        client->running = false;
-        return;
-    }
-    
-    client->start_time = SteamNetworkingUtils()->GetLocalTimestamp();
-    SteamNetworkingUtils()->SetDebugOutputFunction(k_ESteamNetworkingSocketsDebugOutputType_Msg, networking_debug_callback);
-
-    client->interface = SteamNetworkingSockets();
-        
-    // init client 
-    u16 port = 27020;
-
-    SteamNetworkingIPAddr address; 
-    address.Clear();
-
-    if (server_ip != NULL) {
-        address.ParseString(server_ip);
-        address.m_port = port;
-    }
-    else {
-        ASSERT(address.ParseString("::1"));
-        address.m_port = port;
-    }
-
-    char address_buffer[ SteamNetworkingIPAddr::k_cchMaxString ];
-    address.ToString(address_buffer, sizeof(address_buffer), true);
-
-    SteamNetworkingConfigValue_t opt;
-    opt.SetPtr(k_ESteamNetworkingConfig_Callback_ConnectionStatusChanged, (void*)client_network_connection_status_changed_callback);
-
-    client->connection = client->interface->ConnectByIPAddress(address, 1, &opt);
-    if (client->connection == k_HSteamNetConnection_Invalid ) {
-        logln("Failed to create connection to server");
-        client->running = false;
-        return;
-    }
-
-    while (client->running) {
-        // poll incoming messages 
-        while (client->running) {
-            ISteamNetworkingMessage *incoming_message = NULL;
-            i64 message_count = client->interface->ReceiveMessagesOnConnection(client->connection, &incoming_message, 1);
-
-            if (message_count == 0) {
-                break;
-            }
-
-            ASSERT(message_count == 1 && incoming_message != NULL);
-
-            { // copy message contents to byte slice and add to network queue
-                Slice<u8> bytes = slice_create_malloc<u8>(incoming_message->m_cbSize);
-                slice_copy_raw_ptr(bytes, incoming_message->m_pData);
-                network_queue_push(&client->in_queue, bytes);
-            }
-
-            incoming_message->Release();
-        }
-
-        client->interface->RunCallbacks();
-
-	std::this_thread::sleep_for(std::chrono::milliseconds(NETWORK_DELAY_MS));
-    }
-
-    logln("Shutting down client gracefully");
-
-    client->interface->CloseConnection(client->connection, 0, nullptr, false);
-    client->connection = k_HSteamNetConnection_Invalid;
-    GameNetworkingSockets_Kill();
-}
-
-void client_on_connection_changed(Client *client, SteamNetConnectionStatusChangedCallback_t *info) {
-    ASSERT(info->m_hConn == client->connection || client->connection == k_HSteamNetConnection_Invalid);
-
-    switch (info->m_info.m_eState) {
-        case k_ESteamNetworkingConnectionState_None: {
-            logln_fmt(&client->arena, "Connection is in a none state: {}", info->m_info.m_szEndDebug);
-        } break;
-        case k_ESteamNetworkingConnectionState_ClosedByPeer: {
-            logln_fmt(&client->arena, "Connection closed by peer: {}", info->m_info.m_szEndDebug);
-        } break;
-        case k_ESteamNetworkingConnectionState_Connecting: {
-            logln("Client is trying to connect");
-        } break;
-        case k_ESteamNetworkingConnectionState_ProblemDetectedLocally: {
-            client->running = false;
-    
-            if (info->m_eOldState == k_ESteamNetworkingConnectionState_Connecting ) {
-                logln_fmt(&client->arena, "Tried to connect but failed: {}", info->m_info.m_szEndDebug);
-            }
-            else if (info->m_info.m_eState == k_ESteamNetworkingConnectionState_ProblemDetectedLocally) {
-                logln_fmt(&client->arena, "Lost contact with the host: {}", info->m_info.m_szEndDebug);
-            }
-            else {
-                logln_fmt(&client->arena, "Disconnected from server: {}", info->m_info.m_szEndDebug);
-            }
-    
-            // Clean up the connection.  This is important!
-            // The connection is "closed" in the network sense, but
-            // it has not been destroyed.  We must close it on our end, too
-            // to finish up.  The reason information do not matter in this case,
-            // and we cannot linger because it's already closed on the other end,
-            // so we just pass 0's.
-            client->interface->CloseConnection(info->m_hConn, 0, nullptr, false );
-            client->connection = k_HSteamNetConnection_Invalid;
-        } break;
-        case k_ESteamNetworkingConnectionState_Connected: {
-            logln("Client connected to server");
-        } break;
-        default: break;
-    }
-}
-
-void client_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info) {
-    ASSERT(Client::instance != NULL && Client::instance->running);
-
-    client_on_connection_changed(Client::instance, info);
-}
-
-void client_graceful_shutdown(Client *client) {
-    client->running = false;
-
-    if (client->network_thread.joinable()) {
-        client->network_thread.join();
-    }
-}
-
-void client_send_to_server(Client *client, Slice<u8> message) {
-    client->interface->SendMessageToConnection(client->connection, message.ptr, message.len, k_nSteamNetworkingSend_Reliable, NULL);
-}
-
-void networking_debug_callback(ESteamNetworkingSocketsDebugOutputType type, const char *message) {
-    printf("[NETWORK]: %s\n", message);
-
-    if (type == k_ESteamNetworkingSocketsDebugOutputType_Bug) {
-        printf("[NETWORK]: fatal error\n");
-        BREAKPOINT;
-    }
+void server_on_new_connection(Server *server, ConnectionId id) {
+    NetworkMessage message = NetworkMessage {.type = CLIENT_CONNECTED, .client_connected = id};
+    network_queue_push(&server->in_queue, bytes_from_ptr(&message));
 }
 
 v2 v2_cast(Vector2 v) {
