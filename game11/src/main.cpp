@@ -13,18 +13,12 @@
 #include <mutex>
 #include <queue>
 
-// Total: 18:30
-// Started: 14:00
+// Total: 20:30
+// Started: 16:00
 
 #define MAX_ENTITIES 2000
-#define MAX_BUBBLES 10
 #define NETWORK_DELAY_MS 50
 #define SERVER_ID 1
-
-enum Team {
-    TEAM_RED,
-    TEAM_BLUE
-};
 
 // @entity
 struct Entity {
@@ -152,8 +146,8 @@ void server_graceful_shutdown(Server *server);
 void server_send_to_client(Server *server, Slice<u8> message, ConnectionId id);
 void server_send_to_all_clients(Server *server, Slice<u8> message, ConnectionId exclude = 0);
 
-void client_run(Client *client);
-void client_thread_entry(Client *client);
+void client_run(Client *client, const char *server_ip);
+void client_thread_entry(Client *client, const char *server_ip);
 void client_on_connection_changed(Client *client, SteamNetConnectionStatusChangedCallback_t *info);
 void client_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info);
 void client_graceful_shutdown(Client *client);
@@ -166,7 +160,7 @@ v3 v3_cast(Vector2 v);
 v3 v3_cast(Vector3 v);
 
 // @main
-int main() {
+int main(i32 argc, const char **argv) {
     state.title = is_server() ? "Game11 [Server]" : "Game11 [Client]";
     state.window_size = v2{1080, 720};
 
@@ -176,7 +170,7 @@ int main() {
 #endif
 
 #ifdef CLIENT
-    client_run(&state.client);
+    client_run(&state.client, argc > 1 ? argv[1] : NULL);
 #endif
 
     srand(time(NULL));
@@ -582,6 +576,8 @@ void server_thread_entry(Server *server) {
 
     SteamNetworkingIPAddr address; 
     address.Clear();
+
+    address.ParseString("0.0.0.0");
     address.m_port = port;
 
     SteamNetworkingConfigValue_t opt;
@@ -704,15 +700,15 @@ void server_send_to_all_clients(Server *server, Slice<u8> message, ConnectionId 
     }
 }
 
-void client_run(Client *client) {
+void client_run(Client *client, const char *server_ip) {
     if (client->running) return;
 
     client->arena = arena_create(20 * 1024 * 1024); // 20MB
 
-    client->network_thread = std::thread([client] () { client_thread_entry(client); });
+    client->network_thread = std::thread([client, server_ip] () { client_thread_entry(client, server_ip); });
 }
 
-void client_thread_entry(Client *client) {
+void client_thread_entry(Client *client, const char *server_ip) {
     // set this so any callbacks can then refer to the current running client
     // this should not be used directly unless for those callbacks and needs to
     // be cleaned up when the thread ends or aborts
@@ -739,12 +735,18 @@ void client_thread_entry(Client *client) {
 
     SteamNetworkingIPAddr address; 
     address.Clear();
-    ASSERT(address.ParseString("::1"));
-    address.m_port = port;
+
+    if (server_ip != NULL) {
+        address.ParseString(server_ip);
+        address.m_port = port;
+    }
+    else {
+        ASSERT(address.ParseString("::1"));
+        address.m_port = port;
+    }
 
     char address_buffer[ SteamNetworkingIPAddr::k_cchMaxString ];
     address.ToString(address_buffer, sizeof(address_buffer), true);
-    logln_fmt(&client->arena, "Connecting to server at {}", address_buffer);
 
     SteamNetworkingConfigValue_t opt;
     opt.SetPtr(k_ESteamNetworkingConfig_Callback_ConnectionStatusChanged, (void*)client_network_connection_status_changed_callback);
@@ -755,8 +757,6 @@ void client_thread_entry(Client *client) {
         client->running = false;
         return;
     }
-
-    logln_fmt(&client->arena, "Client connected on port {}", port);
 
     while (client->running) {
         // poll incoming messages 
@@ -795,9 +795,15 @@ void client_on_connection_changed(Client *client, SteamNetConnectionStatusChange
     ASSERT(info->m_hConn == client->connection || client->connection == k_HSteamNetConnection_Invalid);
 
     switch (info->m_info.m_eState) {
-        case k_ESteamNetworkingConnectionState_None:            break;
-        case k_ESteamNetworkingConnectionState_ClosedByPeer:    break;
-        case k_ESteamNetworkingConnectionState_Connecting:      break;
+        case k_ESteamNetworkingConnectionState_None: {
+            logln_fmt(&client->arena, "Connection is in a none state: {}", info->m_info.m_szEndDebug);
+        } break;
+        case k_ESteamNetworkingConnectionState_ClosedByPeer: {
+            logln_fmt(&client->arena, "Connection closed by peer: {}", info->m_info.m_szEndDebug);
+        } break;
+        case k_ESteamNetworkingConnectionState_Connecting: {
+            logln("Client is trying to connect");
+        } break;
         case k_ESteamNetworkingConnectionState_ProblemDetectedLocally: {
             client->running = false;
     
@@ -808,7 +814,7 @@ void client_on_connection_changed(Client *client, SteamNetConnectionStatusChange
                 logln_fmt(&client->arena, "Lost contact with the host: {}", info->m_info.m_szEndDebug);
             }
             else {
-                logln_fmt(&client->arena, "Disconnected from server {}", info->m_info.m_szEndDebug);
+                logln_fmt(&client->arena, "Disconnected from server: {}", info->m_info.m_szEndDebug);
             }
     
             // Clean up the connection.  This is important!

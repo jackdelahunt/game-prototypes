@@ -344,7 +344,6 @@ void dynamic_array_maybe_grow(DynamicArray<T> *array, i64 required_slots) {
     i64 new_capacity = capacity_needed * 2;
 
     if (capacity_needed > array->capacity) {
-        printf("dyn array grew, len is %lld capacity was %lld now %lld\n", array->len, array->capacity, new_capacity);
         array->slice = arena_realloc(array->arena, array->slice, new_capacity);
         array->capacity = new_capacity;
     }
