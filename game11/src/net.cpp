@@ -12,6 +12,7 @@
 #include <queue>
 
 #define NETWORK_DELAY_MS 50
+#define DEFAULT_PORT 27020
 
 // I hate c++
 struct Server; 
@@ -33,9 +34,16 @@ struct NetworkConfig {
     bool run_client;
 };
 
+enum NetworkInstanceState {
+    NOT_RUNNING,
+    START,
+    STOP,
+    RUNNING,
+};
+
 // @server
 struct Server {
-    bool running;
+    NetworkInstanceState server_state;
     HSteamListenSocket socket;
     HSteamNetPollGroup poll_group;
     StackArray<HSteamNetConnection, 10> connections;
@@ -47,7 +55,8 @@ struct Server {
 
 // @client
 struct Client {
-    bool running;
+    NetworkInstanceState client_state;
+    const char *server_address;
     HSteamNetConnection connection;
 };
 
@@ -58,7 +67,6 @@ struct NetworkLayer {
 
     ISteamNetworkingSockets *interface;
 
-    NetworkConfig config;
     Client client;
     Server server;
 
@@ -66,19 +74,30 @@ struct NetworkLayer {
     NetworkQueue client_in_queue;
 };
 
-// call init_networking() and NET()
-NetworkLayer *net_instance_global = NULL;
+// call network_layer_init() and NET()
+NetworkLayer *g_network_layer = NULL;
 
 NetworkLayer *NET();
-bool init_networking(NetworkConfig config);
-void net_graceful_shutdown();
 
-void net_run();
-void neo_server_on_connection_changed(NetworkLayer *net, Server *server, SteamNetConnectionStatusChangedCallback_t *info);
-void neo_client_on_connection_changed(NetworkLayer *net, Client *client, SteamNetConnectionStatusChangedCallback_t *info);
+bool network_layer_init();
 
-void neo_server_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info);
-void neo_client_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info);
+void network_layer_start();
+void network_layer_stop();
+
+void network_layer_start_client(NetworkLayer *net, const char *server_address);
+void network_layer_stop_client(NetworkLayer *net);
+
+void network_layer_start_server(NetworkLayer *net);
+void network_layer_stop_server(NetworkLayer *net);
+
+void network_layer_update_client(NetworkLayer *net);
+void network_layer_update_server(NetworkLayer *net);
+
+void server_on_connection_changed(NetworkLayer *net, Server *server, SteamNetConnectionStatusChangedCallback_t *info);
+void client_on_connection_changed(NetworkLayer *net, Client *client, SteamNetConnectionStatusChangedCallback_t *info);
+
+void server_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info);
+void client_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info);
 
 void network_queue_push(NetworkQueue *network_queue, Slice<u8> message);
 bool network_queue_pop(NetworkQueue *network_queue, Slice<u8> *out_message);
@@ -90,44 +109,29 @@ void client_send_to_server(NetworkLayer *net, Slice<u8> message);
 void networking_debug_callback(ESteamNetworkingSocketsDebugOutputType type, const char *message);
 
 NetworkLayer *NET() {
-    ASSERT(net_instance_global != NULL);
-    return net_instance_global;
+    ASSERT(g_network_layer != NULL);
+    return g_network_layer;
 }
 
-bool init_networking(NetworkConfig config) {
-    net_instance_global = new NetworkLayer {};
-    net_instance_global->arena = arena_create(10 * 1024 * 1024);
-    net_instance_global->config = config;
+bool network_layer_init() {
+    g_network_layer = new NetworkLayer {};
+    g_network_layer->arena = arena_create(10 * 1024 * 1024);
 
     SteamDatagramErrMsg error_message;
     if (!GameNetworkingSockets_Init(nullptr, error_message)) {
-        logln_fmt(&net_instance_global->arena, "GameNetworkingSockets_Init failed: {}", error_message);
+        logln_fmt(&g_network_layer->arena, "GameNetworkingSockets_Init failed: {}", error_message);
         return false;
     }
 
-    net_instance_global->interface = SteamNetworkingSockets();
+    g_network_layer->interface = SteamNetworkingSockets();
     
     SteamNetworkingUtils()->SetDebugOutputFunction(k_ESteamNetworkingSocketsDebugOutputType_Msg, networking_debug_callback);
 
-    logln("initialised networking and global net instance");
+    logln("Initialised network layer");
     return true;
 }
 
-void net_graceful_shutdown() {
-    if (net_instance_global == NULL) {
-        return;
-    }
-
-    net_instance_global->running = false;
-
-    if (net_instance_global->thread.joinable()) {
-        net_instance_global->thread.join();
-    }
-
-    GameNetworkingSockets_Kill();
-}
-
-void net_run() {
+void network_layer_start() {
     NetworkLayer *net = NET();
     ASSERT(net != NULL && net->running == false);
 
@@ -141,115 +145,167 @@ net->thread = std::thread([net] () {
 
     net->running = true;
 
-    if (net->config.run_server) { // start server
-        net->server.running = true;
-    
-        // init server 
-        SteamNetworkingIPAddr address; 
-        address.Clear();
-    
-        address.ParseString(net->config.server_address);
-        address.m_port = net->config.port;
-    
-        SteamNetworkingConfigValue_t opt;
-        opt.SetPtr(k_ESteamNetworkingConfig_Callback_ConnectionStatusChanged, (void*)neo_server_network_connection_status_changed_callback);
-    
-        net->server.socket = net->interface->CreateListenSocketIP(address, 1, &opt);
-        if (net->server.socket == k_HSteamListenSocket_Invalid) {
-            logln_fmt(&net->arena, "Error creating server socket, failed to listen on port {}", net->config.port);
-            net->server.running = false;
-            return;
-        }
-        
-        net->server.poll_group = net->interface->CreatePollGroup();
-        if (net->server.poll_group == k_HSteamNetPollGroup_Invalid) {
-            logln_fmt(&net->arena, "Error creating poll group, failed to listen on port {}", net->config.port);
-            net->server.running = false;
-            return;
-        }
-        
-        logln_fmt(&net->arena, "Server listening on port {}", net->config.port);
+    while (net->running) {
+        network_layer_update_server(net);
+        network_layer_update_client(net); 
+        net->interface->RunCallbacks();
+ 
+	std::this_thread::sleep_for(std::chrono::milliseconds(NETWORK_DELAY_MS));
+    }
+});
+}
+
+void network_layer_stop() {
+    if (g_network_layer == NULL) {
+        return;
     }
 
-    if (net->config.run_client) { // start client
-        net->client.running = true;
-    
-        // init client 
-        SteamNetworkingIPAddr address; 
-        address.Clear();
-    
-        ASSERT(address.ParseString(net->config.server_address));
-        address.m_port = net->config.port;
-    
-        char address_buffer[ SteamNetworkingIPAddr::k_cchMaxString ];
-        address.ToString(address_buffer, sizeof(address_buffer), true);
-    
-        SteamNetworkingConfigValue_t opt;
-        opt.SetPtr(k_ESteamNetworkingConfig_Callback_ConnectionStatusChanged, (void*)neo_client_network_connection_status_changed_callback);
-    
-        net->client.connection = net->interface->ConnectByIPAddress(address, 1, &opt);
-        if (net->client.connection == k_HSteamNetConnection_Invalid ) {
-            logln("Tried to create an invalid connection to server");
-            net->client.running = false;
-            return;
-        }
+    g_network_layer->running = false;
+
+    if (g_network_layer->thread.joinable()) {
+        g_network_layer->thread.join();
     }
 
-    { // poll incoming messages
-        while (net->running) {
-            // poll incoming messages 
-            while (net->config.run_server && net->server.running) {
-                ISteamNetworkingMessage *incoming_message = NULL;
-                int message_count = net->interface->ReceiveMessagesOnPollGroup(net->server.poll_group, &incoming_message, 1);
-    
-                if (message_count == 0) {
-                    break;
-                }
-    
-                ASSERT(message_count == 1 && incoming_message != NULL);
-    
-                { // copy message contents to byte slice and add to network queue
-                    Slice<u8> bytes = slice_create_malloc<u8>(incoming_message->m_cbSize);
-                    slice_copy_raw_ptr(bytes, incoming_message->m_pData);
-                    network_queue_push(&net->server_in_queue, bytes);
-                }
-    
-                incoming_message->Release();
-            }
+    GameNetworkingSockets_Kill();
+}
 
-            while (net->config.run_client && net->client.running) {
-                ISteamNetworkingMessage *incoming_message = NULL;
-                i64 message_count = net->interface->ReceiveMessagesOnConnection(net->client.connection, &incoming_message, 1);
-    
-                if (message_count == 0) {
-                    break;
-                }
-    
-                ASSERT(message_count == 1 && incoming_message != NULL);
-    
-                { // copy message contents to byte slice and add to network queue
-                    Slice<u8> bytes = slice_create_malloc<u8>(incoming_message->m_cbSize);
-                    slice_copy_raw_ptr(bytes, incoming_message->m_pData);
-                    network_queue_push(&net->client_in_queue, bytes);
-                }
-    
-                incoming_message->Release();
+void network_layer_start_client(NetworkLayer *net, const char *server_address) {
+    ASSERT(net && net->running);
+    ASSERT(net->client.client_state == NOT_RUNNING);
+
+    net->client.client_state = START;
+    net->client.server_address = server_address;
+}
+
+void network_layer_stop_client(NetworkLayer *net) {
+    ASSERT(net && net->running);
+
+    net->client.client_state = STOP;
+}
+
+void network_layer_start_server(NetworkLayer *net) {
+    ASSERT(net && net->running);
+    ASSERT(net->server.server_state == NOT_RUNNING);
+
+    net->server.server_state = START;
+}
+
+void network_layer_stop_server(NetworkLayer *net) {
+    ASSERT(net && net->running);
+
+    net->server.server_state = STOP;
+}
+
+void network_layer_update_client(NetworkLayer *net) {
+    if (net->client.client_state == START) {
+
+        // set when changing state to start from main thread 
+        ASSERT(net->client.server_address);
+
+        // set to not running, if we return early then this is how
+        // the game client knows, if this all works then set to running
+        // - 10/08/25
+        net->client.client_state = NOT_RUNNING; 
+
+        SteamNetworkingIPAddr address;
+        HSteamNetConnection connection;
+
+        { // parse ip address
+            address.Clear();
+        
+            bool ok = address.ParseString(net->client.server_address);
+            if (ok) {
+                logln_fmt(&net->arena, "Could not parse server address supplied: {}", net->client.server_address);
+                return;
             }
     
-            net->interface->RunCallbacks();
-    
-	    std::this_thread::sleep_for(std::chrono::milliseconds(NETWORK_DELAY_MS));
+            address.m_port = DEFAULT_PORT;
         }
+
+        { // attempt to connect
+            SteamNetworkingConfigValue_t connect_options;
+            connect_options.SetPtr(k_ESteamNetworkingConfig_Callback_ConnectionStatusChanged, (void*)client_network_connection_status_changed_callback);
+            
+            connection = net->interface->ConnectByIPAddress(address, 1, &connect_options);
+            if (connection == k_HSteamNetConnection_Invalid ) {
+                logln("Problem when creating network client, invalid connection to server");
+                return;
+            }
+        }
+       
+        net->client = Client {.client_state = RUNNING, .connection = connection};
     }
 
-    if (net->config.run_client) { // shutdown client
-        logln("Shutting down client gracefully");
-    
+    if (net->client.client_state == STOP) {
+        logln("Shutting down network client");
+
         net->interface->CloseConnection(net->client.connection, 0, nullptr, false);
         net->client.connection = k_HSteamNetConnection_Invalid;
+
+        net->client.client_state = NOT_RUNNING;
     }
 
-    if (net->config.run_server) { // shutdown server
+    if (net->client.client_state == RUNNING) {
+        while (net->client.client_state == RUNNING) {
+            ISteamNetworkingMessage *incoming_message = NULL;
+            i64 message_count = net->interface->ReceiveMessagesOnConnection(net->client.connection, &incoming_message, 1);
+ 
+            if (message_count == 0) {
+                break;
+            }
+ 
+            ASSERT(message_count == 1 && incoming_message != NULL);
+ 
+            { // copy message contents to byte slice and add to network queue
+                Slice<u8> bytes = slice_create_malloc<u8>(incoming_message->m_cbSize);
+                slice_copy_raw_ptr(bytes, incoming_message->m_pData);
+                network_queue_push(&net->client_in_queue, bytes);
+            }
+ 
+            incoming_message->Release();
+        }
+    }
+}
+
+void network_layer_update_server(NetworkLayer *net) {
+    if (net->server.server_state == START) {
+
+        // set to not running, if we return early then this is how
+        // the game client knows, if this all works then set to running
+        // - 10/08/25
+        net->server.server_state = NOT_RUNNING; 
+
+        SteamNetworkingIPAddr address;
+
+        { // parse ip address
+            address.Clear();
+            ASSERT(address.ParseString("::1"));
+            address.m_port = DEFAULT_PORT;
+        }
+
+        { // attempt to create socket
+            SteamNetworkingConfigValue_t connect_options;
+            connect_options.SetPtr(k_ESteamNetworkingConfig_Callback_ConnectionStatusChanged, (void*)server_network_connection_status_changed_callback);
+            
+            net->server.socket = net->interface->CreateListenSocketIP(address, 1, &connect_options);
+            if (net->server.socket == k_HSteamListenSocket_Invalid) {
+                logln_fmt(&net->arena, "Error creating server socket, failed to listen on port {}", DEFAULT_PORT);
+                return;
+            }
+
+            net->server.poll_group = net->interface->CreatePollGroup();
+            if (net->server.poll_group == k_HSteamNetPollGroup_Invalid) {
+                logln("Error creating poll group for network server");
+                return;
+            }
+
+            logln_fmt(&net->arena, "Started server and listening on port {}", DEFAULT_PORT);
+        }
+    
+        net->server.server_state = RUNNING;
+    }
+
+    if (net->server.server_state == STOP) {
         logln("Shutting down server gracefully");
     
         for (HSteamNetConnection connection : net->server.connections) {
@@ -263,11 +319,33 @@ net->thread = std::thread([net] () {
     
         net->interface->DestroyPollGroup(net->server.poll_group);
         net->server.poll_group = k_HSteamNetPollGroup_Invalid;
+
+        net->server.server_state = NOT_RUNNING;
     }
-});
+
+    if (net->server.server_state == RUNNING) {
+        while (net->client.client_state == RUNNING) {
+            ISteamNetworkingMessage *incoming_message = NULL;
+            int message_count = net->interface->ReceiveMessagesOnPollGroup(net->server.poll_group, &incoming_message, 1);
+    
+            if (message_count == 0) {
+                break;
+            }
+    
+            ASSERT(message_count == 1 && incoming_message != NULL);
+    
+            { // copy message contents to byte slice and add to network queue
+                Slice<u8> bytes = slice_create_malloc<u8>(incoming_message->m_cbSize);
+                slice_copy_raw_ptr(bytes, incoming_message->m_pData);
+                network_queue_push(&net->server_in_queue, bytes);
+            }
+    
+            incoming_message->Release();
+        }
+    }
 }
 
-void neo_server_on_connection_changed(NetworkLayer *net, Server *server, SteamNetConnectionStatusChangedCallback_t *info) {
+void server_on_connection_changed(NetworkLayer *net, Server *server, SteamNetConnectionStatusChangedCallback_t *info) {
     switch (info->m_info.m_eState) {
         case k_ESteamNetworkingConnectionState_None:                    break;
         case k_ESteamNetworkingConnectionState_ClosedByPeer:            break;
@@ -298,7 +376,7 @@ void neo_server_on_connection_changed(NetworkLayer *net, Server *server, SteamNe
     }
 }
 
-void neo_client_on_connection_changed(NetworkLayer *net, Client *client, SteamNetConnectionStatusChangedCallback_t *info) {
+void client_on_connection_changed(NetworkLayer *net, Client *client, SteamNetConnectionStatusChangedCallback_t *info) {
     ASSERT(info->m_hConn == client->connection || client->connection == k_HSteamNetConnection_Invalid);
 
     switch (info->m_info.m_eState) {
@@ -312,7 +390,9 @@ void neo_client_on_connection_changed(NetworkLayer *net, Client *client, SteamNe
             logln("Client is trying to connect");
         } break;
         case k_ESteamNetworkingConnectionState_ProblemDetectedLocally: {
-            client->running = false;
+            // TODO: maybe its fine to set it to stop and print what happened
+            // shouldn't the normal code that runs after a stop do whats needed?
+            client->client_state = NOT_RUNNING;
     
             if (info->m_eOldState == k_ESteamNetworkingConnectionState_Connecting ) {
                 logln_fmt(&net->arena, "Client tried to connect but failed: {}", info->m_info.m_szEndDebug);
@@ -340,16 +420,16 @@ void neo_client_on_connection_changed(NetworkLayer *net, Client *client, SteamNe
     }
 }
 
-void neo_server_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info) {
-    ASSERT(net_instance_global != NULL);
+void server_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info) {
+    ASSERT(g_network_layer != NULL);
 
-    neo_server_on_connection_changed(net_instance_global, &net_instance_global->server, info);
+    server_on_connection_changed(g_network_layer, &g_network_layer->server, info);
 }
 
-void neo_client_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info) {
-    ASSERT(net_instance_global != NULL);
+void client_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info) {
+    ASSERT(g_network_layer != NULL);
 
-    neo_client_on_connection_changed(net_instance_global, &net_instance_global->client, info);
+    client_on_connection_changed(g_network_layer, &g_network_layer->client, info);
 }
 
 void network_queue_push(NetworkQueue *network_queue, Slice<u8> message) {

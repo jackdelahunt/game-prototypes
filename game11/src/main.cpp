@@ -12,7 +12,7 @@
 #include <chrono>
 
 // Total: 29:00
-// Started: 18:00
+// Started: 21:30
 
 #define MAX_ENTITIES 100
 #define SERVER_ID 1
@@ -80,29 +80,30 @@ struct State {
     StackArray<Entity, MAX_ENTITIES> entities;
 };
 
-// @client
-struct ServerInstance {
+// @server @gameserver
+struct GameServer {
     std::thread thread;
     std::atomic<bool> shutdown_signal;
 
     State state;
 };
 
-struct ClientInstance {
+// @client @gameclient
+struct GameClient {
     const char *title;
     v2 window_size;
 
     State state;
 };
 
-ServerInstance *g_server_instance = NULL;
-ClientInstance *g_client_instance = NULL;
+GameServer *g_game_server = NULL;
+GameClient *g_game_client = NULL;
 
-void server_instance_start();
-void server_instance_stop();
+void game_server_start();
+void game_server_stop();
 
-ClientInstance client_instance_create();
-void client_instance_run(ClientInstance *instance);
+GameClient game_client_create();
+void game_client_start(GameClient *instance);
 
 void update_network(State *state);
 void on_server_receive(State *state, NetworkMessage *message);
@@ -147,12 +148,7 @@ int main(i32 argc, const char **argv) {
         .thread_colour = GREEN_ASCII_CODE,
     });
 
-    bool ok = init_networking(NetworkConfig {
-        .port = 27020,
-        .server_address = "::1",
-        .run_server = true,
-        .run_client = true
-    });
+    bool ok = network_layer_init();
 
     if (!ok) {
         logln("CRASH: failed to strart networking");
@@ -161,39 +157,39 @@ int main(i32 argc, const char **argv) {
 
     NET()->server.on_new_connection = server_on_new_connection;
 
-    net_run();
+    network_layer_start();
 
-    ClientInstance client_instance = client_instance_create();
-    client_instance_run(&client_instance);
+    GameClient client_instance = game_client_create();
+    game_client_start(&client_instance);
 
-    net_graceful_shutdown();
+    network_layer_stop();
 }
 
-void server_instance_start() {
-    ASSERT(g_server_instance == NULL);
+void game_server_start() {
+    ASSERT(g_game_server == NULL);
 
     // my strategy for this is init everything in the instance
     // besides the state object before starting the new thread
     // then it is up to the server thread to init the state
     // and go from there
 
-    g_server_instance = new ServerInstance {};
-    g_server_instance->shutdown_signal = false;
+    g_game_server = new GameServer {};
+    g_game_server->shutdown_signal = false;
 
-    g_server_instance->thread = std::thread([] () {
+    g_game_server->thread = std::thread([] () {
     log_set_thread_options(LogOptions {
         .thread_name = "SERVER",
         .thread_colour = YELLOW_ASCII_CODE,
     });
 
-    g_server_instance->state = State {
+    g_game_server->state = State {
         .instance_type = IT_SERVER,
         .instance_id = SERVER_ID,
         .arena = arena_create(10 * 1024 * 1024),
         .entities = stack_array_create<Entity, MAX_ENTITIES>(),
     };
 
-    logln_fmt(&g_server_instance->state.arena, "Started server instance [thread={}]", get_current_thread_id());
+    logln_fmt(&g_game_server->state.arena, "Started game server [thread={}]", get_current_thread_id());
 
     auto tick_interval = std::chrono::milliseconds(20);     // 20ms/tick -> 50/s
     auto network_interval = std::chrono::milliseconds(100); // 100ms/tick -> 10/s
@@ -203,7 +199,7 @@ void server_instance_start() {
 
     auto previous_time = chrono_clock::now();
 
-    while (!g_server_instance->shutdown_signal) {
+    while (!g_game_server->shutdown_signal) {
         auto current_time = chrono_clock::now();
         auto delta_time = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - previous_time);
         previous_time = current_time;
@@ -216,44 +212,46 @@ void server_instance_start() {
 
             f32 delta_time_f32 = static_cast<f32>(std::chrono::duration<f32>(tick_interval).count());
 
-            update_entities(&g_server_instance->state, delta_time_f32);
-            physics(&g_server_instance->state, delta_time_f32);
+            update_entities(&g_game_server->state, delta_time_f32);
+            physics(&g_game_server->state, delta_time_f32);
         }
 
         if (network_timer >= network_interval) {
             network_timer -= network_interval; // is this good??
 
-            update_network(&g_server_instance->state);
+            update_network(&g_game_server->state);
         }
 
-        arena_reset(&g_server_instance->state.arena);
+        arena_reset(&g_game_server->state.arena);
 
 	std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    logln("Server instance was given shutdown signal.. stopping");
+    logln("Game server was given shutdown signal.. stopping");
     }); // thread lambda end
 }
 
-void server_instance_stop() {
-    ASSERT(g_server_instance != NULL);
+void game_server_stop() {
+    if (g_game_server == NULL) {
+        return;
+    }
 
-    g_server_instance->shutdown_signal = true;
-    g_server_instance->thread.join();
+    g_game_server->shutdown_signal = true;
+    g_game_server->thread.join();
 
-    delete g_server_instance;
-    g_server_instance = NULL;
+    delete g_game_server;
+    g_game_server = NULL;
 }
 
-ClientInstance client_instance_create() {
-    return ClientInstance {
+GameClient game_client_create() {
+    return GameClient {
         .title = "Game11",
         .window_size = v2{1080, 720},
         .state = {},
     };
 }
 
-void client_instance_run(ClientInstance *instance) {
+void game_client_start(GameClient *instance) {
     instance->state = State {
         .instance_type = IT_CLIENT,
         .instance_id = 0,
@@ -266,20 +264,18 @@ void client_instance_run(ClientInstance *instance) {
     srand(time(NULL));
 
     SetTraceLogLevel(LOG_ERROR);
+    SetTargetFPS(60);
 
     InitWindow(i32(instance->window_size.x), i32(instance->window_size.y), instance->title);
-
-    SetTargetFPS(60);
 
     while (!WindowShouldClose()) {
         f32 delta_time = GetFrameTime();
 
         if (IsKeyPressed(KEY_ONE)) {
-            server_instance_start();
-        }
+            game_server_start();
 
-        if (IsKeyPressed(KEY_TWO)) {
-            server_instance_stop();
+            network_layer_start_server(NET());
+            network_layer_start_client(NET(), "127.0.0.1");
         }
 
         update_network(&instance->state);
@@ -293,6 +289,10 @@ void client_instance_run(ClientInstance *instance) {
 
         arena_reset(&instance->state.arena);
     }
+
+    game_server_stop();
+    network_layer_stop_server(NET());
+    network_layer_stop_client(NET());
 
     CloseWindow();
 }
