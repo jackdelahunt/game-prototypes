@@ -55,8 +55,26 @@ struct Client {
     NetworkQueue in_queue;
 };
 
-bool init_networking();
-void kill_networking();
+struct Net {
+    inline static Net *instance = NULL; // used to keep net instance around for network callbacks
+
+    Arena arena;
+    std::thread thread;
+    ISteamNetworkingSockets *interface;
+
+    Client client;
+    Server server;
+};
+
+bool init_networking(Net *net);
+void kill_networking(Net *net);
+
+void net_run(Net *net);
+void neo_server_on_connection_changed(Net *net, Server *server, SteamNetConnectionStatusChangedCallback_t *info);
+void neo_client_on_connection_changed(Net *net, Client *client, SteamNetConnectionStatusChangedCallback_t *info);
+
+void neo_server_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info);
+void neo_client_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info);
 
 void network_queue_push(NetworkQueue *network_queue, Slice<u8> message);
 bool network_queue_pop(NetworkQueue *network_queue, Slice<u8> *out_message);
@@ -88,7 +106,7 @@ void network_queue_push(NetworkQueue *network_queue, Slice<u8> message) {
     network_queue->messages.push(message_copy);
 }
 
-bool init_networking() {
+bool init_networking(Net *net) {
     SteamDatagramErrMsg error_message;
     if (!GameNetworkingSockets_Init(nullptr, error_message)) {
         printf("GameNetworkingSockets_Init failed %s\n", error_message);
@@ -96,14 +114,223 @@ bool init_networking() {
     }
     
     SteamNetworkingUtils()->SetDebugOutputFunction(k_ESteamNetworkingSocketsDebugOutputType_Msg, networking_debug_callback);
-    interface = SteamNetworkingSockets();
 
-    logln("started networking");
+    net->arena = arena_create(10 * 1024 * 1024);
+    net->interface = SteamNetworkingSockets();
+
+    logln("initialised networking layer");
     return true;
 }
 
-void kill_networking() {
+void kill_networking(Net *net) {
     GameNetworkingSockets_Kill();
+}
+
+void net_run(Net *net) {
+net->thread = std::thread([net] () {
+    log_set_thread_options(LogOptions {
+        .thread_name = "NETWORK",
+        .thread_colour = CYAN_ASCII_CODE,
+    });
+
+    logln_fmt(&net->arena, "Started networking thread [thread={}]", get_current_thread_id());
+
+    Net::instance = net;
+
+    { // start server
+        net->server.running = true;
+    
+        // init server 
+        u16 port = 27020;
+    
+        SteamNetworkingIPAddr address; 
+        address.Clear();
+    
+        address.ParseString("::1");
+        address.m_port = port;
+    
+        SteamNetworkingConfigValue_t opt;
+        opt.SetPtr(k_ESteamNetworkingConfig_Callback_ConnectionStatusChanged, (void*)neo_server_network_connection_status_changed_callback);
+    
+        net->server.socket = net->interface->CreateListenSocketIP(address, 1, &opt);
+        if (net->server.socket == k_HSteamListenSocket_Invalid) {
+            logln_fmt(&net->arena, "Error creating server socket, failed to listen on port {}", port);
+            net->server.running = false;
+            return;
+        }
+        
+        net->server.poll_group = net->interface->CreatePollGroup();
+        if (net->server.poll_group == k_HSteamNetPollGroup_Invalid) {
+            logln_fmt(&net->arena, "Error creating poll group, failed to listen on port {}", port);
+            net->server.running = false;
+            return;
+        }
+        
+        logln_fmt(&net->arena, "Server listening on port {}", port);
+    }
+
+    { // start client
+        net->client.running = true;
+    
+        // init client 
+        u16 port = 27020;
+    
+        SteamNetworkingIPAddr address; 
+        address.Clear();
+    
+        ASSERT(address.ParseString("::1"));
+        address.m_port = port;
+    
+        char address_buffer[ SteamNetworkingIPAddr::k_cchMaxString ];
+        address.ToString(address_buffer, sizeof(address_buffer), true);
+    
+        SteamNetworkingConfigValue_t opt;
+        opt.SetPtr(k_ESteamNetworkingConfig_Callback_ConnectionStatusChanged, (void*)neo_client_network_connection_status_changed_callback);
+    
+        net->client.connection = net->interface->ConnectByIPAddress(address, 1, &opt);
+        if (net->client.connection == k_HSteamNetConnection_Invalid ) {
+            logln("Tried to create an invalid connection to server");
+            net->client.running = false;
+            return;
+        }
+    }
+
+    { // poll server messages
+        while (net->server.running) {
+            // poll incoming messages 
+            while (net->server.running) {
+                ISteamNetworkingMessage *incoming_message = NULL;
+                int message_count = net->interface->ReceiveMessagesOnPollGroup(net->server.poll_group, &incoming_message, 1);
+    
+                if (message_count == 0) {
+                    break;
+                }
+    
+                ASSERT(message_count == 1 && incoming_message != NULL);
+    
+                { // copy message contents to byte slice and add to network queue
+                    Slice<u8> bytes = slice_create_malloc<u8>(incoming_message->m_cbSize);
+                    slice_copy_raw_ptr(bytes, incoming_message->m_pData);
+                    network_queue_push(&net->server.in_queue, bytes);
+                }
+    
+                incoming_message->Release();
+            }
+    
+            net->interface->RunCallbacks();
+    
+	    std::this_thread::sleep_for(std::chrono::milliseconds(NETWORK_DELAY_MS));
+        }
+    }
+
+    { // shutdown client
+        logln("Shutting down client gracefully");
+    
+        net->interface->CloseConnection(net->client.connection, 0, nullptr, false);
+        net->client.connection = k_HSteamNetConnection_Invalid;
+    }
+
+    { // shutdown server
+        logln("Shutting down server gracefully");
+    
+        for (HSteamNetConnection connection : net->server.connections) {
+            net->interface->CloseConnection(connection, 0, "Server shutdown", true);
+        }
+    
+        reset(&net->server.connections);
+    
+        net->interface->CloseListenSocket(net->server.socket);
+        net->server.socket = k_HSteamListenSocket_Invalid;
+    
+        net->interface->DestroyPollGroup(net->server.poll_group);
+        net->server.poll_group = k_HSteamNetPollGroup_Invalid;
+    }
+});
+}
+
+void neo_server_on_connection_changed(Net *net, Server *server, SteamNetConnectionStatusChangedCallback_t *info) {
+    switch (info->m_info.m_eState) {
+        case k_ESteamNetworkingConnectionState_None:                    break;
+        case k_ESteamNetworkingConnectionState_ClosedByPeer:            break;
+        case k_ESteamNetworkingConnectionState_ProblemDetectedLocally:  break;
+        case k_ESteamNetworkingConnectionState_Connected:               break;
+        case k_ESteamNetworkingConnectionState_Connecting: {
+            logln_fmt(&net->arena, "Server received connection request from {}", info->m_info.m_szConnectionDescription);
+    
+            if (net->interface->AcceptConnection(info->m_hConn) != k_EResultOK) {
+                // This could fail.  If the remote host tried to connect, but then
+                // disconnected, the connection may already be half closed.  Just
+                // destroy whatever we have on our side.
+                net->interface->CloseConnection(info->m_hConn, 0, nullptr, false);
+                logln("Server could not accept connection");
+                break;
+            }
+    
+            if (!net->interface->SetConnectionPollGroup(info->m_hConn, server->poll_group)) {
+                net->interface->CloseConnection(info->m_hConn, 0, nullptr, false );
+                logln("Server failed to set poll group for connection");
+                break;
+            }
+    
+            append(&server->connections, info->m_hConn);
+            // server->on_new_connection(server, info->m_hConn);
+        } break;
+        default: break;
+    }
+}
+
+void neo_client_on_connection_changed(Net *net, Client *client, SteamNetConnectionStatusChangedCallback_t *info) {
+    ASSERT(info->m_hConn == client->connection || client->connection == k_HSteamNetConnection_Invalid);
+
+    switch (info->m_info.m_eState) {
+        case k_ESteamNetworkingConnectionState_None: {
+            logln_fmt(&net->arena, "Client connection is in a none state: {}", info->m_info.m_szEndDebug);
+        } break;
+        case k_ESteamNetworkingConnectionState_ClosedByPeer: {
+            logln_fmt(&net->arena, "Client connection closed by peer: {}", info->m_info.m_szEndDebug);
+        } break;
+        case k_ESteamNetworkingConnectionState_Connecting: {
+            logln("Client is trying to connect");
+        } break;
+        case k_ESteamNetworkingConnectionState_ProblemDetectedLocally: {
+            client->running = false;
+    
+            if (info->m_eOldState == k_ESteamNetworkingConnectionState_Connecting ) {
+                logln_fmt(&net->arena, "Client tried to connect but failed: {}", info->m_info.m_szEndDebug);
+            }
+            else if (info->m_info.m_eState == k_ESteamNetworkingConnectionState_ProblemDetectedLocally) {
+                logln_fmt(&net->arena, "Client lost contact with the host: {}", info->m_info.m_szEndDebug);
+            }
+            else {
+                logln_fmt(&net->arena, "Client disconnected from server: {}", info->m_info.m_szEndDebug);
+            }
+    
+            // Clean up the connection.  This is important!
+            // The connection is "closed" in the network sense, but
+            // it has not been destroyed.  We must close it on our end, too
+            // to finish up.  The reason information do not matter in this case,
+            // and we cannot linger because it's already closed on the other end,
+            // so we just pass 0's.
+            net->interface->CloseConnection(info->m_hConn, 0, nullptr, false );
+            client->connection = k_HSteamNetConnection_Invalid;
+        } break;
+        case k_ESteamNetworkingConnectionState_Connected: {
+            logln("Client connected to server");
+        } break;
+        default: break;
+    }
+}
+
+void neo_server_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info) {
+    ASSERT(Net::instance != NULL);
+
+    neo_server_on_connection_changed(Net::instance, &Net::instance->server, info);
+}
+
+void neo_client_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info) {
+    ASSERT(Net::instance != NULL);
+
+    neo_client_on_connection_changed(Net::instance, &Net::instance->client, info);
 }
 
 bool network_queue_pop(NetworkQueue *network_queue, Slice<u8> *out_message) {
@@ -206,7 +433,7 @@ void server_run(Server *server) {
 
         interface->RunCallbacks();
 
-	    std::this_thread::sleep_for(std::chrono::milliseconds(NETWORK_DELAY_MS));
+	std::this_thread::sleep_for(std::chrono::milliseconds(NETWORK_DELAY_MS));
     }
 
     logln("Shutting down server gracefully");

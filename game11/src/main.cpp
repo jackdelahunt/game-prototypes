@@ -70,6 +70,8 @@ struct State {
     const char *title;
     v2 window_size;
 
+    Net net;
+
     Server server;
     Client client;
 
@@ -112,12 +114,16 @@ int main(i32 argc, const char **argv) {
         .thread_colour = GREEN_ASCII_CODE,
     });
 
-    bool ok = init_networking();
+    bool ok = init_networking(&state.net);
     if (!ok) {
         logln("CRASH: failed to strart networking");
         return 1;
     }
 
+    net_run(&state.net);
+
+    state.net.thread.join();
+#if 0
     std::thread server_thread = std::thread([argc, argv] () {
         log_set_thread_options(LogOptions {
             .thread_name = "SERVER",
@@ -128,6 +134,7 @@ int main(i32 argc, const char **argv) {
     });
 
     start_client_instance(argc, argv);
+#endif
 }
 
 void start_client_instance(i32 argc, const char **argv) {
