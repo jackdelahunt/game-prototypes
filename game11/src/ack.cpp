@@ -1,6 +1,7 @@
 #ifndef ACK_CPP
 #define ACK_CPP
 
+#include <cstring>
 #include <mutex>
 #include <stdint.h>
 #include <stdio.h>
@@ -220,6 +221,20 @@ struct StackArray {
         return data + len;
     }
 };
+
+template <typename T, i64 N>
+StackArray<T, N> stack_array_create() {
+    auto sa = StackArray<T, N> {
+        .data = {},
+        .size = N,
+        .len = 0
+    };
+
+    // all zeros
+    memset(sa.data, 0, sa.size);
+
+    return sa;
+}
 
 template <typename T, i64 N>
 void append(StackArray<T, N> *array, T value) {
