@@ -2,6 +2,7 @@
 #include "ack.cpp"
 #include "math.cpp"
 #include "net.cpp"
+#include "platform.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -9,7 +10,7 @@
 #include <stdlib.h>
 
 // Total: 24:00
-// Started: 21:00
+// Started: 11:00
 
 #define MAX_ENTITIES 2000
 #define SERVER_ID 1
@@ -45,8 +46,8 @@ struct NetworkMessage {
     NetworkMessageType type;
     
     union {
-        ConnectionId assign_client_id;
-        u32 client_connected;
+        u32 assign_client_id;  // Changed from ConnectionId to u32
+        ConnectionId client_connected;
         Entity spawn_entity;
         Entity sync_entity;
         u32 delete_entity;
@@ -85,6 +86,7 @@ void update_network();
 void on_server_receive(NetworkMessage *message);
 void on_client_receive(NetworkMessage *message);
 void update_entities(f32 delta_time);
+void cleanup_entities();  // Add this function declaration
 
 void draw_entities(f32 delta_time);
 void physics(f32 delta_time);
@@ -110,11 +112,9 @@ int main(i32 argc, const char **argv) {
         .thread_colour = GREEN_ASCII_CODE,
     });
 
-    logln("Hello from the main thread");
-
     bool ok = init_networking();
     if (!ok) {
-        printf("CRASH: failed to init networking\n");
+        logln("CRASH: failed to strart networking");
         return 1;
     }
 
@@ -123,8 +123,6 @@ int main(i32 argc, const char **argv) {
             .thread_name = "SERVER",
             .thread_colour = YELLOW_ASCII_CODE,
         });
-
-        logln("Hello from the server thread");
 
         start_server_instance(argc, argv);
     });
@@ -136,6 +134,8 @@ void start_client_instance(i32 argc, const char **argv) {
     state.title = "Game11";
     state.window_size = v2{1080, 720};
     state.arena = arena_create(10 * 1024 * 1024);
+
+    logln_fmt(&state.arena, "Started client instance [thread={}]", get_current_thread_id());
 
     client_run(&state.client, argc > 1 ? argv[1] : NULL);
 
@@ -168,6 +168,8 @@ void start_server_instance(i32 argc, const char **argv) {
     state.arena = arena_create(10 * 1024 * 1024);
     state.server.on_new_connection = server_on_new_connection;
 
+    logln_fmt(&state.arena, "Started server instance [thread={}]", get_current_thread_id());
+
     server_run(&state.server);
 
     while (true) {
@@ -183,6 +185,7 @@ void start_server_instance(i32 argc, const char **argv) {
 void update(f32 delta_time) {
     update_network();
     update_entities(delta_time);
+    cleanup_entities();  // Add cleanup call
 }
 
 void update_network() {
@@ -212,13 +215,16 @@ void update_network() {
             slice_free(bytes);
         }
 
-        for (Entity &entity : state.entities) {
-            if (entity.owner != state.id) {
-                continue;
+        // Only send sync messages if we have a valid client ID
+        if (state.id != 0) {
+            for (Entity &entity : state.entities) {
+                if (entity.owner != state.id) {
+                    continue;
+                }
+        
+                NetworkMessage message = NetworkMessage{.type = SYNC_ENTITY, .sync_entity = entity};
+                client_send_to_server(&state.client, bytes_from_ptr(&message));
             }
-    
-            NetworkMessage message = NetworkMessage{.type = SYNC_ENTITY, .sync_entity = entity};
-            client_send_to_server(&state.client, bytes_from_ptr(&message));
         }
     }
 }
@@ -233,14 +239,18 @@ void on_server_receive(NetworkMessage *message) {
             // - 09/08/25
 
             ConnectionId connection_id = message->client_connected;
+            u32 new_client_id = new_entity_id();  // Generate a unique client ID
+
+            logln_fmt(&state.arena, "Processing new client connection: connection_id={}, client_id={}", connection_id, new_client_id);
 
             { // assign client id
-                NetworkMessage message = NetworkMessage{.type = ASSIGN_CLIENT_ID, .assign_client_id = connection_id};
+                NetworkMessage message = NetworkMessage{.type = ASSIGN_CLIENT_ID, .assign_client_id = new_client_id};
                 server_send_to_client(&state.server, bytes_from_ptr(&message), connection_id);
-                printf("New client connected, assigning id of: %u\n", connection_id);
+                logln_fmt(&state.arena, "Assigning new client id={}", new_client_id);
             }
 
             { // spawn any entities on new client
+                logln_fmt(&state.arena, "Spawning {} existing entities on new client", state.entities.len);
                 for (Entity &entity : state.entities) {
                     NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = entity};
                     server_send_to_client(&state.server, bytes_from_ptr(&message), connection_id);
@@ -251,12 +261,13 @@ void on_server_receive(NetworkMessage *message) {
                 Entity new_player = Entity {
                     .flags = EF_PLAYER,
                     .id = new_entity_id(),
-                    .owner = connection_id,
+                    .owner = new_client_id,  // Use the generated client ID
                     .position = {50, 50, 0},
                     .size = {50, 50},
                     .colour = RED 
                 };
 
+                logln_fmt(&state.arena, "Spawning new player entity: id={}, owner={}", new_player.id, new_player.owner);
                 local_spawn_entity(new_player);
 
                 NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = new_player};
@@ -267,6 +278,7 @@ void on_server_receive(NetworkMessage *message) {
             Entity entity = message->spawn_entity;
             entity.id = new_entity_id();
 
+            logln_fmt(&state.arena, "Server spawning entity: id={}, owner={}", entity.id, entity.owner);
             local_spawn_entity(entity);
             NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = entity};
             server_send_to_all_clients(&state.server, bytes_from_ptr(&message));
@@ -283,6 +295,7 @@ void on_server_receive(NetworkMessage *message) {
         case DELETE_ENTITY: {
             u32 id = message->delete_entity;
 
+            logln_fmt(&state.arena, "Server deleting entity: id={}", id);
             local_delete_entity(id);
             NetworkMessage message = NetworkMessage{.type = DELETE_ENTITY, .delete_entity = id};
             server_send_to_all_clients(&state.server, bytes_from_ptr(&message));
@@ -297,9 +310,10 @@ void on_client_receive(NetworkMessage *message) {
     switch (message->type) {
         case ASSIGN_CLIENT_ID: {
             state.id = message->assign_client_id;
-            printf("Assigned id of: %u\n", state.id);
+            logln_fmt(&state.arena, "Client assigned id={}", state.id);
         } break;
         case SPAWN_ENTITY: {
+            logln_fmt(&state.arena, "Client spawning entity: id={}, owner={}", message->spawn_entity.id, message->spawn_entity.owner);
             local_spawn_entity(message->spawn_entity);
         } break;
         case SYNC_ENTITY: {
@@ -309,6 +323,7 @@ void on_client_receive(NetworkMessage *message) {
             }
         } break;
         case DELETE_ENTITY: {
+            logln_fmt(&state.arena, "Client deleting entity: id={}", message->delete_entity);
             local_delete_entity(message->delete_entity);
         } break;
         default: {
@@ -319,7 +334,8 @@ void on_client_receive(NetworkMessage *message) {
 
 void update_entities(f32 delta_time) {
     for (Entity &entity : state.entities) {
-        if (entity.owner != state.id) {
+        // Only allow control if we have a valid ID (for client) or if we're the server
+        if ((is_client() && state.id == 0) || (is_client() && entity.owner != state.id) || (is_server() && entity.owner != SERVER_ID)) {
             continue;
         }
 
@@ -362,29 +378,42 @@ void update_entities(f32 delta_time) {
                 server_spawn_entity(bullet);
             }
 
-            // bullet collision detection
-            for (Entity &other : state.entities) {
-                if (!BIT_SET(other.flags, EF_BULLET)) {
-                    continue;
-                }
+            // bullet collision detection - only run on server to prevent conflicts
+            if (is_server()) {
+                for (Entity &other : state.entities) {
+                    if (!BIT_SET(other.flags, EF_BULLET)) {
+                        continue;
+                    }
 
-                if (other.bullet_origin == entity.id) {
-                    continue;
-                }
+                    if (other.bullet_origin == entity.id) {
+                        continue;
+                    }
 
-                if (!entities_overlap(&entity, &other)) {
-                    continue;
-                }
+                    if (!entities_overlap(&entity, &other)) {
+                        continue;
+                    }
 
-                server_delete_entity(other.id);
+                    server_delete_entity(other.id);
+                }
             }
         }
 
-        if (BIT_SET(entity.flags, EF_BULLET)) {
+        // bullet cleanup - only run on server to prevent conflicts
+        if (is_server() && BIT_SET(entity.flags, EF_BULLET)) {
             if ((entity.position.x < -entity.size.x || entity.position.x > state.window_size.x + entity.size.x) ||
                 (entity.position.y < -entity.size.y || entity.position.y > state.window_size.y + entity.size.y)) {
                 SET_BIT(entity.flags, EF_DELETE);
             }
+        }
+    }
+}
+
+void cleanup_entities() {
+    // Remove entities marked for deletion
+    for (i64 i = state.entities.len - 1; i >= 0; i--) {
+        Entity *entity = &state.entities[i];
+        if (BIT_SET(entity->flags, EF_DELETE)) {
+            swap_remove(&state.entities, i);
         }
     }
 }
@@ -414,7 +443,10 @@ bool point_collision(v3 point, v3 collider_position, v3 collider_size) {
 
 void physics(f32 delta_time) {
     for (Entity &entity : state.entities) {
-        entity.position += entity.velocity * delta_time;
+        // Only update physics for entities we own
+        if ((is_client() && entity.owner == state.id) || (is_server() && entity.owner == SERVER_ID)) {
+            entity.position += entity.velocity * delta_time;
+        }
     }
 }
 
@@ -481,8 +513,10 @@ bool entities_overlap(Entity *a, Entity *b) {
 }
 
 void server_on_new_connection(Server *server, ConnectionId id) {
+    logln_fmt(&server->arena, "New connection received, sending server new connection message [thread={}]", get_current_thread_id());
     NetworkMessage message = NetworkMessage {.type = CLIENT_CONNECTED, .client_connected = id};
     network_queue_push(&server->in_queue, bytes_from_ptr(&message));
+    logln_fmt(&server->arena, "Queued CLIENT_CONNECTED message for connection {}", id);
 }
 
 v2 v2_cast(Vector2 v) {

@@ -1,6 +1,10 @@
+#ifndef NET_CPP
+#define NET_CPP
+
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
+#include "platform.h"
 
 #include <thread>
 #include <chrono>
@@ -94,7 +98,8 @@ bool init_networking() {
     SteamNetworkingUtils()->SetDebugOutputFunction(k_ESteamNetworkingSocketsDebugOutputType_Msg, networking_debug_callback);
     interface = SteamNetworkingSockets();
 
-    printf("networking has started\n");
+    logln("started networking");
+    return true;
 }
 
 void kill_networking() {
@@ -141,14 +146,14 @@ void server_run(Server *server) {
         .thread_colour = CYAN_ASCII_CODE,
     });
 
+    logln_fmt(&server->arena, "Started server network [thread={}]", get_current_thread_id());
+
     // set this so any callbacks can then refer to the current running server
     // this should not be used directly unless for those callbacks and needs to
     // be cleaned up when the thread ends or aborts
     // - 31/07/25
     Server::instance = server;
     server->running = true;
-
-    logln("Created server thread");
 
     // init server 
     u16 port = 27020;
@@ -287,14 +292,14 @@ void client_run(Client *client, const char *server_ip) {
         .thread_name = "CLIENT NET",
         .thread_colour = MAGENTA_ASCII_CODE,
     });
+
+    logln_fmt(&client->arena, "Started server network [thread={}]", get_current_thread_id());
     // set this so any callbacks can then refer to the current running client
     // this should not be used directly unless for those callbacks and needs to
     // be cleaned up when the thread ends or aborts
     // - 31/07/25
     Client::instance = client;
     client->running = true;
-
-    logln("Created client thread");
 
     // init client 
     u16 port = 27020;
@@ -347,7 +352,7 @@ void client_run(Client *client, const char *server_ip) {
 
         interface->RunCallbacks();
 
-	    std::this_thread::sleep_for(std::chrono::milliseconds(NETWORK_DELAY_MS));
+	std::this_thread::sleep_for(std::chrono::milliseconds(NETWORK_DELAY_MS));
     }
 
     logln("Shutting down client gracefully");
@@ -427,3 +432,5 @@ void networking_debug_callback(ESteamNetworkingSocketsDebugOutputType type, cons
     }
     log_mutex.unlock();
 }
+
+#endif

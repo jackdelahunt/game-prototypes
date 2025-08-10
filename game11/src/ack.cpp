@@ -400,6 +400,7 @@ void fmt_value(DynamicArray<u8> *bytes, TYPE value) {                           
 template<typename T>
 void fmt_value(DynamicArray<u8> *bytes, T value);
 
+FMT_VALUE_IMPL_PRIMITIVE(void *, "%p")
 FMT_VALUE_IMPL_PRIMITIVE(const char *, "%s")
 FMT_VALUE_IMPL_PRIMITIVE(char *, "%s")
 FMT_VALUE_IMPL_PRIMITIVE(i64, "%lld")

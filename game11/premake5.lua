@@ -32,6 +32,7 @@ project "client"
 
     files {
         "src/main.cpp",
+        "src/win_platform.cpp",
     }
 
     includedirs {
@@ -68,6 +69,7 @@ project "client"
             "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/release/*.dll] %[build/bin/%{prj.name}/profile]",
         }
 
+--[[
 project "server"
     kind "ConsoleApp"
     location "build/%{prj.name}"
@@ -79,6 +81,7 @@ project "server"
 
     includedirs {
         "src/libs",
+        "src/win_platform.cpp",
     }
 
     links {
@@ -107,3 +110,4 @@ project "server"
         postbuildcommands {
             "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/release/*.dll] %[build/bin/%{prj.name}/profile]",
         }
+]]
