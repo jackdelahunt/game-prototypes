@@ -403,14 +403,19 @@ void fmt_value(DynamicArray<u8> *bytes, T value);
 FMT_VALUE_IMPL_PRIMITIVE(void *, "%p")
 FMT_VALUE_IMPL_PRIMITIVE(const char *, "%s")
 FMT_VALUE_IMPL_PRIMITIVE(char *, "%s")
+
 FMT_VALUE_IMPL_PRIMITIVE(i64, "%lld")
 FMT_VALUE_IMPL_PRIMITIVE(i32, "%d")
 FMT_VALUE_IMPL_PRIMITIVE(i16, "%hd")
 FMT_VALUE_IMPL_PRIMITIVE(i8, "%hhd")
+
 FMT_VALUE_IMPL_PRIMITIVE(u64, "%llu")
 FMT_VALUE_IMPL_PRIMITIVE(u32, "%u")
 FMT_VALUE_IMPL_PRIMITIVE(u16, "%hu")
 FMT_VALUE_IMPL_PRIMITIVE(u8, "%hhu")
+
+FMT_VALUE_IMPL_PRIMITIVE(f32, "%f")
+FMT_VALUE_IMPL_PRIMITIVE(f64, "%f")
 
 template<>
 void fmt_value(DynamicArray<u8> *bytes, bool value) {
