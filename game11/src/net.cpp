@@ -13,10 +13,12 @@
 
 #define NETWORK_DELAY_MS 50
 
-struct Server; // I hate c++
+// I hate c++
+struct Server; 
+struct NetworkLayer; 
 
 typedef HSteamNetConnection ConnectionId;
-typedef void (*NewConnectionCallback)(Server *, ConnectionId);
+typedef void (*NewConnectionCallback)(NetworkLayer *, Server *, ConnectionId);
 
 ISteamNetworkingSockets *interface;
 
@@ -55,7 +57,7 @@ struct Client {
     NetworkQueue in_queue;
 };
 
-struct Net {
+struct NetworkLayer {
     Arena arena;
     std::thread thread;
     bool running;
@@ -69,15 +71,16 @@ struct Net {
     NetworkQueue client_in_queue;
 };
 
-// call init_networking()
-Net *net_global_instance = NULL;
+// call init_networking() and NET()
+NetworkLayer *net_instance_global = NULL;
 
+NetworkLayer *NET();
 bool init_networking();
 void net_graceful_shutdown();
 
 void net_run();
-void neo_server_on_connection_changed(Net *net, Server *server, SteamNetConnectionStatusChangedCallback_t *info);
-void neo_client_on_connection_changed(Net *net, Client *client, SteamNetConnectionStatusChangedCallback_t *info);
+void neo_server_on_connection_changed(NetworkLayer *net, Server *server, SteamNetConnectionStatusChangedCallback_t *info);
+void neo_client_on_connection_changed(NetworkLayer *net, Client *client, SteamNetConnectionStatusChangedCallback_t *info);
 
 void neo_server_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info);
 void neo_client_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info);
@@ -112,17 +115,22 @@ void network_queue_push(NetworkQueue *network_queue, Slice<u8> message) {
     network_queue->messages.push(message_copy);
 }
 
+NetworkLayer *NET() {
+    ASSERT(net_instance_global != NULL);
+    return net_instance_global;
+}
+
 bool init_networking() {
-    net_global_instance = new Net {};
-    net_global_instance->arena = arena_create(10 * 1024 * 1024);
+    net_instance_global = new NetworkLayer {};
+    net_instance_global->arena = arena_create(10 * 1024 * 1024);
 
     SteamDatagramErrMsg error_message;
     if (!GameNetworkingSockets_Init(nullptr, error_message)) {
-        logln_fmt(&net_global_instance->arena, "GameNetworkingSockets_Init failed: {}", error_message);
+        logln_fmt(&net_instance_global->arena, "GameNetworkingSockets_Init failed: {}", error_message);
         return false;
     }
 
-    net_global_instance->interface = SteamNetworkingSockets();
+    net_instance_global->interface = SteamNetworkingSockets();
     
     SteamNetworkingUtils()->SetDebugOutputFunction(k_ESteamNetworkingSocketsDebugOutputType_Msg, networking_debug_callback);
 
@@ -131,21 +139,21 @@ bool init_networking() {
 }
 
 void net_graceful_shutdown() {
-    if (net_global_instance == NULL) {
+    if (net_instance_global == NULL) {
         return;
     }
 
-    net_global_instance->running = false;
+    net_instance_global->running = false;
 
-    if (net_global_instance->thread.joinable()) {
-        net_global_instance->thread.join();
+    if (net_instance_global->thread.joinable()) {
+        net_instance_global->thread.join();
     }
 
     GameNetworkingSockets_Kill();
 }
 
 void net_run() {
-    Net *net = net_global_instance;
+    NetworkLayer *net = NET();
     ASSERT(net != NULL && net->running == false);
 
 net->thread = std::thread([net] () {
@@ -288,7 +296,7 @@ net->thread = std::thread([net] () {
 });
 }
 
-void neo_server_on_connection_changed(Net *net, Server *server, SteamNetConnectionStatusChangedCallback_t *info) {
+void neo_server_on_connection_changed(NetworkLayer *net, Server *server, SteamNetConnectionStatusChangedCallback_t *info) {
     switch (info->m_info.m_eState) {
         case k_ESteamNetworkingConnectionState_None:                    break;
         case k_ESteamNetworkingConnectionState_ClosedByPeer:            break;
@@ -313,13 +321,13 @@ void neo_server_on_connection_changed(Net *net, Server *server, SteamNetConnecti
             }
     
             append(&server->connections, info->m_hConn);
-            // server->on_new_connection(server, info->m_hConn);
+            server->on_new_connection(net, server, info->m_hConn);
         } break;
         default: break;
     }
 }
 
-void neo_client_on_connection_changed(Net *net, Client *client, SteamNetConnectionStatusChangedCallback_t *info) {
+void neo_client_on_connection_changed(NetworkLayer *net, Client *client, SteamNetConnectionStatusChangedCallback_t *info) {
     ASSERT(info->m_hConn == client->connection || client->connection == k_HSteamNetConnection_Invalid);
 
     switch (info->m_info.m_eState) {
@@ -362,15 +370,15 @@ void neo_client_on_connection_changed(Net *net, Client *client, SteamNetConnecti
 }
 
 void neo_server_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info) {
-    ASSERT(net_global_instance != NULL);
+    ASSERT(net_instance_global != NULL);
 
-    neo_server_on_connection_changed(net_global_instance, &net_global_instance->server, info);
+    neo_server_on_connection_changed(net_instance_global, &net_instance_global->server, info);
 }
 
 void neo_client_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info) {
-    ASSERT(net_global_instance != NULL);
+    ASSERT(net_instance_global != NULL);
 
-    neo_client_on_connection_changed(net_global_instance, &net_global_instance->client, info);
+    neo_client_on_connection_changed(net_instance_global, &net_instance_global->client, info);
 }
 
 bool network_queue_pop(NetworkQueue *network_queue, Slice<u8> *out_message) {
@@ -517,7 +525,7 @@ void server_on_connection_changed(Server *server, SteamNetConnectionStatusChange
             }
     
             append(&server->connections, info->m_hConn);
-            server->on_new_connection(server, info->m_hConn);
+            server->on_new_connection(NULL, server, info->m_hConn);
         } break;
         default: break;
     }

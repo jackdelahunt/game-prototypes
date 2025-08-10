@@ -76,9 +76,6 @@ struct State {
     const char *title;
     v2 window_size;
 
-    Server server;
-    Client client;
-
     StackArray<Entity, MAX_ENTITIES> entities;
 };
 
@@ -105,7 +102,7 @@ void server_delete_entity(u32 id);
 Entity *get_entity_with_id(u32 id);
 bool entities_overlap(Entity *a, Entity *b);
 
-void server_on_new_connection(Server *server, ConnectionId id);
+void server_on_new_connection(NetworkLayer *net, Server *server, ConnectionId id);
 
 v2 v2_cast(Vector2 v);
 v3 v3_cast(Vector2 v);
@@ -124,9 +121,10 @@ int main(i32 argc, const char **argv) {
         return 1;
     }
 
+    NET()->server.on_new_connection = server_on_new_connection;
+
     net_run();
 
-#if 0
     std::thread server_thread = std::thread([argc, argv] () {
         log_set_thread_options(LogOptions {
             .thread_name = "SERVER",
@@ -135,9 +133,10 @@ int main(i32 argc, const char **argv) {
 
         start_server_instance(argc, argv);
     });
-#endif
 
     start_client_instance(argc, argv);
+
+    net_graceful_shutdown();
 }
 
 void start_client_instance(i32 argc, const char **argv) {
@@ -167,19 +166,15 @@ void start_client_instance(i32 argc, const char **argv) {
         EndDrawing();
     }
 
-    net_graceful_shutdown();
-
     CloseWindow();
 }
 
 void start_server_instance(i32 argc, const char **argv) {
+    state.instance_type = IT_SERVER;
     state.id = SERVER_ID;
     state.arena = arena_create(10 * 1024 * 1024);
-    state.server.on_new_connection = server_on_new_connection;
 
     logln_fmt(&state.arena, "Started server instance [thread={}]", get_current_thread_id());
-
-    server_run(&state.server);
 
     while (true) {
         f32 delta_time = 0.05;
@@ -187,8 +182,6 @@ void start_server_instance(i32 argc, const char **argv) {
         update(delta_time);
         physics(delta_time);
     }
-
-    server_graceful_shutdown(&state.server);
 }
 
 void update(f32 delta_time) {
@@ -200,7 +193,7 @@ void update(f32 delta_time) {
 void update_network() {
     if (is_server()) {
         Slice<u8> bytes;
-        while (network_queue_pop(&state.server.in_queue, &bytes)) {
+        while (network_queue_pop(&NET()->server_in_queue, &bytes)) {
             NetworkMessage *message = (NetworkMessage *) bytes.ptr;
             on_server_receive(message);
             slice_free(bytes);
@@ -212,13 +205,13 @@ void update_network() {
             }
     
             NetworkMessage message = NetworkMessage{.type = SYNC_ENTITY, .sync_entity = entity};
-            server_send_to_all_clients(&state.server, bytes_from_ptr(&message));
+            server_send_to_all_clients(&NET()->server, bytes_from_ptr(&message));
         }
     }
 
     if (is_client()) {
         Slice<u8> bytes;
-        while (network_queue_pop(&state.client.in_queue, &bytes)) {
+        while (network_queue_pop(&NET()->client_in_queue, &bytes)) {
             NetworkMessage *message = (NetworkMessage *) bytes.ptr;
             on_client_receive(message);
             slice_free(bytes);
@@ -232,7 +225,7 @@ void update_network() {
                 }
         
                 NetworkMessage message = NetworkMessage{.type = SYNC_ENTITY, .sync_entity = entity};
-                client_send_to_server(&state.client, bytes_from_ptr(&message));
+                client_send_to_server(&NET()->client, bytes_from_ptr(&message));
             }
         }
     }
@@ -254,7 +247,7 @@ void on_server_receive(NetworkMessage *message) {
 
             { // assign client id
                 NetworkMessage message = NetworkMessage{.type = ASSIGN_CLIENT_ID, .assign_client_id = new_client_id};
-                server_send_to_client(&state.server, bytes_from_ptr(&message), connection_id);
+                server_send_to_client(&NET()->server, bytes_from_ptr(&message), connection_id);
                 logln_fmt(&state.arena, "Assigning new client id={}", new_client_id);
             }
 
@@ -262,7 +255,7 @@ void on_server_receive(NetworkMessage *message) {
                 logln_fmt(&state.arena, "Spawning {} existing entities on new client", state.entities.len);
                 for (Entity &entity : state.entities) {
                     NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = entity};
-                    server_send_to_client(&state.server, bytes_from_ptr(&message), connection_id);
+                    server_send_to_client(&NET()->server, bytes_from_ptr(&message), connection_id);
                 }
             }
 
@@ -280,7 +273,7 @@ void on_server_receive(NetworkMessage *message) {
                 local_spawn_entity(new_player);
 
                 NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = new_player};
-                server_send_to_all_clients(&state.server, bytes_from_ptr(&message));
+                server_send_to_all_clients(&NET()->server, bytes_from_ptr(&message));
             }
         } break;
         case SPAWN_ENTITY: {
@@ -290,7 +283,7 @@ void on_server_receive(NetworkMessage *message) {
             logln_fmt(&state.arena, "Server spawning entity: id={}, owner={}", entity.id, entity.owner);
             local_spawn_entity(entity);
             NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = entity};
-            server_send_to_all_clients(&state.server, bytes_from_ptr(&message));
+            server_send_to_all_clients(&NET()->server, bytes_from_ptr(&message));
         } break;
         case SYNC_ENTITY: {
             Entity *entity = get_entity_with_id(message->sync_entity.id);
@@ -298,7 +291,7 @@ void on_server_receive(NetworkMessage *message) {
                 *entity = message->sync_entity;
 
                 NetworkMessage message = NetworkMessage{.type = SYNC_ENTITY, .sync_entity = *entity};
-                server_send_to_all_clients(&state.server, bytes_from_ptr(&message), entity->owner);
+                server_send_to_all_clients(&NET()->server, bytes_from_ptr(&message), entity->owner);
             }
         } break;
         case DELETE_ENTITY: {
@@ -307,7 +300,7 @@ void on_server_receive(NetworkMessage *message) {
             logln_fmt(&state.arena, "Server deleting entity: id={}", id);
             local_delete_entity(id);
             NetworkMessage message = NetworkMessage{.type = DELETE_ENTITY, .delete_entity = id};
-            server_send_to_all_clients(&state.server, bytes_from_ptr(&message));
+            server_send_to_all_clients(&NET()->server, bytes_from_ptr(&message));
         } break;
         default: {
             logln("WARNING unknown message sent");
@@ -484,12 +477,12 @@ void local_delete_entity(u32 id) {
 
 void server_spawn_entity(Entity entity) {
     NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = entity};
-    client_send_to_server(&state.client, bytes_from_ptr(&message));
+    client_send_to_server(&NET()->client, bytes_from_ptr(&message));
 }
 
 void server_delete_entity(u32 id) {
     NetworkMessage message = NetworkMessage{.type = DELETE_ENTITY, .delete_entity = id};
-    client_send_to_server(&state.client, bytes_from_ptr(&message));
+    client_send_to_server(&NET()->client, bytes_from_ptr(&message));
 }
 
 Entity *get_entity_with_id(u32 id) {
@@ -521,11 +514,11 @@ bool entities_overlap(Entity *a, Entity *b) {
     return overlapX && overlapY;
 }
 
-void server_on_new_connection(Server *server, ConnectionId id) {
-    logln_fmt(&server->arena, "New connection received, sending server new connection message [thread={}]", get_current_thread_id());
+void server_on_new_connection(NetworkLayer *net, Server *server, ConnectionId id) {
+    logln_fmt(&net->arena, "New connection received, sending server new connection message [thread={}]", get_current_thread_id());
+
     NetworkMessage message = NetworkMessage {.type = CLIENT_CONNECTED, .client_connected = id};
-    network_queue_push(&server->in_queue, bytes_from_ptr(&message));
-    logln_fmt(&server->arena, "Queued CLIENT_CONNECTED message for connection {}", id);
+    network_queue_push(&net->server_in_queue, bytes_from_ptr(&message));
 }
 
 v2 v2_cast(Vector2 v) {
