@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <chrono>
 
-// Total: 24:00
+// Total: 29:00
 // Started: 11:00
 
 #define MAX_ENTITIES 2000
@@ -370,11 +370,11 @@ void on_client_receive(NetworkMessage *message) {
 
 void update_entities(f32 delta_time) {
     for (Entity &entity : state.entities) {
-        if (BIT_SET(entity.flags, EF_PLAYER)) {
-            if (state.id != entity.owner) {
-                continue;
-            }
+        if (state.id != entity.owner) {
+            continue;
+        }
 
+        if (BIT_SET(entity.flags, EF_PLAYER)) {
             { // movement
                 f32 move_speed = 10;
     
