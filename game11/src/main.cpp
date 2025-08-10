@@ -268,14 +268,27 @@ void game_client_start(GameClient *instance) {
 
     InitWindow(i32(instance->window_size.x), i32(instance->window_size.y), instance->title);
 
+    bool hosted = false;
+
     while (!WindowShouldClose()) {
         f32 delta_time = GetFrameTime();
 
+        // self host game server
         if (IsKeyPressed(KEY_ONE)) {
+            hosted = true;
+            logln("starting hosted game");
+
             game_server_start();
 
             network_layer_start_server(NET());
-            network_layer_start_client(NET(), "127.0.0.1");
+            network_layer_start_client(NET(), "::1");
+        }
+
+        if (IsKeyPressed(KEY_TWO)) {
+            hosted = false;
+            logln("starting and connecting to local-hosted game");
+
+            network_layer_start_client(NET(), "::1");
         }
 
         update_network(&instance->state);
@@ -290,9 +303,14 @@ void game_client_start(GameClient *instance) {
         arena_reset(&instance->state.arena);
     }
 
-    game_server_stop();
-    network_layer_stop_server(NET());
-    network_layer_stop_client(NET());
+    if (hosted) {
+        game_server_stop();
+        network_layer_stop_server(NET());
+        network_layer_stop_client(NET());
+    }
+    else {
+        network_layer_stop_client(NET());
+    }
 
     CloseWindow();
 }
@@ -446,22 +464,38 @@ void update_entities(State *state, f32 delta_time) {
 
         if (BIT_SET(entity.flags, EF_PLAYER)) {
             { // movement
-                f32 move_speed = 10;
+                v3 input = v3{};
     
                 if (IsKeyDown(KEY_A)) {
-                    entity.position.x -= move_speed;
+                    input.x -= 1;
                 }
     
                 if (IsKeyDown(KEY_D)) {
-                    entity.position.x += move_speed;
+                    input.x += 1;
                 }
     
                 if (IsKeyDown(KEY_W)) {
-                    entity.position.y -= move_speed;
+                    input.y -= 1;
                 }
     
                 if (IsKeyDown(KEY_S)) {
-                    entity.position.y += move_speed;
+                    input.y += 1;
+                }
+
+                // apply acceleration from input
+                f32 acceleration = 50;
+                entity.velocity += acceleration * input;
+
+                // cap velocity 
+                f32 max_velocity = 250;
+                if (length(entity.velocity) > max_velocity) {
+                    entity.velocity = norm(entity.velocity) * max_velocity;
+                }
+
+                // make velocity decay over time 
+                f32 valocity_decay = 200;
+                if (length(entity.velocity) > 0) {
+                    entity.velocity += -norm(entity.velocity) * max_velocity * delta_time;
                 }
             }
 

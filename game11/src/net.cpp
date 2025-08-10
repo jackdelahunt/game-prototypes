@@ -214,7 +214,7 @@ void network_layer_update_client(NetworkLayer *net) {
             address.Clear();
         
             bool ok = address.ParseString(net->client.server_address);
-            if (ok) {
+            if (!ok) {
                 logln_fmt(&net->arena, "Could not parse server address supplied: {}", net->client.server_address);
                 return;
             }
@@ -283,7 +283,7 @@ void network_layer_update_server(NetworkLayer *net) {
             address.m_port = DEFAULT_PORT;
         }
 
-        { // attempt to create socket
+        { // attempt to create socket and poll group
             SteamNetworkingConfigValue_t connect_options;
             connect_options.SetPtr(k_ESteamNetworkingConfig_Callback_ConnectionStatusChanged, (void*)server_network_connection_status_changed_callback);
             
