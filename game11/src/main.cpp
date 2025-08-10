@@ -122,7 +122,6 @@ int main(i32 argc, const char **argv) {
 
     net_run(&state.net);
 
-    state.net.thread.join();
 #if 0
     std::thread server_thread = std::thread([argc, argv] () {
         log_set_thread_options(LogOptions {

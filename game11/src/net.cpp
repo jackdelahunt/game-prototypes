@@ -60,10 +60,15 @@ struct Net {
 
     Arena arena;
     std::thread thread;
+    bool running;
+
     ISteamNetworkingSockets *interface;
 
     Client client;
     Server server;
+
+    NetworkQueue server_in_queue;
+    NetworkQueue client_in_queue;
 };
 
 bool init_networking(Net *net);
@@ -136,6 +141,7 @@ net->thread = std::thread([net] () {
     logln_fmt(&net->arena, "Started networking thread [thread={}]", get_current_thread_id());
 
     Net::instance = net;
+    net->running = true;
 
     { // start server
         net->server.running = true;
@@ -195,8 +201,8 @@ net->thread = std::thread([net] () {
         }
     }
 
-    { // poll server messages
-        while (net->server.running) {
+    { // poll incoming messages
+        while (net->running) {
             // poll incoming messages 
             while (net->server.running) {
                 ISteamNetworkingMessage *incoming_message = NULL;
@@ -211,7 +217,26 @@ net->thread = std::thread([net] () {
                 { // copy message contents to byte slice and add to network queue
                     Slice<u8> bytes = slice_create_malloc<u8>(incoming_message->m_cbSize);
                     slice_copy_raw_ptr(bytes, incoming_message->m_pData);
-                    network_queue_push(&net->server.in_queue, bytes);
+                    network_queue_push(&net->server_in_queue, bytes);
+                }
+    
+                incoming_message->Release();
+            }
+
+            while (net->client.running) {
+                ISteamNetworkingMessage *incoming_message = NULL;
+                i64 message_count = net->interface->ReceiveMessagesOnConnection(net->client.connection, &incoming_message, 1);
+    
+                if (message_count == 0) {
+                    break;
+                }
+    
+                ASSERT(message_count == 1 && incoming_message != NULL);
+    
+                { // copy message contents to byte slice and add to network queue
+                    Slice<u8> bytes = slice_create_malloc<u8>(incoming_message->m_cbSize);
+                    slice_copy_raw_ptr(bytes, incoming_message->m_pData);
+                    network_queue_push(&net->client_in_queue, bytes);
                 }
     
                 incoming_message->Release();
