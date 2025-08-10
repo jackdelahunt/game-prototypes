@@ -60,8 +60,14 @@ enum EntityFlags {
     EF_DELETE           = 1 << 16,
 };
 
+enum InstanceType {
+    IT_CLIENT,
+    IT_SERVER
+};
+
 // @state
 struct State {
+    InstanceType instance_type;
     u32 id;
     f64 time;
 
@@ -69,8 +75,6 @@ struct State {
 
     const char *title;
     v2 window_size;
-
-    Net net;
 
     Server server;
     Client client;
@@ -114,13 +118,13 @@ int main(i32 argc, const char **argv) {
         .thread_colour = GREEN_ASCII_CODE,
     });
 
-    bool ok = init_networking(&state.net);
+    bool ok = init_networking();
     if (!ok) {
         logln("CRASH: failed to strart networking");
         return 1;
     }
 
-    net_run(&state.net);
+    net_run();
 
 #if 0
     std::thread server_thread = std::thread([argc, argv] () {
@@ -131,19 +135,18 @@ int main(i32 argc, const char **argv) {
 
         start_server_instance(argc, argv);
     });
+#endif
 
     start_client_instance(argc, argv);
-#endif
 }
 
 void start_client_instance(i32 argc, const char **argv) {
+    state.instance_type = IT_CLIENT;
     state.title = "Game11";
     state.window_size = v2{1080, 720};
     state.arena = arena_create(10 * 1024 * 1024);
 
     logln_fmt(&state.arena, "Started client instance [thread={}]", get_current_thread_id());
-
-    client_run(&state.client, argc > 1 ? argv[1] : NULL);
 
     srand(time(NULL));
 
@@ -164,7 +167,7 @@ void start_client_instance(i32 argc, const char **argv) {
         EndDrawing();
     }
 
-    client_graceful_shutdown(&state.client);
+    net_graceful_shutdown();
 
     CloseWindow();
 }

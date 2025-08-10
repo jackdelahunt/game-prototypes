@@ -56,8 +56,6 @@ struct Client {
 };
 
 struct Net {
-    inline static Net *instance = NULL; // used to keep net instance around for network callbacks
-
     Arena arena;
     std::thread thread;
     bool running;
@@ -71,10 +69,13 @@ struct Net {
     NetworkQueue client_in_queue;
 };
 
-bool init_networking(Net *net);
-void kill_networking(Net *net);
+// call init_networking()
+Net *net_global_instance = NULL;
 
-void net_run(Net *net);
+bool init_networking();
+void net_graceful_shutdown();
+
+void net_run();
 void neo_server_on_connection_changed(Net *net, Server *server, SteamNetConnectionStatusChangedCallback_t *info);
 void neo_client_on_connection_changed(Net *net, Client *client, SteamNetConnectionStatusChangedCallback_t *info);
 
@@ -111,27 +112,42 @@ void network_queue_push(NetworkQueue *network_queue, Slice<u8> message) {
     network_queue->messages.push(message_copy);
 }
 
-bool init_networking(Net *net) {
+bool init_networking() {
+    net_global_instance = new Net {};
+    net_global_instance->arena = arena_create(10 * 1024 * 1024);
+
     SteamDatagramErrMsg error_message;
     if (!GameNetworkingSockets_Init(nullptr, error_message)) {
-        printf("GameNetworkingSockets_Init failed %s\n", error_message);
+        logln_fmt(&net_global_instance->arena, "GameNetworkingSockets_Init failed: {}", error_message);
         return false;
     }
+
+    net_global_instance->interface = SteamNetworkingSockets();
     
     SteamNetworkingUtils()->SetDebugOutputFunction(k_ESteamNetworkingSocketsDebugOutputType_Msg, networking_debug_callback);
 
-    net->arena = arena_create(10 * 1024 * 1024);
-    net->interface = SteamNetworkingSockets();
-
-    logln("initialised networking layer");
+    logln("initialised networking and global net instance");
     return true;
 }
 
-void kill_networking(Net *net) {
+void net_graceful_shutdown() {
+    if (net_global_instance == NULL) {
+        return;
+    }
+
+    net_global_instance->running = false;
+
+    if (net_global_instance->thread.joinable()) {
+        net_global_instance->thread.join();
+    }
+
     GameNetworkingSockets_Kill();
 }
 
-void net_run(Net *net) {
+void net_run() {
+    Net *net = net_global_instance;
+    ASSERT(net != NULL && net->running == false);
+
 net->thread = std::thread([net] () {
     log_set_thread_options(LogOptions {
         .thread_name = "NETWORK",
@@ -140,7 +156,6 @@ net->thread = std::thread([net] () {
 
     logln_fmt(&net->arena, "Started networking thread [thread={}]", get_current_thread_id());
 
-    Net::instance = net;
     net->running = true;
 
     { // start server
@@ -347,15 +362,15 @@ void neo_client_on_connection_changed(Net *net, Client *client, SteamNetConnecti
 }
 
 void neo_server_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info) {
-    ASSERT(Net::instance != NULL);
+    ASSERT(net_global_instance != NULL);
 
-    neo_server_on_connection_changed(Net::instance, &Net::instance->server, info);
+    neo_server_on_connection_changed(net_global_instance, &net_global_instance->server, info);
 }
 
 void neo_client_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info) {
-    ASSERT(Net::instance != NULL);
+    ASSERT(net_global_instance != NULL);
 
-    neo_client_on_connection_changed(Net::instance, &Net::instance->client, info);
+    neo_client_on_connection_changed(net_global_instance, &net_global_instance->client, info);
 }
 
 bool network_queue_pop(NetworkQueue *network_queue, Slice<u8> *out_message) {
