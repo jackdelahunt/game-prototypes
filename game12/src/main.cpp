@@ -13,7 +13,7 @@
 #include <chrono>
 
 // Total: 01:30
-// Started: 14:00
+// Started: 16:30
 
 #define MAX_ENTITIES 100
 #define SERVER_ID 1
@@ -95,11 +95,6 @@ struct GameServer {
 
 // @client @gameclient
 struct GameClient {
-    bool running;
-
-    Camera camera;
-    Window window;
-    Renderer renderer;
     State state;
 };
 
@@ -109,14 +104,14 @@ GameClient *g_game_client = NULL;
 void game_server_start();
 void game_server_stop();
 
-void game_client_start(GameClient *instance);
+void game_client_start();
 
 void update_network(State *state);
 void on_server_receive(State *state, NetworkMessage *message);
 void on_client_receive(State *state, NetworkMessage *message);
-void update_entities(GameClient *instance, State *state, f32 delta_time);
+void update_entities(State *state, f32 delta_time);
 
-void draw(Renderer *renderer, State *state, f32 delta_time);
+void draw(State *state, f32 delta_time);
 void physics(State *state, f32 delta_time);
 
 u32 new_entity_id();
@@ -149,47 +144,7 @@ int main(i32 argc, const char **argv) {
 
     network_layer_start();
 
-    GameClient game_client = {
-        .running = true,
-        .camera = Camera {
-            .mode = CameraMode::FIRST_PERSON,
-            .fov = 100,
-            .position = v3{0, 0, -3},
-            .near_plane = 0.1,
-            .far_plane = 200,
-        },
-        .window = {
-            .mouse_captured = true,
-        },
-        .renderer = {
-            .clear_colour = {1, 1, 1, 1},
-            .ambient_light = v3{0.6, 0.6, 0.6},
-            .sun_colour = v3{0.5, 0.5, 0.5},
-            .sun_position = {50, 100, -100},
-            .shadow_colour = v3{-1, -1, 0.5},
-            .ssao_radius = 0.8,
-            .ssao_bias = 0.025,
-            .ssao_noise_scale = {480, 270},
-        },
-    };
-    
-    { // init client stuff
-        bool ok = false;
-
-        ok = init_window(&game_client.window, "Game12");
-        if (!ok) {
-            logln("Failed when trying to init the window");
-        }
-
-        ok = init_renderer(&game_client.renderer, &game_client.window);
-        if (!ok) {
-            logln("Failed when trying to init the renderer");
-        }
-
-        cube_model = load_model(&game_client.renderer, "resources/models/cuber/cube.obj");
-    }
-
-    game_client_start(&game_client);
+    game_client_start();
 
     network_layer_stop();
 }
@@ -241,7 +196,7 @@ void game_server_start() {
 
             f32 delta_time_f32 = static_cast<f32>(std::chrono::duration<f32>(tick_interval).count());
 
-            update_entities(NULL, &g_game_server->state, delta_time_f32);
+            update_entities(&g_game_server->state, delta_time_f32);
             physics(&g_game_server->state, delta_time_f32);
         }
 
@@ -272,52 +227,76 @@ void game_server_stop() {
     g_game_server = NULL;
 }
 
-void game_client_start(GameClient *instance) {
-    instance->state = State {
-        .instance_type = IT_CLIENT,
-        .instance_id = 0,
-        .arena = arena_create(10 * 1024 * 1024),
-        .entities = stack_array_create<Entity, MAX_ENTITIES>(),
+void game_client_start() {
+    GameClient game_client = {
+        .state = State {
+            .instance_type = IT_CLIENT,
+            .instance_id = 0,
+            .arena = arena_create(10 * 1024 * 1024),
+            .entities = stack_array_create<Entity, MAX_ENTITIES>(),
+        }
     };
+    
+    { // init all the global stuff
+        bool ok = false;
 
-    logln_fmt(&instance->state.arena, "Started client instance [thread={}]", get_current_thread_id());
+        ok = window_init("Game12", 1080, 720);
+        if (!ok) {
+            logln("Failed when trying to init the window");
+        }
+
+        ok = camera_init(CameraMode::FIRST_PERSON, 100, v3{0, 0, -3}, 0.1, 200);
+        if (!ok) {
+            logln("Failed when trying to init the camera");
+        }
+
+        ok = renderer_init(WIN(), v4{1, 1, 1, 1}, v3{0.6, 0.6, 0.6}, v3{0.5, 0.5, 0.5}, v3{50, 100, -100}, v3{-1, -1, 0.5}, 0.8, 0.025, v2{480, 270});
+        if (!ok) {
+            logln("Failed when trying to init the renderer");
+        }
+
+        cube_model = load_model(REN(), "resources/models/cuber/cube.obj");
+    }
+
+    logln_fmt(&game_client.state.arena, "Started client instance [thread={}]", get_current_thread_id());
 
     srand(time(NULL));
 
     bool hosted = false;
     bool game_started = false;
 
-    local_spawn_entity(&instance->state, Entity {
+    local_spawn_entity(&game_client.state, Entity {
         .position = {0, 0, 0},
         .size = {1, 1, 1},
         .colour = RED,
         .model = cube_model
     });
 
-    while (!glfwWindowShouldClose(instance->window.glfw_window)) {
-        f64 current_time        = instance->state.time;
+    while (!glfwWindowShouldClose(WIN()->glfw_window)) {
+        f64 current_time        = game_client.state.time;
         f64 new_time            = glfwGetTime();
         f32 delta_time          = (f32) (new_time - current_time);
-        instance->state.time    = new_time;
+        game_client.state.time    = new_time;
 
         poll_inputs();
 
         if (KEYS[GLFW_KEY_ESCAPE] == InputState::DOWN) {
-            glfwSetWindowShouldClose(instance->window.glfw_window, GLFW_TRUE);
+            glfwSetWindowShouldClose(WIN()->glfw_window, GLFW_TRUE);
         }
+
         // update_network(&instance->state);
-        update_entities(instance, &instance->state, delta_time);
+        update_entities(&game_client.state, delta_time);
         // physics(&instance->state, delta_time);
 
-        new_frame(&instance->renderer, &instance->window, instance->camera);
+        new_frame(REN(), WIN(), CAM());
 
-        draw(&instance->renderer, &instance->state, delta_time);
+        draw(&game_client.state, delta_time);
 
-        draw_frame(&instance->renderer, &instance->window);
-        swap_buffers(&instance->window);
+        draw_frame(REN(), WIN());
+        swap_buffers(WIN());
 
 
-        arena_reset(&instance->state.arena);
+        arena_reset(&game_client.state.arena);
     }
 
     glfwTerminate();
@@ -464,7 +443,7 @@ void on_client_receive(State *state, NetworkMessage *message) {
     }
 }
 
-void update_entities(GameClient *instance, State *state, f32 delta_time) {
+void update_entities(State *state, f32 delta_time) {
     { // update camera
         v3 input = {};
     
@@ -493,23 +472,25 @@ void update_entities(GameClient *instance, State *state, f32 delta_time) {
         }
          
         const f32 FLY_SPEED = 15;
+
+        Camera *camera = CAM();
  
-        v3 forward = get_forward_direction(instance->camera);
+        v3 forward = get_forward_direction(camera);
         v3 up = {0, 1, 0};
-        v3 right = get_right_direction(instance->camera);
+        v3 right = get_right_direction(camera);
  
-        instance->camera.position += right * (input.x * FLY_SPEED * delta_time);
-        instance->camera.position += up * (input.y * FLY_SPEED * delta_time);
-        instance->camera.position += forward * (input.z * FLY_SPEED * delta_time);
+        camera->position += right * (input.x * FLY_SPEED * delta_time);
+        camera->position += up * (input.y * FLY_SPEED * delta_time);
+        camera->position += forward * (input.z * FLY_SPEED * delta_time);
 
         // update camera rotation (looking at)
-        if (instance->window.mouse_captured) {
+        if (WIN()->mouse_captured) {
             f32 sensitivity = 0.1;
             v2 mouse_input = MOUSE.delta;
     
             if(length(mouse_input) != 0) {
-                instance->camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
-                instance->camera.rotation.x = clamp(-90, instance->camera.rotation.x, 90);
+                camera->rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
+                camera->rotation.x = clamp(-90, camera->rotation.x, 90);
             }
         }
     }
@@ -586,9 +567,9 @@ void update_entities(GameClient *instance, State *state, f32 delta_time) {
 #endif
 }
 
-void draw(Renderer *renderer, State *state, f32 delta_time) {
+void draw(State *state, f32 delta_time) {
     for (Entity &entity : state->entities) {
-        draw_model(renderer, entity.position, entity.size, {}, entity.model, entity.colour);
+        draw_model(REN(), entity.position, entity.size, {}, entity.model, entity.colour);
     }
 }
 

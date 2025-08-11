@@ -25,15 +25,18 @@
 //////////////////////////////// @window ////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 struct Window {
+    str title;
     i32 width;
     i32 height;
-    str title;
 
     GLFWwindow *glfw_window;
 
     bool vsync;
     bool mouse_captured;
 };
+
+// call window_init() and WIN()
+Window *g_window = NULL;
 
 enum class InputState {
     UP,
@@ -49,7 +52,12 @@ struct {
     StackArray<InputState, 8> buttons;
 } MOUSE;
 
-bool init_window(Window *window, str title);
+Window *WIN() {
+    ASSERT(g_window != NULL);
+    return g_window;
+}
+
+bool window_init(str title, i32 width, i32 height);
 void set_mouse_captured(Window *window, bool captured);
 void set_window_title(Window *window, str title);
 void poll_inputs();
@@ -60,48 +68,51 @@ void glfw_mouse_move_callback(GLFWwindow* window, f64 x, f64 y);
 void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 mods);
 void glfw_error_callback(int error_code, const char* description);
 
-bool init_window(Window *window, str title) {
+bool window_init(str title, i32 width, i32 height) {
     if (glfwInit() == 0) {
-        printf("Failed to init glfw\n");
+        logln("Failed to init glfw");
         return false;
     }
 
-    GLFWmonitor *monitor = glfwGetPrimaryMonitor();
-    const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+    glfwWindowHint(GLFW_MAXIMIZED, GL_FALSE);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    *window = Window {
-        .width = mode->width,
-        .height = mode->height,
+    // used to get full screen width and height
+    // GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+    // const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+
+    g_window = new Window {
         .title = title,
+        .width = width,
+        .height = height,
+        .glfw_window = NULL,
         .vsync = true,
         .mouse_captured = true,
     };
  
-    glfwWindowHint(GLFW_MAXIMIZED, GL_TRUE);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 #if REPORT_GL_ERRORS
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 #endif
 
-    window->glfw_window = glfwCreateWindow(window->width, window->height, window->title.c(), NULL, NULL);
-    if (window->glfw_window == nullptr) {
-        printf("Failed to create window\n");
+    g_window->glfw_window = glfwCreateWindow(g_window->width, g_window->height, g_window->title.c(), NULL, NULL);
+    if (g_window->glfw_window == NULL) {
+        logln("Failed to create window");
         return false;
     }
 
-    glfwMakeContextCurrent(window->glfw_window);
-    glfwSetWindowUserPointer(window->glfw_window, window);
+    glfwMakeContextCurrent(g_window->glfw_window);
+    glfwSetWindowUserPointer(g_window->glfw_window, g_window);
 
-    glfwSwapInterval(window->vsync);
-    set_mouse_captured(window, window->mouse_captured);
+    glfwSwapInterval(g_window->vsync);
+    set_mouse_captured(g_window, g_window->mouse_captured);
 
     glfwSetErrorCallback(glfw_error_callback);
-    glfwSetKeyCallback(window->glfw_window, glfw_key_callback);
-    glfwSetCursorPosCallback(window->glfw_window, glfw_mouse_move_callback);
-    glfwSetMouseButtonCallback(window->glfw_window, glfw_mouse_button_callback);
+    glfwSetKeyCallback(g_window->glfw_window, glfw_key_callback);
+    glfwSetCursorPosCallback(g_window->glfw_window, glfw_mouse_move_callback);
+    glfwSetMouseButtonCallback(g_window->glfw_window, glfw_mouse_button_callback);
 
     return true;
 }
@@ -271,6 +282,9 @@ struct Camera {
     f32 orthographic_size;
 };
 
+// call camera_init() and CAM()
+Camera *g_camera = NULL;
+
 enum class DrawType {
     RECTANGLE   = 0,
     CIRCLE      = 1,
@@ -388,12 +402,11 @@ struct Renderer {
     FixedArray<Model> models;
     FixedArray<Quad> quads;
     FixedArray<RenderCommand> commands;
+    StackArray<Texture, MAX_TEXTURES> textures;
 
     m4 view_matrix;
     m4 projection_matrix;
     m4 projection_matrix_ortho;
-
-    StackArray<Texture, MAX_TEXTURES> textures;
 
     Texture *default_normal;
 
@@ -423,6 +436,9 @@ struct Renderer {
     u32 noise_texture_id;
 };
 
+// call renderer_init() and REN()
+Renderer *g_renderer = NULL;
+
 v4 WHITE            = {1, 1, 1, 1};
 v4 BLACK            = {0, 0, 0, 1};
 
@@ -435,9 +451,13 @@ v4 CORNFLOUR_BLUE   = {0.35, 0.80, 0.80, 1};
 v4 SUN_YELLOW       = {0.9, 0.9, 0.3, 1};
 
 // Camera API
-v3 get_forward_direction(Camera camera);
-v3 get_right_direction(Camera camera);
-v3 get_up_direction(Camera camera);
+Camera *CAM();
+bool camera_init(CameraMode mode, f32 fov, v3 position, f32 near_plane, f32 far_plane);
+
+v3 get_forward_direction(Camera *camera);
+v3 get_right_direction(Camera *camera);
+v3 get_up_direction(Camera *camera);
+
 v3 get_forward_direction(v3 rotation);
 v3 get_right_direction(v3 rotation);
 v3 get_up_direction(v3 rotation);
@@ -466,7 +486,9 @@ RenderTexture load_render_texture(Renderer *renderer, str path);
 void upload_texture_to_gpu(Renderer *renderer, RenderTexture *texture);
 
 // Renderer init API
-bool init_renderer(Renderer *renderer, Window *window);
+Renderer *REN();
+bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_colour, v3 sun_position, v3 shadow_colour, f32 ssao_radius, f32 ssao_bias, v2 ssao_noise_scale);
+
 bool load_shaders(Renderer *renderer);
 void delete_shaders(Renderer *renderer);
 Texture *load_texture(Renderer *renderer, str path);
@@ -478,7 +500,7 @@ bool load_font(Renderer *renderer, str path, i64 width, i64 height, f32 pixel_he
 
 // Renderer frame API
 void clear_frame(Renderer *renderer, v4 colour);
-void new_frame(Renderer *renderer, Window *window, Camera camera);
+void new_frame(Renderer *renderer, Window *window, Camera *camera);
 void draw_frame(Renderer *renderer, Window *window);
 void new_imgui_frame();
 void draw_imgui_frame();
@@ -499,12 +521,12 @@ f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
 
 bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options);
 
-v2 screen_position_to_world_position(v2 screen_position, Camera camera, Window *window);
+v2 screen_position_to_world_position(v2 screen_position, Camera *camera, Window *window);
 v2 screen_position_to_ndc(v2 screen_position, Window *window);
 
-m4 get_view_matrix(Camera camera);
-m4 get_projection_matrix(Camera camera, f32 aspect);
-m4 get_projection_matrix_ortho(Camera camera, f32 aspect);
+m4 get_view_matrix(Camera *camera);
+m4 get_projection_matrix(Camera *camera, f32 aspect);
+m4 get_projection_matrix_ortho(Camera *camera, f32 aspect);
 
 v4 rgb(i64 r, i64 g, i64 b);
 v4 rgba(i64 r, i64 g, i64 b, i64 a);
@@ -522,24 +544,41 @@ void print(v4 vector);
 
 f32 accel_lerp(f32 a, f32 b, f32 f);
 
-v3 get_forward_direction(Camera camera) {
+Camera *CAM() {
+    ASSERT(g_camera != NULL);
+    return g_camera;
+}
+
+bool camera_init(CameraMode mode, f32 fov, v3 position, f32 near_plane, f32 far_plane) {
+    g_camera = new Camera {
+        .mode = mode,
+        .fov = fov,
+        .position = position,
+        .near_plane = near_plane,
+        .far_plane = far_plane
+    };
+
+    return true;
+}
+
+v3 get_forward_direction(Camera *camera) {
     // pitch    - x
     // yaw      - y
     // roll     - z
     v3 direction {
-        .x = sin(camera.rotation.y * HMM_DegToRad) * cos(camera.rotation.x * HMM_DegToRad),
-        .y = sin(camera.rotation.x * HMM_DegToRad),
-        .z = cos(camera.rotation.y * HMM_DegToRad) * cos(camera.rotation.x * HMM_DegToRad)
+        .x = sin(camera->rotation.y * HMM_DegToRad) * cos(camera->rotation.x * HMM_DegToRad),
+        .y = sin(camera->rotation.x * HMM_DegToRad),
+        .z = cos(camera->rotation.y * HMM_DegToRad) * cos(camera->rotation.x * HMM_DegToRad)
     };
 
     return norm(direction);
 }
 
-v3 get_right_direction(Camera camera) {
+v3 get_right_direction(Camera *camera) {
     return HMM_Cross(get_up_direction(camera), get_forward_direction(camera));
 }
 
-v3 get_up_direction(Camera camera) {
+v3 get_up_direction(Camera *camera) {
     return {0, 1, 0};
 }
 
@@ -817,12 +856,29 @@ void upload_texture_to_gpu(Renderer *renderer, RenderTexture *texture) {
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-bool init_renderer(Renderer *renderer, Window *window) {
-    renderer->quads = new_fixed_array<Quad>(MAX_QUADS);
-    renderer->meshes = new_fixed_array<Mesh>(MAX_MESHES);
-    renderer->models = new_fixed_array<Model>(MAX_MODELS);
-    renderer->commands = new_fixed_array<RenderCommand>(MAX_RENDER_COMMANDS);
-    renderer->ssao_noise_scale = {f32(window->width) * 0.25f, f32(window->height) * 0.25f};
+Renderer *REN() {
+    ASSERT(g_renderer != NULL);
+    return g_renderer;
+}
+
+bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_colour, v3 sun_position, v3 shadow_colour, f32 ssao_radius, f32 ssao_bias, v2 ssao_noise_scale) {
+    g_renderer = new Renderer {
+        .clear_colour = clear_colour,
+        .ambient_light = ambient_light,
+        .sun_colour = sun_colour,
+        .sun_position = sun_position,
+        .shadow_colour = shadow_colour,
+        .ssao_radius = ssao_radius,
+        .ssao_bias = ssao_bias,
+        .ssao_noise_scale = ssao_noise_scale,
+        .meshes = new_fixed_array<Mesh>(MAX_MESHES),
+        .models = new_fixed_array<Model>(MAX_MODELS),
+        .quads = new_fixed_array<Quad>(MAX_QUADS),
+        .commands = new_fixed_array<RenderCommand>(MAX_RENDER_COMMANDS),
+        .textures = stack_array_create<Texture, MAX_TEXTURES>(),
+    };
+
+    Renderer *renderer = REN();
 
     { // init opengl
         GLenum result = glewInit();
@@ -830,9 +886,9 @@ bool init_renderer(Renderer *renderer, Window *window) {
             return false;
         }
 
-#if REPORT_GL_ERRORS
+        #if REPORT_GL_ERRORS
         glDebugMessageCallback(opengl_error_callback, NULL);
-#endif
+        #endif
 
         // alpha blend settings
         glEnable(GL_BLEND);
@@ -855,7 +911,7 @@ bool init_renderer(Renderer *renderer, Window *window) {
 
     bool ok = load_shaders(renderer);
     if (!ok) {
-        printf("Error when loading and compiling shaders\n");
+        logln("Error when loading and compiling shaders");
         return false;
     }
 
@@ -952,7 +1008,7 @@ bool init_renderer(Renderer *renderer, Window *window) {
     
         ok = init_frame_buffer(&renderer->g_buffer, FB_POSITION_ATTACHMENT | FB_NORMAL_ATTACHMENT | FB_VIEW_NORMAL_ATTACHMENT | FB_ALBEDO_ATTACHMENT | FB_SUN_POSITION_ATTACHMENT | FB_DEPTH_ATTACHMENT);
         if (!ok) {
-            printf("failed to init default frame buffer\n");
+            logln("failed to init default frame buffer");
             return false;
         }
 
@@ -963,7 +1019,7 @@ bool init_renderer(Renderer *renderer, Window *window) {
     
         ok = init_frame_buffer(&renderer->sun_frame_buffer, FB_DEPTH_ATTACHMENT | FB_DISABLE_DRAW_BUFFER | FB_DISABLE_READ_BUFFER);
         if (!ok) {
-            printf("failed to init sun frame buffer\n");
+            logln("failed to init sun frame buffer");
             return false;
         }
 
@@ -974,7 +1030,7 @@ bool init_renderer(Renderer *renderer, Window *window) {
     
         ok = init_frame_buffer(&renderer->ssao_frame_buffer, FB_POSITION_ATTACHMENT);
         if (!ok) {
-            printf("failed to init ssao frame buffer\n");
+            logln("failed to init ssao frame buffer");
             return false;
         }
 
@@ -985,7 +1041,7 @@ bool init_renderer(Renderer *renderer, Window *window) {
     
         ok = init_frame_buffer(&renderer->ssao_blur_frame_buffer, FB_POSITION_ATTACHMENT);
         if (!ok) {
-            printf("failed to init ssao blur frame buffer\n");
+            logln("failed to init ssao blur frame buffer");
             return false;
         }
 
@@ -996,7 +1052,7 @@ bool init_renderer(Renderer *renderer, Window *window) {
 
         ok = init_frame_buffer(&renderer->lighting_frame_buffer, FB_POSITION_ATTACHMENT);
         if (!ok) {
-            printf("failed to init lighting frame buffer\n");
+            logln("failed to init lighting frame buffer");
             return false;
         }
     }
@@ -1004,7 +1060,7 @@ bool init_renderer(Renderer *renderer, Window *window) {
     { // load default normal texture
         Texture *texture = load_texture(renderer, "resources/textures/defaults/normal.png");
         if (texture == NULL) {
-            printf("failed to load default texture\n");
+            logln("failed to load default texture");
             return false;
         }
 
@@ -1066,7 +1122,7 @@ bool init_renderer(Renderer *renderer, Window *window) {
 bool load_shaders(Renderer *renderer) {
     bool ok = init_shader(&renderer->default_shader, "Default shader", "resources/shaders/default_vertex.shader", "resources/shaders/default_fragment.shader");
     if (!ok) {
-        printf("Error when creating default shader program\n");
+        logln("Error when creating default shader program");
         return false;
     }
 
@@ -1075,7 +1131,7 @@ bool load_shaders(Renderer *renderer) {
 
     ok = init_shader(&renderer->geometry_shader, "Geometry shader", "resources/shaders/geometry_vertex.shader", "resources/shaders/geometry_fragment.shader");
     if (!ok) {
-        printf("Error when creating mesh shader program\n");
+        logln("Error when creating mesh shader program");
         return false;
     }
 
@@ -1083,7 +1139,7 @@ bool load_shaders(Renderer *renderer) {
 
     ok = init_shader(&renderer->post_processing_shader, "Post processing shader", "resources/shaders/default_vertex.shader", "resources/shaders/post_processing_fragment.shader");
     if (!ok) {
-        printf("Error when creating post processing shader program\n");
+        logln("Error when creating post processing shader program");
         return false;
     }
 
@@ -1091,13 +1147,13 @@ bool load_shaders(Renderer *renderer) {
 
     ok = init_shader(&renderer->sun_shader, "Sun shader", "resources/shaders/sun_vertex.shader", "resources/shaders/sun_fragment.shader");
     if (!ok) {
-        printf("Error when creating sun shader program\n");
+        logln("Error when creating sun shader program");
         return false;
     }
 
     ok = init_shader(&renderer->ssao_shader, "SSAO shader", "resources/shaders/ssao_vertex.shader", "resources/shaders/ssao_fragment.shader");
     if (!ok) {
-        printf("Error when creating ssao shader program\n");
+        logln("Error when creating ssao shader program");
         return false;
     }
 
@@ -1108,7 +1164,7 @@ bool load_shaders(Renderer *renderer) {
 
     ok = init_shader(&renderer->blur_shader, "Blur shader", "resources/shaders/blur_vertex.shader", "resources/shaders/blur_fragment.shader");
     if (!ok) {
-        printf("Error when creating blur shader program\n");
+        logln("Error when creating blur shader program");
         return false;
     }
 
@@ -1116,7 +1172,7 @@ bool load_shaders(Renderer *renderer) {
 
     ok = init_shader(&renderer->lighting_shader, "Lighting shader", "resources/shaders/lighting_vertex.shader", "resources/shaders/lighting_fragment.shader");
     if (!ok) {
-        printf("Error when creating lighting shader program\n");
+        logln("Error when creating lighting shader program");
         return false;
     }
 
@@ -1129,7 +1185,7 @@ bool load_shaders(Renderer *renderer) {
 
     ok = init_shader(&renderer->mesh_shader, "Mesh shader", "resources/shaders/mesh_vertex.shader", "resources/shaders/mesh_fragment.shader");
     if (!ok) {
-        printf("Error when creating mesh shader program\n");
+        logln("Error when creating mesh shader program");
         return false;
     }
 
@@ -1418,7 +1474,7 @@ void clear_frame(Renderer *renderer, v4 colour) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
-void new_frame(Renderer *renderer, Window *window, Camera camera) {
+void new_frame(Renderer *renderer, Window *window, Camera *camera) {
     reset(&renderer->quads);
     reset(&renderer->commands);
 
@@ -1885,7 +1941,7 @@ bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options) {
     return true;
 }
 
-v2 screen_position_to_world_position(v2 screen_position, Camera camera, Window *window) {
+v2 screen_position_to_world_position(v2 screen_position, Camera *camera, Window *window) {
     // pretty muched copied from odin engine,
     // haven't tweaked it because I am just happy 
     // it works. Maybe can find a way to not pass
@@ -1910,18 +1966,14 @@ v2 screen_position_to_ndc(v2 screen_position, Window *window) {
     };
 }
 
-m4 get_view_matrix(Camera camera) {
+m4 get_view_matrix(Camera *camera) {
     v3 target = {};
 
-    if (camera.mode == CameraMode::FIRST_PERSON) {
-        target = camera.position + get_forward_direction(camera);
-    } else {
-        target = camera.target;
-    }
+    target = camera->position + get_forward_direction(camera);
 
     // FIXME: having the up always be y = 1 is probably wrong - 04/06/25
     m4 view_matrix = HMM_LookAt_LH(
-        camera.position, 
+        camera->position, 
         target, 
         {0, 1, 0}
     );
@@ -1929,18 +1981,18 @@ m4 get_view_matrix(Camera camera) {
     return view_matrix;
 }
 
-m4 get_projection_matrix(Camera camera, f32 aspect) {
-    return HMM_Perspective_LH_NO(camera.fov * HMM_DegToRad, aspect, camera.near_plane, camera.far_plane);
+m4 get_projection_matrix(Camera *camera, f32 aspect) {
+    return HMM_Perspective_LH_NO(camera->fov * HMM_DegToRad, aspect, camera->near_plane, camera->far_plane);
 }
 
-m4 get_projection_matrix_ortho(Camera camera, f32 aspect) {
+m4 get_projection_matrix_ortho(Camera *camera, f32 aspect) {
     return HMM_Orthographic_LH_NO(
-        -camera.orthographic_size * aspect,  // left
-         camera.orthographic_size * aspect,  // right
-        -camera.orthographic_size,           // bottom
-         camera.orthographic_size,           // top
-         camera.near_plane, 
-         camera.far_plane 
+        -camera->orthographic_size * aspect,  // left
+         camera->orthographic_size * aspect,  // right
+        -camera->orthographic_size,           // bottom
+         camera->orthographic_size,           // top
+         camera->near_plane, 
+         camera->far_plane 
     );
 }
 
