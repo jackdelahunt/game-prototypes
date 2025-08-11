@@ -13,7 +13,8 @@ zig-out/
 **/*.pdb
 **/*.vs
 **/*.vscode
-game5/resources/levels/backups
-game8/resources/saves/backups
-game9/resources/saves/backups
+game05/resources/levels/backups
+game05/release
+game08/resources/saves/backups
+game09/resources/saves/backups
 **/profiles
