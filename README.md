@@ -6,7 +6,7 @@ Below is a summary of each game from the newest iteration to the very beginning.
 ## game12 (In progress)
 `Summary`: Mutltiplayer first-person arena shooter
 
-`Goal`: Combine the work from game11 (networking and multiplayer) into the already existing engine to create a 3D multiplayer demo. 
+`Goal`: Combine the work from game11 (networking and multiplayer) into the engine last worked on in game10 (3D renderer, lighting, 3D models etc.) 
 
 `Notable achievements`:
 
