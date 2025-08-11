@@ -89,7 +89,7 @@ bool window_init(str title, i32 width, i32 height) {
         .height = height,
         .glfw_window = NULL,
         .vsync = true,
-        .mouse_captured = true,
+        .mouse_captured = false,
     };
  
 
@@ -512,7 +512,7 @@ void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 color);
 void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color);
 void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 color);
-void draw_model(Renderer *renderer, v3 position, v3 scale, v3 rotation, Model *model, v4 colour);
+void draw_model(Renderer *renderer, Model *model, v3 position, v3 scale, v3 rotation, v4 colour);
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
 Quad *push_screen_quad(Renderer *renderer, v4 color);
 
@@ -1717,7 +1717,7 @@ void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 colo
     slice_free(glyphs);
 }
 
-void draw_model(Renderer *renderer, v3 position, v3 scale, v3 rotation, Model *model, v4 colour) {
+void draw_model(Renderer *renderer, Model *model, v3 position, v3 scale, v3 rotation, v4 colour) {
     RenderCommand *command = push(&renderer->commands);
     command->position = position;
     command->rotation = rotation;

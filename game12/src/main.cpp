@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <chrono>
 
-// Total: 01:30
+// Total: 03:30
 // Started: 16:30
 
 #define MAX_ENTITIES 100
@@ -20,7 +20,12 @@
 
 using chrono_clock = std::chrono::steady_clock;
 
-Model *cube_model;
+enum ModelType {
+    MT_CUBE,
+    _MT_COUNT
+};
+
+Model *g_models[_MT_COUNT];
 
 // @entity
 struct Entity {
@@ -34,11 +39,12 @@ struct Entity {
     // base
     v3 position;
     v3 size;
+    v3 rotation;
     v3 velocity;
 
     // rendering
     v4 colour;
-    Model *model;
+    ModelType model;
 
     // bullet
     u32 bullet_origin;
@@ -66,7 +72,6 @@ struct NetworkMessage {
 
 enum EntityFlags {
     EF_PLAYER           = 1 << 0,
-    EF_BULLET           = 1 << 1,
     EF_DELETE           = 1 << 16,
 };
 
@@ -120,6 +125,7 @@ void server_spawn_entity(Entity entity);
 void local_delete_entity(State *state, u32 id);
 void server_delete_entity(u32 id);
 Entity *get_entity_with_id(State *state, u32 id);
+Entity *get_entity_with_flag(State *state, EntityFlags flag);
 bool entities_overlap(Entity *a, Entity *b);
 
 bool is_server(State *state);
@@ -132,6 +138,8 @@ int main(i32 argc, const char **argv) {
         .thread_name = "CLIENT",
         .thread_colour = GREEN_ASCII_CODE,
     });
+
+    srand(time(NULL));
 
     bool ok = network_layer_init();
 
@@ -255,22 +263,13 @@ void game_client_start() {
             logln("Failed when trying to init the renderer");
         }
 
-        cube_model = load_model(REN(), "resources/models/cuber/cube.obj");
+        g_models[MT_CUBE] = load_model(REN(), "resources/models/cuber/cube.obj");
     }
 
-    logln_fmt(&game_client.state.arena, "Started client instance [thread={}]", get_current_thread_id());
-
-    srand(time(NULL));
+    logln_fmt(&game_client.state.arena, "Started game client [thread={}]", get_current_thread_id());
 
     bool hosted = false;
     bool game_started = false;
-
-    local_spawn_entity(&game_client.state, Entity {
-        .position = {0, 0, 0},
-        .size = {1, 1, 1},
-        .colour = RED,
-        .model = cube_model
-    });
 
     while (!glfwWindowShouldClose(WIN()->glfw_window)) {
         f64 current_time        = game_client.state.time;
@@ -284,9 +283,40 @@ void game_client_start() {
             glfwSetWindowShouldClose(WIN()->glfw_window, GLFW_TRUE);
         }
 
-        // update_network(&instance->state);
+        // self host game server
+        if (KEYS[GLFW_KEY_1] == InputState::DOWN && !game_started) {
+            hosted = true;
+            game_started = true;
+
+            REN()->clear_colour = {0.3, 0.3, 1, 1};
+
+            logln("starting hosted game");
+
+            game_server_start();
+
+            network_layer_start_server(NET());
+            network_layer_start_client(NET(), "::1");
+        }
+
+        // join game server
+        if (KEYS[GLFW_KEY_2] == InputState::DOWN && !game_started) {
+            hosted = false;
+            game_started = true;
+
+            REN()->clear_colour = {0.3, 1, 0.3, 1};
+
+            logln("starting and connecting to local-hosted game");
+
+            network_layer_start_client(NET(), "::1");
+        }
+
+        if (KEYS[GLFW_KEY_F1] == InputState::DOWN) {
+            set_mouse_captured(WIN(), !WIN()->mouse_captured);
+        }
+
+        update_network(&game_client.state);
         update_entities(&game_client.state, delta_time);
-        // physics(&instance->state, delta_time);
+        physics(&game_client.state, delta_time);
 
         new_frame(REN(), WIN(), CAM());
 
@@ -297,6 +327,15 @@ void game_client_start() {
 
 
         arena_reset(&game_client.state.arena);
+    }
+
+    if (hosted) {
+        game_server_stop();
+        network_layer_stop_server(NET());
+        network_layer_stop_client(NET());
+    }
+    else {
+        network_layer_stop_client(NET());
     }
 
     glfwTerminate();
@@ -369,13 +408,16 @@ void on_server_receive(State *state, NetworkMessage *message) {
             }
 
             { // spawn new player entity on all clients
+                static f32 player_count = 0; // makes seeing each other straight away easier
+
                 Entity new_player = Entity {
                     .flags = EF_PLAYER,
                     .id = new_entity_id(),
                     .owner = connection_id,
-                    .position = {50, 50, 0},
-                    .size = {50, 50},
-                    .colour = v4{1, 0, 0, 1} 
+                    .position = v3{0, 0, 10} * player_count,
+                    .size = {1, 1, 1},
+                    .colour = v4{1, 0, 0, 1},
+                    .model = MT_CUBE 
                 };
 
                 logln_fmt(&state->arena, "Spawning new player entity: entity_id={}, owner={}", new_player.id, new_player.owner);
@@ -383,6 +425,8 @@ void on_server_receive(State *state, NetworkMessage *message) {
 
                 NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = new_player};
                 server_send_to_all_clients(NET(), bytes_from_ptr(&message));
+
+                player_count += 1;
             }
         } break;
         case SPAWN_ENTITY: {
@@ -444,132 +488,81 @@ void on_client_receive(State *state, NetworkMessage *message) {
 }
 
 void update_entities(State *state, f32 delta_time) {
-    { // update camera
-        v3 input = {};
-    
-        if (KEYS[GLFW_KEY_A] == InputState::PRESSED) {
-            input.x -= 1;
-        }
-            
-        if (KEYS[GLFW_KEY_D] == InputState::PRESSED) {
-            input.x += 1;
-        }
-                
-        if (KEYS[GLFW_KEY_SPACE] == InputState::PRESSED) {
-            input.y += 1;
-        }
-                
-        if (KEYS[GLFW_KEY_LEFT_SHIFT] == InputState::PRESSED) {
-            input.y -= 1;
-        }
-            
-        if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
-            input.z += 1;
-        }
-         
-        if (KEYS[GLFW_KEY_S] == InputState::PRESSED) {
-            input.z -= 1;
-        }
-         
-        const f32 FLY_SPEED = 15;
-
-        Camera *camera = CAM();
- 
-        v3 forward = get_forward_direction(camera);
-        v3 up = {0, 1, 0};
-        v3 right = get_right_direction(camera);
- 
-        camera->position += right * (input.x * FLY_SPEED * delta_time);
-        camera->position += up * (input.y * FLY_SPEED * delta_time);
-        camera->position += forward * (input.z * FLY_SPEED * delta_time);
-
-        // update camera rotation (looking at)
-        if (WIN()->mouse_captured) {
-            f32 sensitivity = 0.1;
-            v2 mouse_input = MOUSE.delta;
-    
-            if(length(mouse_input) != 0) {
-                camera->rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
-                camera->rotation.x = clamp(-90, camera->rotation.x, 90);
-            }
-        }
-    }
-
-#if 0
     for (Entity &entity : state->entities) {
         if (state->instance_id != entity.owner) {
             continue;
         }
 
         if (BIT_SET(entity.flags, EF_PLAYER)) {
-            { // movement
-                v3 input = v3{};
-                if (IsKeyDown(KEY_A)) {
-                    input.x -= 1;
-                }
-    
-                if (IsKeyDown(KEY_D)) {
-                    input.x += 1;
-                }
-    
-                if (IsKeyDown(KEY_W)) {
-                    input.y -= 1;
-                }
-    
-                if (IsKeyDown(KEY_S)) {
-                    input.y += 1;
-                }
-
-                // apply acceleration from input
-                f32 acceleration = 50;
-                entity.velocity += acceleration * input;
-
-                // cap velocity 
-                f32 max_velocity = 250;
-                if (length(entity.velocity) > max_velocity) {
-                    entity.velocity = norm(entity.velocity) * max_velocity;
-                }
-
-                // make velocity decay over time 
-                f32 valocity_decay = 200;
-                if (length(entity.velocity) > 0) {
-                    entity.velocity += -norm(entity.velocity) * max_velocity * delta_time;
+            if (WIN()->mouse_captured) {
+                f32 sensitivity = 0.07;
+                v2 mouse_input = MOUSE.delta; 
+        
+                if(length(mouse_input) != 0) {
+                    entity.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
+                    entity.rotation.x = clamp(-90, entity.rotation.x, 90);
                 }
             }
 
-            // firing bullets
-            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-                f32 bullet_speed = 1000;
-                v3 direction = v3{};
-                // v3 direction = norm(v3_cast(GetMousePosition()) - entity.position);
-
-                Entity bullet = Entity {
-                    .flags = EF_BULLET,
-                    .owner = SERVER_ID,
-                    .position = entity.position,
-                    .size = v3{20, 20, 0},
-                    .velocity = v3{direction.x, direction.y, 0} * bullet_speed,
-                    .colour = RED,
-                    .bullet_origin = entity.id,
-                };
-
-                server_spawn_entity(bullet);
+            v3 movement_input = {};
+        
+            if (KEYS[GLFW_KEY_A] == InputState::PRESSED) {
+                movement_input.x -= 1;
             }
+                
+            if (KEYS[GLFW_KEY_D] == InputState::PRESSED) {
+                movement_input.x += 1;
+            }
+                    
+            if (KEYS[GLFW_KEY_SPACE] == InputState::PRESSED) {
+                movement_input.y += 1;
+            }
+                    
+            if (KEYS[GLFW_KEY_LEFT_SHIFT] == InputState::PRESSED) {
+                movement_input.y -= 1;
+            }
+                
+            if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
+                movement_input.z += 1;
+            }
+             
+            if (KEYS[GLFW_KEY_S] == InputState::PRESSED) {
+                movement_input.z -= 1;
+            }
+
+            { // apply acceleration from input adjust so it is relative to forward direction
+                f32 move_speed = 5;
+                v3 forward = get_forward_direction(entity.rotation);
+                v3 up = {0, 1, 0};
+                v3 right = get_right_direction(entity.rotation);
+     
+                entity.position += right * (movement_input.x * move_speed * delta_time);
+                entity.position += up * (movement_input.y * move_speed * delta_time);
+                entity.position += forward * (movement_input.z * move_speed * delta_time);
+            }
+            #if 0
+            // cap velocity 
+            f32 max_velocity = 20;
+            if (length(entity.velocity) > max_velocity) {
+                entity.velocity = norm(entity.velocity) * max_velocity;
+            }
+
+            // make velocity decay over time 
+            f32 valocity_decay = 80;
+            if (length(entity.velocity) > 0) {
+                entity.velocity += -norm(entity.velocity) * max_velocity * delta_time;
+            }
+            #endif
+
+            CAM()->position = entity.position;
+            CAM()->rotation = entity.rotation;
         }
-
-        // if (is_server() && BIT_SET(entity.flags, EF_BULLET)) {
-            // if ((entity.position.x < -entity.size.x || entity.position.x > state.window_size.x + entity.size.x) ||
-                // (entity.position.y < -entity.size.y || entity.position.y > state.window_size.y + entity.size.y)) {
-                // SET_BIT(entity.flags, EF_DELETE);
-            // }
-        // }
     }
-#endif
 }
 
 void draw(State *state, f32 delta_time) {
     for (Entity &entity : state->entities) {
-        draw_model(REN(), entity.position, entity.size, {}, entity.model, entity.colour);
+        draw_model(REN(), g_models[entity.model], entity.position, entity.size, entity.rotation, entity.colour);
     }
 }
 
@@ -627,6 +620,16 @@ void server_delete_entity(u32 id) {
 Entity *get_entity_with_id(State *state, u32 id) {
     for (Entity &entity : state->entities) {
         if (entity.id == id) {
+            return &entity;
+        }
+    }
+
+    return NULL;
+}
+
+Entity *get_entity_with_flag(State *state, EntityFlags flag) {
+    for (Entity &entity : state->entities) {
+        if (BIT_SET(entity.flags, flag)) {
             return &entity;
         }
     }
