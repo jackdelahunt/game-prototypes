@@ -1,0 +1,14 @@
+// How to build the ValveSoftware/GameNetworkingSockets repo for windows using Visual studio to produce the binaries in this folder
+// This builds both the shared and static binaries, the static binary is name "GameNetworkingSockets_s.lib"
+
+git clone --recursive https://github.com/ValveSoftware/GameNetworkingSockets.git
+cd .\GameNetworkingSockets\
+git checkout v1.4.1
+git clone https://github.com/microsoft/vcpkg
+.\vcpkg\bootstrap-vcpkg.bat
+.\vcpkg\vcpkg install --triplet=x64-windows
+cmake -S . -B build -G "Visual Studio 17 2022" -DBUILD_STATIC_LIB=ON -DBUILD_SHARED_LIB=OFF
+// open Visual Studio and build the ALL_BUILD target in Debug and Release
+
+// shared binaries are built to GameNetworkingSockets\build\bin\{Debug | Release}\
+// static binaries are built to GameNetworkingSockets\build\src\{Debug | Release}\

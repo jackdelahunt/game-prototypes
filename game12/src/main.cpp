@@ -1,0 +1,688 @@
+#include "libs/libs.h"
+#include "ack.cpp"
+#include "math.cpp"
+#include "net.cpp"
+#include "engine.cpp"
+#include "platform.h"
+
+#include <atomic>
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+#include <stdlib.h>
+#include <chrono>
+
+// Total: 01:30
+// Started: 14:00
+
+#define MAX_ENTITIES 100
+#define SERVER_ID 1
+
+using chrono_clock = std::chrono::steady_clock;
+
+Model *cube_model;
+
+// @entity
+struct Entity {
+    // meta
+    u64 flags;
+    u32 id;
+
+    // networking
+    u32 owner;
+
+    // base
+    v3 position;
+    v3 size;
+    v3 velocity;
+
+    // rendering
+    v4 colour;
+    Model *model;
+
+    // bullet
+    u32 bullet_origin;
+};
+
+enum NetworkMessageType {
+    ASSIGN_CLIENT_ID,
+    CLIENT_CONNECTED,
+    SPAWN_ENTITY,
+    SYNC_ENTITY,
+    DELETE_ENTITY,
+}; 
+
+struct NetworkMessage {
+    NetworkMessageType type;
+    
+    union {
+        u32 assign_client_id;  // Changed from ConnectionId to u32
+        ConnectionId client_connected;
+        Entity spawn_entity;
+        Entity sync_entity;
+        u32 delete_entity;
+    };
+}; 
+
+enum EntityFlags {
+    EF_PLAYER           = 1 << 0,
+    EF_BULLET           = 1 << 1,
+    EF_DELETE           = 1 << 16,
+};
+
+enum InstanceType {
+    IT_CLIENT,
+    IT_SERVER
+};
+
+// @state
+struct State {
+    InstanceType instance_type;
+    u32 instance_id;
+    
+    f64 time;
+    Arena arena;
+    StackArray<Entity, MAX_ENTITIES> entities;
+};
+
+// @server @gameserver
+struct GameServer {
+    std::thread thread;
+    std::atomic<bool> shutdown_signal;
+
+    State state;
+};
+
+// @client @gameclient
+struct GameClient {
+    bool running;
+
+    Camera camera;
+    Window window;
+    Renderer renderer;
+    State state;
+};
+
+GameServer *g_game_server = NULL;
+GameClient *g_game_client = NULL;
+
+void game_server_start();
+void game_server_stop();
+
+void game_client_start(GameClient *instance);
+
+void update_network(State *state);
+void on_server_receive(State *state, NetworkMessage *message);
+void on_client_receive(State *state, NetworkMessage *message);
+void update_entities(GameClient *instance, State *state, f32 delta_time);
+
+void draw(Renderer *renderer, State *state, f32 delta_time);
+void physics(State *state, f32 delta_time);
+
+u32 new_entity_id();
+Entity *local_spawn_entity(State *state, Entity entity);
+void server_spawn_entity(Entity entity);
+void local_delete_entity(State *state, u32 id);
+void server_delete_entity(u32 id);
+Entity *get_entity_with_id(State *state, u32 id);
+bool entities_overlap(Entity *a, Entity *b);
+
+bool is_server(State *state);
+bool is_client(State *state);
+void server_on_new_connection(NetworkLayer *net, Server *server, ConnectionId id);
+
+// @main
+int main(i32 argc, const char **argv) {
+    log_set_thread_options(LogOptions {
+        .thread_name = "CLIENT",
+        .thread_colour = GREEN_ASCII_CODE,
+    });
+
+    bool ok = network_layer_init();
+
+    if (!ok) {
+        logln("CRASH: failed to strart networking");
+        return 1;
+    }
+
+    NET()->server.on_new_connection = server_on_new_connection;
+
+    network_layer_start();
+
+    GameClient game_client = {
+        .running = true,
+        .camera = Camera {
+            .mode = CameraMode::FIRST_PERSON,
+            .fov = 100,
+            .position = v3{0, 0, -3},
+            .near_plane = 0.1,
+            .far_plane = 200,
+        },
+        .window = {
+            .mouse_captured = true,
+        },
+        .renderer = {
+            .clear_colour = {1, 1, 1, 1},
+            .ambient_light = v3{0.6, 0.6, 0.6},
+            .sun_colour = v3{0.5, 0.5, 0.5},
+            .sun_position = {50, 100, -100},
+            .shadow_colour = v3{-1, -1, 0.5},
+            .ssao_radius = 0.8,
+            .ssao_bias = 0.025,
+            .ssao_noise_scale = {480, 270},
+        },
+    };
+    
+    { // init client stuff
+        bool ok = false;
+
+        ok = init_window(&game_client.window, "Game12");
+        if (!ok) {
+            logln("Failed when trying to init the window");
+        }
+
+        ok = init_renderer(&game_client.renderer, &game_client.window);
+        if (!ok) {
+            logln("Failed when trying to init the renderer");
+        }
+
+        cube_model = load_model(&game_client.renderer, "resources/models/cuber/cube.obj");
+    }
+
+    game_client_start(&game_client);
+
+    network_layer_stop();
+}
+
+void game_server_start() {
+    ASSERT(g_game_server == NULL);
+
+    // my strategy for this is init everything in the instance
+    // besides the state object before starting the new thread
+    // then it is up to the server thread to init the state
+    // and go from there
+
+    g_game_server = new GameServer {};
+    g_game_server->shutdown_signal = false;
+
+    g_game_server->thread = std::thread([] () {
+    log_set_thread_options(LogOptions {
+        .thread_name = "SERVER",
+        .thread_colour = YELLOW_ASCII_CODE,
+    });
+
+    g_game_server->state = State {
+        .instance_type = IT_SERVER,
+        .instance_id = SERVER_ID,
+        .arena = arena_create(10 * 1024 * 1024),
+        .entities = stack_array_create<Entity, MAX_ENTITIES>(),
+    };
+
+    logln_fmt(&g_game_server->state.arena, "Started game server [thread={}]", get_current_thread_id());
+
+    auto tick_interval = std::chrono::milliseconds(20);     // 20ms/tick -> 50/s
+    auto network_interval = std::chrono::milliseconds(100); // 100ms/tick -> 10/s
+
+    auto tick_timer = std::chrono::milliseconds(0);
+    auto network_timer = std::chrono::milliseconds(0);
+
+    auto previous_time = chrono_clock::now();
+
+    while (!g_game_server->shutdown_signal) {
+        auto current_time = chrono_clock::now();
+        auto delta_time = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - previous_time);
+        previous_time = current_time;
+
+        tick_timer += delta_time;
+        network_timer += delta_time;
+
+        if (tick_timer >= tick_interval) {
+            tick_timer -= tick_interval; // is this good??
+
+            f32 delta_time_f32 = static_cast<f32>(std::chrono::duration<f32>(tick_interval).count());
+
+            update_entities(NULL, &g_game_server->state, delta_time_f32);
+            physics(&g_game_server->state, delta_time_f32);
+        }
+
+        if (network_timer >= network_interval) {
+            network_timer -= network_interval; // is this good??
+
+            update_network(&g_game_server->state);
+        }
+
+        arena_reset(&g_game_server->state.arena);
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    logln("Game server was given shutdown signal.. stopping");
+    }); // thread lambda end
+}
+
+void game_server_stop() {
+    if (g_game_server == NULL) {
+        return;
+    }
+
+    g_game_server->shutdown_signal = true;
+    g_game_server->thread.join();
+
+    delete g_game_server;
+    g_game_server = NULL;
+}
+
+void game_client_start(GameClient *instance) {
+    instance->state = State {
+        .instance_type = IT_CLIENT,
+        .instance_id = 0,
+        .arena = arena_create(10 * 1024 * 1024),
+        .entities = stack_array_create<Entity, MAX_ENTITIES>(),
+    };
+
+    logln_fmt(&instance->state.arena, "Started client instance [thread={}]", get_current_thread_id());
+
+    srand(time(NULL));
+
+    bool hosted = false;
+    bool game_started = false;
+
+    local_spawn_entity(&instance->state, Entity {
+        .position = {0, 0, 0},
+        .size = {1, 1, 1},
+        .colour = RED,
+        .model = cube_model
+    });
+
+    while (!glfwWindowShouldClose(instance->window.glfw_window)) {
+        f64 current_time        = instance->state.time;
+        f64 new_time            = glfwGetTime();
+        f32 delta_time          = (f32) (new_time - current_time);
+        instance->state.time    = new_time;
+
+        poll_inputs();
+
+        if (KEYS[GLFW_KEY_ESCAPE] == InputState::DOWN) {
+            glfwSetWindowShouldClose(instance->window.glfw_window, GLFW_TRUE);
+        }
+        // update_network(&instance->state);
+        update_entities(instance, &instance->state, delta_time);
+        // physics(&instance->state, delta_time);
+
+        new_frame(&instance->renderer, &instance->window, instance->camera);
+
+        draw(&instance->renderer, &instance->state, delta_time);
+
+        draw_frame(&instance->renderer, &instance->window);
+        swap_buffers(&instance->window);
+
+
+        arena_reset(&instance->state.arena);
+    }
+
+    glfwTerminate();
+}
+
+void update_network(State *state) {
+    if (is_server(state)) {
+        Slice<u8> bytes;
+        while (network_queue_pop(&NET()->server_in_queue, &bytes)) {
+            NetworkMessage *message = (NetworkMessage *) bytes.ptr;
+            on_server_receive(state, message);
+            slice_free(bytes);
+        }
+
+        for (Entity &entity : state->entities) {
+            if (entity.owner != SERVER_ID) {
+                continue;
+            }
+            
+            NetworkMessage message = NetworkMessage{.type = SYNC_ENTITY, .sync_entity = entity};
+            server_send_to_all_clients(NET(), bytes_from_ptr(&message));
+        }
+    }
+
+    if (is_client(state)) {
+        Slice<u8> bytes;
+        while (network_queue_pop(&NET()->client_in_queue, &bytes)) {
+            NetworkMessage *message = (NetworkMessage *) bytes.ptr;
+            on_client_receive(state, message);
+            slice_free(bytes);
+        }
+
+        for (Entity &entity : state->entities) {
+            if (entity.owner != state->instance_id) {
+                continue;
+            }
+        
+            NetworkMessage message = NetworkMessage{.type = SYNC_ENTITY, .sync_entity = entity};
+            client_send_to_server(NET(), bytes_from_ptr(&message));
+        }
+    }
+}
+
+void on_server_receive(State *state, NetworkMessage *message) {
+    switch (message->type) {
+        case CLIENT_CONNECTED: {
+            // when client connects, the server generates this message and a few things are required to happen
+            // 1. The client is assigned an id from the server
+            // 2. Any existing entities are sent to the new client to spawn
+            // 3. The player entity is spawn on all clients and is owned by the new client
+            // - 09/08/25
+
+            ConnectionId connection_id = message->client_connected;
+            logln_fmt(&state->arena, "Processing new client connection: connection_id={}", connection_id);
+
+            { // assign client id
+                logln_fmt(&state->arena, "Assigning new client: id={}", connection_id);
+
+                NetworkMessage message = NetworkMessage{.type = ASSIGN_CLIENT_ID, .assign_client_id = connection_id};
+                server_send_to_client(NET(), bytes_from_ptr(&message), connection_id);
+            }
+
+            { // spawn any entities on new client
+                logln_fmt(&state->arena, "Spawning {} existing entities on new client", state->entities.len);
+
+                for (Entity &entity : state->entities) {
+                    NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = entity};
+                    server_send_to_client(NET(), bytes_from_ptr(&message), connection_id);
+                }
+            }
+
+            { // spawn new player entity on all clients
+                Entity new_player = Entity {
+                    .flags = EF_PLAYER,
+                    .id = new_entity_id(),
+                    .owner = connection_id,
+                    .position = {50, 50, 0},
+                    .size = {50, 50},
+                    .colour = v4{1, 0, 0, 1} 
+                };
+
+                logln_fmt(&state->arena, "Spawning new player entity: entity_id={}, owner={}", new_player.id, new_player.owner);
+                local_spawn_entity(state, new_player);
+
+                NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = new_player};
+                server_send_to_all_clients(NET(), bytes_from_ptr(&message));
+            }
+        } break;
+        case SPAWN_ENTITY: {
+            Entity entity = message->spawn_entity;
+            entity.id = new_entity_id();
+
+            logln_fmt(&state->arena, "Server spawning entity: id={}, owner={}", entity.id, entity.owner);
+            local_spawn_entity(state, entity);
+            NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = entity};
+            server_send_to_all_clients(NET(), bytes_from_ptr(&message));
+        } break;
+        case SYNC_ENTITY: {
+            Entity *entity = get_entity_with_id(state, message->sync_entity.id);
+            if (entity != NULL && entity->owner != SERVER_ID) {
+                *entity = message->sync_entity;
+
+                NetworkMessage message = NetworkMessage{.type = SYNC_ENTITY, .sync_entity = *entity};
+                server_send_to_all_clients(NET(), bytes_from_ptr(&message), entity->owner);
+            }
+        } break;
+        case DELETE_ENTITY: {
+            u32 id = message->delete_entity;
+
+            logln_fmt(&state->arena, "Server deleting entity: id={}", id);
+            local_delete_entity(state, id);
+            NetworkMessage message = NetworkMessage{.type = DELETE_ENTITY, .delete_entity = id};
+            server_send_to_all_clients(NET(), bytes_from_ptr(&message));
+        } break;
+        default: {
+            logln("WARNING unknown message sent");
+        } break;
+    }
+}
+
+void on_client_receive(State *state, NetworkMessage *message) {
+    switch (message->type) {
+        case ASSIGN_CLIENT_ID: {
+            state->instance_id = message->assign_client_id;
+            logln_fmt(&state->arena, "Client assigned id={}", state->instance_id);
+        } break;
+        case SPAWN_ENTITY: {
+            logln_fmt(&state->arena, "Client spawning entity: id={}, owner={}", message->spawn_entity.id, message->spawn_entity.owner);
+            local_spawn_entity(state, message->spawn_entity);
+        } break;
+        case SYNC_ENTITY: {
+            Entity *entity = get_entity_with_id(state, message->sync_entity.id);
+            if (entity != NULL) {
+                *entity = message->sync_entity;
+            }
+        } break;
+        case DELETE_ENTITY: {
+            logln_fmt(&state->arena, "Client deleting entity: id={}", message->delete_entity);
+            local_delete_entity(state, message->delete_entity);
+        } break;
+        default: {
+            logln("WARNING unknown message sent");
+        } break;
+    }
+}
+
+void update_entities(GameClient *instance, State *state, f32 delta_time) {
+    { // update camera
+        v3 input = {};
+    
+        if (KEYS[GLFW_KEY_A] == InputState::PRESSED) {
+            input.x -= 1;
+        }
+            
+        if (KEYS[GLFW_KEY_D] == InputState::PRESSED) {
+            input.x += 1;
+        }
+                
+        if (KEYS[GLFW_KEY_SPACE] == InputState::PRESSED) {
+            input.y += 1;
+        }
+                
+        if (KEYS[GLFW_KEY_LEFT_SHIFT] == InputState::PRESSED) {
+            input.y -= 1;
+        }
+            
+        if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
+            input.z += 1;
+        }
+         
+        if (KEYS[GLFW_KEY_S] == InputState::PRESSED) {
+            input.z -= 1;
+        }
+         
+        const f32 FLY_SPEED = 15;
+ 
+        v3 forward = get_forward_direction(instance->camera);
+        v3 up = {0, 1, 0};
+        v3 right = get_right_direction(instance->camera);
+ 
+        instance->camera.position += right * (input.x * FLY_SPEED * delta_time);
+        instance->camera.position += up * (input.y * FLY_SPEED * delta_time);
+        instance->camera.position += forward * (input.z * FLY_SPEED * delta_time);
+
+        // update camera rotation (looking at)
+        if (instance->window.mouse_captured) {
+            f32 sensitivity = 0.1;
+            v2 mouse_input = MOUSE.delta;
+    
+            if(length(mouse_input) != 0) {
+                instance->camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
+                instance->camera.rotation.x = clamp(-90, instance->camera.rotation.x, 90);
+            }
+        }
+    }
+
+#if 0
+    for (Entity &entity : state->entities) {
+        if (state->instance_id != entity.owner) {
+            continue;
+        }
+
+        if (BIT_SET(entity.flags, EF_PLAYER)) {
+            { // movement
+                v3 input = v3{};
+                if (IsKeyDown(KEY_A)) {
+                    input.x -= 1;
+                }
+    
+                if (IsKeyDown(KEY_D)) {
+                    input.x += 1;
+                }
+    
+                if (IsKeyDown(KEY_W)) {
+                    input.y -= 1;
+                }
+    
+                if (IsKeyDown(KEY_S)) {
+                    input.y += 1;
+                }
+
+                // apply acceleration from input
+                f32 acceleration = 50;
+                entity.velocity += acceleration * input;
+
+                // cap velocity 
+                f32 max_velocity = 250;
+                if (length(entity.velocity) > max_velocity) {
+                    entity.velocity = norm(entity.velocity) * max_velocity;
+                }
+
+                // make velocity decay over time 
+                f32 valocity_decay = 200;
+                if (length(entity.velocity) > 0) {
+                    entity.velocity += -norm(entity.velocity) * max_velocity * delta_time;
+                }
+            }
+
+            // firing bullets
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                f32 bullet_speed = 1000;
+                v3 direction = v3{};
+                // v3 direction = norm(v3_cast(GetMousePosition()) - entity.position);
+
+                Entity bullet = Entity {
+                    .flags = EF_BULLET,
+                    .owner = SERVER_ID,
+                    .position = entity.position,
+                    .size = v3{20, 20, 0},
+                    .velocity = v3{direction.x, direction.y, 0} * bullet_speed,
+                    .colour = RED,
+                    .bullet_origin = entity.id,
+                };
+
+                server_spawn_entity(bullet);
+            }
+        }
+
+        // if (is_server() && BIT_SET(entity.flags, EF_BULLET)) {
+            // if ((entity.position.x < -entity.size.x || entity.position.x > state.window_size.x + entity.size.x) ||
+                // (entity.position.y < -entity.size.y || entity.position.y > state.window_size.y + entity.size.y)) {
+                // SET_BIT(entity.flags, EF_DELETE);
+            // }
+        // }
+    }
+#endif
+}
+
+void draw(Renderer *renderer, State *state, f32 delta_time) {
+    for (Entity &entity : state->entities) {
+        draw_model(renderer, entity.position, entity.size, {}, entity.model, entity.colour);
+    }
+}
+
+// AABB detection for a point against a box where the position is centred on the box
+bool point_collision(v3 point, v3 collider_position, v3 collider_size) {
+    v3 delta_position = point - collider_position;
+    v3 bounding_box = collider_size * 0.5;
+
+    return (
+        delta_position.x >= -bounding_box.x && delta_position.x < bounding_box.x &&
+        delta_position.y >= -bounding_box.y && delta_position.y < bounding_box.y &&
+        delta_position.z >= -bounding_box.z && delta_position.z < bounding_box.z
+    );
+}
+
+void physics(State *state, f32 delta_time) {
+    for (Entity &entity : state->entities) {
+        entity.position += entity.velocity * delta_time;
+    }
+}
+
+u32 new_entity_id() {
+    static u32 id = 0;
+    return id++;
+}
+
+Entity *local_spawn_entity(State *state, Entity entity) {
+    Entity *ptr = push(&state->entities);
+    *ptr = entity;
+
+    return ptr;
+}
+
+void local_delete_entity(State *state, u32 id) {
+    for (i64 i = 0; i < state->entities.len; i++) {
+        Entity *entity = &state->entities[i];
+
+        if (entity->id == id) {
+            swap_remove(&state->entities, i);
+            return;
+        }
+    }
+}
+
+void server_spawn_entity(Entity entity) {
+    NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = entity};
+    client_send_to_server(NET(), bytes_from_ptr(&message));
+}
+
+void server_delete_entity(u32 id) {
+    NetworkMessage message = NetworkMessage{.type = DELETE_ENTITY, .delete_entity = id};
+    client_send_to_server(NET(), bytes_from_ptr(&message));
+}
+
+Entity *get_entity_with_id(State *state, u32 id) {
+    for (Entity &entity : state->entities) {
+        if (entity.id == id) {
+            return &entity;
+        }
+    }
+
+    return NULL;
+}
+
+bool entities_overlap(Entity *a, Entity *b) {
+    // Compute edges
+    float a_min_x = a->position.x;
+    float a_max_x = a->position.x + a->size.x;
+    float a_min_y = a->position.y;
+    float a_max_y = a->position.y + a->size.y;
+
+    float b_min_x = b->position.x;
+    float b_max_x = b->position.x + b->size.x;
+    float b_min_y = b->position.y;
+    float b_max_y = b->position.y + b->size.y;
+
+    // Check for separation along x and y axes
+    bool overlapX = (a_min_x < b_max_x) && (a_max_x > b_min_x);
+    bool overlapY = (a_min_y < b_max_y) && (a_max_y > b_min_y);
+
+    return overlapX && overlapY;
+}
+
+bool is_server(State *state) {
+    return state->instance_type == IT_SERVER;
+}
+
+bool is_client(State *state) {
+    return state->instance_type == IT_CLIENT;
+}
+
+void server_on_new_connection(NetworkLayer *net, Server *server, ConnectionId id) {
+    logln_fmt(&net->arena, "New connection received, sending server new connection message [thread={}]", get_current_thread_id());
+
+    NetworkMessage message = NetworkMessage {.type = CLIENT_CONNECTED, .client_connected = id};
+    network_queue_push(&net->server_in_queue, bytes_from_ptr(&message));
+}
