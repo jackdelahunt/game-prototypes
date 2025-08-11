@@ -25,7 +25,7 @@ workspace "Engine"
         symbols "On"
         optimize "On"
 
-project "client"
+project "game11"
     kind "ConsoleApp"
     location "build/%{prj.name}"
     defines { "CLIENT" }
@@ -48,66 +48,23 @@ project "client"
     }
 
     filter "configurations:Debug"
-        targetdir "build/bin/%{prj.name}/debug"
+        targetdir "build/bin/debug"
         postbuildcommands {
-            "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/debug/*.dll] %[build/bin/%{prj.name}/debug]",
-            "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/debug/*.pdb] %[build/bin/%{prj.name}/debug]",
+            "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/debug/*.dll] %[build/bin/debug]",
+            "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/debug/*.pdb] %[build/bin/debug]",
         }
 
     filter "configurations:Release"
-        targetdir "build/bin/%{prj.name}/release"
+        targetdir "build/bin/release"
         postbuildcommands {
-            "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/release/*.dll] %[build/bin/%{prj.name}/release]",
+            "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/release/*.dll] %[build/bin/release]",
         }
 
     filter "configurations:Profile"
-        targetdir "build/bin/%{prj.name}/profile"
+        targetdir "build/bin/profile"
         profile "On"
         symbols "On"
         optimize "On"
         postbuildcommands {
-            "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/release/*.dll] %[build/bin/%{prj.name}/profile]",
+            "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/release/*.dll] %[build/bin/profile]",
         }
-
---[[
-project "server"
-    kind "ConsoleApp"
-    location "build/%{prj.name}"
-    defines { "SERVER" }
-
-    files {
-        "src/main.cpp",
-    }
-
-    includedirs {
-        "src/libs",
-        "src/win_platform.cpp",
-    }
-
-    links {
-        "gdi32.lib",
-        "winmm.lib",
-        "shell32.lib",
-        "src/libs/raylib/lib/raylib.lib",
-        "src/libs/GameNetworkingSockets/lib/debug/GameNetworkingSockets.lib"
-    }
-
-    filter "configurations:Debug"
-        targetdir "build/bin/%{prj.name}/debug"
-        postbuildcommands {
-            "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/debug/*.dll] %[build/bin/%{prj.name}/debug]",
-            "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/debug/*.pdb] %[build/bin/%{prj.name}/debug]",
-        }
-
-    filter "configurations:Release"
-        targetdir "build/bin/%{prj.name}/release"
-        postbuildcommands {
-            "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/release/*.dll] %[build/bin/%{prj.name}/release]",
-        }
-
-    filter "configurations:Profile"
-        targetdir "build/bin/%{prj.name}/profile"
-        postbuildcommands {
-            "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/release/*.dll] %[build/bin/%{prj.name}/profile]",
-        }
-]]

@@ -1,5 +1,6 @@
 #include "libs/libs.h"
 #include "ack.cpp"
+#include "libs/raylib/include/raylib.h"
 #include "math.cpp"
 #include "net.cpp"
 #include "platform.h"
@@ -269,13 +270,15 @@ void game_client_start(GameClient *instance) {
     InitWindow(i32(instance->window_size.x), i32(instance->window_size.y), instance->title);
 
     bool hosted = false;
+    bool game_started = false;
 
     while (!WindowShouldClose()) {
         f32 delta_time = GetFrameTime();
 
         // self host game server
-        if (IsKeyPressed(KEY_ONE)) {
+        if (IsKeyPressed(KEY_ONE) && !game_started) {
             hosted = true;
+            game_started = true;
             logln("starting hosted game");
 
             game_server_start();
@@ -284,8 +287,9 @@ void game_client_start(GameClient *instance) {
             network_layer_start_client(NET(), "::1");
         }
 
-        if (IsKeyPressed(KEY_TWO)) {
+        if (IsKeyPressed(KEY_TWO) && !game_started) {
             hosted = false;
+            game_started = true;
             logln("starting and connecting to local-hosted game");
 
             network_layer_start_client(NET(), "::1");
@@ -298,6 +302,11 @@ void game_client_start(GameClient *instance) {
 
         BeginDrawing();
         ClearBackground(RAYWHITE);
+        if (!game_started) {
+            DrawText("Run the game in a seperate client to play together", 20, 20, 20, ColorBrightness(BLACK, 0.5));
+            DrawText("Press 1 to host a game", 20, 40, 20, ColorBrightness(BLACK, 0.5));
+            DrawText("Press 2 to join a local game", 20, 60, 20, ColorBrightness(BLACK, 0.5));
+        }
         EndDrawing();
 
         arena_reset(&instance->state.arena);
