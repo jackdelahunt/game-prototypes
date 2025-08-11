@@ -7,7 +7,6 @@
 #include "platform.h"
 
 #include <thread>
-#include <chrono>
 #include <mutex>
 #include <queue>
 

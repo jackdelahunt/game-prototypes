@@ -11,9 +11,10 @@
 #include <time.h>
 #include <stdlib.h>
 #include <chrono>
+#include <queue>
 
-// Total: 03:30
-// Started: 16:30
+// Total: 04:30
+// Started: 20:00
 
 #define MAX_ENTITIES 100
 #define SERVER_ID 1
@@ -56,9 +57,11 @@ enum NetworkMessageType {
     SPAWN_ENTITY,
     SYNC_ENTITY,
     DELETE_ENTITY,
+    INPUT,
 }; 
 
 struct NetworkMessage {
+    ConnectionId client_id;
     NetworkMessageType type;
     
     union {
@@ -67,6 +70,7 @@ struct NetworkMessage {
         Entity spawn_entity;
         Entity sync_entity;
         u32 delete_entity;
+        v3 input;
     };
 }; 
 
@@ -80,6 +84,20 @@ enum InstanceType {
     IT_SERVER
 };
 
+enum EventType {
+    E_INPUT,
+    E_NETWORK_MESSAGE
+};
+
+struct Event {
+    EventType type;
+
+    union {
+        v3 input;
+        NetworkMessage network_message;
+    };
+};
+
 // @state
 struct State {
     InstanceType instance_type;
@@ -87,6 +105,7 @@ struct State {
     
     f64 time;
     Arena arena;
+    std::queue<Event> events;
     StackArray<Entity, MAX_ENTITIES> entities;
 };
 
@@ -111,13 +130,22 @@ void game_server_stop();
 
 void game_client_start();
 
-void update_network(State *state);
-void on_server_receive(State *state, NetworkMessage *message);
-void on_client_receive(State *state, NetworkMessage *message);
-void update_entities(State *state, f32 delta_time);
+void poll_user_input(State *state);
+void poll_network(State *state);
 
+void process_events(State *state);
+
+void update_network(State *state);
+
+void update_entities(State *state, f32 delta_time);
 void draw(State *state, f32 delta_time);
 void physics(State *state, f32 delta_time);
+
+void events_push(State *state, Event event);
+bool events_pop(State *state, Event *out);
+
+void on_server_receive(State *state, NetworkMessage *message);
+void on_client_receive(State *state, NetworkMessage *message);
 
 u32 new_entity_id();
 Entity *local_spawn_entity(State *state, Entity entity);
@@ -157,6 +185,7 @@ int main(i32 argc, const char **argv) {
     network_layer_stop();
 }
 
+// @startserver
 void game_server_start() {
     ASSERT(g_game_server == NULL);
 
@@ -196,23 +225,29 @@ void game_server_start() {
         auto delta_time = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - previous_time);
         previous_time = current_time;
 
-        tick_timer += delta_time;
-        network_timer += delta_time;
+        f32 delta_time_f32 = static_cast<f32>(std::chrono::duration<f32>(tick_interval).count());
 
-        if (tick_timer >= tick_interval) {
-            tick_timer -= tick_interval; // is this good??
+        // The life of a frame on the game client:
+        // - get any incoming events
+        //      - poll input from user
+        //      - poll network for messages
+        // - process any events
+        //      - send user input to network
+        //      - process network messages
+        // - update local state 
+        //      - update entities
+        //      - update physics 
+        // - draw 
 
-            f32 delta_time_f32 = static_cast<f32>(std::chrono::duration<f32>(tick_interval).count());
+        // get any incoming events
+        poll_network(&g_game_server->state);
 
-            update_entities(&g_game_server->state, delta_time_f32);
-            physics(&g_game_server->state, delta_time_f32);
-        }
+        // process any events
+        process_events(&g_game_server->state);
 
-        if (network_timer >= network_interval) {
-            network_timer -= network_interval; // is this good??
-
-            update_network(&g_game_server->state);
-        }
+        // update local state 
+        update_entities(&g_game_server->state, delta_time_f32);
+        physics(&g_game_server->state, delta_time_f32);
 
         arena_reset(&g_game_server->state.arena);
 
@@ -235,6 +270,7 @@ void game_server_stop() {
     g_game_server = NULL;
 }
 
+// @startclient
 void game_client_start() {
     GameClient game_client = {
         .state = State {
@@ -277,8 +313,6 @@ void game_client_start() {
         f32 delta_time          = (f32) (new_time - current_time);
         game_client.state.time    = new_time;
 
-        poll_inputs();
-
         if (KEYS[GLFW_KEY_ESCAPE] == InputState::DOWN) {
             glfwSetWindowShouldClose(WIN()->glfw_window, GLFW_TRUE);
         }
@@ -314,17 +348,35 @@ void game_client_start() {
             set_mouse_captured(WIN(), !WIN()->mouse_captured);
         }
 
-        update_network(&game_client.state);
+        // The life of a frame on the game client:
+        // - get any incoming events
+        //      - poll input from user
+        //      - poll network for messages
+        // - process any events
+        //      - send user input to network
+        //      - process network messages
+        // - update local state 
+        //      - update entities
+        //      - update physics 
+        // - draw 
+
+        // get any incoming events
+        poll_user_input(&game_client.state);
+        poll_network(&game_client.state);
+
+        // process any events
+        process_events(&game_client.state);
+
+        // update local state 
         update_entities(&game_client.state, delta_time);
         physics(&game_client.state, delta_time);
 
+        // draw
         new_frame(REN(), WIN(), CAM());
-
         draw(&game_client.state, delta_time);
-
         draw_frame(REN(), WIN());
-        swap_buffers(WIN());
 
+        swap_buffers(WIN());
 
         arena_reset(&game_client.state.arena);
     }
@@ -341,15 +393,96 @@ void game_client_start() {
     glfwTerminate();
 }
 
+void poll_user_input(State *state) {
+    ASSERT(is_client(state)); // what is the server doing here?
+
+    // actually get update inputs from glfw
+    // wil change how all this works at some point
+    // - 11/08/25
+    poll_inputs();
+
+    v3 movement_input = {};
+ 
+    if (KEYS[GLFW_KEY_A] == InputState::PRESSED) {
+        movement_input.x -= 1;
+    }
+         
+    if (KEYS[GLFW_KEY_D] == InputState::PRESSED) {
+        movement_input.x += 1;
+    }
+             
+    if (KEYS[GLFW_KEY_SPACE] == InputState::PRESSED) {
+        movement_input.y += 1;
+    }
+             
+    if (KEYS[GLFW_KEY_LEFT_SHIFT] == InputState::PRESSED) {
+        movement_input.y -= 1;
+    }
+         
+    if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
+        movement_input.z += 1;
+    }
+     
+    if (KEYS[GLFW_KEY_S] == InputState::PRESSED) {
+        movement_input.z -= 1;
+    }
+
+    if (length(movement_input) > 0) {
+        events_push(state, Event {.type = E_INPUT, .input = movement_input});
+    }
+}
+
+void poll_network(State *state) {
+    NetworkQueue *in_queue = NULL;
+
+    if (is_server(state)) {
+        in_queue = &NET()->server_in_queue;
+    }
+    else if (is_client(state)) {
+        in_queue = &NET()->client_in_queue;
+    }
+
+    ASSERT(in_queue);
+
+    Slice<u8> bytes;
+    while (network_queue_pop(in_queue, &bytes)) {
+        NetworkMessage *message = (NetworkMessage *) bytes.ptr;
+        events_push(state, Event {.type = E_NETWORK_MESSAGE, .network_message = *message});
+        slice_free(bytes);
+    }
+}
+
+void process_events(State *state) {
+    Event event;
+
+    if (is_client(state)) {
+        while (events_pop(state, &event)) {
+            switch (event.type) {
+                case E_INPUT: {
+                    NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = INPUT, .input = event.input};
+                    client_send_to_server(NET(), bytes_from_ptr(&message));
+                } break;
+                case E_NETWORK_MESSAGE: {
+                    on_client_receive(state, &event.network_message);
+                } break;
+            } 
+        }
+    }
+
+    if (is_server(state)) {
+        while (events_pop(state, &event)) {
+            switch (event.type) {
+                case E_INPUT: ASSERT(0); break;
+                case E_NETWORK_MESSAGE: {
+                    on_server_receive(state, &event.network_message);
+                } break;
+            } 
+        }
+    }
+}
+
 void update_network(State *state) {
     if (is_server(state)) {
-        Slice<u8> bytes;
-        while (network_queue_pop(&NET()->server_in_queue, &bytes)) {
-            NetworkMessage *message = (NetworkMessage *) bytes.ptr;
-            on_server_receive(state, message);
-            slice_free(bytes);
-        }
-
         for (Entity &entity : state->entities) {
             if (entity.owner != SERVER_ID) {
                 continue;
@@ -361,22 +494,124 @@ void update_network(State *state) {
     }
 
     if (is_client(state)) {
-        Slice<u8> bytes;
-        while (network_queue_pop(&NET()->client_in_queue, &bytes)) {
-            NetworkMessage *message = (NetworkMessage *) bytes.ptr;
-            on_client_receive(state, message);
-            slice_free(bytes);
+        v3 movement_input = {};
+        
+        if (KEYS[GLFW_KEY_A] == InputState::PRESSED) {
+            movement_input.x -= 1;
+        }
+                
+        if (KEYS[GLFW_KEY_D] == InputState::PRESSED) {
+            movement_input.x += 1;
+        }
+                    
+        if (KEYS[GLFW_KEY_SPACE] == InputState::PRESSED) {
+            movement_input.y += 1;
+        }
+                 
+        if (KEYS[GLFW_KEY_LEFT_SHIFT] == InputState::PRESSED) {
+            movement_input.y -= 1;
+        }
+             
+        if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
+            movement_input.z += 1;
+        }
+         
+        if (KEYS[GLFW_KEY_S] == InputState::PRESSED) {
+            movement_input.z -= 1;
         }
 
-        for (Entity &entity : state->entities) {
-            if (entity.owner != state->instance_id) {
-                continue;
-            }
-        
-            NetworkMessage message = NetworkMessage{.type = SYNC_ENTITY, .sync_entity = entity};
+        if (length(movement_input) != 0) {
+            NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = INPUT, .input = movement_input};
             client_send_to_server(NET(), bytes_from_ptr(&message));
         }
     }
+}
+
+void update_entities(State *state, f32 delta_time) {
+    for (Entity &entity : state->entities) {
+        if (state->instance_id != entity.owner) {
+            continue;
+        }
+
+        if (BIT_SET(entity.flags, EF_PLAYER)) {
+            if (WIN()->mouse_captured) {
+                f32 sensitivity = 0.07;
+                v2 mouse_input = MOUSE.delta; 
+        
+                if(length(mouse_input) != 0) {
+                    entity.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
+                    entity.rotation.x = clamp(-90, entity.rotation.x, 90);
+                }
+            }
+
+            #if 0
+            { // apply acceleration from input adjust so it is relative to forward direction
+                f32 move_speed = 5;
+                v3 forward = get_forward_direction(entity.rotation);
+                v3 up = {0, 1, 0};
+                v3 right = get_right_direction(entity.rotation);
+     
+                entity.position += right * (movement_input.x * move_speed * delta_time);
+                entity.position += up * (movement_input.y * move_speed * delta_time);
+                entity.position += forward * (movement_input.z * move_speed * delta_time);
+            }
+            
+            // cap velocity 
+            f32 max_velocity = 20;
+            if (length(entity.velocity) > max_velocity) {
+                entity.velocity = norm(entity.velocity) * max_velocity;
+            }
+
+            // make velocity decay over time 
+            f32 valocity_decay = 80;
+            if (length(entity.velocity) > 0) {
+                entity.velocity += -norm(entity.velocity) * max_velocity * delta_time;
+            }
+            #endif
+
+            CAM()->position = entity.position;
+            CAM()->rotation = entity.rotation;
+        }
+    }
+}
+
+void draw(State *state, f32 delta_time) {
+    for (Entity &entity : state->entities) {
+        draw_model(REN(), g_models[entity.model], entity.position, entity.size, entity.rotation, entity.colour);
+    }
+}
+
+void physics(State *state, f32 delta_time) {
+    for (Entity &entity : state->entities) {
+        entity.position += entity.velocity * delta_time;
+    }
+}
+
+void events_push(State *state, Event event) {
+    state->events.push(event);
+}
+
+bool events_pop(State *state, Event *out) {
+    if (state->events.empty()) {
+        return false;
+    }
+
+    *out = state->events.front();
+    state->events.pop();
+
+    return true;
+}
+
+// AABB detection for a point against a box where the position is centred on the box
+bool point_collision(v3 point, v3 collider_position, v3 collider_size) {
+    v3 delta_position = point - collider_position;
+    v3 bounding_box = collider_size * 0.5;
+
+    return (
+        delta_position.x >= -bounding_box.x && delta_position.x < bounding_box.x &&
+        delta_position.y >= -bounding_box.y && delta_position.y < bounding_box.y &&
+        delta_position.z >= -bounding_box.z && delta_position.z < bounding_box.z
+    );
 }
 
 void on_server_receive(State *state, NetworkMessage *message) {
@@ -455,6 +690,8 @@ void on_server_receive(State *state, NetworkMessage *message) {
             NetworkMessage message = NetworkMessage{.type = DELETE_ENTITY, .delete_entity = id};
             server_send_to_all_clients(NET(), bytes_from_ptr(&message));
         } break;
+        case INPUT: {
+        } break;
         default: {
             logln("WARNING unknown message sent");
         } break;
@@ -484,103 +721,6 @@ void on_client_receive(State *state, NetworkMessage *message) {
         default: {
             logln("WARNING unknown message sent");
         } break;
-    }
-}
-
-void update_entities(State *state, f32 delta_time) {
-    for (Entity &entity : state->entities) {
-        if (state->instance_id != entity.owner) {
-            continue;
-        }
-
-        if (BIT_SET(entity.flags, EF_PLAYER)) {
-            if (WIN()->mouse_captured) {
-                f32 sensitivity = 0.07;
-                v2 mouse_input = MOUSE.delta; 
-        
-                if(length(mouse_input) != 0) {
-                    entity.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
-                    entity.rotation.x = clamp(-90, entity.rotation.x, 90);
-                }
-            }
-
-            v3 movement_input = {};
-        
-            if (KEYS[GLFW_KEY_A] == InputState::PRESSED) {
-                movement_input.x -= 1;
-            }
-                
-            if (KEYS[GLFW_KEY_D] == InputState::PRESSED) {
-                movement_input.x += 1;
-            }
-                    
-            if (KEYS[GLFW_KEY_SPACE] == InputState::PRESSED) {
-                movement_input.y += 1;
-            }
-                    
-            if (KEYS[GLFW_KEY_LEFT_SHIFT] == InputState::PRESSED) {
-                movement_input.y -= 1;
-            }
-                
-            if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
-                movement_input.z += 1;
-            }
-             
-            if (KEYS[GLFW_KEY_S] == InputState::PRESSED) {
-                movement_input.z -= 1;
-            }
-
-            { // apply acceleration from input adjust so it is relative to forward direction
-                f32 move_speed = 5;
-                v3 forward = get_forward_direction(entity.rotation);
-                v3 up = {0, 1, 0};
-                v3 right = get_right_direction(entity.rotation);
-     
-                entity.position += right * (movement_input.x * move_speed * delta_time);
-                entity.position += up * (movement_input.y * move_speed * delta_time);
-                entity.position += forward * (movement_input.z * move_speed * delta_time);
-            }
-            #if 0
-            // cap velocity 
-            f32 max_velocity = 20;
-            if (length(entity.velocity) > max_velocity) {
-                entity.velocity = norm(entity.velocity) * max_velocity;
-            }
-
-            // make velocity decay over time 
-            f32 valocity_decay = 80;
-            if (length(entity.velocity) > 0) {
-                entity.velocity += -norm(entity.velocity) * max_velocity * delta_time;
-            }
-            #endif
-
-            CAM()->position = entity.position;
-            CAM()->rotation = entity.rotation;
-        }
-    }
-}
-
-void draw(State *state, f32 delta_time) {
-    for (Entity &entity : state->entities) {
-        draw_model(REN(), g_models[entity.model], entity.position, entity.size, entity.rotation, entity.colour);
-    }
-}
-
-// AABB detection for a point against a box where the position is centred on the box
-bool point_collision(v3 point, v3 collider_position, v3 collider_size) {
-    v3 delta_position = point - collider_position;
-    v3 bounding_box = collider_size * 0.5;
-
-    return (
-        delta_position.x >= -bounding_box.x && delta_position.x < bounding_box.x &&
-        delta_position.y >= -bounding_box.y && delta_position.y < bounding_box.y &&
-        delta_position.z >= -bounding_box.z && delta_position.z < bounding_box.z
-    );
-}
-
-void physics(State *state, f32 delta_time) {
-    for (Entity &entity : state->entities) {
-        entity.position += entity.velocity * delta_time;
     }
 }
 
