@@ -3,6 +3,15 @@ History of my progression learning and building various game features. Each iter
 
 Below is a summary of each game from the newest iteration to the very beginning. See a more pretty version with screen shots and some other projects [here](https://jackdelahunt.github.io/).
 
+## game12 (In progress)
+`Summary`: Mutltiplayer first-person arena shooter
+
+`Goal`: Combine the work from game11 (networking and multiplayer) into the already existing engine to create a 3D multiplayer demo. 
+
+`Notable achievements`:
+
+`Languages/tools`: C++, OpenGL, ValveGameNetworkingSockets
+
 ## game11
 `Summary`: Simple player multiplayer lobby to walk around in with others. Used raylib to reduce complexity and focus on networking problems
 
