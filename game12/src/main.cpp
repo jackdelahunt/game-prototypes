@@ -14,8 +14,6 @@
 #include <chrono>
 #include <queue>
 #include <atomic>
-#include <type_traits>
-#include <utility>
 
 // Total: 13:00
 // Started: 20:30
@@ -31,7 +29,7 @@ f32 PLAYER_DRAG = 0.25;
 
 #define GAME_SERVER_MS_PER_TICK 16
 
-enum ModelType {
+enum ModelType : u32 {
     MT_CUBE,
     _MT_COUNT
 };
@@ -112,7 +110,6 @@ struct State {
     InstanceType instance_type;
     u32 instance_id;
     
-    f64 time;
     Arena arena;
 
     Sampler event_sampler;
@@ -178,12 +175,19 @@ bool entities_overlap(Entity *a, Entity *b);
 void start_as_host();
 void connect_as_client();
 
-void write_entity_yaml(Entity *entity);
 void load_level(State *state);
 
 bool is_server(State *state);
 bool is_client(State *state);
 void server_on_new_connection(NetworkLayer *net, Server *server, ConnectionId id);
+
+void serialise_level(State *state);
+void serialise_entity(YAML::Emitter &out, Entity *entity);
+void deserialise_level(State *state);
+void deserialise_entity(Entity *entity);
+
+YAML::Emitter &operator<<(YAML::Emitter &out, v3 value);
+YAML::Emitter &operator<<(YAML::Emitter &out, v4 value);
 
 // @main
 int main(i32 argc, const char **argv) { 
@@ -246,7 +250,6 @@ void game_server_entry() {
     game_server->state = State {
         .instance_type = IT_SERVER,
         .instance_id = SERVER_INSTANCE_ID,
-        .time = 0,
         .arena = arena_create(10 * 1024 * 1024),
         .event_sampler = {},
         .events = std::queue<Event>(),
@@ -312,7 +315,6 @@ void game_client_entry() {
         .state = State {
             .instance_type = IT_CLIENT,
             .instance_id = 0,
-            .time = 0,
             .arena = arena_create(10 * 1024 * 1024),
             .event_sampler = {},
             .events = std::queue<Event>(),
@@ -345,6 +347,8 @@ void game_client_entry() {
 
     logln_fmt(&game_client.state.arena, "Started game client [thread={}]", get_current_thread_id());
     logln_fmt(&game_client.state.arena, "Client running at {}t/s", i64(1000.0f / f32(GAME_SERVER_MS_PER_TICK)));
+
+    deserialise_level(&game_client.state);
 
     while (!glfwWindowShouldClose(WIN()->glfw_window)) {
         if (KEYS[GLFW_KEY_ESCAPE] == InputState::DOWN) {
@@ -604,7 +608,7 @@ void draw_ui(State *state) {
 
     ImGui::End();
 
-    ImGui::Begin("Network");
+    ImGui::Begin("Main");
 
     if (ImGui::Button("Host")) {
         start_as_host();
@@ -614,6 +618,16 @@ void draw_ui(State *state) {
 
     if (ImGui::Button("Connect")) {
         connect_as_client();
+    }
+
+    if (ImGui::Button("Save")) {
+        serialise_level(state);
+    }
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("Load")) {
+        deserialise_level(state);
     }
 
     f32 event_in_MB = f32(sizeof(Event)) / (8.0f * 1024.0f);
@@ -734,7 +748,7 @@ void on_server_receive(State *state, NetworkMessage *message) {
                     .id = new_entity_id(),
                     .owner = connection_id,
                     .position = v3{0, 0, 3} * player_count,
-                    .size = {1, 1, 1},
+                    .size = v3{1, 1, 1},
                     .colour = v4{1, 0, 0, 1},
                     .model = MT_CUBE 
                 };
@@ -904,23 +918,6 @@ void connect_as_client() {
     network_layer_start_client(NET(), "::1");
 }
 
-void write_entity_yaml(Entity *entity) {
-    YAML::Emitter out;
-    out << YAML::BeginMap;
-    out << YAML::Key << "flags";
-    out << YAML::Value << entity->flags;
-    out << YAML::Key << "id";
-    out << YAML::Value << entity->id;
-    out << YAML::Key << "owner";
-    out << YAML::Value << entity->owner;
-    out << YAML::Key << "position";
-    out << YAML::Value << YAML::Flow;
-    out << YAML::BeginSeq << entity->position.x << entity->position.y << entity->position.z << YAML::EndSeq;
-    out << YAML::EndMap;
-
-    printf("%s\n", out.c_str());
-}
-
 void load_level(State *state) {
     for (i64 i = 0; i < 30; i++) {
         v3 position_offset = v3 {rand_f32_negative(), rand_f32_negative(), rand_f32_negative()};
@@ -938,8 +935,6 @@ void load_level(State *state) {
 
         local_spawn_entity(&g_game_server->state, entity);
     }
-
-    write_entity_yaml(&state->entities[0]);
 }
 
 bool is_server(State *state) {
@@ -957,6 +952,135 @@ void server_on_new_connection(NetworkLayer *net, Server *server, ConnectionId id
     network_queue_push(&net->server_in_queue, bytes_from_ptr(&message));
 }
 
+void serialise_level(State *state) {
+    YAML::Emitter out;
+    out << YAML::BeginMap;
+    out << YAML::Key << "name" << YAML::Value << "<empty>";
+    out << YAML::Key << "entities" << YAML::Value << YAML::BeginSeq;
+
+    for (Entity &entity : state->entities) {
+        serialise_entity(out, &entity);
+    }
+
+    out << YAML::EndSeq;
+    out << YAML::EndMap;
+
+    // writing to the file
+    File file = new_file("resources/levels/main.yaml");
+
+    bool ok = create_file(&file);
+    if (!ok) {
+        logln("Failed to create file for saving level");
+        return;
+    }
+
+    Slice<u8> bytes = slice_create((u8 *) out.c_str(), out.size());
+
+    ok = write_file(&file, bytes);
+    if (!ok) {
+        logln("Failed to write data to file when saving level");
+        return;
+    }
+
+    close_file(&file);
+
+    logln("Level was saved");
+}
+
+void serialise_entity(YAML::Emitter &out, Entity *entity) {
+    out << YAML::BeginMap;
+    out << YAML::Key << "flags"     << YAML::Value << entity->flags;
+    out << YAML::Key << "id"        << YAML::Value << entity->id;
+    out << YAML::Key << "owner"     << YAML::Value << entity->owner;
+    out << YAML::Key << "position"  << YAML::Value << entity->position;
+    out << YAML::Key << "size"      << YAML::Value << entity->size;
+    out << YAML::Key << "rotation"  << YAML::Value << entity->rotation;
+    out << YAML::Key << "velocity"  << YAML::Value << entity->velocity;
+    out << YAML::Key << "colour"    << YAML::Value << entity->colour;
+    out << YAML::Key << "model"     << YAML::Value << entity->model;
+    out << YAML::EndMap;
+}
+
+void deserialise_level(State *state) {
+    YAML::Node root = YAML::LoadFile("resources/levels/main.yaml");
+
+    YAML::Node entities = root["entities"];
+    if (!entities) {
+        logln("No entities field in level file");
+        return;
+    }
+
+    reset(&state->entities);
+
+    for (auto entity : entities) {
+        Entity e = Entity {};
+
+        e.flags = entity["flags"].as<u64>();
+        e.flags = entity["id"].as<u32>();
+        e.flags = entity["owner"].as<u32>();
+        e.position = entity["position"].as<v3>();
+        e.size = entity["size"].as<v3>();
+        e.rotation = entity["rotation"].as<v3>();
+        e.velocity = entity["velocity"].as<v3>();
+        e.colour = entity["colour"].as<v4>();
+        e.model = (ModelType) entity["model"].as<u32>();
+
+        append(&state->entities, e);
+    }
+
+    logln("Level was loaded");
+}
+
+void deserialise_entity(Entity *entity) {
+    
+}
+
+YAML::Emitter &operator<<(YAML::Emitter &out, v3 vector) {
+    out << YAML::Flow;
+    out << YAML::BeginSeq << vector.x << vector.y << vector.z << YAML::EndSeq;
+    return out;
+}
+
+YAML::Emitter &operator<<(YAML::Emitter &out, v4 vector) {
+    out << YAML::Flow;
+    out << YAML::BeginSeq << vector.x << vector.y << vector.z << vector.w << YAML::EndSeq;
+    return out;
+}
+
+template<>
+struct YAML::convert<v3> {
+    static bool decode(const YAML::Node &node, v3 &vector) {
+        if (!node.IsSequence() || node.size() != 3) {
+            return false;
+        }
+
+        vector.x = node[0].as<f32>();
+        vector.y = node[1].as<f32>();
+        vector.z = node[2].as<f32>();
+
+        return true;
+    }
+};
+
+template<>
+struct YAML::convert<v4> {
+    static bool decode(const YAML::Node &node, v4 &vector) {
+        if (!node.IsSequence() || node.size() != 4) {
+            return false;
+        }
+
+        vector.x = node[0].as<f32>();
+        vector.y = node[1].as<f32>();
+        vector.z = node[2].as<f32>();
+        vector.w = node[3].as<f32>();
+
+        return true;
+    }
+};
+
+// bool decode(const YAML::Node &node, v4 &vector) {
+    // return false;
+// }
 
 template<>                                                                                      
 void fmt_value(DynamicArray<u8> *bytes, v3 value) {
