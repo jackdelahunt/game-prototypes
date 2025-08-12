@@ -10,7 +10,7 @@
 #include <mutex>
 #include <queue>
 
-#define NETWORK_DELAY_MS 50
+#define NETWORK_DELAY_MS 16
 #define DEFAULT_PORT 27020
 
 // I hate c++

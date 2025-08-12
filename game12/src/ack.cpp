@@ -590,7 +590,7 @@ bool timer_is_complete_reset(Timer *timer) {
     return false;
 }
 
-#define SAMPLER_SIZE 200
+#define SAMPLER_SIZE 100
 
 struct Sampler {
     f32         samples[SAMPLER_SIZE];

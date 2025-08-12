@@ -17,10 +17,10 @@
 #include <type_traits>
 #include <utility>
 
-// Total: 09:00
+// Total: 10:30
 // Started: 11:00
 
-#define MAX_ENTITIES 100
+#define MAX_ENTITIES 200
 #define SERVER_ID 1
 
 enum ModelType {
@@ -54,12 +54,13 @@ struct Entity {
 };
 
 enum NetworkMessageType {
-    ASSIGN_CLIENT_ID,
-    CLIENT_CONNECTED,
-    SPAWN_ENTITY,
-    SYNC_ENTITY,
-    DELETE_ENTITY,
-    INPUT,
+    NM_ASSIGN_CLIENT_ID,
+    NM_CLIENT_CONNECTED,
+    NM_SPAWN_ENTITY,
+    NM_SYNC_ENTITY,
+    NM_DELETE_ENTITY,
+    NM_KEYBOARD_INPUT,
+    NM_MOUSE_INPUT,
 }; 
 
 struct NetworkMessage {
@@ -72,7 +73,8 @@ struct NetworkMessage {
         Entity spawn_entity;
         Entity sync_entity;
         u32 delete_entity;
-        v3 input;
+        v3 keyboard_input;
+        v2 mouse_input;
     };
 };
 
@@ -87,15 +89,17 @@ enum InstanceType {
 };
 
 enum EventType {
-    E_INPUT,
-    E_NETWORK_MESSAGE
+    EV_KEYBOARD_INPUT,
+    EV_MOUSE_INPUT,
+    EV_NETWORK_MESSAGE
 };
 
 struct Event {
     EventType type;
 
     union {
-        v3 input;
+        v3 keyboard_input;
+        v2 mouse_input;
         NetworkMessage network_message;
     };
 };
@@ -160,6 +164,7 @@ Entity *local_spawn_entity(State *state, Entity entity);
 void server_spawn_entity(Entity entity);
 void local_delete_entity(State *state, u32 id);
 void server_delete_entity(u32 id);
+Entity *get_client_player(State *state, u32 client_id);
 Entity *get_entity_with_id(State *state, u32 id);
 Entity *get_entity_with_flag(State *state, EntityFlags flag);
 bool entities_overlap(Entity *a, Entity *b);
@@ -225,7 +230,27 @@ void game_server_start() {
 
     logln_fmt(&g_game_server->state.arena, "Started game server [thread={}]", get_current_thread_id());
 
-    Timer tick_rate = timer_create_ms(50);
+    Timer tick_rate = timer_create_ms(16);
+
+
+    { // generate random entities on startup
+        for (i64 i = 0; i < 50; i++) {
+            v3 position_offset = v3 {rand_f32_negative(), rand_f32_negative(), rand_f32_negative()};
+            v4 colour = v4 {rand_f32(), rand_f32(), rand_f32(), 1};
+
+            Entity entity = Entity {
+                .flags = 0,
+                .id = new_entity_id(),
+                .owner = SERVER_ID,
+                .position = v3{30, 30, 30} * position_offset,
+                .size = {1, 1, 1},
+                .colour = colour,
+                .model = MT_CUBE 
+            };
+
+            local_spawn_entity(&g_game_server->state, entity);
+        }
+    }
 
     while (!g_game_server->shutdown_signal) {
         if (!timer_is_complete_reset(&tick_rate)) {
@@ -258,6 +283,8 @@ void game_server_start() {
         physics(&g_game_server->state, delta_time);
 
         sync_clients(&g_game_server->state);
+
+        // sync_clients(&g_game_server->state);
 
         { // update event sampler snapshot
             Sampler *s = atomic_snapshot_write(&server_events_snapshot);
@@ -301,7 +328,7 @@ void game_client_start() {
     { // init all the global stuff
         bool ok = false;
 
-        ok = window_init("Game12", 1440, 1080);
+        ok = window_init("Game12", 1280, 940);
         if (!ok) {
             logln("Failed when trying to init the window");
         }
@@ -420,34 +447,42 @@ void poll_user_input(State *state) {
     // - 11/08/25
     poll_inputs();
 
-    v3 movement_input = {};
+    if (WIN()->mouse_captured) {
+        v2 mouse_input = MOUSE.delta; 
+    
+        if (length(mouse_input) > 0) {
+            events_push(state, Event {.type = EV_MOUSE_INPUT, .mouse_input = mouse_input});
+        }
+    }
+
+    v3 keyboard_input = {};
  
     if (KEYS[GLFW_KEY_A] == InputState::PRESSED) {
-        movement_input.x -= 1;
+        keyboard_input.x -= 1;
     }
          
     if (KEYS[GLFW_KEY_D] == InputState::PRESSED) {
-        movement_input.x += 1;
+        keyboard_input.x += 1;
     }
              
     if (KEYS[GLFW_KEY_SPACE] == InputState::PRESSED) {
-        movement_input.y += 1;
+        keyboard_input.y += 1;
     }
              
     if (KEYS[GLFW_KEY_LEFT_SHIFT] == InputState::PRESSED) {
-        movement_input.y -= 1;
+        keyboard_input.y -= 1;
     }
          
     if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
-        movement_input.z += 1;
+        keyboard_input.z += 1;
     }
      
     if (KEYS[GLFW_KEY_S] == InputState::PRESSED) {
-        movement_input.z -= 1;
+        keyboard_input.z -= 1;
     }
 
-    if (length(movement_input) > 0) {
-        events_push(state, Event {.type = E_INPUT, .input = movement_input});
+    if (length(keyboard_input) > 0) {
+        events_push(state, Event {.type = EV_KEYBOARD_INPUT, .keyboard_input = keyboard_input});
     }
 }
 
@@ -466,7 +501,7 @@ void poll_network(State *state) {
     Slice<u8> bytes;
     while (network_queue_pop(in_queue, &bytes)) {
         NetworkMessage *message = (NetworkMessage *) bytes.ptr;
-        events_push(state, Event {.type = E_NETWORK_MESSAGE, .network_message = *message});
+        events_push(state, Event {.type = EV_NETWORK_MESSAGE, .network_message = *message});
         slice_free(bytes);
     }
 }
@@ -479,13 +514,18 @@ void process_events(State *state) {
     if (is_client(state)) {
         while (events_pop(state, &event)) {
             switch (event.type) {
-                case E_INPUT: {
-                    NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = INPUT, .input = event.input};
+                case EV_KEYBOARD_INPUT: {
+                    NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_KEYBOARD_INPUT, .keyboard_input = event.keyboard_input};
                     client_send_to_server(NET(), bytes_from_ptr(&message));
                 } break;
-                case E_NETWORK_MESSAGE: {
+                case EV_MOUSE_INPUT: {
+                    NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_MOUSE_INPUT, .mouse_input = event.mouse_input};
+                    client_send_to_server(NET(), bytes_from_ptr(&message));
+                } break;
+                case EV_NETWORK_MESSAGE: {
                     on_client_receive(state, &event.network_message);
                 } break;
+                default: ASSERT(0); break;
             } 
         }
     }
@@ -493,7 +533,7 @@ void process_events(State *state) {
     if (is_server(state)) {
         while (events_pop(state, &event)) {
             switch (event.type) {
-                case E_NETWORK_MESSAGE: {
+                case EV_NETWORK_MESSAGE: {
                     on_server_receive(state, &event.network_message);
                 } break;
                 default: ASSERT(0); break;
@@ -506,30 +546,38 @@ void sync_clients(State *state) {
     ASSERT(is_server(state));
 
     for (Entity &entity : state->entities) {
-        NetworkMessage message = NetworkMessage{.type = SYNC_ENTITY, .sync_entity = entity};
+        NetworkMessage message = NetworkMessage{.type = NM_SYNC_ENTITY, .sync_entity = entity};
         server_send_to_all_clients(NET(), bytes_from_ptr(&message));
     }
 }
 
 void update_entities(State *state, f32 delta_time) {
+    // nothing to do on the server for entities yet...
+    if (is_server(state)) return;
+
+
+    // update camera position to client player and rotate based on mouse input
+    Entity *player = get_client_player(state, state->instance_id);
+    if (player != NULL) {
+        CAM()->position = player->position;
+        CAM()->rotation = player->rotation;
+    }
+
+    if (false) {}
+
+    if (WIN()->mouse_captured) {
+        f32 sensitivity = 0.07;
+        v2 mouse_input = MOUSE.delta; 
+ 
+        if(length(mouse_input) != 0) {
+            CAM()->rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
+            CAM()->rotation.x = clamp(-90, CAM()->rotation.x, 90);
+        }
+    }
+
+#if 0
     for (Entity &entity : state->entities) {
         if (BIT_SET(entity.flags, EF_PLAYER)) {
-            if (is_client(state)) {
-                CAM()->position = entity.position;
-                CAM()->rotation = entity.rotation;
-            }
-
-            #if 0
-            if (WIN()->mouse_captured) {
-                f32 sensitivity = 0.07;
-                v2 mouse_input = MOUSE.delta; 
-        
-                if(length(mouse_input) != 0) {
-                    entity.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
-                    entity.rotation.x = clamp(-90, entity.rotation.x, 90);
-                }
-            }
-
             { // apply acceleration from input adjust so it is relative to forward direction
                 f32 move_speed = 5;
                 v3 forward = get_forward_direction(entity.rotation);
@@ -552,9 +600,9 @@ void update_entities(State *state, f32 delta_time) {
             if (length(entity.velocity) > 0) {
                 entity.velocity += -norm(entity.velocity) * max_velocity * delta_time;
             }
-            #endif
         }
     }
+#endif
 }
 
 void draw(State *state, f32 delta_time) {
@@ -569,19 +617,26 @@ void draw_ui(State *state, f32 delta_time) {
 
     ImGui::Begin("Debug info");
 
+    f32 event_in_MB = f32(sizeof(Event)) / (8.0f * 1024.0f);
+
     { // client events sampler info
-        ImGui::Text("Avg: %f", sampler_average(&state->event_sampler));
-        ImGui::SameLine();
-        ImGui::Text("Samples/s: %f", sampler_samples_per_second(&state->event_sampler));
+        f32 average = sampler_average(&state->event_sampler);
+        f32 samples_per_second = sampler_samples_per_second(&state->event_sampler);
+        f32 events_per_second = average * samples_per_second;
+        f32 MB_per_second = events_per_second * event_in_MB;
+
+        ImGui::Text("Avg: %f, Samples/s: %f, Events/s: %f, MB/s: %f", average, samples_per_second, events_per_second, MB_per_second);
         ImGui::PlotLines("Client events", state->event_sampler.samples, SAMPLER_SIZE, 0, NULL, FLT_MAX, FLT_MAX, ImVec2(0, 60));
     }
 
     if (g_game_server != NULL) { // client events sampler info
         Sampler *sampler = atomic_snapshot_read(&server_events_snapshot);
+        f32 average = sampler_average(sampler);
+        f32 samples_per_second = sampler_samples_per_second(sampler);
+        f32 events_per_second = average * samples_per_second;
+        f32 MB_per_second = events_per_second * event_in_MB;
 
-        ImGui::Text("Avg: %f", sampler_average(sampler));
-        ImGui::SameLine();
-        ImGui::Text("Samples/s: %f", sampler_samples_per_second(sampler));
+        ImGui::Text("Avg: %f, Samples/s: %f, Events/s: %f, MB/s: %f", average, samples_per_second, events_per_second, MB_per_second);
         ImGui::PlotLines("Server events", sampler->samples, SAMPLER_SIZE, 0, NULL, FLT_MAX, FLT_MAX, ImVec2(0, 60));
     }
 
@@ -626,20 +681,21 @@ bool point_collision(v3 point, v3 collider_position, v3 collider_size) {
 
 void on_server_receive(State *state, NetworkMessage *message) {
     switch (message->type) {
-        case CLIENT_CONNECTED: {
+        case NM_CLIENT_CONNECTED: {
+            static f32 player_count = 0;
+
             // when client connects, the server generates this message and a few things are required to happen
             // 1. The client is assigned an id from the server
             // 2. Any existing entities are sent to the new client to spawn
             // 3. The player entity is spawn on all clients and is owned by the new client
             // - 09/08/25
-
             ConnectionId connection_id = message->client_connected;
             logln_fmt(&state->arena, "Processing new client connection: connection_id={}", connection_id);
-
+            
             { // assign client id
                 logln_fmt(&state->arena, "Assigning new client: id={}", connection_id);
 
-                NetworkMessage message = NetworkMessage{.type = ASSIGN_CLIENT_ID, .assign_client_id = connection_id};
+                NetworkMessage message = NetworkMessage{.type = NM_ASSIGN_CLIENT_ID, .assign_client_id = connection_id};
                 server_send_to_client(NET(), bytes_from_ptr(&message), connection_id);
             }
 
@@ -647,65 +703,76 @@ void on_server_receive(State *state, NetworkMessage *message) {
                 logln_fmt(&state->arena, "Spawning {} existing entities on new client", state->entities.len);
 
                 for (Entity &entity : state->entities) {
-                    NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = entity};
+                    NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = entity};
                     server_send_to_client(NET(), bytes_from_ptr(&message), connection_id);
                 }
             }
 
             { // spawn new player entity on all clients
-                static f32 player_count = 0; // makes seeing each other straight away easier
 
                 Entity new_player = Entity {
                     .flags = EF_PLAYER,
                     .id = new_entity_id(),
                     .owner = connection_id,
-                    .position = v3{0, 0, 10} * player_count,
+                    .position = v3{0, 0, 3} * player_count,
                     .size = {1, 1, 1},
                     .colour = v4{1, 0, 0, 1},
                     .model = MT_CUBE 
                 };
 
-                logln_fmt(&state->arena, "Spawning new player entity: entity_id={}, owner={}", new_player.id, new_player.owner);
+                logln_fmt(&state->arena, "Spawning new player entity: entity_id={}, owner={} x={} y={} z={}", new_player.id, new_player.owner, new_player.position.x, new_player.position.y, new_player.position.z);
                 local_spawn_entity(state, new_player);
 
-                NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = new_player};
+                NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = new_player};
                 server_send_to_all_clients(NET(), bytes_from_ptr(&message));
-
-                player_count += 1;
             }
+
+            player_count += 1;
         } break;
-        case SPAWN_ENTITY: {
+        case NM_SPAWN_ENTITY: {
             Entity entity = message->spawn_entity;
             entity.id = new_entity_id();
 
             logln_fmt(&state->arena, "Server spawning entity: id={}, owner={}", entity.id, entity.owner);
             local_spawn_entity(state, entity);
-            NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = entity};
+            NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = entity};
             server_send_to_all_clients(NET(), bytes_from_ptr(&message));
         } break;
-        case SYNC_ENTITY: {
+        case NM_SYNC_ENTITY: {
             Entity *entity = get_entity_with_id(state, message->sync_entity.id);
             if (entity != NULL && entity->owner != SERVER_ID) {
                 *entity = message->sync_entity;
 
-                NetworkMessage message = NetworkMessage{.type = SYNC_ENTITY, .sync_entity = *entity};
+                NetworkMessage message = NetworkMessage{.type = NM_SYNC_ENTITY, .sync_entity = *entity};
                 server_send_to_all_clients(NET(), bytes_from_ptr(&message), entity->owner);
             }
         } break;
-        case DELETE_ENTITY: {
+        case NM_DELETE_ENTITY: {
             u32 id = message->delete_entity;
 
             logln_fmt(&state->arena, "Server deleting entity: id={}", id);
             local_delete_entity(state, id);
-            NetworkMessage message = NetworkMessage{.type = DELETE_ENTITY, .delete_entity = id};
+            NetworkMessage message = NetworkMessage{.type = NM_DELETE_ENTITY, .delete_entity = id};
             server_send_to_all_clients(NET(), bytes_from_ptr(&message));
         } break;
-        case INPUT: {
-            for (Entity &entity : state->entities) {
-                if (entity.owner == message->client_id && BIT_SET(entity.flags, EF_PLAYER)) {
-                    entity.position + message->input * 10;
-                }
+        case NM_KEYBOARD_INPUT: {
+            Entity *player = get_client_player(state, message->client_id);
+            if (!player) {
+                return;
             }
+
+            player->position += message->keyboard_input * 0.5;
+        } break;
+        case NM_MOUSE_INPUT: {
+            Entity *player = get_client_player(state, message->client_id);
+            if (!player) {
+                return;
+            }
+
+            f32 sensitivity = 0.07;
+
+            player->rotation += v3{message->mouse_input.y, message->mouse_input.x, 0} * sensitivity;
+            player->rotation.x = clamp(-90, player->rotation.x, 90);
         } break;
         default: {
             logln("WARNING unknown message sent");
@@ -715,21 +782,21 @@ void on_server_receive(State *state, NetworkMessage *message) {
 
 void on_client_receive(State *state, NetworkMessage *message) {
     switch (message->type) {
-        case ASSIGN_CLIENT_ID: {
+        case NM_ASSIGN_CLIENT_ID: {
             state->instance_id = message->assign_client_id;
             logln_fmt(&state->arena, "Client assigned id={}", state->instance_id);
         } break;
-        case SPAWN_ENTITY: {
+        case NM_SPAWN_ENTITY: {
             logln_fmt(&state->arena, "Client spawning entity: id={}, owner={}", message->spawn_entity.id, message->spawn_entity.owner);
             local_spawn_entity(state, message->spawn_entity);
         } break;
-        case SYNC_ENTITY: {
+        case NM_SYNC_ENTITY: {
             Entity *entity = get_entity_with_id(state, message->sync_entity.id);
             if (entity != NULL) {
                 *entity = message->sync_entity;
             }
         } break;
-        case DELETE_ENTITY: {
+        case NM_DELETE_ENTITY: {
             logln_fmt(&state->arena, "Client deleting entity: id={}", message->delete_entity);
             local_delete_entity(state, message->delete_entity);
         } break;
@@ -763,13 +830,23 @@ void local_delete_entity(State *state, u32 id) {
 }
 
 void server_spawn_entity(Entity entity) {
-    NetworkMessage message = NetworkMessage{.type = SPAWN_ENTITY, .spawn_entity = entity};
+    NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = entity};
     client_send_to_server(NET(), bytes_from_ptr(&message));
 }
 
 void server_delete_entity(u32 id) {
-    NetworkMessage message = NetworkMessage{.type = DELETE_ENTITY, .delete_entity = id};
+    NetworkMessage message = NetworkMessage{.type = NM_DELETE_ENTITY, .delete_entity = id};
     client_send_to_server(NET(), bytes_from_ptr(&message));
+}
+
+Entity *get_client_player(State *state, u32 client_id) {
+    for (Entity &entity : state->entities) {
+        if (BIT_SET(entity.flags, EF_PLAYER) && entity.owner == client_id) {
+            return &entity;
+        }
+    }
+
+    return NULL;
 }
 
 Entity *get_entity_with_id(State *state, u32 id) {
@@ -822,6 +899,18 @@ bool is_client(State *state) {
 void server_on_new_connection(NetworkLayer *net, Server *server, ConnectionId id) {
     logln_fmt(&net->arena, "New connection received, sending server new connection message [thread={}]", get_current_thread_id());
 
-    NetworkMessage message = NetworkMessage {.type = CLIENT_CONNECTED, .client_connected = id};
+    NetworkMessage message = NetworkMessage {.type = NM_CLIENT_CONNECTED, .client_connected = id};
     network_queue_push(&net->server_in_queue, bytes_from_ptr(&message));
+}
+
+
+template<>                                                                                      
+void fmt_value(DynamicArray<u8> *bytes, v3 value) {
+    append_many(bytes, Slice<u8>("v3 {"));
+    fmt_value(bytes, value.x);
+    append_many(bytes, Slice<u8>(", "));
+    fmt_value(bytes, value.y);
+    append_many(bytes, Slice<u8>(", "));
+    fmt_value(bytes, value.z);
+    append_many(bytes, Slice<u8>("}"));
 }
