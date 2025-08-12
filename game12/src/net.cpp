@@ -10,7 +10,7 @@
 #include <mutex>
 #include <queue>
 
-#define NETWORK_DELAY_MS 16
+#define NETWORK_DELAY_MS 8
 #define DEFAULT_PORT 27020
 
 // I hate c++
@@ -141,6 +141,7 @@ net->thread = std::thread([net] () {
     });
 
     logln_fmt(&net->arena, "Started networking thread [thread={}]", get_current_thread_id());
+    logln_fmt(&net->arena, "Polling network {}/s", i64(1000.0f / f32(NETWORK_DELAY_MS)));
 
     net->running = true;
 

@@ -590,6 +590,21 @@ bool timer_is_complete_reset(Timer *timer) {
     return false;
 }
 
+bool timer_is_complete(Timer *timer, f32 *delta_time) {
+    auto now = std::chrono::steady_clock::now();
+    auto duration = now - timer->start_time;
+
+
+    if (duration >= timer->time_limit) {
+        timer->start_time = now;
+        *delta_time = std::chrono::duration<f32>(duration).count();
+        return true; 
+    }
+
+    *delta_time = 0;
+    return false;
+}
+
 #define SAMPLER_SIZE 100
 
 struct Sampler {
