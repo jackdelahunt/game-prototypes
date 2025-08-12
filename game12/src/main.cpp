@@ -18,7 +18,7 @@
 #include <utility>
 
 // Total: 10:30
-// Started: 11:00
+// Started: 18:00
 
 #define MAX_ENTITIES 200
 #define SERVER_ID 1
@@ -59,8 +59,7 @@ enum NetworkMessageType {
     NM_SPAWN_ENTITY,
     NM_SYNC_ENTITY,
     NM_DELETE_ENTITY,
-    NM_KEYBOARD_INPUT,
-    NM_MOUSE_INPUT,
+    NM_MOVE_PLAYER,
 }; 
 
 struct NetworkMessage {
@@ -68,13 +67,12 @@ struct NetworkMessage {
     NetworkMessageType type;
     
     union {
-        u32 assign_client_id;  // Changed from ConnectionId to u32
+        u32 assign_client_id;
         ConnectionId client_connected;
         Entity spawn_entity;
         Entity sync_entity;
         u32 delete_entity;
-        v3 keyboard_input;
-        v2 mouse_input;
+        v3 move_player;
     };
 };
 
@@ -234,7 +232,7 @@ void game_server_start() {
 
 
     { // generate random entities on startup
-        for (i64 i = 0; i < 50; i++) {
+        for (i64 i = 0; i < 30; i++) {
             v3 position_offset = v3 {rand_f32_negative(), rand_f32_negative(), rand_f32_negative()};
             v4 colour = v4 {rand_f32(), rand_f32(), rand_f32(), 1};
 
@@ -404,6 +402,8 @@ void game_client_start() {
         //      - update physics 
         // - draw 
 
+        new_frame(REN(), WIN(), CAM());
+
         // get any incoming events
         poll_user_input(&game_client.state);
         poll_network(&game_client.state);
@@ -416,13 +416,10 @@ void game_client_start() {
         physics(&game_client.state, delta_time);
 
         // draw
-        new_frame(REN(), WIN(), CAM());
-        {
-            draw(&game_client.state, delta_time);
-            draw_ui(&game_client.state, delta_time);
-        }
-        draw_frame(REN(), WIN());
+        draw(&game_client.state, delta_time);
+        draw_ui(&game_client.state, delta_time);
 
+        draw_frame(REN(), WIN());
         swap_buffers(WIN());
         arena_reset(&game_client.state.arena);
     }
@@ -515,12 +512,23 @@ void process_events(State *state) {
         while (events_pop(state, &event)) {
             switch (event.type) {
                 case EV_KEYBOARD_INPUT: {
-                    NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_KEYBOARD_INPUT, .keyboard_input = event.keyboard_input};
+                    v3 forward = get_forward_direction(CAM());
+                    v3 up = {0, 1, 0};
+                    v3 right = get_right_direction(CAM());
+
+                    v3 movement = v3{};
+                    movement += right * event.keyboard_input.x;
+                    movement += up * event.keyboard_input.y;
+                    movement += forward * event.keyboard_input.z;
+         
+                    NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_MOVE_PLAYER, .move_player = movement};
                     client_send_to_server(NET(), bytes_from_ptr(&message));
                 } break;
                 case EV_MOUSE_INPUT: {
-                    NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_MOUSE_INPUT, .mouse_input = event.mouse_input};
-                    client_send_to_server(NET(), bytes_from_ptr(&message));
+                    f32 sensitivity = 0.07;
+        
+                    CAM()->rotation += v3{event.mouse_input.y, event.mouse_input.x, 0} * sensitivity;
+                    CAM()->rotation.x = clamp(-90, CAM()->rotation.x, 90);
                 } break;
                 case EV_NETWORK_MESSAGE: {
                     on_client_receive(state, &event.network_message);
@@ -560,19 +568,11 @@ void update_entities(State *state, f32 delta_time) {
     Entity *player = get_client_player(state, state->instance_id);
     if (player != NULL) {
         CAM()->position = player->position;
-        CAM()->rotation = player->rotation;
-    }
-
-    if (false) {}
-
-    if (WIN()->mouse_captured) {
-        f32 sensitivity = 0.07;
-        v2 mouse_input = MOUSE.delta; 
- 
-        if(length(mouse_input) != 0) {
-            CAM()->rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
-            CAM()->rotation.x = clamp(-90, CAM()->rotation.x, 90);
-        }
+#if 0
+        v3 looking_at = get_forward_direction(CAM());
+        looking_at = norm(v3{looking_at.x, 0, looking_at.z});
+        draw_model(REN(), g_models[MT_CUBE], player->position + looking_at * 3, {1, 1, 1}, {}, WHITE);
+#endif
     }
 
 #if 0
@@ -606,7 +606,14 @@ void update_entities(State *state, f32 delta_time) {
 }
 
 void draw(State *state, f32 delta_time) {
+    ASSERT(is_client(state));
+
     for (Entity &entity : state->entities) {
+        // don't draw the player if is owned by this client
+        if (BIT_SET(entity.flags, EF_PLAYER) && entity.owner == state->instance_id) {
+            continue;
+        }
+
         draw_model(REN(), g_models[entity.model], entity.position, entity.size, entity.rotation, entity.colour);
     }
 }
@@ -755,24 +762,13 @@ void on_server_receive(State *state, NetworkMessage *message) {
             NetworkMessage message = NetworkMessage{.type = NM_DELETE_ENTITY, .delete_entity = id};
             server_send_to_all_clients(NET(), bytes_from_ptr(&message));
         } break;
-        case NM_KEYBOARD_INPUT: {
+        case NM_MOVE_PLAYER: {
             Entity *player = get_client_player(state, message->client_id);
             if (!player) {
                 return;
             }
 
-            player->position += message->keyboard_input * 0.5;
-        } break;
-        case NM_MOUSE_INPUT: {
-            Entity *player = get_client_player(state, message->client_id);
-            if (!player) {
-                return;
-            }
-
-            f32 sensitivity = 0.07;
-
-            player->rotation += v3{message->mouse_input.y, message->mouse_input.x, 0} * sensitivity;
-            player->rotation.x = clamp(-90, player->rotation.x, 90);
+            player->position += message->move_player * 0.5;
         } break;
         default: {
             logln("WARNING unknown message sent");
