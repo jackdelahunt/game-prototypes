@@ -17,8 +17,8 @@
 #include <type_traits>
 #include <utility>
 
-// Total: 12:30
-// Started: 18:00
+// Total: 13:00
+// Started: 20:30
 
 #define MAX_ENTITIES 200
 
@@ -56,9 +56,6 @@ struct Entity {
     // rendering
     v4 colour;
     ModelType model;
-
-    // bullet
-    u32 bullet_origin;
 };
 
 enum NetworkMessageType {
@@ -181,6 +178,7 @@ bool entities_overlap(Entity *a, Entity *b);
 void start_as_host();
 void connect_as_client();
 
+void write_entity_yaml(Entity *entity);
 void load_level(State *state);
 
 bool is_server(State *state);
@@ -188,7 +186,7 @@ bool is_client(State *state);
 void server_on_new_connection(NetworkLayer *net, Server *server, ConnectionId id);
 
 // @main
-int main(i32 argc, const char **argv) {
+int main(i32 argc, const char **argv) { 
     log_set_thread_options(LogOptions {
         .thread_name = "CLIENT",
         .thread_colour = GREEN_ASCII_CODE,
@@ -321,7 +319,7 @@ void game_client_entry() {
             .entities = stack_array_create<Entity, MAX_ENTITIES>(),
         }
     };
-    
+
     { // init all the global stuff
         bool ok = false;
 
@@ -906,6 +904,23 @@ void connect_as_client() {
     network_layer_start_client(NET(), "::1");
 }
 
+void write_entity_yaml(Entity *entity) {
+    YAML::Emitter out;
+    out << YAML::BeginMap;
+    out << YAML::Key << "flags";
+    out << YAML::Value << entity->flags;
+    out << YAML::Key << "id";
+    out << YAML::Value << entity->id;
+    out << YAML::Key << "owner";
+    out << YAML::Value << entity->owner;
+    out << YAML::Key << "position";
+    out << YAML::Value << YAML::Flow;
+    out << YAML::BeginSeq << entity->position.x << entity->position.y << entity->position.z << YAML::EndSeq;
+    out << YAML::EndMap;
+
+    printf("%s\n", out.c_str());
+}
+
 void load_level(State *state) {
     for (i64 i = 0; i < 30; i++) {
         v3 position_offset = v3 {rand_f32_negative(), rand_f32_negative(), rand_f32_negative()};
@@ -923,6 +938,8 @@ void load_level(State *state) {
 
         local_spawn_entity(&g_game_server->state, entity);
     }
+
+    write_entity_yaml(&state->entities[0]);
 }
 
 bool is_server(State *state) {

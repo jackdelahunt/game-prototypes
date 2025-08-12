@@ -42,6 +42,7 @@ project "game12"
         "src/libs/imgui",
         "src/libs/glew/include",
         "src/libs/assimp/include",
+        "src/libs/yaml-cpp/include",
     }
 
     links {
@@ -50,7 +51,6 @@ project "game12"
         "shell32",
         "opengl32",
 
-        "src/libs/GameNetworkingSockets/lib/debug/GameNetworkingSockets.lib",
         "src/libs/glfw/glfw3_mt.lib",
         "src/libs/glew/lib/Release/x64/glew32s.lib",
         "src/libs/assimp/lib/x64/assimp-vc143-mt.lib"
@@ -58,6 +58,11 @@ project "game12"
 
     filter "configurations:Debug"
         targetdir "build/bin/debug"
+        links {
+            "src/libs/yaml-cpp/lib/debug/yaml-cppd.lib",
+            "src/libs/GameNetworkingSockets/lib/debug/GameNetworkingSockets.lib",
+        }
+
         postbuildcommands {
             "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/debug/*.dll] %[build/bin/debug]",
             "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/debug/*.pdb] %[build/bin/debug]",
@@ -66,6 +71,11 @@ project "game12"
 
     filter "configurations:Release"
         targetdir "build/bin/release"
+        links {
+            "src/libs/yaml-cpp/lib/release/yaml-cpp.lib",
+            "src/libs/GameNetworkingSockets/lib/release/GameNetworkingSockets.lib",
+        }
+
         postbuildcommands {
             "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/release/*.dll] %[build/bin/release]",
             "{COPYFILE} %[src/libs/assimp/bin/x64/*.dll] %[build/bin/debug]",
@@ -76,6 +86,11 @@ project "game12"
         profile "On"
         symbols "On"
         optimize "On"
+        links {
+            "src/libs/yaml-cpp/lib/release/yaml-cpp.lib",
+            "src/libs/GameNetworkingSockets/lib/release/GameNetworkingSockets.lib",
+        }
+
         postbuildcommands {
             "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/release/*.dll] %[build/bin/profile]",
             "{COPYFILE} %[src/libs/assimp/bin/x64/*.dll] %[build/bin/debug]",

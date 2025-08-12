@@ -16,4 +16,7 @@
 #include "GameNetworkingSockets/include/steam/steamnetworkingsockets.h"
 #include "GameNetworkingSockets/include/steam/isteamnetworkingutils.h"
 
+#define YAML_CPP_STATIC_DEFINE
+#include "yaml-cpp/include/yaml-cpp/yaml.h"
+
 #endif
