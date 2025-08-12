@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <chrono>
 
 #define BREAKPOINT __debugbreak()
 #define ASSERT(x) if (!(x)) __debugbreak();
@@ -27,6 +28,9 @@ typedef int64_t i64;
 
 typedef float f32;
 typedef double f64;
+
+using Clock = std::chrono::steady_clock;
+using TimePoint = std::chrono::steady_clock::time_point;
 
 // @slice
 template <typename T>
@@ -560,6 +564,108 @@ void log_thread_name() {
     }
 
     printf("[%s] ", name); 
+}
+
+// @timer
+struct Timer {
+    std::chrono::steady_clock::time_point start_time;
+    std::chrono::milliseconds time_limit; 
+};
+
+Timer timer_create_ms(i64 milliseconds) {
+    return Timer {
+        .start_time = std::chrono::steady_clock::now(),
+        .time_limit = std::chrono::milliseconds(milliseconds)
+    };
+}
+
+bool timer_is_complete_reset(Timer *timer) {
+    auto now = std::chrono::steady_clock::now();
+
+    if (now - timer->start_time >= timer->time_limit) {
+        timer->start_time = now;
+        return true; 
+    }
+
+    return false;
+}
+
+#define SAMPLER_SIZE 200
+
+struct Sampler {
+    f32         samples[SAMPLER_SIZE];
+    TimePoint   times[SAMPLER_SIZE];
+};
+
+Sampler sampler_create() {
+    return Sampler {};
+}
+
+void sampler_append(Sampler *sampler, f32 sample) {
+    TimePoint time = Clock::now();
+
+    // shift all samples back one space dropping the first 
+    for (i64 i = 1; i < SAMPLER_SIZE; i++) {
+        sampler->samples[i - 1] = sampler->samples[i];
+        sampler->times[i - 1] = sampler->times[i];
+    }
+
+    // set last same to new one
+    sampler->samples[SAMPLER_SIZE - 1] = sample;
+    sampler->times[SAMPLER_SIZE - 1] = time;
+}
+
+f32 sampler_average(Sampler *sampler) {
+    f32 total = 0;
+
+    for (i64 i = 0; i < SAMPLER_SIZE; i++) {
+        total += sampler->samples[i];
+    }
+
+    return total / f32(SAMPLER_SIZE);
+}
+
+f32 sampler_seconds_per_sample(Sampler *sampler) {
+    TimePoint start = sampler->times[0];
+    TimePoint end = sampler->times[SAMPLER_SIZE - 1];
+
+    f32 delta_time = std::chrono::duration<f32>(end - start).count();
+    return delta_time / f32(SAMPLER_SIZE);
+}
+
+f32 sampler_samples_per_second(Sampler *sampler) {
+    return 1.0f / sampler_seconds_per_sample(sampler);
+}
+
+template <typename T>
+struct AtomicSnapshot {
+    T buffers[2];
+    std::atomic<T*> read_ptr;
+    T* write_ptr;
+};
+
+template <typename T>
+void atomic_snapshot_init(AtomicSnapshot<T> *double_buffer) {
+    double_buffer->buffers[0] = T{};
+    double_buffer->buffers[1] = T{};
+    double_buffer->read_ptr.store(&double_buffer->buffers[0], std::memory_order_relaxed);
+    double_buffer->write_ptr = &double_buffer->buffers[1];
+}
+
+template <typename T>
+T *atomic_snapshot_write(AtomicSnapshot<T> *double_buffer) {
+    return double_buffer->write_ptr;
+}
+
+template <typename T>
+T *atomic_snapshot_read(AtomicSnapshot<T> *double_buffer) {
+    return double_buffer->read_ptr.load(std::memory_order_acquire);
+}
+
+template <typename T>
+void atomic_snapshot_swap(AtomicSnapshot<T> *double_buffer) {
+    T* old_read = double_buffer->read_ptr.exchange(double_buffer->write_ptr, std::memory_order_acq_rel);
+    double_buffer->write_ptr = old_read;
 }
 
 // 0 -> 1
