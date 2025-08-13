@@ -16,7 +16,7 @@
 #include <atomic>
 
 // Total: 19:30
-// Started: 10:00
+// Started: 16:30
 
 #define MAX_ENTITIES 1000
 
@@ -347,7 +347,7 @@ void game_client_entry() {
             logln("Failed when trying to init the window");
         }
 
-        ok = camera_init(CameraMode::FIRST_PERSON, 80, v3{0, 0, -3}, 0.1, 200);
+        ok = camera_init(CameraMode::FIRST_PERSON, 80, v3{0, 0, -80}, 0.1, 200);
         if (!ok) {
             logln("Failed when trying to init the camera");
         }
@@ -364,6 +364,15 @@ void game_client_entry() {
 
     logln_fmt(&GC()->state.arena, "Started game client [thread={}]", get_current_thread_id());
     logln_fmt(&GC()->state.arena, "Client running at {}t/s", i64(1000.0f / f32(GAME_SERVER_MS_PER_TICK)));
+
+
+    // test ndc conversion
+    logln_fmt(&GC()->state.arena, "TL = {} :: TR = {} :: BL = {} :: BR = {}",
+        screen_position_to_ndc(WIN(), v3{0,                 f32(WIN()->logical_size.y), -1}),
+        screen_position_to_ndc(WIN(), v3{f32(WIN()->logical_size.x), f32(WIN()->logical_size.y), -1}),
+        screen_position_to_ndc(WIN(), v3{0,                 0,                  -1}),
+        screen_position_to_ndc(WIN(), v3{f32(WIN()->logical_size.x), 0,                  -1})
+    );
 
     deserialise_level(&GC()->state);
 
@@ -568,12 +577,13 @@ Ray stored_ray = {};
 void update_editor(State *state) {
     ASSERT(is_client(state) && GC()->mode == GC_EDITOR);
 
-    v3 m_start = screen_position_to_world_position(v3{MOUSE.position.x, MOUSE.position.y, -1}, REN(), WIN());
-    v3 m_end = screen_position_to_world_position(v3{MOUSE.position.x, MOUSE.position.y, 1}, REN(), WIN());
+    if (true) {
+        v3 m_start = screen_position_to_world_position(v3{MOUSE.position.x, MOUSE.position.y, -1}, REN(), WIN());
+        v3 m_end = screen_position_to_world_position(v3{MOUSE.position.x, MOUSE.position.y, 1}, REN(), WIN());
 
-    draw_model(REN(), g_models[MT_CUBE], m_start, v3{1, 1, 1} * 0.005f, {}, BLACK);
-    draw_model(REN(), g_models[MT_CUBE], m_start, v3{1, 1, 1} * 0.002f, {}, RED);
-    // draw_model(REN(), g_models[MT_CUBE], m_end, v3{1, 1, 1} * 4, {}, RED);
+        draw_model(REN(), g_models[MT_CUBE], m_start, v3{1, 1, 1} * 0.005f, {}, BLACK);
+        draw_model(REN(), g_models[MT_CUBE], m_start, v3{1, 1, 1} * 0.002f, {}, RED);
+    }
 
     if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::DOWN) {
         Ray ray = ray_from_screen_position({MOUSE.position.x, MOUSE.position.y, -1});
@@ -704,8 +714,18 @@ void draw_ui(State *state) {
     ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_NoDockingOverCentralNode);
     // ImGui::ShowDemoWindow();
 
-    ImGui::Begin("Player");
+    ImGui::Begin("Settings");
+    ImGui::SeparatorText("Screen");
+    ImGui::Text("Logical size: %dx%d", WIN()->logical_size.x, WIN()->logical_size.y);
+    ImGui::Text("Frame buffer size: %dx%d", WIN()->frame_buffer_size.x, WIN()->frame_buffer_size.y);
 
+    v3 mouse_position = v3{MOUSE.position.x, MOUSE.position.y, -1};
+    v3 mouse_position_ndc = screen_position_to_ndc(WIN(), mouse_position);
+
+    ImGui::Text("Mouse: [%4.0f, %4.0f]", mouse_position.x, mouse_position.y);
+    ImGui::Text("Mouse (NDC): [%4.2f, %4.2f]", mouse_position_ndc.x, mouse_position_ndc.y);
+
+    ImGui::SeparatorText("Player");
     ImGui::InputFloat("Acceleration", &PLAYER_ACCELERATION);
     ImGui::InputFloat("Max speed", &PLAYER_MAX_SPEED);
     ImGui::InputFloat("Drag", &PLAYER_DRAG);
@@ -1145,10 +1165,8 @@ Entity *next(RaycastIterator *it, State *state) {
     const f32 STEP = 0.05f;
     v3 v_step = it->ray.direction * STEP;
 
-    i64 step_count = 0;
 
     while (length(it->check_position - it->ray.origin) <= it->distance) {
-        step_count++;
         it->check_position += v_step;
 
         draw_model(REN(), g_models[MT_CUBE], it->check_position, v3{STEP, STEP, STEP} * 0.2f, {}, RED);
@@ -1389,11 +1407,36 @@ struct YAML::convert<v4> {
     }
 };
 
-// bool decode(const YAML::Node &node, v4 &vector) {
-    // return false;
-// }
+template<>
+void fmt_value(DynamicArray<u8> *bytes, v2i value) {
+    append_many(bytes, Slice<u8>("v2i {"));
+    fmt_value(bytes, value.x);
+    append_many(bytes, Slice<u8>(", "));
+    fmt_value(bytes, value.y);
+    append_many(bytes, Slice<u8>("}"));
+}
 
-template<>                                                                                      
+template<>
+void fmt_value(DynamicArray<u8> *bytes, v2 value) {
+    append_many(bytes, Slice<u8>("v2 {"));
+    fmt_value(bytes, value.x);
+    append_many(bytes, Slice<u8>(", "));
+    fmt_value(bytes, value.y);
+    append_many(bytes, Slice<u8>("}"));
+}
+
+template<>
+void fmt_value(DynamicArray<u8> *bytes, v3i value) {
+    append_many(bytes, Slice<u8>("v3i {"));
+    fmt_value(bytes, value.x);
+    append_many(bytes, Slice<u8>(", "));
+    fmt_value(bytes, value.y);
+    append_many(bytes, Slice<u8>(", "));
+    fmt_value(bytes, value.z);
+    append_many(bytes, Slice<u8>("}"));
+}
+
+template<>
 void fmt_value(DynamicArray<u8> *bytes, v3 value) {
     append_many(bytes, Slice<u8>("v3 {"));
     fmt_value(bytes, value.x);

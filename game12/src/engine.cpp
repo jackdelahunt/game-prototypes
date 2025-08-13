@@ -25,12 +25,11 @@
 //////////////////////////////// @window ////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 struct Window {
-    str title;
-    i32 width;
-    i32 height;
-
     GLFWwindow *glfw_window;
 
+    str title;
+    v2i logical_size;
+    v2i frame_buffer_size;
     bool vsync;
     bool mouse_captured;
 };
@@ -80,10 +79,8 @@ bool window_init(str title, i32 width, i32 height) {
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     g_window = new Window {
-        .title = title,
-        .width = width,
-        .height = height,
         .glfw_window = NULL,
+        .title = title,
         .vsync = true,
         .mouse_captured = false,
     };
@@ -93,8 +90,8 @@ bool window_init(str title, i32 width, i32 height) {
     GLFWmonitor *monitor = glfwGetPrimaryMonitor();
     const GLFWvidmode* mode = glfwGetVideoMode(monitor);
 
-    g_window->width = mode->width;
-    g_window->height = mode->height;
+    g_window->logical_size.x = mode->width;
+    g_window->logical_size.y = mode->height;
 #endif
  
 
@@ -102,11 +99,13 @@ bool window_init(str title, i32 width, i32 height) {
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 #endif
 
-    g_window->glfw_window = glfwCreateWindow(g_window->width, g_window->height, g_window->title.c(), NULL, NULL);
+    g_window->glfw_window = glfwCreateWindow(g_window->logical_size.x, g_window->logical_size.y, g_window->title.c(), NULL, NULL);
     if (g_window->glfw_window == NULL) {
         logln("Failed to create window");
         return false;
     }
+
+    glfwGetFramebufferSize(g_window->glfw_window, &g_window->frame_buffer_size.x, &g_window->frame_buffer_size.y);
 
     glfwMakeContextCurrent(g_window->glfw_window);
     glfwSetWindowUserPointer(g_window->glfw_window, g_window);
@@ -217,7 +216,7 @@ void glfw_mouse_move_callback(GLFWwindow* window, f64 x, f64 y) {
 
     MOUSE.position = v2{
         (f32) x,
-        ((f32) -y) + win_ptr->height,
+        ((f32) -y) + win_ptr->logical_size.y,
     };
 }
 
@@ -532,7 +531,7 @@ f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
 bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options);
 
 v3 screen_position_to_world_position(v3 screen_position, Renderer *renderer, Window *window);
-v3 screen_position_to_ndc(v3 screen_position, Window *window);
+v3 screen_position_to_ndc(Window *window, v3 screen_position);
 
 m4 get_view_matrix(Camera *camera);
 m4 get_projection_matrix(Camera *camera, f32 aspect);
@@ -1015,8 +1014,8 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
 
     { // init frame buffers
          renderer->g_buffer = FrameBuffer {
-            .width =  window->width,
-            .height =  window->height
+            .width =  window->frame_buffer_size.x,
+            .height =  window->frame_buffer_size.y
         };
     
         ok = init_frame_buffer(&renderer->g_buffer, FB_POSITION_ATTACHMENT | FB_NORMAL_ATTACHMENT | FB_VIEW_NORMAL_ATTACHMENT | FB_ALBEDO_ATTACHMENT | FB_SUN_POSITION_ATTACHMENT | FB_DEPTH_ATTACHMENT);
@@ -1026,8 +1025,8 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         }
 
          renderer->sun_frame_buffer = FrameBuffer {
-            .width =  window->width,
-            .height =  window->height
+            .width =  window->frame_buffer_size.x,
+            .height =  window->frame_buffer_size.y
         };
     
         ok = init_frame_buffer(&renderer->sun_frame_buffer, FB_DEPTH_ATTACHMENT | FB_DISABLE_DRAW_BUFFER | FB_DISABLE_READ_BUFFER);
@@ -1037,8 +1036,8 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         }
 
          renderer->ssao_frame_buffer = FrameBuffer {
-            .width =  window->width,
-            .height =  window->height
+            .width =  window->frame_buffer_size.x,
+            .height =  window->frame_buffer_size.y
         };
     
         ok = init_frame_buffer(&renderer->ssao_frame_buffer, FB_POSITION_ATTACHMENT);
@@ -1048,8 +1047,8 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         }
 
         renderer->ssao_blur_frame_buffer = FrameBuffer {
-            .width =  window->width,
-            .height =  window->height
+            .width =  window->frame_buffer_size.x,
+            .height =  window->frame_buffer_size.y
         };
     
         ok = init_frame_buffer(&renderer->ssao_blur_frame_buffer, FB_POSITION_ATTACHMENT);
@@ -1059,8 +1058,8 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         }
 
          renderer->lighting_frame_buffer = FrameBuffer {
-            .width =  window->width,
-            .height =  window->height
+            .width =  window->frame_buffer_size.x,
+            .height =  window->frame_buffer_size.y
         };
 
         ok = init_frame_buffer(&renderer->lighting_frame_buffer, FB_POSITION_ATTACHMENT);
@@ -1492,8 +1491,8 @@ void new_frame(Renderer *renderer, Window *window, Camera *camera) {
     reset(&renderer->commands);
 
     renderer->view_matrix = get_view_matrix(camera);
-    renderer->projection_matrix = get_projection_matrix(camera, (f32) window->width / (f32) window->height);
-    renderer->projection_matrix_ortho = get_projection_matrix_ortho(camera, (f32) window->width / (f32) window->height);
+    renderer->projection_matrix = get_projection_matrix(camera, (f32) window->frame_buffer_size.x / (f32) window->frame_buffer_size.y);
+    renderer->projection_matrix_ortho = get_projection_matrix_ortho(camera, (f32) window->frame_buffer_size.x / (f32) window->frame_buffer_size.y);
 
     new_imgui_frame();
 }
@@ -1503,7 +1502,7 @@ void draw_frame(Renderer *renderer, Window *window) {
         glBindFramebuffer(GL_FRAMEBUFFER, renderer->g_buffer.id);
    
         clear_frame(renderer, {0, 0, 0, 1});
-        glViewport(0, 0, window->width, window->height);
+        glViewport(0, 0, window->frame_buffer_size.x, window->frame_buffer_size.y);
         // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
         for (RenderCommand &command : renderer->commands) {
@@ -1534,7 +1533,7 @@ void draw_frame(Renderer *renderer, Window *window) {
     { // lighting pass
         glBindFramebuffer(GL_FRAMEBUFFER, renderer->lighting_frame_buffer.id);
         clear_frame(renderer, renderer->clear_colour);
-        glViewport(0, 0, window->width, window->height);
+        glViewport(0, 0, window->frame_buffer_size.x, window->frame_buffer_size.y);
 
         Quad *quad = push_screen_quad(renderer, WHITE);
     
@@ -1566,7 +1565,7 @@ void draw_frame(Renderer *renderer, Window *window) {
         reset(&renderer->quads);
 
         clear_frame(renderer, renderer->clear_colour);
-        glViewport(0, 0, window->width, window->height);
+        glViewport(0, 0, window->frame_buffer_size.x, window->frame_buffer_size.y);
 
         Quad *quad = push_screen_quad(renderer, WHITE);
     
@@ -1961,21 +1960,38 @@ v3 screen_position_to_world_position(v3 screen_position, Renderer *renderer, Win
     // z=1  -> far plane
     // - 13/08/25
     
-    v3 ndc = screen_position_to_ndc(screen_position, window);
+    v3 ndc = screen_position_to_ndc(window, screen_position);
+
     m4 inverse_vp = HMM_InvGeneralM4(renderer->projection_matrix * renderer->view_matrix);
 
     v4 world_position = inverse_vp * v4{ndc.x, ndc.y, ndc.z, 1};
     world_position /= world_position.w;
 
     return v3{world_position.x, world_position.y, world_position.z};
+
+#if 0
+    v3 ndc = screen_position_to_ndc(window, screen_position);
+    v4 clip = v4{ndc.x, ndc.y, ndc.z, 1};
+    v4 eye = HMM_InvGeneralM4(renderer->projection_matrix) * clip;
+    eye.z = -1; eye.w = 0;
+    v4 world = HMM_InvGeneralM4(renderer->view_matrix) * eye;
+
+    return v3{world.x, world.y, world.z};
+#endif
 }
 
-v3 screen_position_to_ndc(v3 screen_position, Window *window) {
-    return {
-        ((screen_position.x / f32(window->width)) * 2) - 1,
-        ((screen_position.y / f32(window->height)) * 2) - 1,
-        screen_position.z
-    };
+v3 screen_position_to_ndc(Window *window, v3 screen_position) {
+    v3 v_ndc = screen_position;
+
+    // set origin to center
+    v_ndc.x -= f32(window->logical_size.x) * 0.5f;
+    v_ndc.y -= f32(window->logical_size.y) * 0.5f;
+
+    // scale to [-1, 1]
+    v_ndc.x /= (f32(window->logical_size.x) * 0.5f);
+    v_ndc.y /= (f32(window->logical_size.y) * 0.5f);
+
+    return v_ndc;
 }
 
 m4 get_view_matrix(Camera *camera) {
@@ -2021,6 +2037,8 @@ Ray ray_from_screen_position(v3 screen_position) {
 
     v3 start = screen_position_to_world_position(v3{screen_position.x, screen_position.y, -1}, REN(), WIN());
     v3 end = screen_position_to_world_position(v3{screen_position.x, screen_position.y, 1}, REN(), WIN());
+
+    // start = CAM()->position;
 
     return ray_create(start, norm(end - start));
 }
