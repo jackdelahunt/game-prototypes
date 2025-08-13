@@ -15,10 +15,10 @@
 #include <queue>
 #include <atomic>
 
-// Total: 15:30
-// Started: 11:00
+// Total: 19:30
+// Started: 10:00
 
-#define MAX_ENTITIES 200
+#define MAX_ENTITIES 1000
 
 f32 PLAYER_ACCELERATION = 12;
 f32 PLAYER_MAX_SPEED =  30;
@@ -84,6 +84,12 @@ enum EntityFlags {
     EF_DELETE           = 1 << 16,
 };
 
+struct RaycastIterator {
+    Ray ray;
+    f32 distance;
+    v3 check_position;
+};
+
 enum InstanceType {
     IT_CLIENT,
     IT_SERVER
@@ -135,6 +141,9 @@ enum GameClientMode {
 
 struct GameClient {
     GameClientMode mode;
+    struct {
+        Entity *selected_entity; // may break stuff because pointer 
+    } editor;
     State state;
 };
 
@@ -189,11 +198,16 @@ bool is_server(State *state);
 bool is_client(State *state);
 void server_on_new_connection(NetworkLayer *net, Server *server, ConnectionId id);
 
+RaycastIterator raycast_iterator_create(Ray ray, f32 distance);
+Entity *next(RaycastIterator *it, State *state);
+
+void imgui_v3_control(const char *label, v3 *vector);
+void imgui_v4_control(const char *label, v4 *vector);
+
 void clear_level(State *state);
 void serialise_level(State *state);
 void serialise_entity(YAML::Emitter &out, Entity *entity);
 void deserialise_level(State *state);
-void deserialise_entity(Entity *entity);
 
 YAML::Emitter &operator<<(YAML::Emitter &out, v3 value);
 YAML::Emitter &operator<<(YAML::Emitter &out, v4 value);
@@ -333,7 +347,7 @@ void game_client_entry() {
             logln("Failed when trying to init the window");
         }
 
-        ok = camera_init(CameraMode::FIRST_PERSON, 100, v3{0, 0, -3}, 0.1, 200);
+        ok = camera_init(CameraMode::FIRST_PERSON, 80, v3{0, 0, -3}, 0.1, 200);
         if (!ok) {
             logln("Failed when trying to init the camera");
         }
@@ -354,6 +368,8 @@ void game_client_entry() {
     deserialise_level(&GC()->state);
 
     while (!glfwWindowShouldClose(WIN()->glfw_window)) {
+        new_frame(REN(), WIN(), CAM());
+
         if (KEYS[GLFW_KEY_ESCAPE] == InputState::DOWN) {
             glfwSetWindowShouldClose(WIN()->glfw_window, GLFW_TRUE);
         }
@@ -382,7 +398,6 @@ void game_client_entry() {
         } else { ASSERT(0); }
 
         // draw
-        new_frame(REN(), WIN(), CAM());
         draw(&GC()->state);
         draw_ui(&GC()->state);
 
@@ -547,8 +562,56 @@ void update_entities(State *state, f32 delta_time) {
     }
 }
 
+bool start = false;
+Ray stored_ray = {};
+
 void update_editor(State *state) {
     ASSERT(is_client(state) && GC()->mode == GC_EDITOR);
+
+    v3 m_start = screen_position_to_world_position(v3{MOUSE.position.x, MOUSE.position.y, -1}, REN(), WIN());
+    v3 m_end = screen_position_to_world_position(v3{MOUSE.position.x, MOUSE.position.y, 1}, REN(), WIN());
+
+    draw_model(REN(), g_models[MT_CUBE], m_start, v3{1, 1, 1} * 0.005f, {}, BLACK);
+    draw_model(REN(), g_models[MT_CUBE], m_start, v3{1, 1, 1} * 0.002f, {}, RED);
+    // draw_model(REN(), g_models[MT_CUBE], m_end, v3{1, 1, 1} * 4, {}, RED);
+
+    if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::DOWN) {
+        Ray ray = ray_from_screen_position({MOUSE.position.x, MOUSE.position.y, -1});
+        RaycastIterator it = raycast_iterator_create(ray, CAM()->far_plane - CAM()->near_plane);
+
+        stored_ray = ray;
+        start = true;
+
+        while (false) {
+            Entity *entity = next(&it, state);
+            if (!entity) {
+                break;
+            }
+
+            GC()->editor.selected_entity = entity; 
+        }
+    }
+
+    if (start) {
+        RaycastIterator it = raycast_iterator_create(stored_ray, CAM()->far_plane - CAM()->near_plane);
+
+        while (true) {
+            Entity *entity = next(&it, state);
+            if (!entity) {
+                break;
+            }
+
+            GC()->editor.selected_entity = entity; 
+        }
+    }
+
+
+
+    // ctrl-N: new level
+    if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
+        KEYS[GLFW_KEY_N] == InputState::DOWN) {
+        clear_level(state);
+    }
 
     // ctrl-S: save level
     if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
@@ -560,12 +623,6 @@ void update_editor(State *state) {
     if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
         KEYS[GLFW_KEY_O] == InputState::DOWN) {
         deserialise_level(state);
-    }
-
-    // ctrl-N: new level
-    if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
-        KEYS[GLFW_KEY_N] == InputState::DOWN) {
-        clear_level(state);
     }
 
     { // camera look
@@ -631,7 +688,15 @@ void draw(State *state) {
             continue;
         }
 
-        draw_model(REN(), g_models[entity.model], entity.position, entity.size, entity.rotation, entity.colour);
+        v4 draw_colour = entity.colour; 
+
+        if (GC()->mode == GC_EDITOR) {
+            if (GC()->editor.selected_entity && GC()->editor.selected_entity->id == entity.id) {
+                draw_colour = RED;
+            }
+        }
+            
+        draw_model(REN(), g_models[entity.model], entity.position, entity.size, entity.rotation, draw_colour);
     }
 }
 
@@ -694,7 +759,21 @@ void draw_ui(State *state) {
 
     ImGui::Begin("Editor");
 
-    ImGui::SeparatorText("Entities");
+    if (ImGui::Button("New")) {
+        clear_level(state);
+    }
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("Save")) {
+        serialise_level(state);
+    }
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("Load")) {
+        deserialise_level(state);
+    }
 
     if (ImGui::Button("Create empty")) {
         Entity entity = Entity {
@@ -708,8 +787,45 @@ void draw_ui(State *state) {
         local_spawn_entity(state, entity);
     }
 
-    for (Entity &entity : state->entities) {
-        ImGui::CollapsingHeader(fmt(&state->arena, "Entity: {}", entity.id).c());
+    if (GC()->editor.selected_entity) {
+
+        ImGui::SeparatorText("Selected Entity");
+
+        Entity *entity = GC()->editor.selected_entity;
+        ImGui::Text("flags: %llu", entity->flags);
+        ImGui::Text("id: %u", entity->id);
+        ImGui::Text("owner: %u", entity->owner);
+        imgui_v3_control("position", &entity->position);
+        imgui_v3_control("size", &entity->size);
+        imgui_v3_control("rotation", &entity->rotation);
+        imgui_v3_control("velocity", &entity->velocity);
+        imgui_v4_control("colour", &entity->colour);
+        ImGui::Text("model: %u", (u32) entity->model);
+
+        //  bool ImGui::SliderFloat3(const char* label, float v[3], float v_min, float v_max, const char* format, ImGuiSliderFlags flags)
+    }
+
+    ImGui::SeparatorText("Entities");
+
+    for (i64 i = 0; i < state->entities.len; i++) {
+        Entity *entity = &state->entities[i];
+
+        ImGui::PushID(i);
+
+        const char *format = "{}";
+        if (GC()->editor.selected_entity == entity) {
+            // TODO: fmt does not work when this is [{}] correct format
+            // is written but the generated fmt_values are writing \0
+            format = "-> {}";
+        }
+
+        const char *title = fmt(&state->arena, format, entity->id).c();
+
+        if (ImGui::Button(title, ImVec2(200, 20))) {
+            GC()->editor.selected_entity = entity;
+        }
+
+        ImGui::PopID();
     }
         
     ImGui::End();
@@ -765,9 +881,9 @@ bool point_collision(v3 point, v3 collider_position, v3 collider_size) {
     v3 bounding_box = collider_size * 0.5;
 
     return (
-        delta_position.x >= -bounding_box.x && delta_position.x < bounding_box.x &&
-        delta_position.y >= -bounding_box.y && delta_position.y < bounding_box.y &&
-        delta_position.z >= -bounding_box.z && delta_position.z < bounding_box.z
+        delta_position.x >= -bounding_box.x && delta_position.x <= bounding_box.x &&
+        delta_position.y >= -bounding_box.y && delta_position.y <= bounding_box.y &&
+        delta_position.z >= -bounding_box.z && delta_position.z <= bounding_box.z
     );
 }
 
@@ -1015,6 +1131,138 @@ void server_on_new_connection(NetworkLayer *net, Server *server, ConnectionId id
     network_queue_push(&net->server_in_queue, bytes_from_ptr(&message));
 }
 
+RaycastIterator raycast_iterator_create(Ray ray, f32 distance) {
+    return RaycastIterator {
+        .ray = ray,
+        .distance = distance,
+        .check_position = ray.origin
+    };
+}
+
+Entity *next(RaycastIterator *it, State *state) {
+    // how much to step along the ray
+    // I have no idea what is good here
+    const f32 STEP = 0.05f;
+    v3 v_step = it->ray.direction * STEP;
+
+    i64 step_count = 0;
+
+    while (length(it->check_position - it->ray.origin) <= it->distance) {
+        step_count++;
+        it->check_position += v_step;
+
+        draw_model(REN(), g_models[MT_CUBE], it->check_position, v3{STEP, STEP, STEP} * 0.2f, {}, RED);
+
+        for (Entity &entity : state->entities) {
+            bool hit = point_collision(it->check_position, entity.position, entity.size * 1.2f);
+            if (hit) {
+                return &entity;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+void imgui_v3_control(const char *label, v3 *vector) {
+    const f32 reset_value = 0;
+
+    ImGui::PushID(label);
+	ImGui::Columns(2);
+
+	ImGui::SetColumnWidth(0, 100);
+
+    ImGui::Text(label);
+
+	ImGui::NextColumn();
+
+    ImGui::PushMultiItemsWidths(3, ImGui::CalcItemWidth());
+
+    if (ImGui::Button("X")) {
+        vector->x = reset_value;        
+    }
+
+    ImGui::SameLine();
+    ImGui::DragFloat("##X", &(*vector)[0]);
+	ImGui::PopItemWidth();
+    ImGui::SameLine();
+
+    if (ImGui::Button("Y")) {
+        vector->y = reset_value;        
+    }
+
+    ImGui::SameLine();
+    ImGui::DragFloat("##Y", &(*vector)[1]);
+	ImGui::PopItemWidth();
+    ImGui::SameLine();
+
+    if (ImGui::Button("Z")) {
+        vector->z = reset_value;        
+    }
+
+    ImGui::SameLine();
+    ImGui::DragFloat("##Z", &(*vector)[2]);
+	ImGui::PopItemWidth();
+    ImGui::SameLine();
+		
+    ImGui::Columns(1);
+	ImGui::PopID();
+}
+
+void imgui_v4_control(const char *label, v4 *vector) {
+    const f32 reset_value = 0;
+
+    ImGui::PushID(label);
+	ImGui::Columns(2);
+
+	ImGui::SetColumnWidth(0, 100);
+
+    ImGui::Text(label);
+
+	ImGui::NextColumn();
+
+    ImGui::PushMultiItemsWidths(4, ImGui::CalcItemWidth());
+
+    if (ImGui::Button("R")) {
+        vector->x = reset_value;        
+    }
+
+    ImGui::SameLine();
+    ImGui::DragFloat("##R", &(*vector)[0]);
+	ImGui::PopItemWidth();
+    ImGui::SameLine();
+
+    if (ImGui::Button("G")) {
+        vector->y = reset_value;        
+    }
+
+    ImGui::SameLine();
+    ImGui::DragFloat("##G", &(*vector)[1]);
+	ImGui::PopItemWidth();
+    ImGui::SameLine();
+
+    if (ImGui::Button("B")) {
+        vector->z = reset_value;        
+    }
+
+    ImGui::SameLine();
+    ImGui::DragFloat("##B", &(*vector)[2]);
+	ImGui::PopItemWidth();
+    ImGui::SameLine();
+
+    if (ImGui::Button("A")) {
+        vector->z = reset_value;        
+    }
+
+    ImGui::SameLine();
+    ImGui::DragFloat("##A", &(*vector)[3]);
+	ImGui::PopItemWidth();
+    ImGui::SameLine();
+		
+    ImGui::Columns(1);
+	ImGui::PopID();
+}
+
 void clear_level(State *state) {
     reset(&state->entities);
 }
@@ -1083,8 +1331,8 @@ void deserialise_level(State *state) {
         Entity e = Entity {};
 
         e.flags = entity["flags"].as<u64>();
-        e.flags = entity["id"].as<u32>();
-        e.flags = entity["owner"].as<u32>();
+        e.id = entity["id"].as<u32>();
+        e.owner = entity["owner"].as<u32>();
         e.position = entity["position"].as<v3>();
         e.size = entity["size"].as<v3>();
         e.rotation = entity["rotation"].as<v3>();
@@ -1096,10 +1344,6 @@ void deserialise_level(State *state) {
     }
 
     logln("Level was loaded");
-}
-
-void deserialise_entity(Entity *entity) {
-    
 }
 
 YAML::Emitter &operator<<(YAML::Emitter &out, v3 vector) {

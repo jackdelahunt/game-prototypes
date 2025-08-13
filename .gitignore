@@ -19,3 +19,4 @@ game08/resources/saves/backups
 game09/resources/saves/backups
 **/profiles
 **/compile_commands.json
+**/.cache

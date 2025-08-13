@@ -79,10 +79,6 @@ bool window_init(str title, i32 width, i32 height) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    // used to get full screen width and height
-    // GLFWmonitor *monitor = glfwGetPrimaryMonitor();
-    // const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-
     g_window = new Window {
         .title = title,
         .width = width,
@@ -91,6 +87,15 @@ bool window_init(str title, i32 width, i32 height) {
         .vsync = true,
         .mouse_captured = false,
     };
+
+#if 1
+    // used to get full screen width and height
+    GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+    const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+
+    g_window->width = mode->width;
+    g_window->height = mode->height;
+#endif
  
 
 #if REPORT_GL_ERRORS
@@ -234,7 +239,7 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 //////////////////////////////// @renderer //////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 #define MAX_QUADS 5000
-#define MAX_RENDER_COMMANDS 1000
+#define MAX_RENDER_COMMANDS 5000
 #define MAX_MESHES 128
 #define MAX_MODELS 128
 #define MAX_LIGHTS 20
@@ -436,6 +441,11 @@ struct Renderer {
     u32 noise_texture_id;
 };
 
+struct Ray {
+    v3 origin;
+    v3 direction;
+};
+
 // call renderer_init() and REN()
 Renderer *g_renderer = NULL;
 
@@ -521,12 +531,15 @@ f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
 
 bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options);
 
-v2 screen_position_to_world_position(v2 screen_position, Camera *camera, Window *window);
-v2 screen_position_to_ndc(v2 screen_position, Window *window);
+v3 screen_position_to_world_position(v3 screen_position, Renderer *renderer, Window *window);
+v3 screen_position_to_ndc(v3 screen_position, Window *window);
 
 m4 get_view_matrix(Camera *camera);
 m4 get_projection_matrix(Camera *camera, f32 aspect);
 m4 get_projection_matrix_ortho(Camera *camera, f32 aspect);
+
+Ray ray_create(v3 origin, v3 direction);
+Ray ray_from_screen_position(v3 screen_position);
 
 v4 rgb(i64 r, i64 g, i64 b);
 v4 rgba(i64 r, i64 g, i64 b, i64 a);
@@ -1941,28 +1954,27 @@ bool init_frame_buffer(FrameBuffer *frame_buffer, i64 options) {
     return true;
 }
 
-v2 screen_position_to_world_position(v2 screen_position, Camera *camera, Window *window) {
-    // pretty muched copied from odin engine,
-    // haven't tweaked it because I am just happy 
-    // it works. Maybe can find a way to not pass
-    // in window or camera
-    // - 28/05/25
+v3 screen_position_to_world_position(v3 screen_position, Renderer *renderer, Window *window) {
+    // while screen coords are just x and y, the z coord of screen
+    // position determines the depth of the position in the view frustum
+    // z=-1 -> near plane
+    // z=1  -> far plane
+    // - 13/08/25
     
-    v2 ndc = screen_position_to_ndc(screen_position, window);
-    f32 aspect_ratio = (f32) window->width / (f32) window->height;
+    v3 ndc = screen_position_to_ndc(screen_position, window);
+    m4 inverse_vp = HMM_InvGeneralM4(renderer->projection_matrix * renderer->view_matrix);
 
-    m4 inverse_vp = HMM_InvGeneralM4(get_projection_matrix(camera, aspect_ratio) * get_view_matrix(camera));
-
-    v4 world_position = inverse_vp * v4{ndc.x, ndc.y, 0, 1};
+    v4 world_position = inverse_vp * v4{ndc.x, ndc.y, ndc.z, 1};
     world_position /= world_position.w;
 
-    return v2{world_position.x, world_position.y};
+    return v3{world_position.x, world_position.y, world_position.z};
 }
 
-v2 screen_position_to_ndc(v2 screen_position, Window *window) {
+v3 screen_position_to_ndc(v3 screen_position, Window *window) {
     return {
-        (screen_position.x / window->width) * 2 - 1,
-        (screen_position.y / window->height) * 2 - 1,
+        ((screen_position.x / f32(window->width)) * 2) - 1,
+        ((screen_position.y / f32(window->height)) * 2) - 1,
+        screen_position.z
     };
 }
 
@@ -1994,6 +2006,23 @@ m4 get_projection_matrix_ortho(Camera *camera, f32 aspect) {
          camera->near_plane, 
          camera->far_plane 
     );
+}
+
+Ray ray_create(v3 origin, v3 direction) {
+    return Ray {.origin = origin, .direction = direction};
+}
+
+Ray ray_from_screen_position(v3 screen_position) {
+    // this sticks with my convention of having screen positions
+    // all be v3, but with this case you probably always want the origin
+    // to be on the near plane so I ignore the z of the give screen position
+    // this is just to stop any annoying bugs by making an assumption 
+    // - 13/08/25
+
+    v3 start = screen_position_to_world_position(v3{screen_position.x, screen_position.y, -1}, REN(), WIN());
+    v3 end = screen_position_to_world_position(v3{screen_position.x, screen_position.y, 1}, REN(), WIN());
+
+    return ray_create(start, norm(end - start));
 }
 
 v4 rgb(i64 r, i64 g, i64 b) {

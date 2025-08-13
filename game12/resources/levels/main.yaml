@@ -1,3 +1,281 @@
 name: <empty>
 entities:
-  []
+  - flags: 0
+    id: 0
+    owner: 0
+    position: [-29.9249249, 3.81512046, -18.4017448]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.808740497, 0.585009336, 0.479873031, 1]
+    model: 0
+  - flags: 0
+    id: 1
+    owner: 0
+    position: [-8.98251247, 23.7577457, 19.3704014]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.7466048, 0.174108103, 0.858943462, 1]
+    model: 0
+  - flags: 0
+    id: 2
+    owner: 0
+    position: [12.6300859, 0.812097788, -11.7603083]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.0149845881, 0.091402933, 0.364452034, 1]
+    model: 0
+  - flags: 0
+    id: 3
+    owner: 0
+    position: [-21.1612282, -20.0460835, 29.3115025]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.445692301, 0.119083226, 0.00466933195, 1]
+    model: 0
+  - flags: 0
+    id: 4
+    owner: 0
+    position: [-29.4653168, -7.32718897, 1.89977646]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.571184397, 0.601763964, 0.607165754, 1]
+    model: 0
+  - flags: 0
+    id: 5
+    owner: 0
+    position: [-20.0259418, 9.78270626, -2.95266509]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.352122575, 0.0570390932, 0.607684553, 1]
+    model: 0
+  - flags: 0
+    id: 6
+    owner: 0
+    position: [16.999115, 18.1563778, 1.19296789]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.301950127, 0.875972748, 0.726676226, 1]
+    model: 0
+  - flags: 0
+    id: 7
+    owner: 0
+    position: [27.354044, 25.5430775, 2.36121655]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.142338336, 0.462080747, 0.235328227, 1]
+    model: 0
+  - flags: 0
+    id: 8
+    owner: 0
+    position: [21.7343655, -17.423933, 16.7793808]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.843653679, 0.996795535, 0.999694824, 1]
+    model: 0
+  - flags: 0
+    id: 9
+    owner: 0
+    position: [6.68996239, -6.4537487, -14.0272217]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.297280788, 0.840144038, 0.0237434004, 1]
+    model: 0
+  - flags: 0
+    id: 10
+    owner: 0
+    position: [-7.44804192, -24.4425793, 10.6323442]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.0562150963, 0.00878933072, 0.918790221, 1]
+    model: 0
+  - flags: 0
+    id: 11
+    owner: 0
+    position: [-13.4467592, -13.6262102, 5.2745142]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.691183209, 0.83761102, 0.72649312, 1]
+    model: 0
+  - flags: 0
+    id: 12
+    owner: 0
+    position: [-0.90365231, -17.6784573, 14.6241655]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.468459129, 0.457960755, 0.949156165, 1]
+    model: 0
+  - flags: 0
+    id: 13
+    owner: 0
+    position: [14.6662798, -23.5032196, 5.94287014]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.385235131, 0.735007763, 0.608966351, 1]
+    model: 0
+  - flags: 0
+    id: 14
+    owner: 0
+    position: [4.34430981, -8.31965065, -20.9067059]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.225104526, 0.425153345, 0.802880943, 1]
+    model: 0
+  - flags: 0
+    id: 15
+    owner: 0
+    position: [1.02633834, 29.3993969, 15.0929298]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.345561087, 0.168980986, 0.657307684, 1]
+    model: 0
+  - flags: 0
+    id: 16
+    owner: 0
+    position: [-0.486159325, -26.1876278, 11.9855328]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.504806638, 0.147495955, 0.949583411, 1]
+    model: 0
+  - flags: 0
+    id: 17
+    owner: 0
+    position: [-21.5054779, 24.3070755, 11.573535]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.30304879, 0.426557213, 0.0703756809, 1]
+    model: 0
+  - flags: 0
+    id: 18
+    owner: 0
+    position: [27.9967651, 10.9912415, -20.805994]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.877254546, 0.821680367, 0.582049012, 1]
+    model: 0
+  - flags: 0
+    id: 19
+    owner: 0
+    position: [-18.5189362, -19.3264561, 19.0316467]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.475264758, 0.155552849, 0.503921628, 1]
+    model: 0
+  - flags: 0
+    id: 20
+    owner: 0
+    position: [13.9210186, -5.66454124, -13.2251968]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.568742931, 0.682241261, 0.755851924, 1]
+    model: 0
+  - flags: 0
+    id: 21
+    owner: 0
+    position: [13.3149223, -1.48228347, -22.6187935]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.367809087, 0.834681213, 0.0350962877, 1]
+    model: 0
+  - flags: 0
+    id: 22
+    owner: 0
+    position: [1.02084517, 9.77904415, -4.42671061]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.104678489, 0.949339271, 0.921384335, 1]
+    model: 0
+  - flags: 0
+    id: 23
+    owner: 0
+    position: [2.97280669, -9.24069977, -1.69652402]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.374980927, 0.846980214, 0.31687367, 1]
+    model: 0
+  - flags: 0
+    id: 24
+    owner: 0
+    position: [-2.63405275, -13.6866369, 28.9782391]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.297799617, 0.73918879, 0.567278028, 1]
+    model: 0
+  - flags: 0
+    id: 25
+    owner: 0
+    position: [-18.2406082, 15.6788845, 20.3665276]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.397656173, 0.500900269, 0.890163898, 1]
+    model: 0
+  - flags: 0
+    id: 26
+    owner: 0
+    position: [-28.3520012, 29.6777229, 4.35529613]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.0505081341, 0.531327248, 0.194067195, 1]
+    model: 0
+  - flags: 0
+    id: 27
+    owner: 0
+    position: [20.5825996, 7.60551834, 9.45677185]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.197851494, 0.842158258, 0.123325296, 1]
+    model: 0
+  - flags: 0
+    id: 28
+    owner: 0
+    position: [-23.4043407, 14.5875406, -11.1560402]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.941068769, 0.286080509, 0.336313963, 1]
+    model: 0
+  - flags: 0
+    id: 29
+    owner: 0
+    position: [-21.5842152, 13.9851055, 20.0772114]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.707998872, 0.600238025, 0.747215211, 1]
+    model: 0
+  - flags: 1
+    id: 30
+    owner: 3124678428
+    position: [0, 0, 0]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 0, 0, 1]
+    model: 0
