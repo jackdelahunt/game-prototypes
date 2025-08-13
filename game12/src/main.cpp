@@ -15,7 +15,7 @@
 #include <queue>
 #include <atomic>
 
-// Total: 19:30
+// Total: 23:00
 // Started: 16:30
 
 #define MAX_ENTITIES 1000
@@ -90,6 +90,12 @@ struct RaycastIterator {
     v3 check_position;
 };
 
+struct CubeCollision {
+    bool collision;
+    v3 overlap;
+    v3 distance;
+};
+
 enum InstanceType {
     IT_CLIENT,
     IT_SERVER
@@ -139,11 +145,15 @@ enum GameClientMode {
     GC_CLIENT
 };
 
+struct Editor {
+    Camera camera;
+    Entity *selected_entity; // may break stuff because pointer 
+};
+
 struct GameClient {
     GameClientMode mode;
-    struct {
-        Entity *selected_entity; // may break stuff because pointer 
-    } editor;
+    bool use_editor_camera;
+    Editor editor;
     State state;
 };
 
@@ -153,6 +163,7 @@ GameClient *g_game_client = NULL;
 
 GameServer *GS();
 GameClient *GC();
+Editor *ED();
 
 AtomicSnapshot<Sampler> server_events_snapshot;
 
@@ -200,6 +211,8 @@ void server_on_new_connection(NetworkLayer *net, Server *server, ConnectionId id
 
 RaycastIterator raycast_iterator_create(Ray ray, f32 distance);
 Entity *next(RaycastIterator *it, State *state);
+
+CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size);
 
 void imgui_v3_control(const char *label, v3 *vector);
 void imgui_v4_control(const char *label, v4 *vector);
@@ -255,6 +268,10 @@ GameClient *GC() {
     return g_game_client;
 }
 
+Editor *ED() {
+    return &GC()->editor;
+}
+
 // @startserver
 void game_server_start() {
     ASSERT(g_game_server == NULL);
@@ -291,7 +308,7 @@ void game_server_entry() {
     logln_fmt(&GS()->state.arena, "Started game server [thread={}]", get_current_thread_id());
     logln_fmt(&GS()->state.arena, "Server running at {}t/s", i64(1000.0f / f32(GAME_SERVER_MS_PER_TICK)));
 
-    load_level(&GS()->state);
+    deserialise_level(&GS()->state);
 
     while (!GS()->shutdown_signal) {
         f32 delta_time = 0;
@@ -342,7 +359,7 @@ void game_client_entry() {
     { // init all the global stuff
         bool ok = false;
 
-        ok = window_init("Game12", 1920, 1080);
+        ok = window_init("Game12", 1280, 720);
         if (!ok) {
             logln("Failed when trying to init the window");
         }
@@ -351,6 +368,8 @@ void game_client_entry() {
         if (!ok) {
             logln("Failed when trying to init the camera");
         }
+
+        GC()->editor.camera = *CAM();
 
         ok = renderer_init(WIN(), rgb(97, 123, 219), v3{0.6, 0.6, 0.6}, v3{0.5, 0.5, 0.5}, v3{50, 100, -100}, v3{-1, -1, 0.5}, 0.8, 0.025, v2{480, 270});
         if (!ok) {
@@ -410,7 +429,10 @@ void game_client_entry() {
         draw(&GC()->state);
         draw_ui(&GC()->state);
 
-        draw_frame(REN(), WIN());
+        draw_frame(REN(), WIN(), CAM());
+        draw_frame(REN(), WIN(), &GC()->editor.camera);
+        draw_imgui_frame();
+
         swap_buffers(WIN());
         arena_reset(&GC()->state.arena);
     }
@@ -560,50 +582,35 @@ void sync_clients(State *state) {
 }
 
 void update_entities(State *state, f32 delta_time) {
-    // nothing to do on the server for entities yet...
-    if (is_server(state)) return;
+    // update camera position to client player
+    if (is_client(state)) {
+        Entity *player = get_client_player(state, state->instance_id);
+        if (player != NULL) {
+            CAM()->position = player->position;
+        }
+    }
 
-
-    // update camera position to client player and rotate based on mouse input
-    Entity *player = get_client_player(state, state->instance_id);
-    if (player != NULL) {
-        CAM()->position = player->position;
+    for (Entity &entity : state->entities) {
+        for (Entity &other : state->entities) {
+            CubeCollision c = cube_collision(entity.position, entity.size, other.position, other.size);
+            if (c.collision) {
+                entity.colour = GREEN;
+                other.colour = GREEN;
+            }
+        }
     }
 }
-
-bool start = false;
-Ray stored_ray = {};
 
 void update_editor(State *state) {
     ASSERT(is_client(state) && GC()->mode == GC_EDITOR);
 
-    if (true) {
-        v3 m_start = screen_position_to_world_position(v3{MOUSE.position.x, MOUSE.position.y, -1}, REN(), WIN());
-        v3 m_end = screen_position_to_world_position(v3{MOUSE.position.x, MOUSE.position.y, 1}, REN(), WIN());
+    Camera *camera = &GC()->editor.camera;
 
-        draw_model(REN(), g_models[MT_CUBE], m_start, v3{1, 1, 1} * 0.005f, {}, BLACK);
-        draw_model(REN(), g_models[MT_CUBE], m_start, v3{1, 1, 1} * 0.002f, {}, RED);
-    }
-
+    // mouse picking
     if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::DOWN) {
+        // TODO: there is still a problem with this not being exact...
         Ray ray = ray_from_screen_position({MOUSE.position.x, MOUSE.position.y, -1});
-        RaycastIterator it = raycast_iterator_create(ray, CAM()->far_plane - CAM()->near_plane);
-
-        stored_ray = ray;
-        start = true;
-
-        while (false) {
-            Entity *entity = next(&it, state);
-            if (!entity) {
-                break;
-            }
-
-            GC()->editor.selected_entity = entity; 
-        }
-    }
-
-    if (start) {
-        RaycastIterator it = raycast_iterator_create(stored_ray, CAM()->far_plane - CAM()->near_plane);
+        RaycastIterator it = raycast_iterator_create(ray, camera->near_plane - camera->far_plane);
 
         while (true) {
             Entity *entity = next(&it, state);
@@ -614,8 +621,6 @@ void update_editor(State *state) {
             GC()->editor.selected_entity = entity; 
         }
     }
-
-
 
     // ctrl-N: new level
     if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
@@ -643,8 +648,8 @@ void update_editor(State *state) {
             v2 mouse_input = MOUSE.delta;
         
             if (length(mouse_input) > 0) {
-                CAM()->rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
-                CAM()->rotation.x = clamp(-90, CAM()->rotation.x, 90);
+                camera->rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
+                camera->rotation.x = clamp(-90, camera->rotation.x, 90);
             }
         }
     }
@@ -685,7 +690,7 @@ void update_editor(State *state) {
         movement += up * keyboard_input.y;
         movement += forward * keyboard_input.z;
         
-        CAM()->position += movement;
+        camera->position += movement;
     }
 }
 
@@ -714,6 +719,13 @@ void draw_ui(State *state) {
     ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_NoDockingOverCentralNode);
     // ImGui::ShowDemoWindow();
 
+    if (false) {
+        ImGui::Begin("Game View");
+        ImVec2 viewport_size = ImGui::GetContentRegionAvail();
+        ImGui::Image(REN()->lighting_frame_buffer.position_attachment, viewport_size);
+        ImGui::End();
+    }
+
     ImGui::Begin("Settings");
     ImGui::SeparatorText("Screen");
     ImGui::Text("Logical size: %dx%d", WIN()->logical_size.x, WIN()->logical_size.y);
@@ -735,12 +747,14 @@ void draw_ui(State *state) {
     ImGui::Begin("Network");
 
     if (ImGui::Button("Host")) {
+        clear_level(state);
         start_as_host();
     }
 
     ImGui::SameLine();
 
     if (ImGui::Button("Connect")) {
+        clear_level(state);
         connect_as_client();
     }
 
@@ -779,7 +793,10 @@ void draw_ui(State *state) {
 
     ImGui::Begin("Editor");
 
+    ImGui::Checkbox("Force editor camera", &GC()->use_editor_camera);
+
     if (ImGui::Button("New")) {
+        GC()->editor.selected_entity = NULL;
         clear_level(state);
     }
 
@@ -792,6 +809,7 @@ void draw_ui(State *state) {
     ImGui::SameLine();
 
     if (ImGui::Button("Load")) {
+        GC()->editor.selected_entity = NULL;
         deserialise_level(state);
     }
 
@@ -804,7 +822,7 @@ void draw_ui(State *state) {
             .model = MT_CUBE
         };
 
-        local_spawn_entity(state, entity);
+        GC()->editor.selected_entity = local_spawn_entity(state, entity);
     }
 
     if (GC()->editor.selected_entity) {
@@ -832,17 +850,24 @@ void draw_ui(State *state) {
 
         ImGui::PushID(i);
 
-        const char *format = "{}";
-        if (GC()->editor.selected_entity == entity) {
-            // TODO: fmt does not work when this is [{}] correct format
-            // is written but the generated fmt_values are writing \0
-            format = "-> {}";
+        bool is_selected = GC()->editor.selected_entity == entity;
+        const char *format = is_selected ? "-> {}" : "{}";
+        const char *label = fmt(&state->arena, format, entity->id).c();
+
+        if (ImGui::Button(label, ImVec2(200, 20))) {
+            GC()->editor.selected_entity = entity;
         }
 
-        const char *title = fmt(&state->arena, format, entity->id).c();
+        ImGui::SameLine();
+        if (ImGui::Button("O")) {
+            CAM()->position = entity->position;
+        }
 
-        if (ImGui::Button(title, ImVec2(200, 20))) {
-            GC()->editor.selected_entity = entity;
+        if (is_selected) {
+            ImGui::SameLine();
+            if (ImGui::Button("X")) {
+                GC()->editor.selected_entity = NULL;
+            }
         }
 
         ImGui::PopID();
@@ -910,8 +935,6 @@ bool point_collision(v3 point, v3 collider_position, v3 collider_size) {
 void on_server_receive(State *state, NetworkMessage *message) {
     switch (message->type) {
         case NM_CLIENT_CONNECTED: {
-            static f32 player_count = 0;
-
             // when client connects, the server generates this message and a few things are required to happen
             // 1. The client is assigned an id from the server
             // 2. Any existing entities are sent to the new client to spawn
@@ -942,7 +965,7 @@ void on_server_receive(State *state, NetworkMessage *message) {
                     .flags = EF_PLAYER,
                     .id = new_entity_id(),
                     .owner = connection_id,
-                    .position = v3{0, 0, 3} * player_count,
+                    .position = v3{0, 5, 0},
                     .size = v3{1, 1, 1},
                     .colour = v4{1, 0, 0, 1},
                     .model = MT_CUBE 
@@ -954,8 +977,6 @@ void on_server_receive(State *state, NetworkMessage *message) {
                 NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = new_player};
                 server_send_to_all_clients(NET(), bytes_from_ptr(&message));
             }
-
-            player_count += 1;
         } break;
         case NM_SPAWN_ENTITY: {
             Entity entity = message->spawn_entity;
@@ -1015,8 +1036,7 @@ void on_client_receive(State *state, NetworkMessage *message) {
 }
 
 u32 new_entity_id() {
-    static u32 id = 0;
-    return id++;
+    return u32(rand_i64());
 }
 
 Entity *local_spawn_entity(State *state, Entity entity) {
@@ -1169,8 +1189,6 @@ Entity *next(RaycastIterator *it, State *state) {
     while (length(it->check_position - it->ray.origin) <= it->distance) {
         it->check_position += v_step;
 
-        draw_model(REN(), g_models[MT_CUBE], it->check_position, v3{STEP, STEP, STEP} * 0.2f, {}, RED);
-
         for (Entity &entity : state->entities) {
             bool hit = point_collision(it->check_position, entity.position, entity.size * 1.2f);
             if (hit) {
@@ -1180,6 +1198,21 @@ Entity *next(RaycastIterator *it, State *state) {
     }
 
     return NULL;
+}
+
+CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size) {
+    v3 distance = b_position - a_position;
+    v3 distance_abs = v3{ABS(distance.x), ABS(distance.y), ABS(distance.z)};
+    v3 distance_for_collision = (a_size + b_size) * 0.5; 
+
+    bool collision = distance_for_collision.x >= distance_abs.x && distance_for_collision.y >= distance_abs.y && distance_for_collision.z >= distance_abs.z;
+    v3 overlap = distance_for_collision - distance_abs;
+
+    return CubeCollision {
+        .collision = collision,
+        .overlap = overlap,
+        .distance = distance
+    };
 }
 
 void imgui_v3_control(const char *label, v3 *vector) {

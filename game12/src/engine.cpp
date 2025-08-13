@@ -73,27 +73,19 @@ bool window_init(str title, i32 width, i32 height) {
         return false;
     }
 
-    glfwWindowHint(GLFW_MAXIMIZED, GL_FALSE);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_MAXIMIZED, GL_FALSE); // start maximised and then inputed size is minimised size
 
     g_window = new Window {
         .glfw_window = NULL,
         .title = title,
+        .logical_size = v2i{width, height},
         .vsync = true,
         .mouse_captured = false,
     };
 
-#if 1
-    // used to get full screen width and height
-    GLFWmonitor *monitor = glfwGetPrimaryMonitor();
-    const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-
-    g_window->logical_size.x = mode->width;
-    g_window->logical_size.y = mode->height;
-#endif
- 
 
 #if REPORT_GL_ERRORS
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
@@ -106,6 +98,7 @@ bool window_init(str title, i32 width, i32 height) {
     }
 
     glfwGetFramebufferSize(g_window->glfw_window, &g_window->frame_buffer_size.x, &g_window->frame_buffer_size.y);
+    glfwGetWindowSize(g_window->glfw_window, &g_window->logical_size.x, &g_window->logical_size.y);
 
     glfwMakeContextCurrent(g_window->glfw_window);
     glfwSetWindowUserPointer(g_window->glfw_window, g_window);
@@ -510,7 +503,7 @@ bool load_font(Renderer *renderer, str path, i64 width, i64 height, f32 pixel_he
 // Renderer frame API
 void clear_frame(Renderer *renderer, v4 colour);
 void new_frame(Renderer *renderer, Window *window, Camera *camera);
-void draw_frame(Renderer *renderer, Window *window);
+void draw_frame(Renderer *renderer, Window *window, Camera *camera);
 void new_imgui_frame();
 void draw_imgui_frame();
 
@@ -1497,7 +1490,12 @@ void new_frame(Renderer *renderer, Window *window, Camera *camera) {
     new_imgui_frame();
 }
 
-void draw_frame(Renderer *renderer, Window *window) {
+void draw_frame(Renderer *renderer, Window *window, Camera *camera) {
+    // TODO: make this where we set these and not in new frame
+    renderer->view_matrix = get_view_matrix(camera);
+    renderer->projection_matrix = get_projection_matrix(camera, (f32) window->frame_buffer_size.x / (f32) window->frame_buffer_size.y);
+    renderer->projection_matrix_ortho = get_projection_matrix_ortho(camera, (f32) window->frame_buffer_size.x / (f32) window->frame_buffer_size.y);
+
     { // geometry pass
         glBindFramebuffer(GL_FRAMEBUFFER, renderer->g_buffer.id);
    
@@ -1581,8 +1579,6 @@ void draw_frame(Renderer *renderer, Window *window) {
 
         glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
     }
-
-    draw_imgui_frame();
 }
 
 void new_imgui_frame() {
