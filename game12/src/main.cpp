@@ -1,3 +1,4 @@
+#include "imgui.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -16,7 +17,7 @@
 #include <atomic>
 
 // Total: 23:00
-// Started: 16:30
+// Started: 10:30
 
 #define MAX_ENTITIES 1000
 
@@ -145,21 +146,23 @@ enum GameClientMode {
     GC_CLIENT
 };
 
+// @editor
 struct Editor {
     Camera camera;
+    Viewport viewport;
     Entity *selected_entity; // may break stuff because pointer 
 };
 
 struct GameClient {
     GameClientMode mode;
-    bool use_editor_camera;
-    Editor editor;
+
+    Camera camera;
     State state;
 };
 
-// created in game_*_entry, use GS() and GC()
 GameServer *g_game_server = NULL;
 GameClient *g_game_client = NULL;
+Editor     *g_editor      = NULL;
 
 GameServer *GS();
 GameClient *GC();
@@ -269,7 +272,8 @@ GameClient *GC() {
 }
 
 Editor *ED() {
-    return &GC()->editor;
+    ASSERT(g_editor);
+    return g_editor;
 }
 
 // @startserver
@@ -344,8 +348,25 @@ void game_server_entry() {
 
 // @entrygc @gc
 void game_client_entry() {
+    { // init all the global stuff
+        bool ok = false;
+
+        ok = window_init("Game12", 1280, 720);
+        if (!ok) {
+            logln("Failed when trying to init the window");
+        }
+
+        ok = renderer_init(WIN(), v4{0.1, 0.1, 0.1, 1}, v3{0.1, 0.1, 0.1}, v3{0.5, 0.5, 0.5}, v3{50, 100, -100}, v3{-1, -1, 0.5});
+        if (!ok) {
+            logln("Failed when trying to init the renderer");
+        }
+
+        g_models[MT_CUBE] = load_model(REN(), "resources/models/cuber/cube.obj");
+    }
+
     g_game_client = new GameClient {
         .mode = GC_EDITOR,
+        .camera = camera_create(CameraMode::FIRST_PERSON, 90, v3{0, 0, 0}, 0.1, 500),
         .state = State {
             .instance_type = IT_CLIENT,
             .instance_id = 0,
@@ -356,47 +377,21 @@ void game_client_entry() {
         }
     };
 
-    { // init all the global stuff
-        bool ok = false;
-
-        ok = window_init("Game12", 1280, 720);
-        if (!ok) {
-            logln("Failed when trying to init the window");
-        }
-
-        ok = camera_init(CameraMode::FIRST_PERSON, 80, v3{0, 0, -80}, 0.1, 200);
-        if (!ok) {
-            logln("Failed when trying to init the camera");
-        }
-
-        GC()->editor.camera = *CAM();
-
-        ok = renderer_init(WIN(), rgb(97, 123, 219), v3{0.6, 0.6, 0.6}, v3{0.5, 0.5, 0.5}, v3{50, 100, -100}, v3{-1, -1, 0.5}, 0.8, 0.025, v2{480, 270});
-        if (!ok) {
-            logln("Failed when trying to init the renderer");
-        }
-
-        g_models[MT_CUBE] = load_model(REN(), "resources/models/cuber/cube.obj");
-    }
+    g_editor = new Editor {
+        .camera = camera_create(CameraMode::FIRST_PERSON, 90, v3{0, 0, 0}, 0.1, 500),
+        .viewport = Viewport { .size = WIN()->frame_buffer_size },
+        .selected_entity = NULL,
+    };
 
     Timer tick_timer = timer_create_ms(GAME_SERVER_MS_PER_TICK);
 
     logln_fmt(&GC()->state.arena, "Started game client [thread={}]", get_current_thread_id());
     logln_fmt(&GC()->state.arena, "Client running at {}t/s", i64(1000.0f / f32(GAME_SERVER_MS_PER_TICK)));
 
-
-    // test ndc conversion
-    logln_fmt(&GC()->state.arena, "TL = {} :: TR = {} :: BL = {} :: BR = {}",
-        screen_position_to_ndc(WIN(), v3{0,                 f32(WIN()->logical_size.y), -1}),
-        screen_position_to_ndc(WIN(), v3{f32(WIN()->logical_size.x), f32(WIN()->logical_size.y), -1}),
-        screen_position_to_ndc(WIN(), v3{0,                 0,                  -1}),
-        screen_position_to_ndc(WIN(), v3{f32(WIN()->logical_size.x), 0,                  -1})
-    );
-
     deserialise_level(&GC()->state);
 
     while (!glfwWindowShouldClose(WIN()->glfw_window)) {
-        new_frame(REN(), WIN(), CAM());
+        renderer_start_frame(REN());
 
         if (KEYS[GLFW_KEY_ESCAPE] == InputState::DOWN) {
             glfwSetWindowShouldClose(WIN()->glfw_window, GLFW_TRUE);
@@ -429,9 +424,8 @@ void game_client_entry() {
         draw(&GC()->state);
         draw_ui(&GC()->state);
 
-        draw_frame(REN(), WIN(), CAM());
-        draw_frame(REN(), WIN(), &GC()->editor.camera);
-        draw_imgui_frame();
+        renderer_draw_frame(REN(), &ED()->camera, ED()->viewport);
+        renderer_end_frame(REN());
 
         swap_buffers(WIN());
         arena_reset(&GC()->state.arena);
@@ -528,9 +522,9 @@ void process_events(State *state) {
         while (events_pop(state, &event)) {
             switch (event.type) {
                 case EV_KEYBOARD_INPUT: {
-                    v3 forward = get_forward_direction(CAM());
+                    v3 forward = get_forward_direction(&GC()->camera);
                     v3 up = {0, 1, 0};
-                    v3 right = get_right_direction(CAM());
+                    v3 right = get_right_direction(&GC()->camera);
 
                     v3 movement = v3{};
                     movement += right * event.keyboard_input.x;
@@ -543,8 +537,8 @@ void process_events(State *state) {
                 case EV_MOUSE_INPUT: {
                     f32 sensitivity = 0.07;
         
-                    CAM()->rotation += v3{event.mouse_input.y, event.mouse_input.x, 0} * sensitivity;
-                    CAM()->rotation.x = clamp(-90, CAM()->rotation.x, 90);
+                    GC()->camera.rotation += v3{event.mouse_input.y, event.mouse_input.x, 0} * sensitivity;
+                    GC()->camera.rotation.x = clamp(-90, GC()->camera.rotation.x, 90);
                 } break;
                 case EV_NETWORK_MESSAGE: {
                     on_client_receive(state, &event.network_message);
@@ -586,17 +580,7 @@ void update_entities(State *state, f32 delta_time) {
     if (is_client(state)) {
         Entity *player = get_client_player(state, state->instance_id);
         if (player != NULL) {
-            CAM()->position = player->position;
-        }
-    }
-
-    for (Entity &entity : state->entities) {
-        for (Entity &other : state->entities) {
-            CubeCollision c = cube_collision(entity.position, entity.size, other.position, other.size);
-            if (c.collision) {
-                entity.colour = GREEN;
-                other.colour = GREEN;
-            }
+            GC()->camera.position = player->position;
         }
     }
 }
@@ -604,10 +588,11 @@ void update_entities(State *state, f32 delta_time) {
 void update_editor(State *state) {
     ASSERT(is_client(state) && GC()->mode == GC_EDITOR);
 
-    Camera *camera = &GC()->editor.camera;
+    Camera *camera = &ED()->camera;
 
     // mouse picking
     if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::DOWN) {
+        logln("you clicked");
         // TODO: there is still a problem with this not being exact...
         Ray ray = ray_from_screen_position({MOUSE.position.x, MOUSE.position.y, -1});
         RaycastIterator it = raycast_iterator_create(ray, camera->near_plane - camera->far_plane);
@@ -618,7 +603,7 @@ void update_editor(State *state) {
                 break;
             }
 
-            GC()->editor.selected_entity = entity; 
+            ED()->selected_entity = entity; 
         }
     }
 
@@ -681,9 +666,9 @@ void update_editor(State *state) {
             keyboard_input.z -= 1;
         }
    
-        v3 forward = get_forward_direction(CAM());
+        v3 forward = get_forward_direction(camera);
         v3 up = {0, 1, 0};
-        v3 right = get_right_direction(CAM());
+        v3 right = get_right_direction(camera);
         v3 movement = v3{};
 
         movement += right * keyboard_input.x;
@@ -706,7 +691,7 @@ void draw(State *state) {
         v4 draw_colour = entity.colour; 
 
         if (GC()->mode == GC_EDITOR) {
-            if (GC()->editor.selected_entity && GC()->editor.selected_entity->id == entity.id) {
+            if (ED()->selected_entity && ED()->selected_entity->id == entity.id) {
                 draw_colour = RED;
             }
         }
@@ -716,14 +701,27 @@ void draw(State *state) {
 }
 
 void draw_ui(State *state) {
-    ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_NoDockingOverCentralNode);
+    ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), 0);
     // ImGui::ShowDemoWindow();
 
-    if (false) {
-        ImGui::Begin("Game View");
+    {
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+        ImGui::Begin("Game");
         ImVec2 viewport_size = ImGui::GetContentRegionAvail();
-        ImGui::Image(REN()->lighting_frame_buffer.position_attachment, viewport_size);
+        ImGui::Image(REN()->lighting_frame_buffer.position_attachment, viewport_size, ImVec2(0, 1), ImVec2(1, 0));
         ImGui::End();
+        ImGui::PopStyleVar();
+    }
+
+    {
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+        ImGui::Begin("Editor");
+        ImVec2 viewport_size = ImGui::GetContentRegionAvail();
+        ImGui::Image(REN()->lighting_frame_buffer.position_attachment, viewport_size, ImVec2(0, 1), ImVec2(1, 0));
+        ImGui::End();
+        ImGui::PopStyleVar();
+
+        ED()->viewport.size = v2i {i32(viewport_size.x), i32(viewport_size.y)};
     }
 
     ImGui::Begin("Settings");
@@ -791,12 +789,12 @@ void draw_ui(State *state) {
 
     ImGui::End();
 
-    ImGui::Begin("Editor");
+    ImGui::Begin("Tools");
 
-    ImGui::Checkbox("Force editor camera", &GC()->use_editor_camera);
+    ImGui::SeparatorText("Level");
 
     if (ImGui::Button("New")) {
-        GC()->editor.selected_entity = NULL;
+        ED()->selected_entity = NULL;
         clear_level(state);
     }
 
@@ -809,9 +807,11 @@ void draw_ui(State *state) {
     ImGui::SameLine();
 
     if (ImGui::Button("Load")) {
-        GC()->editor.selected_entity = NULL;
+        ED()->selected_entity = NULL;
         deserialise_level(state);
     }
+
+    ImGui::SeparatorText("Entities");
 
     if (ImGui::Button("Create empty")) {
         Entity entity = Entity {
@@ -822,14 +822,14 @@ void draw_ui(State *state) {
             .model = MT_CUBE
         };
 
-        GC()->editor.selected_entity = local_spawn_entity(state, entity);
+        ED()->selected_entity = local_spawn_entity(state, entity);
     }
 
-    if (GC()->editor.selected_entity) {
+    if (ED()->selected_entity) {
 
         ImGui::SeparatorText("Selected Entity");
 
-        Entity *entity = GC()->editor.selected_entity;
+        Entity *entity = ED()->selected_entity;
         ImGui::Text("flags: %llu", entity->flags);
         ImGui::Text("id: %u", entity->id);
         ImGui::Text("owner: %u", entity->owner);
@@ -843,30 +843,28 @@ void draw_ui(State *state) {
         //  bool ImGui::SliderFloat3(const char* label, float v[3], float v_min, float v_max, const char* format, ImGuiSliderFlags flags)
     }
 
-    ImGui::SeparatorText("Entities");
-
     for (i64 i = 0; i < state->entities.len; i++) {
         Entity *entity = &state->entities[i];
 
         ImGui::PushID(i);
 
-        bool is_selected = GC()->editor.selected_entity == entity;
+        bool is_selected = ED()->selected_entity == entity;
         const char *format = is_selected ? "-> {}" : "{}";
         const char *label = fmt(&state->arena, format, entity->id).c();
 
         if (ImGui::Button(label, ImVec2(200, 20))) {
-            GC()->editor.selected_entity = entity;
+            ED()->selected_entity = entity;
         }
 
         ImGui::SameLine();
         if (ImGui::Button("O")) {
-            CAM()->position = entity->position;
+            ED()->camera.position = entity->position;
         }
 
         if (is_selected) {
             ImGui::SameLine();
             if (ImGui::Button("X")) {
-                GC()->editor.selected_entity = NULL;
+                ED()->selected_entity = NULL;
             }
         }
 
