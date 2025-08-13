@@ -15,8 +15,8 @@
 #include <queue>
 #include <atomic>
 
-// Total: 13:00
-// Started: 20:30
+// Total: 15:30
+// Started: 11:00
 
 #define MAX_ENTITIES 200
 
@@ -127,12 +127,23 @@ struct GameServer {
 };
 
 // @client @gameclient
+enum GameClientMode {
+    GC_EDITOR,
+    GC_HOSTED,
+    GC_CLIENT
+};
+
 struct GameClient {
+    GameClientMode mode;
     State state;
 };
 
+// created in game_*_entry, use GS() and GC()
 GameServer *g_game_server = NULL;
 GameClient *g_game_client = NULL;
+
+GameServer *GS();
+GameClient *GC();
 
 AtomicSnapshot<Sampler> server_events_snapshot;
 
@@ -142,16 +153,13 @@ void game_client_entry();
 
 void game_server_stop();
 
-void game_server_stop();
-
 void poll_user_input(State *state);
 void poll_network(State *state);
-
 void process_events(State *state);
-
 void sync_clients(State *state);
 
 void update_entities(State *state, f32 delta_time);
+void update_editor(State *state);
 void draw(State *state);
 void draw_ui(State *state);
 void physics(State *state, f32 delta_time);
@@ -181,6 +189,7 @@ bool is_server(State *state);
 bool is_client(State *state);
 void server_on_new_connection(NetworkLayer *net, Server *server, ConnectionId id);
 
+void clear_level(State *state);
 void serialise_level(State *state);
 void serialise_entity(YAML::Emitter &out, Entity *entity);
 void deserialise_level(State *state);
@@ -222,6 +231,16 @@ int main(i32 argc, const char **argv) {
     network_layer_stop();
 }
 
+GameServer *GS() {
+    ASSERT(g_game_server);
+    return g_game_server;
+}
+
+GameClient *GC() {
+    ASSERT(g_game_client);
+    return g_game_client;
+}
+
 // @startserver
 void game_server_start() {
     ASSERT(g_game_server == NULL);
@@ -244,10 +263,7 @@ void game_server_entry() {
         .thread_colour = YELLOW_ASCII_CODE,
     });
 
-    GameServer *game_server = g_game_server;
-    ASSERT(game_server);
-
-    game_server->state = State {
+    GS()->state = State {
         .instance_type = IT_SERVER,
         .instance_id = SERVER_INSTANCE_ID,
         .arena = arena_create(10 * 1024 * 1024),
@@ -258,12 +274,12 @@ void game_server_entry() {
 
     Timer tick_timer = timer_create_ms(GAME_SERVER_MS_PER_TICK);
 
-    logln_fmt(&game_server->state.arena, "Started game server [thread={}]", get_current_thread_id());
-    logln_fmt(&game_server->state.arena, "Server running at {}t/s", i64(1000.0f / f32(GAME_SERVER_MS_PER_TICK)));
+    logln_fmt(&GS()->state.arena, "Started game server [thread={}]", get_current_thread_id());
+    logln_fmt(&GS()->state.arena, "Server running at {}t/s", i64(1000.0f / f32(GAME_SERVER_MS_PER_TICK)));
 
-    load_level(&game_server->state);
+    load_level(&GS()->state);
 
-    while (!game_server->shutdown_signal) {
+    while (!GS()->shutdown_signal) {
         f32 delta_time = 0;
 
         if (!timer_is_complete(&tick_timer, &delta_time)) {
@@ -271,39 +287,25 @@ void game_server_entry() {
             continue;
         }
 
-        // The life of a frame on the game server:
-        // - get any incoming events
-        //      - poll input from user
-        //      - poll network for messages
-        // - process any events
-        //      - send user input to network
-        //      - process network messages
-        // - update local state 
-        //      - update entities
-        //      - update physics 
-        // - draw 
-
         // get any incoming events
-        poll_network(&game_server->state);
+        poll_network(&GS()->state);
 
         // process any events
-        process_events(&game_server->state);
+        process_events(&GS()->state);
 
         // update local state 
-        update_entities(&game_server->state, delta_time);
-        physics(&game_server->state, delta_time);
+        update_entities(&GS()->state, delta_time);
+        physics(&GS()->state, delta_time);
 
-        sync_clients(&game_server->state);
-
-        // sync_clients(&game_server->state);
+        sync_clients(&GS()->state);
 
         { // update event sampler snapshot
             Sampler *s = atomic_snapshot_write(&server_events_snapshot);
-            *s = game_server->state.event_sampler;
+            *s = GS()->state.event_sampler;
             atomic_snapshot_swap(&server_events_snapshot);
         }
 
-        arena_reset(&game_server->state.arena);
+        arena_reset(&GS()->state.arena);
     }
 
     logln("Game server was given shutdown signal.. stopping");
@@ -311,7 +313,8 @@ void game_server_entry() {
 
 // @entrygc @gc
 void game_client_entry() {
-    GameClient game_client = {
+    g_game_client = new GameClient {
+        .mode = GC_EDITOR,
         .state = State {
             .instance_type = IT_CLIENT,
             .instance_id = 0,
@@ -325,7 +328,7 @@ void game_client_entry() {
     { // init all the global stuff
         bool ok = false;
 
-        ok = window_init("Game12", 1280, 940);
+        ok = window_init("Game12", 1920, 1080);
         if (!ok) {
             logln("Failed when trying to init the window");
         }
@@ -335,7 +338,7 @@ void game_client_entry() {
             logln("Failed when trying to init the camera");
         }
 
-        ok = renderer_init(WIN(), v4{1, 1, 1, 1}, v3{0.6, 0.6, 0.6}, v3{0.5, 0.5, 0.5}, v3{50, 100, -100}, v3{-1, -1, 0.5}, 0.8, 0.025, v2{480, 270});
+        ok = renderer_init(WIN(), rgb(97, 123, 219), v3{0.6, 0.6, 0.6}, v3{0.5, 0.5, 0.5}, v3{50, 100, -100}, v3{-1, -1, 0.5}, 0.8, 0.025, v2{480, 270});
         if (!ok) {
             logln("Failed when trying to init the renderer");
         }
@@ -345,10 +348,10 @@ void game_client_entry() {
 
     Timer tick_timer = timer_create_ms(GAME_SERVER_MS_PER_TICK);
 
-    logln_fmt(&game_client.state.arena, "Started game client [thread={}]", get_current_thread_id());
-    logln_fmt(&game_client.state.arena, "Client running at {}t/s", i64(1000.0f / f32(GAME_SERVER_MS_PER_TICK)));
+    logln_fmt(&GC()->state.arena, "Started game client [thread={}]", get_current_thread_id());
+    logln_fmt(&GC()->state.arena, "Client running at {}t/s", i64(1000.0f / f32(GAME_SERVER_MS_PER_TICK)));
 
-    deserialise_level(&game_client.state);
+    deserialise_level(&GC()->state);
 
     while (!glfwWindowShouldClose(WIN()->glfw_window)) {
         if (KEYS[GLFW_KEY_ESCAPE] == InputState::DOWN) {
@@ -359,38 +362,33 @@ void game_client_entry() {
             set_mouse_captured(WIN(), !WIN()->mouse_captured);
         }
 
-        // The life of a frame on the game client:
-        // - get any incoming events
-        //      - poll input from user
-        //      - poll network for messages
-        // - process any events
-        //      - send user input to network
-        //      - process network messages
-        // - update local state 
-        //      - update entities
-        // - draw 
-
-        f32 delta_time = 0;
-        if (timer_is_complete(&tick_timer, &delta_time)) {
-            // get any incoming events
-            poll_user_input(&game_client.state);
-            poll_network(&game_client.state);
-
-            // process any events
-            process_events(&game_client.state);
-    
-            // update local state 
-            update_entities(&game_client.state, delta_time);
+        if (GC()->mode == GC_EDITOR) {
+            poll_inputs();
+            update_editor(&GC()->state);
         }
+        else if (GC()->mode == GC_HOSTED || GC()->mode == GC_CLIENT) {
+            f32 delta_time = 0;
+            if (timer_is_complete(&tick_timer, &delta_time)) {
+                // get any incoming events
+                poll_user_input(&GC()->state);
+                poll_network(&GC()->state);
+     
+                // process any events
+                process_events(&GC()->state);
+         
+                // update local state 
+                update_entities(&GC()->state, delta_time);
+            }
+        } else { ASSERT(0); }
 
         // draw
         new_frame(REN(), WIN(), CAM());
-        draw(&game_client.state);
-        draw_ui(&game_client.state);
+        draw(&GC()->state);
+        draw_ui(&GC()->state);
 
         draw_frame(REN(), WIN());
         swap_buffers(WIN());
-        arena_reset(&game_client.state.arena);
+        arena_reset(&GC()->state.arena);
     }
 
     glfwTerminate();
@@ -546,41 +544,82 @@ void update_entities(State *state, f32 delta_time) {
     Entity *player = get_client_player(state, state->instance_id);
     if (player != NULL) {
         CAM()->position = player->position;
-#if 0
-        v3 looking_at = get_forward_direction(CAM());
-        looking_at = norm(v3{looking_at.x, 0, looking_at.z});
-        draw_model(REN(), g_models[MT_CUBE], player->position + looking_at * 3, {1, 1, 1}, {}, WHITE);
-#endif
+    }
+}
+
+void update_editor(State *state) {
+    ASSERT(is_client(state) && GC()->mode == GC_EDITOR);
+
+    // ctrl-S: save level
+    if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
+        KEYS[GLFW_KEY_S] == InputState::DOWN) {
+        serialise_level(state);
     }
 
-#if 0
-    for (Entity &entity : state->entities) {
-        if (BIT_SET(entity.flags, EF_PLAYER)) {
-            { // apply acceleration from input adjust so it is relative to forward direction
-                f32 move_speed = 5;
-                v3 forward = get_forward_direction(entity.rotation);
-                v3 up = {0, 1, 0};
-                v3 right = get_right_direction(entity.rotation);
-     
-                entity.position += right * (movement_input.x * move_speed * delta_time);
-                entity.position += up * (movement_input.y * move_speed * delta_time);
-                entity.position += forward * (movement_input.z * move_speed * delta_time);
-            }
-            
-            // cap velocity 
-            f32 max_velocity = 20;
-            if (length(entity.velocity) > max_velocity) {
-                entity.velocity = norm(entity.velocity) * max_velocity;
-            }
+    // ctrl-O: load level
+    if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
+        KEYS[GLFW_KEY_O] == InputState::DOWN) {
+        deserialise_level(state);
+    }
 
-            // make velocity decay over time 
-            f32 valocity_decay = 80;
-            if (length(entity.velocity) > 0) {
-                entity.velocity += -norm(entity.velocity) * max_velocity * delta_time;
+    // ctrl-N: new level
+    if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
+        KEYS[GLFW_KEY_N] == InputState::DOWN) {
+        clear_level(state);
+    }
+
+    { // camera look
+        bool free_look = WIN()->mouse_captured;
+        f32 sensitivity = free_look ? 0.07 : 0.15;
+
+        if (free_look || MOUSE.buttons[GLFW_MOUSE_BUTTON_2] == InputState::PRESSED) {
+            v2 mouse_input = MOUSE.delta;
+        
+            if (length(mouse_input) > 0) {
+                CAM()->rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
+                CAM()->rotation.x = clamp(-90, CAM()->rotation.x, 90);
             }
         }
     }
-#endif
+
+    { // camera movement
+        v3 keyboard_input = {};
+     
+        if (KEYS[GLFW_KEY_A] == InputState::PRESSED) {
+            keyboard_input.x -= 1;
+        }
+             
+        if (KEYS[GLFW_KEY_D] == InputState::PRESSED) {
+            keyboard_input.x += 1;
+        }
+                 
+        if (KEYS[GLFW_KEY_SPACE] == InputState::PRESSED) {
+            keyboard_input.y += 1;
+        }
+                 
+        if (KEYS[GLFW_KEY_LEFT_SHIFT] == InputState::PRESSED) {
+            keyboard_input.y -= 1;
+        }
+             
+        if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
+            keyboard_input.z += 1;
+        }
+         
+        if (KEYS[GLFW_KEY_S] == InputState::PRESSED) {
+            keyboard_input.z -= 1;
+        }
+   
+        v3 forward = get_forward_direction(CAM());
+        v3 up = {0, 1, 0};
+        v3 right = get_right_direction(CAM());
+        v3 movement = v3{};
+
+        movement += right * keyboard_input.x;
+        movement += up * keyboard_input.y;
+        movement += forward * keyboard_input.z;
+        
+        CAM()->position += movement;
+    }
 }
 
 void draw(State *state) {
@@ -602,13 +641,13 @@ void draw_ui(State *state) {
 
     ImGui::Begin("Player");
 
-    ImGui::InputFloat("Player acceleration", &PLAYER_ACCELERATION);
-    ImGui::InputFloat("Player max speed", &PLAYER_MAX_SPEED);
-    ImGui::InputFloat("Player drag", &PLAYER_DRAG);
+    ImGui::InputFloat("Acceleration", &PLAYER_ACCELERATION);
+    ImGui::InputFloat("Max speed", &PLAYER_MAX_SPEED);
+    ImGui::InputFloat("Drag", &PLAYER_DRAG);
 
     ImGui::End();
 
-    ImGui::Begin("Main");
+    ImGui::Begin("Network");
 
     if (ImGui::Button("Host")) {
         start_as_host();
@@ -620,15 +659,7 @@ void draw_ui(State *state) {
         connect_as_client();
     }
 
-    if (ImGui::Button("Save")) {
-        serialise_level(state);
-    }
-
-    ImGui::SameLine();
-
-    if (ImGui::Button("Load")) {
-        deserialise_level(state);
-    }
+    ImGui::SeparatorText("Events");
 
     f32 event_in_MB = f32(sizeof(Event)) / (8.0f * 1024.0f);
  
@@ -638,8 +669,11 @@ void draw_ui(State *state) {
         f32 events_per_second = average * samples_per_second;
         f32 MB_per_second = events_per_second * event_in_MB;
  
-        ImGui::Text("Avg: %f, Samples/s: %f, Events/s: %f, MB/s: %f", average, samples_per_second, events_per_second, MB_per_second);
-        ImGui::PlotLines("Client events", state->event_sampler.samples, SAMPLER_SIZE, 0, NULL, FLT_MAX, FLT_MAX, ImVec2(0, 60));
+        ImGui::Text("Avg: %f", average);
+        ImGui::Text("Samples/s: %f", samples_per_second);
+        ImGui::Text("Events/s: %f", events_per_second);
+        ImGui::Text("MB/s: %f", MB_per_second);
+        ImGui::PlotLines("Client", state->event_sampler.samples, SAMPLER_SIZE, 0, NULL, FLT_MAX, FLT_MAX, ImVec2(0, 60));
     }
  
     if (g_game_server != NULL) { // client events sampler info
@@ -649,10 +683,35 @@ void draw_ui(State *state) {
         f32 events_per_second = average * samples_per_second;
         f32 MB_per_second = events_per_second * event_in_MB;
  
-        ImGui::Text("Avg: %f, Samples/s: %f, Events/s: %f, MB/s: %f", average, samples_per_second, events_per_second, MB_per_second);
-        ImGui::PlotLines("Server events", sampler->samples, SAMPLER_SIZE, 0, NULL, FLT_MAX, FLT_MAX, ImVec2(0, 60));
+        ImGui::Text("Avg: %f", average);
+        ImGui::Text("Samples/s: %f", samples_per_second);
+        ImGui::Text("Events/s: %f", events_per_second);
+        ImGui::Text("MB/s: %f", MB_per_second);
+        ImGui::PlotLines("Server", sampler->samples, SAMPLER_SIZE, 0, NULL, FLT_MAX, FLT_MAX, ImVec2(0, 60));
     }
 
+    ImGui::End();
+
+    ImGui::Begin("Editor");
+
+    ImGui::SeparatorText("Entities");
+
+    if (ImGui::Button("Create empty")) {
+        Entity entity = Entity {
+            .id = new_entity_id(),
+            .owner = LEVEL_INSTANCE_ID,
+            .size = v3{1, 1, 1},
+            .colour = WHITE,
+            .model = MT_CUBE
+        };
+
+        local_spawn_entity(state, entity);
+    }
+
+    for (Entity &entity : state->entities) {
+        ImGui::CollapsingHeader(fmt(&state->arena, "Entity: {}", entity.id).c());
+    }
+        
     ImGui::End();
 }
 
@@ -906,6 +965,8 @@ void start_as_host() {
 
     REN()->clear_colour = {0.3, 0.3, 1, 1};
 
+    GC()->mode = GC_HOSTED;
+
     game_server_start();
     network_layer_start_server(NET());
     network_layer_start_client(NET(), "::1");
@@ -913,6 +974,8 @@ void start_as_host() {
 
 void connect_as_client() {
     logln("starting and connecting to local-hosted game");
+
+    GC()->mode = GC_CLIENT;
 
     REN()->clear_colour = {0.3, 1, 0.3, 1};
     network_layer_start_client(NET(), "::1");
@@ -950,6 +1013,10 @@ void server_on_new_connection(NetworkLayer *net, Server *server, ConnectionId id
 
     NetworkMessage message = NetworkMessage {.type = NM_CLIENT_CONNECTED, .client_connected = id};
     network_queue_push(&net->server_in_queue, bytes_from_ptr(&message));
+}
+
+void clear_level(State *state) {
+    reset(&state->entities);
 }
 
 void serialise_level(State *state) {

@@ -132,7 +132,7 @@ bool network_layer_init() {
 
 void network_layer_start() {
     NetworkLayer *net = NET();
-    ASSERT(net != NULL && net->running == false);
+    ASSERT(net->running == false);
 
 net->thread = std::thread([net] () {
     log_set_thread_options(LogOptions {
