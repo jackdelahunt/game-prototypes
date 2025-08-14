@@ -484,6 +484,8 @@ bool load_font(Renderer *renderer, str path, i64 width, i64 height, f32 pixel_he
 void renderer_clear_frame(Renderer *renderer, v4 colour);
 void renderer_start_frame(Renderer *renderer);
 void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport);
+void renderer_draw_geometry(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target_buffer);
+void renderer_draw_lighting(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target_buffer, FrameBuffer *source_buffer);
 void renderer_end_frame(Renderer *renderer);
 void new_imgui_frame();
 void draw_imgui_frame();
@@ -1405,6 +1407,71 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport) 
 
         frame_buffer_unbind();
     }
+}
+
+void renderer_draw_geometry(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *frame_buffer) {
+    renderer->view_matrix = get_view_matrix(camera);
+    renderer->projection_matrix = get_projection_matrix(camera, f32(viewport.size.x) / f32(viewport.size.y));
+    renderer->projection_matrix_ortho = get_projection_matrix_ortho(camera,  f32(viewport.size.x) / f32(viewport.size.y));
+
+    frame_buffer_maybe_resize(frame_buffer, viewport.size);
+    frame_buffer_bind(frame_buffer, v4{0, 0, 0, 1});
+
+    for (RenderCommand &command : renderer->commands) {
+        m4 model_matrix = HMM_M4D(1.0f);
+        model_matrix = HMM_MulM4(model_matrix, HMM_Translate(command.position));
+        model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command.rotation.x * HMM_DegToRad, {1, 0, 0}));
+        model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command.rotation.y * HMM_DegToRad, {0, 1, 0}));
+        model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command.rotation.z * HMM_DegToRad, {0, 0, 1}));
+        model_matrix = HMM_MulM4(model_matrix, HMM_Scale({command.scale.x, command.scale.y, command.scale.z}));
+ 
+        use_shader(renderer->mesh_shader);
+ 
+        set_uniform_m4(renderer->mesh_shader, "model", &model_matrix);
+        set_uniform_m4(renderer->mesh_shader, "view", &renderer->view_matrix);
+        set_uniform_m4(renderer->mesh_shader, "projection", &renderer->projection_matrix);
+        set_uniform_v4(renderer->mesh_shader, "colour", command.colour);
+    
+        GL_CALL(glBindVertexArray(command.model->mesh->vertex_array_id));
+        GL_CALL(glDrawElements(GL_TRIANGLES, command.model->mesh->indices.len, GL_UNSIGNED_INT, 0));
+    }
+ 
+    frame_buffer_unbind();
+}
+
+void renderer_draw_lighting(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target_buffer, FrameBuffer *source_buffer) {
+    renderer->view_matrix = get_view_matrix(camera);
+    renderer->projection_matrix = get_projection_matrix(camera, f32(viewport.size.x) / f32(viewport.size.y));
+    renderer->projection_matrix_ortho = get_projection_matrix_ortho(camera,  f32(viewport.size.x) / f32(viewport.size.y));
+
+    frame_buffer_maybe_resize(target_buffer, viewport.size);
+    frame_buffer_bind(target_buffer, renderer->clear_colour);
+
+    Quad *quad = push_screen_quad(renderer, WHITE);
+    
+    glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
+    glBindVertexArray(renderer->vertex_array_id);
+ 
+    use_shader(renderer->lighting_shader);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, source_buffer->position_attachment);
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, source_buffer->normals_attachment);
+
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, source_buffer->albedo_attachment);
+
+    set_uniform_v3(renderer->lighting_shader, "ambient_light", renderer->ambient_light);
+    set_uniform_v3(renderer->lighting_shader, "sun_position", renderer->sun_position);
+    set_uniform_v3(renderer->lighting_shader, "sun_colour", renderer->sun_colour);
+    set_uniform_v3(renderer->lighting_shader, "shadow_colour", renderer->shadow_colour);
+        
+    glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
+
+    frame_buffer_unbind();
 }
 
 void renderer_end_frame(Renderer *renderer) {

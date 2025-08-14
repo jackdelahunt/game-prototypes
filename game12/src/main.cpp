@@ -18,7 +18,7 @@
 // Total: 26:00
 // Started: 13:00
 
-#define MAX_ENTITIES 5000
+#define MAX_ENTITIES 500
 
 f32 PLAYER_ACCELERATION = 12;
 f32 PLAYER_MAX_SPEED =  30;
@@ -148,14 +148,22 @@ enum GameClientMode {
 // @editor
 struct Editor {
     Camera camera;
+
     Viewport viewport;
-    Entity *selected_entity; // may break stuff because pointer 
+    FrameBuffer g_buffer;
+    FrameBuffer lighting_buffer;
+
+    Entity *selected_entity;
 };
 
 struct GameClient {
     GameClientMode mode;
 
     Camera camera;
+    Viewport viewport;
+    FrameBuffer g_buffer;
+    FrameBuffer lighting_buffer;
+
     State state;
 };
 
@@ -216,6 +224,7 @@ Entity *next(RaycastIterator *it, State *state);
 
 CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size);
 
+Viewport imgui_viewport(const char *label, u32 texture_id);
 void imgui_v3_control(const char *label, v3 *vector);
 void imgui_v4_control(const char *label, v4 *vector);
 
@@ -355,7 +364,7 @@ void game_client_entry() {
             logln("Failed when trying to init the window");
         }
 
-        ok = renderer_init(WIN(), v4{0.2, 0.2, 0.2, 1}, v3{0.1, 0.1, 0.1}, v3{0.5, 0.5, 0.5}, v3{50, 100, -100}, v3{-1, -1, 0.5});
+        ok = renderer_init(WIN(), v4{1, 1, 1, 1} * 0.8, v3{0.1, 0.1, 0.1}, v3{0.5, 0.5, 0.5}, v3{50, 100, -100}, v3{-1, -1, 0.5});
         if (!ok) {
             logln("Failed when trying to init the renderer");
         }
@@ -366,6 +375,9 @@ void game_client_entry() {
     g_game_client = new GameClient {
         .mode = GC_EDITOR,
         .camera = camera_create(CameraMode::FIRST_PERSON, 90, v3{0, 0, 0}, 0.1, 300),
+        .viewport = Viewport { .size = WIN()->frame_buffer_size },
+        .g_buffer = FrameBuffer {.size = WIN()->frame_buffer_size},
+        .lighting_buffer = FrameBuffer {.size = WIN()->frame_buffer_size},
         .state = State {
             .instance_type = IT_CLIENT,
             .instance_id = 0,
@@ -379,8 +391,36 @@ void game_client_entry() {
     g_editor = new Editor {
         .camera = camera_create(CameraMode::FIRST_PERSON, 90, v3{0, 0, 0}, 0.1, 300),
         .viewport = Viewport { .size = WIN()->frame_buffer_size },
+        .g_buffer = FrameBuffer {.size = WIN()->frame_buffer_size},
+        .lighting_buffer = FrameBuffer {.size = WIN()->frame_buffer_size},
         .selected_entity = NULL,
     };
+
+    { // init editor and client frame buffer
+        bool ok = frame_buffer_init(&g_game_client->g_buffer);
+        if (!ok) {
+            logln("failed to init game client gBuffer");
+            return;
+        }
+
+        ok = frame_buffer_init(&g_game_client->lighting_buffer);
+        if (!ok) {
+            logln("failed to init game lighting buffer");
+            return;
+        }
+
+        ok = frame_buffer_init(&g_editor->g_buffer);
+        if (!ok) {
+            logln("failed to init editor gBuffer");
+            return;
+        }
+
+        ok = frame_buffer_init(&g_editor->lighting_buffer);
+        if (!ok) {
+            logln("failed to init editor lighting buffer");
+            return;
+        }
+    }
 
     Timer tick_timer = timer_create_ms(GAME_SERVER_MS_PER_TICK);
 
@@ -423,7 +463,12 @@ void game_client_entry() {
         draw(&GC()->state);
         draw_ui(&GC()->state);
 
-        renderer_draw_frame(REN(), &ED()->camera, ED()->viewport);
+        renderer_draw_geometry(REN(), &GC()->camera, GC()->viewport, &GC()->g_buffer);
+        renderer_draw_lighting(REN(), &GC()->camera, GC()->viewport, &GC()->lighting_buffer, &GC()->g_buffer);
+
+        renderer_draw_geometry(REN(), &ED()->camera, ED()->viewport, &ED()->g_buffer);
+        renderer_draw_lighting(REN(), &ED()->camera, ED()->viewport, &ED()->lighting_buffer, &ED()->g_buffer);
+
         renderer_end_frame(REN());
 
         swap_buffers(WIN());
@@ -679,9 +724,9 @@ void draw(State *state) {
 
     for (Entity &entity : state->entities) {
         // don't draw the player if is owned by this client
-        if (BIT_SET(entity.flags, EF_PLAYER) && entity.owner == state->instance_id) {
-            continue;
-        }
+        // if (BIT_SET(entity.flags, EF_PLAYER) && entity.owner == state->instance_id) {
+            // continue;
+        // }
 
         v4 draw_colour = entity.colour; 
 
@@ -699,52 +744,8 @@ void draw_ui(State *state) {
     ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), 0);
     // ImGui::ShowDemoWindow();
 
-    {
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-        ImGui::Begin("Game");
-        ImVec2 viewport_size = ImGui::GetContentRegionAvail();
-        ImGui::Image(REN()->lighting_frame_buffer.position_attachment, viewport_size, ImVec2(0, 1), ImVec2(1, 0));
-        ImGui::End();
-        ImGui::PopStyleVar();
-    }
-
-    {
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-        ImGui::Begin("Editor");
-
-        // after ImGui::Begin is called the tab bar has been created and now the current
-        // cursor should be the top left of the viewport, cursor in this context is
-        // the location imgui is going to draw UI next. Not the mouse
-        // - 14/08/25
-        ImVec2 tab_bar_offset = ImGui::GetCursorPos();
-
-        ImVec2 viewport_size = ImGui::GetContentRegionAvail();
-        ImGui::Image(REN()->lighting_frame_buffer.position_attachment, viewport_size, ImVec2(0, 1), ImVec2(1, 0));
-
-        ED()->viewport.size = v2i {i32(viewport_size.x), i32(viewport_size.y)};
-
-        { // get viewport mouse info
-            ImVec2 window_size = ImGui::GetWindowSize();
-            ImVec2 min_bound = ImGui::GetWindowPos();
-            min_bound.x += tab_bar_offset.x;
-            min_bound.y += tab_bar_offset.y;
-    
-            ImVec2 max_bound = ImVec2{min_bound.x + window_size.x, min_bound.y + window_size.y};
-    
-            v2 viewport_size_alt = v2{max_bound.x, max_bound.y} - v2{min_bound.x, min_bound.y};
-            ED()->viewport.size_alt = v2i{i32(viewport_size_alt.x), i32(viewport_size_alt.y)};
-    
-            auto[mouse_x, mouse_y] = ImGui::GetMousePos();
-            mouse_x -= min_bound.x;
-            mouse_y -= min_bound.y;
-
-            // convert to bottom left origin from top right origin
-            ED()->viewport.mouse = v2{mouse_x, (-mouse_y) + viewport_size.y};
-        }
-
-        ImGui::End();
-        ImGui::PopStyleVar();
-    }
+    GC()->viewport = imgui_viewport("Game", GC()->lighting_buffer.position_attachment);
+    ED()->viewport = imgui_viewport("Editor", ED()->lighting_buffer.position_attachment);
 
     ImGui::Begin("Settings");
     ImGui::SeparatorText("Screen");
@@ -1138,8 +1139,6 @@ bool entities_overlap(Entity *a, Entity *b) {
 void start_as_host() {
     logln("starting hosted game");
 
-    REN()->clear_colour = {0.3, 0.3, 1, 1};
-
     GC()->mode = GC_HOSTED;
 
     game_server_start();
@@ -1152,7 +1151,6 @@ void connect_as_client() {
 
     GC()->mode = GC_CLIENT;
 
-    REN()->clear_colour = {0.3, 1, 0.3, 1};
     network_layer_start_client(NET(), "::1");
 }
 
@@ -1231,6 +1229,47 @@ CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size)
         .overlap = overlap,
         .distance = distance
     };
+}
+
+Viewport imgui_viewport(const char *label, u32 texture_id) {
+    Viewport viewport = {};
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::Begin(label);
+
+    // after ImGui::Begin is called the tab bar has been created and now the current
+    // cursor should be the top left of the viewport, cursor in this context is
+    // the location imgui is going to draw UI next. Not the mouse
+    // - 14/08/25
+    ImVec2 tab_bar_offset = ImGui::GetCursorPos();
+
+    ImVec2 im_viewport_size = ImGui::GetContentRegionAvail();
+    ImGui::Image(texture_id, im_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
+    viewport.size = v2i {i32(im_viewport_size.x), i32(im_viewport_size.y)};
+
+    { // get viewport mouse info
+        ImVec2 window_size = ImGui::GetWindowSize();
+        ImVec2 min_bound = ImGui::GetWindowPos();
+        min_bound.x += tab_bar_offset.x;
+        min_bound.y += tab_bar_offset.y;
+    
+        ImVec2 max_bound = ImVec2{min_bound.x + window_size.x, min_bound.y + window_size.y};
+    
+        v2 viewport_size_alt = v2{max_bound.x, max_bound.y} - v2{min_bound.x, min_bound.y};
+        viewport.size_alt = v2i{i32(viewport_size_alt.x), i32(viewport_size_alt.y)};
+    
+        auto[mouse_x, mouse_y] = ImGui::GetMousePos();
+        mouse_x -= min_bound.x;
+        mouse_y -= min_bound.y;
+
+        // convert to bottom left origin from top right origin
+        viewport.mouse = v2{mouse_x, (-mouse_y) + im_viewport_size.y};
+    }
+
+    ImGui::End();
+    ImGui::PopStyleVar();
+
+    return viewport;
 }
 
 void imgui_v3_control(const char *label, v3 *vector) {
