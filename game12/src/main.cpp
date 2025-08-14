@@ -15,8 +15,8 @@
 #include <queue>
 #include <atomic>
 
-// Total: 31:00
-// Started: 13:00
+// Total: 33:00
+// Started: 21:00
 
 #define MAX_ENTITIES 500
 
@@ -65,6 +65,7 @@ enum NetworkMessageType {
     NM_SYNC_ENTITY,
     NM_DELETE_ENTITY,
     NM_MOVE_PLAYER,
+    NM_PLAYER_SHOOT,
 }; 
 
 struct NetworkMessage {
@@ -78,6 +79,7 @@ struct NetworkMessage {
         Entity sync_entity;
         u32 delete_entity;
         v3 move_player;
+        v3 player_shoot;
     };
 };
 
@@ -106,32 +108,14 @@ enum InstanceType {
     IT_SERVER
 };
 
-enum EventType {
-    EV_KEYBOARD_INPUT,
-    EV_MOUSE_INPUT,
-    EV_NETWORK_MESSAGE
-};
-
-struct Event {
-    EventType type;
-
-    union {
-        v3 keyboard_input;
-        v2 mouse_input;
-        NetworkMessage network_message;
-    };
-};
-
 // @state
 struct State {
     InstanceType instance_type;
     u32 instance_id;
     
     Arena arena;
-
     Sampler network_in_sampler;
 
-    std::queue<Event> events;
     StackArray<Entity, MAX_ENTITIES> entities;
 };
 
@@ -180,7 +164,7 @@ GameServer *GS();
 GameClient *GC();
 Editor *ED();
 
-AtomicSnapshot<Sampler> server_events_snapshot;
+AtomicSnapshot<Sampler> server_messages_snapshot;
 
 void game_server_start();
 void game_server_entry();
@@ -192,14 +176,14 @@ void poll_user_input(State *state);
 void process_network(State *state);
 void sync_clients(State *state);
 
-void update_entities(State *state, f32 delta_time);
-void update_editor(State *state);
-void draw(State *state);
-void draw_ui(State *state);
-void physics(State *state, f32 delta_time);
+void game_server_physics(State *state, f32 delta_time);
 
-void events_push(State *state, Event event);
-bool events_pop(State *state, Event *out);
+void game_client_update(State *state, f32 delta_time);
+void game_client_draw(State *state);
+
+void editor_update(State *state);
+void editor_draw(State *state);
+void editor_draw_ui(State *state);
 
 void on_server_receive(State *state, NetworkMessage *message);
 void on_client_receive(State *state, NetworkMessage *message);
@@ -221,8 +205,7 @@ Entity *local_spawn_static_box(State *state);
 
 void start_as_host();
 void connect_as_client();
-
-void load_level(State *state);
+void stop_game();
 
 bool is_server(State *state);
 bool is_client(State *state);
@@ -265,16 +248,8 @@ int main(i32 argc, const char **argv) {
     network_layer_start();
 
     game_client_entry();
+    stop_game();
     
-    if (g_game_server != NULL) {
-        game_server_stop();
-        network_layer_stop_server(NET());
-        network_layer_stop_client(NET());
-    }
-    else {
-        network_layer_stop_client(NET());
-    }
-
     network_layer_stop();
 }
 
@@ -301,7 +276,7 @@ void game_server_start() {
     // besides the state object before starting the new thread
     // then it is up to the server thread to init the state
     // and go from there
-    atomic_snapshot_init(&server_events_snapshot);
+    atomic_snapshot_init(&server_messages_snapshot);
 
     g_game_server = new GameServer {};
     g_game_server->shutdown_signal = false;
@@ -320,7 +295,6 @@ void game_server_entry() {
         .instance_id = SERVER_INSTANCE_ID,
         .arena = arena_create(10 * 1024 * 1024),
         .network_in_sampler = {},
-        .events = std::queue<Event>(),
         .entities = stack_array_create<Entity, MAX_ENTITIES>(),
     };
 
@@ -340,14 +314,13 @@ void game_server_entry() {
         }
 
         process_network(&GS()->state);
-        update_entities(&GS()->state, delta_time);
-        physics(&GS()->state, delta_time);
+        game_server_physics(&GS()->state, delta_time);
         sync_clients(&GS()->state);
 
         { // update event sampler snapshot
-            Sampler *s = atomic_snapshot_write(&server_events_snapshot);
+            Sampler *s = atomic_snapshot_write(&server_messages_snapshot);
             *s = GS()->state.network_in_sampler;
-            atomic_snapshot_swap(&server_events_snapshot);
+            atomic_snapshot_swap(&server_messages_snapshot);
         }
 
         arena_reset(&GS()->state.arena);
@@ -371,7 +344,7 @@ void game_client_entry() {
             logln("Failed when trying to init the renderer");
         }
 
-        g_models[MT_CUBE] = load_model(REN(), "resources/models/cuber/cube.obj");
+        // g_models[MT_CUBE] = load_model(REN(), "resources/models/cuber/cube.obj");
     }
 
     g_game_client = new GameClient {
@@ -388,7 +361,6 @@ void game_client_entry() {
             .instance_id = 0,
             .arena = arena_create(10 * 1024 * 1024),
             .network_in_sampler = {},
-            .events = std::queue<Event>(),
             .entities = stack_array_create<Entity, MAX_ENTITIES>(),
         }
     };
@@ -438,8 +410,6 @@ void game_client_entry() {
     deserialise_level(&GC()->state);
 
     while (!glfwWindowShouldClose(WIN()->glfw_window)) {
-        renderer_start_frame(REN());
-
         f32 delta_time = 0;
         if (timer_is_complete(&tick_timer, &delta_time)) {
             poll_inputs();
@@ -453,7 +423,7 @@ void game_client_entry() {
             }
 
             if (ED()->viewport.focused) {
-                update_editor(&GC()->state);
+                editor_update(&GC()->state);
             }
         
             if (GC()->mode == GC_HOSTED || GC()->mode == GC_CLIENT) {
@@ -463,21 +433,28 @@ void game_client_entry() {
                     poll_user_input(&GC()->state);
                 }
  
-                update_entities(&GC()->state, delta_time);
+                game_client_update(&GC()->state, delta_time);
             }
         }
 
         // draw
-        draw(&GC()->state);
-        draw_ui(&GC()->state);
+        renderer_start_frame(REN());
 
+        game_client_draw(&GC()->state);
         renderer_draw_geometry(REN(), &GC()->camera, GC()->viewport, &GC()->g_buffer);
         renderer_draw_lighting(REN(), &GC()->camera, GC()->viewport, &GC()->lighting_buffer, &GC()->g_buffer);
 
+        renderer_end_frame(REN());
+
+        renderer_start_frame(REN());
+
+        editor_draw(&GC()->state);
         renderer_draw_geometry(REN(), &ED()->camera, ED()->viewport, &ED()->g_buffer);
         renderer_draw_lighting(REN(), &ED()->camera, ED()->viewport, &ED()->lighting_buffer, &ED()->g_buffer);
 
         renderer_end_frame(REN());
+
+        editor_draw_ui(&GC()->state);
 
         swap_buffers(WIN());
         arena_reset(&GC()->state.arena);
@@ -509,6 +486,14 @@ void poll_user_input(State *state) {
 
             GC()->camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
             GC()->camera.rotation.x = clamp(-90, GC()->camera.rotation.x, 90);
+        }
+    }
+
+
+    if (WIN()->mouse_captured) {
+        if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::DOWN) {
+            NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_PLAYER_SHOOT, .player_shoot = get_forward_direction(&GC()->camera)};
+            client_send_to_server(NET(), bytes_from_ptr(&message));
         }
     }
 
@@ -594,17 +579,88 @@ void sync_clients(State *state) {
     }
 }
 
-void update_entities(State *state, f32 delta_time) {
-    // update camera position to client player
-    if (is_client(state)) {
-        Entity *player = get_client_player(state, state->instance_id);
-        if (player != NULL) {
-            GC()->camera.position = player->position + v3{0, 0.7, 0};
+void game_server_physics(State *state, f32 delta_time) {
+    ASSERT(is_server(state));
+
+    for (Entity &entity : state->entities) {
+        // currently only simming physics for the player
+        if (!BIT_SET(entity.flags, EF_PLAYER)) {
+            continue; 
+        }
+
+        v3 h_velocity = v3{entity.velocity.x, 0, entity.velocity.z};
+        f32 h_speed = length(h_velocity);
+
+        //  cap velocity
+        if (length(h_velocity) > PLAYER_MAX_SPEED) {
+            v3 max_h_velocity = norm(h_velocity) * PLAYER_MAX_SPEED;
+
+            entity.velocity.x = max_h_velocity.x;
+            entity.velocity.z = max_h_velocity.z;
+        }
+
+        //  apply drag to velocity
+        if (h_speed > 0) {
+            v3 drag = -h_velocity * PLAYER_DRAG;
+            entity.velocity += drag;
+        }
+
+        entity.velocity += v3{0, -GRAVITY, 0};
+        entity.position += entity.velocity * delta_time;
+
+        for (Entity &other : state->entities) {
+            if (&entity == &other) {
+                continue;
+            }
+
+            if (!BIT_SET(other.flags, EF_STATIC_HITBOX)) {
+                continue;
+            }
+
+            auto [collided, overlap, distance] = cube_collision(entity.position, entity.size, other.position, other.size);
+            if (!collided) {
+                continue;
+            }
+
+            if (overlap.x < overlap.y && overlap.x < overlap.z) {
+                entity.position.x -= sign(distance.x) * overlap.x;
+                entity.velocity.x = 0;
+            } 
+            else if (overlap.y < overlap.x && overlap.y < overlap.z) {
+                entity.position.y -= sign(distance.y) * overlap.y;
+                entity.velocity.y = 0;
+            } 
+            else if (overlap.z < overlap.x && overlap.z < overlap.y) {
+                entity.position.z -= sign(distance.z) * overlap.z;
+                entity.velocity.z = 0;
+            }
         }
     }
 }
 
-void update_editor(State *state) {
+void game_client_update(State *state, f32 delta_time) {
+    Entity *player = get_client_player(state, state->instance_id);
+    if (player != NULL) {
+        GC()->camera.position = player->position + v3{0, 0.7, 0};
+    }
+}
+
+void game_client_draw(State *state) {
+    ASSERT(is_client(state));
+
+    v3 forward = get_forward_direction(&GC()->camera);
+    draw_sphere(REN(), GC()->camera.position + forward, 0.005, BLACK);
+
+    for (Entity &entity : state->entities) {
+        if (BIT_SET(entity.flags, EF_PLAYER) && entity.owner == state->instance_id) {
+            continue;
+        }
+
+        draw_cube(REN(), entity.position, entity.size, entity.rotation, entity.colour);
+    }
+}
+
+void editor_update(State *state) {
     ASSERT(is_client(state));
 
     Camera *camera = &ED()->camera;
@@ -694,33 +750,28 @@ void update_editor(State *state) {
     }
 }
 
-void draw(State *state) {
+void editor_draw(State *state) {
     ASSERT(is_client(state));
 
     for (Entity &entity : state->entities) {
-        // don't draw the player if is owned by this client
-        // if (BIT_SET(entity.flags, EF_PLAYER) && entity.owner == state->instance_id) {
-            // continue;
-        // }
-
         v4 draw_colour = entity.colour; 
 
-        if (GC()->mode == GC_EDITOR) {
-            if (ED()->selected_entity && ED()->selected_entity->id == entity.id) {
-                draw_colour = RED;
-            }
+        if (ED()->selected_entity && ED()->selected_entity->id == entity.id) {
+            draw_colour = RED;
         }
             
-        draw_model(REN(), g_models[entity.model], entity.position, entity.size, entity.rotation, draw_colour);
+        draw_cube(REN(), entity.position, entity.size, entity.rotation, draw_colour);
     }
 }
 
-void draw_ui(State *state) {
+void editor_draw_ui(State *state) {
+    new_imgui_frame();
+
     ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), 0);
 
     // https://github.com/ocornut/imgui/blob/master/imgui_demo.cpp
     // ImGui::ShowDemoWindow();
-
+    
     {
         ImGui::Begin("Settings");
         ImGui::SeparatorText("Screen");
@@ -756,34 +807,44 @@ void draw_ui(State *state) {
             clear_level(state);
             connect_as_client();
         }
-    
-        ImGui::SeparatorText("Events");
 
-        f32 event_in_MB = f32(sizeof(Event)) / (8.0f * 1024.0f);
+        if (GC()->mode != GC_EDITOR) {
+            ImGui::SameLine();
+        
+            if (ImGui::Button("Stop game")) {
+                stop_game();
+                clear_level(state);
+                deserialise_level(state);
+            }
+        }
+    
+        ImGui::SeparatorText("Network messages");
+
+        f32 message_in_MB = f32(sizeof(NetworkMessage)) / (8.0f * 1024.0f);
      
         { // client events sampler info
             f32 average = sampler_average(&state->network_in_sampler);
             f32 samples_per_second = sampler_samples_per_second(&state->network_in_sampler);
             f32 events_per_second = average * samples_per_second;
-            f32 MB_per_second = events_per_second * event_in_MB;
+            f32 MB_per_second = events_per_second * message_in_MB;
      
             ImGui::Text("Avg: %f", average);
-            ImGui::Text("Samples/s: %f", samples_per_second);
+            ImGui::Text("Messages/s: %f", samples_per_second);
             ImGui::Text("Events/s: %f", events_per_second);
             ImGui::Text("MB/s: %f", MB_per_second);
             ImGui::PlotLines("Client", state->network_in_sampler.samples, SAMPLER_SIZE, 0, NULL, FLT_MAX, FLT_MAX, ImVec2(0, 60));
         }
      
         if (g_game_server != NULL) { // client events sampler info
-            Sampler *sampler = atomic_snapshot_read(&server_events_snapshot);
+            Sampler *sampler = atomic_snapshot_read(&server_messages_snapshot);
             f32 average = sampler_average(sampler);
             f32 samples_per_second = sampler_samples_per_second(sampler);
             f32 events_per_second = average * samples_per_second;
-            f32 MB_per_second = events_per_second * event_in_MB;
+            f32 MB_per_second = events_per_second * message_in_MB;
      
             ImGui::Text("Avg: %f", average);
             ImGui::Text("Samples/s: %f", samples_per_second);
-            ImGui::Text("Events/s: %f", events_per_second);
+            ImGui::Text("Messages/s: %f", events_per_second);
             ImGui::Text("MB/s: %f", MB_per_second);
             ImGui::PlotLines("Server", sampler->samples, SAMPLER_SIZE, 0, NULL, FLT_MAX, FLT_MAX, ImVec2(0, 60));
         }
@@ -885,98 +946,8 @@ void draw_ui(State *state) {
 
     GC()->viewport = imgui_viewport("Game", GC()->lighting_buffer.position_attachment);
     ED()->viewport = imgui_viewport("Editor", ED()->lighting_buffer.position_attachment);
-}
 
-void physics(State *state, f32 delta_time) {
-    ASSERT(is_server(state));
-
-    for (Entity &entity : state->entities) {
-        // currently only simming physics for the player
-        if (!BIT_SET(entity.flags, EF_PLAYER)) {
-            continue; 
-        }
-
-        v3 h_velocity = v3{entity.velocity.x, 0, entity.velocity.z};
-        f32 h_speed = length(h_velocity);
-
-        //  cap velocity
-        if (length(h_velocity) > PLAYER_MAX_SPEED) {
-            v3 max_h_velocity = norm(h_velocity) * PLAYER_MAX_SPEED;
-
-            entity.velocity.x = max_h_velocity.x;
-            entity.velocity.z = max_h_velocity.z;
-        }
-
-        //  apply drag to velocity
-        if (h_speed > 0) {
-            v3 drag = -h_velocity * PLAYER_DRAG;
-            entity.velocity += drag;
-        }
-
-        entity.velocity += v3{0, -GRAVITY, 0};
-        entity.position += entity.velocity * delta_time;
-
-        for (Entity &other : state->entities) {
-            if (&entity == &other) {
-                continue;
-            }
-
-            if (!BIT_SET(other.flags, EF_STATIC_HITBOX)) {
-                continue;
-            }
-
-            auto [collided, overlap, distance] = cube_collision(entity.position, entity.size, other.position, other.size);
-            if (!collided) {
-                continue;
-            }
-
-            if (overlap.x < overlap.y && overlap.x < overlap.z) {
-                entity.position.x -= sign(distance.x) * overlap.x;
-                entity.velocity.x = 0;
-            } 
-            else if (overlap.y < overlap.x && overlap.y < overlap.z) {
-                entity.position.y -= sign(distance.y) * overlap.y;
-                entity.velocity.y = 0;
-            } 
-            else if (overlap.z < overlap.x && overlap.z < overlap.y) {
-                entity.position.z -= sign(distance.z) * overlap.z;
-                entity.velocity.z = 0;
-            }
-        }
-
-#if 0
-            i64 max = max_axis(overlap);
-            ASSERT(max >= 0 && max <= 2);
-
-            if (max == 0) {
-                entity.position.x -= sign(distance.x) * overlap.x;
-                entity.velocity.x = 0;
-            } 
-            else if (max == 1) {
-                entity.position.y -= sign(distance.y) * overlap.y;
-                entity.velocity.y = 0;
-            } 
-            else {
-                entity.position.z -= sign(distance.z) * overlap.z;
-                entity.velocity.z = 0;
-            }
-#endif
-    }
-}
-
-void events_push(State *state, Event event) {
-    state->events.push(event);
-}
-
-bool events_pop(State *state, Event *out) {
-    if (state->events.empty()) {
-        return false;
-    }
-
-    *out = state->events.front();
-    state->events.pop();
-
-    return true;
+    draw_imgui_frame();
 }
 
 // AABB detection for a point against a box where the position is centred on the box
@@ -1063,6 +1034,20 @@ void on_server_receive(State *state, NetworkMessage *message) {
             player->velocity.z += message->move_player.z * PLAYER_MOVE_ACCELERATION;
 
             player->velocity.y += message->move_player.y * PLAYER_JUMP_ACCELERATION;
+        } break;
+        case NM_PLAYER_SHOOT: {
+            Entity *player = get_client_player(state, message->client_id);
+            if (!player) {
+                return;
+            }
+
+            Entity *bullet = local_spawn_empty(state);
+            bullet->id = new_entity_id();
+            bullet->owner = SERVER_INSTANCE_ID;
+            bullet->position = player->position + (message->player_shoot * 5);
+
+            NetworkMessage out = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = *bullet};
+            server_send_to_all_clients(NET(), bytes_from_ptr(&out));
         } break;
         default: {
             logln("WARNING unknown message sent");
@@ -1246,23 +1231,17 @@ void connect_as_client() {
     network_layer_start_client(NET(), "::1");
 }
 
-void load_level(State *state) {
-    for (i64 i = 0; i < 30; i++) {
-        v3 position_offset = v3 {rand_f32_negative(), rand_f32_negative(), rand_f32_negative()};
-        v4 colour = v4 {rand_f32(), rand_f32(), rand_f32(), 1};
-            
-        Entity entity = Entity {
-            .flags = 0,
-            .id = new_entity_id(),
-            .owner = LEVEL_INSTANCE_ID,
-            .position = v3{30, 30, 30} * position_offset,
-            .size = {1, 1, 1},
-            .colour = colour,
-            .model = MT_CUBE 
-        };
-
-        local_spawn_entity(&g_game_server->state, entity);
+void stop_game() {
+    if (GC()->mode == GC_HOSTED) {
+        game_server_stop();
+        network_layer_stop_server(NET());
+        network_layer_stop_client(NET());
     }
+    else if (GC()->mode == GC_CLIENT) {
+        network_layer_stop_client(NET());
+    }
+
+    GC()->mode = GC_EDITOR;
 }
 
 bool is_server(State *state) {

@@ -104,7 +104,6 @@ bool window_init(str title, i32 width, i32 height) {
     glfwSetWindowUserPointer(g_window->glfw_window, g_window);
 
     glfwSwapInterval(g_window->vsync);
-    set_mouse_captured(g_window, g_window->mouse_captured);
 
     glfwSetErrorCallback(glfw_error_callback);
     glfwSetKeyCallback(g_window->glfw_window, glfw_key_callback);
@@ -117,8 +116,16 @@ bool window_init(str title, i32 width, i32 height) {
 void set_mouse_captured(Window *window, bool captured) {
     window->mouse_captured = captured;
 
-    i32 glfw_mode = captured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL;
-    glfwSetInputMode(window->glfw_window, GLFW_CURSOR, glfw_mode);
+    ImGuiIO& io = ImGui::GetIO();
+
+    if (captured) {
+        glfwSetInputMode(window->glfw_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        SET_BIT(io.ConfigFlags, ImGuiConfigFlags_NoMouse);
+    } 
+    else {
+        glfwSetInputMode(window->glfw_window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        UNSET_BIT(io.ConfigFlags, ImGuiConfigFlags_NoMouse);
+    }
 }
 
 void set_window_title(Window *window, str title) {
@@ -389,6 +396,9 @@ struct Renderer {
     FixedArray<RenderCommand> commands;
     StackArray<Texture, MAX_TEXTURES> textures;
 
+    Model *cube_primitive;
+    Model *sphere_primitive;
+
     m4 view_matrix;
     m4 projection_matrix;
     m4 projection_matrix_ortho;
@@ -495,13 +505,16 @@ void draw_imgui_frame();
 // Immediate rendering API
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
-void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 color);
 void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color);
 void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 color);
 void draw_model(Renderer *renderer, Model *model, v3 position, v3 scale, v3 rotation, v4 colour);
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
 Quad *push_screen_quad(Renderer *renderer, v4 color);
+
+// Primitive drawing
+void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 colour);
+void draw_sphere(Renderer *renderer, v3 position, f32 radius, v4 colour);
 
 void toggle_wireframe(Renderer *renderer);
 f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
@@ -758,6 +771,7 @@ Model *load_model(Renderer *renderer, str mesh_path) {
     const aiScene *scene = importer.ReadFile(mesh_path.c(), aiProcess_Triangulate | aiProcess_MakeLeftHanded | aiProcess_GenSmoothNormals);	
     if(scene == NULL || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
         printf("assimp error: %s\n", importer.GetErrorString());
+        return NULL;
     }
 
     // only assuming one child and one mesh for now
@@ -800,6 +814,8 @@ Model *load_model(Renderer *renderer, str mesh_path) {
 
     Model *model = push(&renderer->models);
     *model = Model {.mesh = model_mesh};
+
+    printf("Loaded model with path \"%s\"\n", mesh_path.c());
 
     return model;
 }
@@ -907,7 +923,6 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         ImGui::StyleColorsDark();
     
         ImGuiIO& io = ImGui::GetIO();
-    
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
         io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
@@ -915,7 +930,11 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         // set custom colours
         ImVec4* colors = ImGui::GetStyle().Colors;
         colors[ImGuiCol_TitleBgActive]          = ImVec4(0.81f, 0.24f, 0.24f, 1.00f);
-    
+        colors[ImGuiCol_PlotLines]              = ImVec4(0.85f, 0.25f, 0.25f, 1.00f);
+
+
+        ImGui::GetStyle().FrameRounding = 2;
+
         ImGui_ImplGlfw_InitForOpenGL(window->glfw_window, true);
         ImGui_ImplOpenGL3_Init("#version 460");
     } 
@@ -1014,6 +1033,14 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         }
 
         renderer->default_normal = texture;
+    }
+
+    { // load primitive models 
+        renderer->cube_primitive = load_model(REN(), "resources/models/primitives/cube.obj");
+        ASSERT(renderer->cube_primitive);
+
+        renderer->sphere_primitive = load_model(REN(), "resources/models/primitives/sphere.obj");
+        ASSERT(renderer->sphere_primitive);
     }
 
     return true;
@@ -1349,7 +1376,6 @@ void renderer_clear_frame(Renderer *renderer, v4 colour) {
 
 void renderer_start_frame(Renderer *renderer) {
     renderer_clear_frame(renderer, renderer->clear_colour);
-    new_imgui_frame();
 }
 
 void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport) {
@@ -1483,8 +1509,6 @@ void renderer_draw_lighting(Renderer *renderer, Camera *camera, Viewport viewpor
 void renderer_end_frame(Renderer *renderer) {
     reset(&renderer->quads);
     reset(&renderer->commands);
-
-    draw_imgui_frame();
 }
 
 void new_imgui_frame() {
@@ -1524,22 +1548,6 @@ void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color) {
     };
 
     push_quad(renderer, position, size, {}, color, uvs, {}, DrawType::CIRCLE);
-}
-
-void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 color) {
-    v2 uvs[4] = {
-        {0, 1},
-        {1, 1},
-        {1, 0},
-        {0, 0},
-    };
-
-    push_quad(renderer, position + (v3{-0.5,    0,    0} * size), {size.z, size.y}, v3{  0, -90, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // left
-    push_quad(renderer, position + (v3{   0,    0, -0.5} * size), {size.x, size.y}, v3{  0,   0, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // front
-    push_quad(renderer, position + (v3{ 0.5,    0,    0} * size), {size.z, size.y}, v3{  0,  90, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // right
-    push_quad(renderer, position + (v3{   0,  0.5,    0} * size), {size.x, size.z}, v3{-90,   0, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // top
-    push_quad(renderer, position + (v3{   0, -0.5,    0} * size), {size.x, size.z}, v3{ 90,   0, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // bottom
-    push_quad(renderer, position + (v3{   0,    0,  0.5} * size), {size.x, size.y}, v3{  0, 180, 0}, color, uvs, renderer->default_normal->uvs, DrawType::RECTANGLE); // back
 }
 
 void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 color) {
@@ -1739,6 +1747,14 @@ Quad *push_screen_quad(Renderer *renderer, v4 color) {
     quad->vertices[3].draw_type = 0;
 
     return quad;
+}
+
+void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 colour) {
+    draw_model(renderer, renderer->cube_primitive, position, size, rotation, colour);
+}
+
+void draw_sphere(Renderer *renderer, v3 position, f32 radius, v4 colour) {
+    draw_model(renderer, renderer->sphere_primitive, position, v3{radius, radius, radius} * 2, v3{}, colour);
 }
 
 void toggle_wireframe(Renderer *renderer) {

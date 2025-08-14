@@ -388,7 +388,7 @@ StackArray<T, N> stack_array_create() {
     };
 
     // all zeros
-    memset(sa.data, 0, sa.size);
+    memset(sa.data, 0, N);
 
     return sa;
 }
