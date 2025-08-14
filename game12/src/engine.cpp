@@ -230,14 +230,13 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 /////////////////////////////////////////////////////////////////////////////
 //////////////////////////////// @renderer //////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
-#define MAX_QUADS 5000
+#define MAX_QUADS 1000
 #define MAX_RENDER_COMMANDS 5000
 #define MAX_MESHES 128
 #define MAX_MODELS 128
 #define MAX_LIGHTS 20
 #define MAX_SPRITES 256
 #define MAX_TEXTURES 256
-#define SSAO_SAMPLES 48
 
 struct MeshVertex {
     v3 position;
@@ -329,6 +328,8 @@ struct Font {
 // @viewport
 struct Viewport {
     v2i size;
+    v2i size_alt;
+    v2 mouse;
 };
 
 struct FrameBuffer {
@@ -507,15 +508,15 @@ void frame_buffer_unbind();
 bool frame_buffer_maybe_resize(FrameBuffer *frame_buffer, v2i new_size);
 bool frame_buffer_rebuild(FrameBuffer *frame_buffer);
 
-v3 screen_position_to_world_position(v3 screen_position, Renderer *renderer, Window *window);
-v3 screen_position_to_ndc(Window *window, v3 screen_position);
+v3 screen_position_to_world_position(Renderer *renderer, Viewport viewport, v3 screen_position);
+v3 screen_position_to_ndc(Viewport viewport, v3 screen_position);
 
 m4 get_view_matrix(Camera *camera);
 m4 get_projection_matrix(Camera *camera, f32 aspect);
 m4 get_projection_matrix_ortho(Camera *camera, f32 aspect);
 
 Ray ray_create(v3 origin, v3 direction);
-Ray ray_from_screen_position(v3 screen_position);
+Ray ray_from_screen_position(Viewport viewport, v3 screen_position);
 
 v4 rgb(i64 r, i64 g, i64 b);
 v4 rgba(i64 r, i64 g, i64 b, i64 a);
@@ -1780,14 +1781,14 @@ bool frame_buffer_rebuild(FrameBuffer *frame_buffer) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-v3 screen_position_to_world_position(v3 screen_position, Renderer *renderer, Window *window) {
+v3 screen_position_to_world_position(Renderer *renderer, Viewport viewport, v3 screen_position) {
     // while screen coords are just x and y, the z coord of screen
     // position determines the depth of the position in the view frustum
     // z=-1 -> near plane
     // z=1  -> far plane
     // - 13/08/25
     
-    v3 ndc = screen_position_to_ndc(window, screen_position);
+    v3 ndc = screen_position_to_ndc(viewport, screen_position);
 
     m4 inverse_vp = HMM_InvGeneralM4(renderer->projection_matrix * renderer->view_matrix);
 
@@ -1807,16 +1808,16 @@ v3 screen_position_to_world_position(v3 screen_position, Renderer *renderer, Win
 #endif
 }
 
-v3 screen_position_to_ndc(Window *window, v3 screen_position) {
+v3 screen_position_to_ndc(Viewport viewport, v3 screen_position) {
     v3 v_ndc = screen_position;
 
     // set origin to center
-    v_ndc.x -= f32(window->logical_size.x) * 0.5f;
-    v_ndc.y -= f32(window->logical_size.y) * 0.5f;
+    v_ndc.x -= f32(viewport.size.x) * 0.5f;
+    v_ndc.y -= f32(viewport.size.y) * 0.5f;
 
     // scale to [-1, 1]
-    v_ndc.x /= (f32(window->logical_size.x) * 0.5f);
-    v_ndc.y /= (f32(window->logical_size.y) * 0.5f);
+    v_ndc.x /= (f32(viewport.size.x) * 0.5f);
+    v_ndc.y /= (f32(viewport.size.y) * 0.5f);
 
     return v_ndc;
 }
@@ -1855,17 +1856,15 @@ Ray ray_create(v3 origin, v3 direction) {
     return Ray {.origin = origin, .direction = direction};
 }
 
-Ray ray_from_screen_position(v3 screen_position) {
+Ray ray_from_screen_position(Viewport viewport, v3 screen_position) {
     // this sticks with my convention of having screen positions
     // all be v3, but with this case you probably always want the origin
     // to be on the near plane so I ignore the z of the give screen position
     // this is just to stop any annoying bugs by making an assumption 
     // - 13/08/25
 
-    v3 start = screen_position_to_world_position(v3{screen_position.x, screen_position.y, -1}, REN(), WIN());
-    v3 end = screen_position_to_world_position(v3{screen_position.x, screen_position.y, 1}, REN(), WIN());
-
-    // start = CAM()->position;
+    v3 start = screen_position_to_world_position(REN(), viewport, v3{screen_position.x, screen_position.y, -1});
+    v3 end = screen_position_to_world_position(REN(), viewport, v3{screen_position.x, screen_position.y, 1});
 
     return ray_create(start, norm(end - start));
 }

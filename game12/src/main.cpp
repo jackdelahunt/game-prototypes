@@ -1,4 +1,3 @@
-#include "imgui.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -16,10 +15,10 @@
 #include <queue>
 #include <atomic>
 
-// Total: 23:00
+// Total: 26:00
 // Started: 10:30
 
-#define MAX_ENTITIES 1000
+#define MAX_ENTITIES 5000
 
 f32 PLAYER_ACCELERATION = 12;
 f32 PLAYER_MAX_SPEED =  30;
@@ -356,7 +355,7 @@ void game_client_entry() {
             logln("Failed when trying to init the window");
         }
 
-        ok = renderer_init(WIN(), v4{0.1, 0.1, 0.1, 1}, v3{0.1, 0.1, 0.1}, v3{0.5, 0.5, 0.5}, v3{50, 100, -100}, v3{-1, -1, 0.5});
+        ok = renderer_init(WIN(), v4{0.2, 0.2, 0.2, 1}, v3{0.1, 0.1, 0.1}, v3{0.5, 0.5, 0.5}, v3{50, 100, -100}, v3{-1, -1, 0.5});
         if (!ok) {
             logln("Failed when trying to init the renderer");
         }
@@ -366,7 +365,7 @@ void game_client_entry() {
 
     g_game_client = new GameClient {
         .mode = GC_EDITOR,
-        .camera = camera_create(CameraMode::FIRST_PERSON, 90, v3{0, 0, 0}, 0.1, 500),
+        .camera = camera_create(CameraMode::FIRST_PERSON, 90, v3{0, 0, 0}, 0.1, 300),
         .state = State {
             .instance_type = IT_CLIENT,
             .instance_id = 0,
@@ -378,7 +377,7 @@ void game_client_entry() {
     };
 
     g_editor = new Editor {
-        .camera = camera_create(CameraMode::FIRST_PERSON, 90, v3{0, 0, 0}, 0.1, 500),
+        .camera = camera_create(CameraMode::FIRST_PERSON, 90, v3{0, 0, 0}, 0.1, 300),
         .viewport = Viewport { .size = WIN()->frame_buffer_size },
         .selected_entity = NULL,
     };
@@ -594,15 +593,11 @@ void update_editor(State *state) {
     if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::DOWN) {
         logln("you clicked");
         // TODO: there is still a problem with this not being exact...
-        Ray ray = ray_from_screen_position({MOUSE.position.x, MOUSE.position.y, -1});
-        RaycastIterator it = raycast_iterator_create(ray, camera->near_plane - camera->far_plane);
+        Ray ray = ray_from_screen_position(ED()->viewport, {ED()->viewport.mouse.x, ED()->viewport.mouse.y, -1});
+        RaycastIterator it = raycast_iterator_create(ray, camera->far_plane - camera->near_plane);
 
-        while (true) {
-            Entity *entity = next(&it, state);
-            if (!entity) {
-                break;
-            }
-
+        Entity *entity = next(&it, state);
+        if (entity) {
             ED()->selected_entity = entity; 
         }
     }
@@ -716,12 +711,39 @@ void draw_ui(State *state) {
     {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
         ImGui::Begin("Editor");
+
+        // after ImGui::Begin is called the tab bar has been created and now the current
+        // cursor should be the top left of the viewport, cursor in this context is
+        // the location imgui is going to draw UI next. Not the mouse
+        // - 14/08/25
+        ImVec2 tab_bar_offset = ImGui::GetCursorPos();
+
         ImVec2 viewport_size = ImGui::GetContentRegionAvail();
         ImGui::Image(REN()->lighting_frame_buffer.position_attachment, viewport_size, ImVec2(0, 1), ImVec2(1, 0));
-        ImGui::End();
-        ImGui::PopStyleVar();
 
         ED()->viewport.size = v2i {i32(viewport_size.x), i32(viewport_size.y)};
+
+        { // get viewport mouse info
+            ImVec2 window_size = ImGui::GetWindowSize();
+            ImVec2 min_bound = ImGui::GetWindowPos();
+            min_bound.x += tab_bar_offset.x;
+            min_bound.y += tab_bar_offset.y;
+    
+            ImVec2 max_bound = ImVec2{min_bound.x + window_size.x, min_bound.y + window_size.y};
+    
+            v2 viewport_size_alt = v2{max_bound.x, max_bound.y} - v2{min_bound.x, min_bound.y};
+            ED()->viewport.size_alt = v2i{i32(viewport_size_alt.x), i32(viewport_size_alt.y)};
+    
+            auto[mouse_x, mouse_y] = ImGui::GetMousePos();
+            mouse_x -= min_bound.x;
+            mouse_y -= min_bound.y;
+
+            // convert to bottom left origin from top right origin
+            ED()->viewport.mouse = v2{mouse_x, (-mouse_y) + viewport_size.y};
+        }
+
+        ImGui::End();
+        ImGui::PopStyleVar();
     }
 
     ImGui::Begin("Settings");
@@ -729,9 +751,8 @@ void draw_ui(State *state) {
     ImGui::Text("Logical size: %dx%d", WIN()->logical_size.x, WIN()->logical_size.y);
     ImGui::Text("Frame buffer size: %dx%d", WIN()->frame_buffer_size.x, WIN()->frame_buffer_size.y);
 
-    v3 mouse_position = v3{MOUSE.position.x, MOUSE.position.y, -1};
-    v3 mouse_position_ndc = screen_position_to_ndc(WIN(), mouse_position);
-
+    v3 mouse_position = v3{ED()->viewport.mouse.x, ED()->viewport.mouse.y, -1};
+    v3 mouse_position_ndc = screen_position_to_ndc(ED()->viewport, mouse_position);
     ImGui::Text("Mouse: [%4.0f, %4.0f]", mouse_position.x, mouse_position.y);
     ImGui::Text("Mouse (NDC): [%4.2f, %4.2f]", mouse_position_ndc.x, mouse_position_ndc.y);
 
@@ -1183,12 +1204,11 @@ Entity *next(RaycastIterator *it, State *state) {
     const f32 STEP = 0.05f;
     v3 v_step = it->ray.direction * STEP;
 
-
     while (length(it->check_position - it->ray.origin) <= it->distance) {
         it->check_position += v_step;
 
         for (Entity &entity : state->entities) {
-            bool hit = point_collision(it->check_position, entity.position, entity.size * 1.2f);
+            bool hit = point_collision(it->check_position, entity.position, entity.size);
             if (hit) {
                 return &entity;
             }
