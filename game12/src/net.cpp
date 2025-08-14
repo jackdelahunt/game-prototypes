@@ -100,6 +100,7 @@ void client_network_connection_status_changed_callback(SteamNetConnectionStatusC
 
 void network_queue_push(NetworkQueue *network_queue, Slice<u8> message);
 bool network_queue_pop(NetworkQueue *network_queue, Slice<u8> *out_message);
+i64 network_queue_size(NetworkQueue *network_queue);
 
 void server_send_to_client(NetworkLayer *net, Slice<u8> message, ConnectionId id);
 void server_send_to_all_clients(NetworkLayer *net, Slice<u8> message, ConnectionId exclude = 0);
@@ -452,6 +453,10 @@ bool network_queue_pop(NetworkQueue *network_queue, Slice<u8> *out_message) {
     network_queue->messages.pop();
 
     return true;
+}
+
+i64 network_queue_size(NetworkQueue *network_queue) {
+    return network_queue->messages.size();
 }
 
 void server_send_to_client(NetworkLayer *net, Slice<u8> message, ConnectionId id) {

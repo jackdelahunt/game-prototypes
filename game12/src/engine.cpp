@@ -327,8 +327,9 @@ struct Font {
 
 // @viewport
 struct Viewport {
+    bool focused;
+
     v2i size;
-    v2i size_alt;
     v2 mouse;
 };
 
@@ -909,6 +910,10 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
         io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+
+        // set custom colours
+        ImVec4* colors = ImGui::GetStyle().Colors;
+        colors[ImGuiCol_TitleBgActive]          = ImVec4(0.81f, 0.24f, 0.24f, 1.00f);
     
         ImGui_ImplGlfw_InitForOpenGL(window->glfw_window, true);
         ImGui_ImplOpenGL3_Init("#version 460");
@@ -1750,14 +1755,6 @@ f32 texture_aspect_ratio(Renderer *renderer, Texture *texture) {
 }
 
 bool frame_buffer_init(FrameBuffer *frame_buffer) {
-    if (frame_buffer->id != 0) {
-        glDeleteFramebuffers(1, &frame_buffer->id);
-        glDeleteTextures(1, &frame_buffer->position_attachment);
-        glDeleteTextures(1, &frame_buffer->normals_attachment);
-        glDeleteTextures(1, &frame_buffer->albedo_attachment);
-        glDeleteTextures(1, &frame_buffer->depth_attachment);
-    }
-
     return frame_buffer_rebuild(frame_buffer);
 }
 
@@ -1785,6 +1782,14 @@ bool frame_buffer_maybe_resize(FrameBuffer *frame_buffer, v2i new_size) {
 }
 
 bool frame_buffer_rebuild(FrameBuffer *frame_buffer) {
+    if (frame_buffer->id != 0) {
+        glDeleteFramebuffers(1, &frame_buffer->id);
+        glDeleteTextures(1, &frame_buffer->position_attachment);
+        glDeleteTextures(1, &frame_buffer->normals_attachment);
+        glDeleteTextures(1, &frame_buffer->albedo_attachment);
+        glDeleteTextures(1, &frame_buffer->depth_attachment);
+    }
+
     glCreateFramebuffers(1, &frame_buffer->id);
     glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer->id);
 

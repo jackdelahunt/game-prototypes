@@ -124,7 +124,7 @@ struct State {
     
     Arena arena;
 
-    Sampler event_sampler;
+    Sampler network_in_sampler;
 
     std::queue<Event> events;
     StackArray<Entity, MAX_ENTITIES> entities;
@@ -184,8 +184,7 @@ void game_client_entry();
 void game_server_stop();
 
 void poll_user_input(State *state);
-void poll_network(State *state);
-void process_events(State *state);
+void process_network(State *state);
 void sync_clients(State *state);
 
 void update_entities(State *state, f32 delta_time);
@@ -310,7 +309,7 @@ void game_server_entry() {
         .instance_type = IT_SERVER,
         .instance_id = SERVER_INSTANCE_ID,
         .arena = arena_create(10 * 1024 * 1024),
-        .event_sampler = {},
+        .network_in_sampler = {},
         .events = std::queue<Event>(),
         .entities = stack_array_create<Entity, MAX_ENTITIES>(),
     };
@@ -330,21 +329,14 @@ void game_server_entry() {
             continue;
         }
 
-        // get any incoming events
-        poll_network(&GS()->state);
-
-        // process any events
-        process_events(&GS()->state);
-
-        // update local state 
+        process_network(&GS()->state);
         update_entities(&GS()->state, delta_time);
         physics(&GS()->state, delta_time);
-
         sync_clients(&GS()->state);
 
         { // update event sampler snapshot
             Sampler *s = atomic_snapshot_write(&server_events_snapshot);
-            *s = GS()->state.event_sampler;
+            *s = GS()->state.network_in_sampler;
             atomic_snapshot_swap(&server_events_snapshot);
         }
 
@@ -375,14 +367,17 @@ void game_client_entry() {
     g_game_client = new GameClient {
         .mode = GC_EDITOR,
         .camera = camera_create(CameraMode::FIRST_PERSON, 90, v3{0, 0, 0}, 0.1, 300),
-        .viewport = Viewport { .size = WIN()->frame_buffer_size },
+        .viewport =  Viewport {
+            .focused = false,
+            .size = WIN()->frame_buffer_size
+        },
         .g_buffer = FrameBuffer {.size = WIN()->frame_buffer_size},
         .lighting_buffer = FrameBuffer {.size = WIN()->frame_buffer_size},
         .state = State {
             .instance_type = IT_CLIENT,
             .instance_id = 0,
             .arena = arena_create(10 * 1024 * 1024),
-            .event_sampler = {},
+            .network_in_sampler = {},
             .events = std::queue<Event>(),
             .entities = stack_array_create<Entity, MAX_ENTITIES>(),
         }
@@ -390,7 +385,10 @@ void game_client_entry() {
 
     g_editor = new Editor {
         .camera = camera_create(CameraMode::FIRST_PERSON, 90, v3{0, 0, 0}, 0.1, 300),
-        .viewport = Viewport { .size = WIN()->frame_buffer_size },
+        .viewport =  Viewport {
+            .focused = false,
+            .size = WIN()->frame_buffer_size
+        },
         .g_buffer = FrameBuffer {.size = WIN()->frame_buffer_size},
         .lighting_buffer = FrameBuffer {.size = WIN()->frame_buffer_size},
         .selected_entity = NULL,
@@ -430,6 +428,7 @@ void game_client_entry() {
     deserialise_level(&GC()->state);
 
     while (!glfwWindowShouldClose(WIN()->glfw_window)) {
+        poll_inputs();
         renderer_start_frame(REN());
 
         if (KEYS[GLFW_KEY_ESCAPE] == InputState::DOWN) {
@@ -440,24 +439,22 @@ void game_client_entry() {
             set_mouse_captured(WIN(), !WIN()->mouse_captured);
         }
 
-        if (GC()->mode == GC_EDITOR) {
-            poll_inputs();
+        if (ED()->viewport.focused) {
             update_editor(&GC()->state);
         }
-        else if (GC()->mode == GC_HOSTED || GC()->mode == GC_CLIENT) {
+        
+        if (GC()->mode == GC_HOSTED || GC()->mode == GC_CLIENT) {
             f32 delta_time = 0;
             if (timer_is_complete(&tick_timer, &delta_time)) {
-                // get any incoming events
-                poll_user_input(&GC()->state);
-                poll_network(&GC()->state);
-     
-                // process any events
-                process_events(&GC()->state);
-         
-                // update local state 
+                process_network(&GC()->state);
+
+                if (GC()->viewport.focused) {
+                    poll_user_input(&GC()->state);
+                }
+
                 update_entities(&GC()->state, delta_time);
             }
-        } else { ASSERT(0); }
+        }
 
         // draw
         draw(&GC()->state);
@@ -493,16 +490,14 @@ void game_server_stop() {
 void poll_user_input(State *state) {
     ASSERT(is_client(state)); // what is the server doing here?
 
-    // actually get update inputs from glfw
-    // wil change how all this works at some point
-    // - 11/08/25
-    poll_inputs();
-
     if (WIN()->mouse_captured) {
-        v2 mouse_input = MOUSE.delta; 
-    
+        v2 mouse_input = MOUSE.delta;
+
         if (length(mouse_input) > 0) {
-            events_push(state, Event {.type = EV_MOUSE_INPUT, .mouse_input = mouse_input});
+            f32 sensitivity = 0.09;
+
+            GC()->camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
+            GC()->camera.rotation.x = clamp(-90, GC()->camera.rotation.x, 90);
         }
     }
 
@@ -533,73 +528,40 @@ void poll_user_input(State *state) {
     }
 
     if (length(keyboard_input) > 0) {
-        events_push(state, Event {.type = EV_KEYBOARD_INPUT, .keyboard_input = keyboard_input});
+        v3 forward = get_forward_direction(&GC()->camera);
+        v3 up = {0, 1, 0};
+        v3 right = get_right_direction(&GC()->camera);
+    
+        v3 movement = v3{};
+        movement += right * keyboard_input.x;
+        movement += up * keyboard_input.y;
+        movement += forward * keyboard_input.z;
+             
+        NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_MOVE_PLAYER, .move_player = movement};
+        client_send_to_server(NET(), bytes_from_ptr(&message));
     }
 }
 
-void poll_network(State *state) {
-    NetworkQueue *in_queue = NULL;
-
-    if (is_server(state)) {
-        in_queue = &NET()->server_in_queue;
-    }
-    else if (is_client(state)) {
-        in_queue = &NET()->client_in_queue;
-    }
-
-    ASSERT(in_queue);
-
-    Slice<u8> bytes;
-    while (network_queue_pop(in_queue, &bytes)) {
-        NetworkMessage *message = (NetworkMessage *) bytes.ptr;
-        events_push(state, Event {.type = EV_NETWORK_MESSAGE, .network_message = *message});
-        slice_free(bytes);
-    }
-}
-
-void process_events(State *state) {
-    sampler_append(&state->event_sampler, f32(state->events.size()));
-
-    Event event;
-
+void process_network(State *state) {
     if (is_client(state)) {
-        while (events_pop(state, &event)) {
-            switch (event.type) {
-                case EV_KEYBOARD_INPUT: {
-                    v3 forward = get_forward_direction(&GC()->camera);
-                    v3 up = {0, 1, 0};
-                    v3 right = get_right_direction(&GC()->camera);
+        sampler_append(&state->network_in_sampler, f32(network_queue_size(&NET()->client_in_queue)));
 
-                    v3 movement = v3{};
-                    movement += right * event.keyboard_input.x;
-                    movement += up * event.keyboard_input.y;
-                    movement += forward * event.keyboard_input.z;
-         
-                    NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_MOVE_PLAYER, .move_player = movement};
-                    client_send_to_server(NET(), bytes_from_ptr(&message));
-                } break;
-                case EV_MOUSE_INPUT: {
-                    f32 sensitivity = 0.07;
-        
-                    GC()->camera.rotation += v3{event.mouse_input.y, event.mouse_input.x, 0} * sensitivity;
-                    GC()->camera.rotation.x = clamp(-90, GC()->camera.rotation.x, 90);
-                } break;
-                case EV_NETWORK_MESSAGE: {
-                    on_client_receive(state, &event.network_message);
-                } break;
-                default: ASSERT(0); break;
-            } 
+        Slice<u8> bytes;
+        while (network_queue_pop(&NET()->client_in_queue, &bytes)) {
+            NetworkMessage *message = (NetworkMessage *) bytes.ptr;
+            on_client_receive(state, message);
+            slice_free(bytes);
         }
     }
 
     if (is_server(state)) {
-        while (events_pop(state, &event)) {
-            switch (event.type) {
-                case EV_NETWORK_MESSAGE: {
-                    on_server_receive(state, &event.network_message);
-                } break;
-                default: ASSERT(0); break;
-            } 
+        sampler_append(&state->network_in_sampler, f32(network_queue_size(&NET()->server_in_queue)));
+
+        Slice<u8> bytes;
+        while (network_queue_pop(&NET()->server_in_queue, &bytes)) {
+            NetworkMessage *message = (NetworkMessage *) bytes.ptr;
+            on_server_receive(state, message);
+            slice_free(bytes);
         }
     }
 }
@@ -630,7 +592,7 @@ void update_entities(State *state, f32 delta_time) {
 }
 
 void update_editor(State *state) {
-    ASSERT(is_client(state) && GC()->mode == GC_EDITOR);
+    ASSERT(is_client(state));
 
     Camera *camera = &ED()->camera;
 
@@ -742,158 +704,168 @@ void draw(State *state) {
 
 void draw_ui(State *state) {
     ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), 0);
+
+    // https://github.com/ocornut/imgui/blob/master/imgui_demo.cpp
     // ImGui::ShowDemoWindow();
 
-    GC()->viewport = imgui_viewport("Game", GC()->lighting_buffer.position_attachment);
-    ED()->viewport = imgui_viewport("Editor", ED()->lighting_buffer.position_attachment);
+    {
+        ImGui::Begin("Settings");
+        ImGui::SeparatorText("Screen");
+        ImGui::Text("Logical size: %dx%d", WIN()->logical_size.x, WIN()->logical_size.y);
+        ImGui::Text("Frame buffer size: %dx%d", WIN()->frame_buffer_size.x, WIN()->frame_buffer_size.y);
 
-    ImGui::Begin("Settings");
-    ImGui::SeparatorText("Screen");
-    ImGui::Text("Logical size: %dx%d", WIN()->logical_size.x, WIN()->logical_size.y);
-    ImGui::Text("Frame buffer size: %dx%d", WIN()->frame_buffer_size.x, WIN()->frame_buffer_size.y);
+        v3 mouse_position = v3{ED()->viewport.mouse.x, ED()->viewport.mouse.y, -1};
+        v3 mouse_position_ndc = screen_position_to_ndc(ED()->viewport, mouse_position);
+        ImGui::Text("Mouse: [%4.0f, %4.0f]", mouse_position.x, mouse_position.y);
+        ImGui::Text("Mouse (NDC): [%4.2f, %4.2f]", mouse_position_ndc.x, mouse_position_ndc.y);
 
-    v3 mouse_position = v3{ED()->viewport.mouse.x, ED()->viewport.mouse.y, -1};
-    v3 mouse_position_ndc = screen_position_to_ndc(ED()->viewport, mouse_position);
-    ImGui::Text("Mouse: [%4.0f, %4.0f]", mouse_position.x, mouse_position.y);
-    ImGui::Text("Mouse (NDC): [%4.2f, %4.2f]", mouse_position_ndc.x, mouse_position_ndc.y);
+        ImGui::SeparatorText("Player");
+        ImGui::InputFloat("Acceleration", &PLAYER_ACCELERATION);
+        ImGui::InputFloat("Max speed", &PLAYER_MAX_SPEED);
+        ImGui::InputFloat("Drag", &PLAYER_DRAG);
 
-    ImGui::SeparatorText("Player");
-    ImGui::InputFloat("Acceleration", &PLAYER_ACCELERATION);
-    ImGui::InputFloat("Max speed", &PLAYER_MAX_SPEED);
-    ImGui::InputFloat("Drag", &PLAYER_DRAG);
-
-    ImGui::End();
-
-    ImGui::Begin("Network");
-
-    if (ImGui::Button("Host")) {
-        clear_level(state);
-        start_as_host();
+        ImGui::End();
     }
 
-    ImGui::SameLine();
-
-    if (ImGui::Button("Connect")) {
-        clear_level(state);
-        connect_as_client();
-    }
-
-    ImGui::SeparatorText("Events");
-
-    f32 event_in_MB = f32(sizeof(Event)) / (8.0f * 1024.0f);
- 
-    { // client events sampler info
-        f32 average = sampler_average(&state->event_sampler);
-        f32 samples_per_second = sampler_samples_per_second(&state->event_sampler);
-        f32 events_per_second = average * samples_per_second;
-        f32 MB_per_second = events_per_second * event_in_MB;
- 
-        ImGui::Text("Avg: %f", average);
-        ImGui::Text("Samples/s: %f", samples_per_second);
-        ImGui::Text("Events/s: %f", events_per_second);
-        ImGui::Text("MB/s: %f", MB_per_second);
-        ImGui::PlotLines("Client", state->event_sampler.samples, SAMPLER_SIZE, 0, NULL, FLT_MAX, FLT_MAX, ImVec2(0, 60));
-    }
- 
-    if (g_game_server != NULL) { // client events sampler info
-        Sampler *sampler = atomic_snapshot_read(&server_events_snapshot);
-        f32 average = sampler_average(sampler);
-        f32 samples_per_second = sampler_samples_per_second(sampler);
-        f32 events_per_second = average * samples_per_second;
-        f32 MB_per_second = events_per_second * event_in_MB;
- 
-        ImGui::Text("Avg: %f", average);
-        ImGui::Text("Samples/s: %f", samples_per_second);
-        ImGui::Text("Events/s: %f", events_per_second);
-        ImGui::Text("MB/s: %f", MB_per_second);
-        ImGui::PlotLines("Server", sampler->samples, SAMPLER_SIZE, 0, NULL, FLT_MAX, FLT_MAX, ImVec2(0, 60));
-    }
-
-    ImGui::End();
-
-    ImGui::Begin("Tools");
-
-    ImGui::SeparatorText("Level");
-
-    if (ImGui::Button("New")) {
-        ED()->selected_entity = NULL;
-        clear_level(state);
-    }
-
-    ImGui::SameLine();
-
-    if (ImGui::Button("Save")) {
-        serialise_level(state);
-    }
-
-    ImGui::SameLine();
-
-    if (ImGui::Button("Load")) {
-        ED()->selected_entity = NULL;
-        deserialise_level(state);
-    }
-
-    ImGui::SeparatorText("Entities");
-
-    if (ImGui::Button("Create empty")) {
-        Entity entity = Entity {
-            .id = new_entity_id(),
-            .owner = LEVEL_INSTANCE_ID,
-            .size = v3{1, 1, 1},
-            .colour = WHITE,
-            .model = MT_CUBE
-        };
-
-        ED()->selected_entity = local_spawn_entity(state, entity);
-    }
-
-    if (ED()->selected_entity) {
-
-        ImGui::SeparatorText("Selected Entity");
-
-        Entity *entity = ED()->selected_entity;
-        ImGui::Text("flags: %llu", entity->flags);
-        ImGui::Text("id: %u", entity->id);
-        ImGui::Text("owner: %u", entity->owner);
-        imgui_v3_control("position", &entity->position);
-        imgui_v3_control("size", &entity->size);
-        imgui_v3_control("rotation", &entity->rotation);
-        imgui_v3_control("velocity", &entity->velocity);
-        imgui_v4_control("colour", &entity->colour);
-        ImGui::Text("model: %u", (u32) entity->model);
-
-        //  bool ImGui::SliderFloat3(const char* label, float v[3], float v_min, float v_max, const char* format, ImGuiSliderFlags flags)
-    }
-
-    for (i64 i = 0; i < state->entities.len; i++) {
-        Entity *entity = &state->entities[i];
-
-        ImGui::PushID(i);
-
-        bool is_selected = ED()->selected_entity == entity;
-        const char *format = is_selected ? "-> {}" : "{}";
-        const char *label = fmt(&state->arena, format, entity->id).c();
-
-        if (ImGui::Button(label, ImVec2(200, 20))) {
-            ED()->selected_entity = entity;
+    {
+        ImGui::Begin("Network");
+    
+        if (ImGui::Button("Host")) {
+            clear_level(state);
+            start_as_host();
         }
 
         ImGui::SameLine();
-        if (ImGui::Button("O")) {
-            ED()->camera.position = entity->position;
+    
+        if (ImGui::Button("Connect")) {
+            clear_level(state);
+            connect_as_client();
+        }
+    
+        ImGui::SeparatorText("Events");
+
+        f32 event_in_MB = f32(sizeof(Event)) / (8.0f * 1024.0f);
+     
+        { // client events sampler info
+            f32 average = sampler_average(&state->network_in_sampler);
+            f32 samples_per_second = sampler_samples_per_second(&state->network_in_sampler);
+            f32 events_per_second = average * samples_per_second;
+            f32 MB_per_second = events_per_second * event_in_MB;
+     
+            ImGui::Text("Avg: %f", average);
+            ImGui::Text("Samples/s: %f", samples_per_second);
+            ImGui::Text("Events/s: %f", events_per_second);
+            ImGui::Text("MB/s: %f", MB_per_second);
+            ImGui::PlotLines("Client", state->network_in_sampler.samples, SAMPLER_SIZE, 0, NULL, FLT_MAX, FLT_MAX, ImVec2(0, 60));
+        }
+     
+        if (g_game_server != NULL) { // client events sampler info
+            Sampler *sampler = atomic_snapshot_read(&server_events_snapshot);
+            f32 average = sampler_average(sampler);
+            f32 samples_per_second = sampler_samples_per_second(sampler);
+            f32 events_per_second = average * samples_per_second;
+            f32 MB_per_second = events_per_second * event_in_MB;
+     
+            ImGui::Text("Avg: %f", average);
+            ImGui::Text("Samples/s: %f", samples_per_second);
+            ImGui::Text("Events/s: %f", events_per_second);
+            ImGui::Text("MB/s: %f", MB_per_second);
+            ImGui::PlotLines("Server", sampler->samples, SAMPLER_SIZE, 0, NULL, FLT_MAX, FLT_MAX, ImVec2(0, 60));
         }
 
-        if (is_selected) {
-            ImGui::SameLine();
-            if (ImGui::Button("X")) {
-                ED()->selected_entity = NULL;
-            }
-        }
-
-        ImGui::PopID();
+        ImGui::End();
     }
+
+    {
+        ImGui::Begin("Tools");
+    
+        ImGui::SeparatorText("Level");
+    
+        if (ImGui::Button("New")) {
+            ED()->selected_entity = NULL;
+            clear_level(state);
+        }
+    
+        ImGui::SameLine();
+    
+        if (ImGui::Button("Save")) {
+            serialise_level(state);
+        }
+    
+        ImGui::SameLine();
+    
+        if (ImGui::Button("Load")) {
+            ED()->selected_entity = NULL;
+            deserialise_level(state);
+        }
+    
+        ImGui::SeparatorText("Entities");
+    
+        if (ImGui::Button("Create empty")) {
+            Entity entity = Entity {
+                .id = new_entity_id(),
+                .owner = LEVEL_INSTANCE_ID,
+                .size = v3{1, 1, 1},
+                .colour = WHITE,
+                .model = MT_CUBE
+            };
+    
+            ED()->selected_entity = local_spawn_entity(state, entity);
+        }
+    
+        if (ED()->selected_entity) {
+    
+            ImGui::SeparatorText("Selected Entity");
+    
+            Entity *entity = ED()->selected_entity;
+            ImGui::Text("flags: %llu", entity->flags);
+            ImGui::Text("id: %u", entity->id);
+            ImGui::Text("owner: %u", entity->owner);
+            imgui_v3_control("position", &entity->position);
+            imgui_v3_control("size", &entity->size);
+            imgui_v3_control("rotation", &entity->rotation);
+            imgui_v3_control("velocity", &entity->velocity);
+            ImGui::Text("model: %u", (u32) entity->model);
+            ImGui::Text("colour: ");
+            ImGui::SameLine();
+            ImGui::ColorEdit4("##colour", &entity->colour[0], ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
+    
+            //  bool ImGui::SliderFloat3(const char* label, float v[3], float v_min, float v_max, const char* format, ImGuiSliderFlags flags)
+        }
+    
+        for (i64 i = 0; i < state->entities.len; i++) {
+            Entity *entity = &state->entities[i];
+    
+            ImGui::PushID(i);
+    
+            bool is_selected = ED()->selected_entity == entity;
+            const char *format = is_selected ? "-> {}" : "{}";
+            const char *label = fmt(&state->arena, format, entity->id).c();
+    
+            if (ImGui::Button(label, ImVec2(200, 20))) {
+                ED()->selected_entity = entity;
+            }
+    
+            ImGui::SameLine();
+            if (ImGui::Button("O")) {
+                ED()->camera.position = entity->position;
+            }
+    
+            if (is_selected) {
+                ImGui::SameLine();
+                if (ImGui::Button("X")) {
+                    ED()->selected_entity = NULL;
+                }
+            }
+    
+            ImGui::PopID();
+        }
         
-    ImGui::End();
+        ImGui::End();
+    }
+
+    GC()->viewport = imgui_viewport("Game", GC()->lighting_buffer.position_attachment);
+    ED()->viewport = imgui_viewport("Editor", ED()->lighting_buffer.position_attachment);
 }
 
 void physics(State *state, f32 delta_time) {
@@ -1232,6 +1204,12 @@ CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size)
 }
 
 Viewport imgui_viewport(const char *label, u32 texture_id) {
+    // https://www.youtube.com/watch?v=Qbt-1rcSqZc&list=PLlrATfBNZ98dC-V-N3m0Go4deliWHPFwT&index=72&ab_channel=TheCherno
+    // Mainly adapted from this video ^
+    // He uses a differant size which is from the min and max bounds
+    // for the panel but for me just using the region avail worked better
+    // - 14/08/25
+
     Viewport viewport = {};
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
@@ -1241,30 +1219,35 @@ Viewport imgui_viewport(const char *label, u32 texture_id) {
     // cursor should be the top left of the viewport, cursor in this context is
     // the location imgui is going to draw UI next. Not the mouse
     // - 14/08/25
+    //
+    // get viewport size
     ImVec2 tab_bar_offset = ImGui::GetCursorPos();
-
     ImVec2 im_viewport_size = ImGui::GetContentRegionAvail();
     ImGui::Image(texture_id, im_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
+
     viewport.size = v2i {i32(im_viewport_size.x), i32(im_viewport_size.y)};
 
-    { // get viewport mouse info
-        ImVec2 window_size = ImGui::GetWindowSize();
-        ImVec2 min_bound = ImGui::GetWindowPos();
-        min_bound.x += tab_bar_offset.x;
-        min_bound.y += tab_bar_offset.y;
+    // get viewport mouse position
+    ImVec2 window_size = ImGui::GetWindowSize();
+    ImVec2 min_bound = ImGui::GetWindowPos();
+    min_bound.x += tab_bar_offset.x;
+    min_bound.y += tab_bar_offset.y;
     
-        ImVec2 max_bound = ImVec2{min_bound.x + window_size.x, min_bound.y + window_size.y};
+    ImVec2 max_bound = ImVec2{min_bound.x + window_size.x, min_bound.y + window_size.y};
+  
+    // other way to get the size
+    // v2 viewport_size_alt = v2{max_bound.x, max_bound.y} - v2{min_bound.x, min_bound.y};
+    // viewport.size_alt = v2i{i32(viewport_size_alt.x), i32(viewport_size_alt.y)};
     
-        v2 viewport_size_alt = v2{max_bound.x, max_bound.y} - v2{min_bound.x, min_bound.y};
-        viewport.size_alt = v2i{i32(viewport_size_alt.x), i32(viewport_size_alt.y)};
-    
-        auto[mouse_x, mouse_y] = ImGui::GetMousePos();
-        mouse_x -= min_bound.x;
-        mouse_y -= min_bound.y;
+    auto[mouse_x, mouse_y] = ImGui::GetMousePos();
+    mouse_x -= min_bound.x;
+    mouse_y -= min_bound.y;
 
-        // convert to bottom left origin from top right origin
-        viewport.mouse = v2{mouse_x, (-mouse_y) + im_viewport_size.y};
-    }
+    // convert to bottom left origin from top right origin
+    viewport.mouse = v2{mouse_x, (-mouse_y) + im_viewport_size.y};
+
+    // get viewport focused 
+    viewport.focused = ImGui::IsWindowFocused();
 
     ImGui::End();
     ImGui::PopStyleVar();
