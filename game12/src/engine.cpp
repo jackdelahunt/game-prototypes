@@ -851,10 +851,10 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         .sun_colour = sun_colour,
         .sun_position = sun_position,
         .shadow_colour = shadow_colour,
-        .meshes = new_fixed_array<Mesh>(MAX_MESHES),
-        .models = new_fixed_array<Model>(MAX_MODELS),
-        .quads = new_fixed_array<Quad>(MAX_QUADS),
-        .commands = new_fixed_array<RenderCommand>(MAX_RENDER_COMMANDS),
+        .meshes = fixed_array_create<Mesh>(MAX_MESHES),
+        .models = fixed_array_create<Model>(MAX_MODELS),
+        .quads = fixed_array_create<Quad>(MAX_QUADS),
+        .commands = fixed_array_create<RenderCommand>(MAX_RENDER_COMMANDS),
         .textures = stack_array_create<Texture, MAX_TEXTURES>(),
     };
 

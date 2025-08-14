@@ -16,6 +16,28 @@
 #define UNSET_BIT(a, b) (a) &= ~(b) 
 #define SCOPE }switch(0){default:
 
+#define RESET_ASCII_CODE         "\033[0m"
+
+// Regular colors
+#define BLACK_ASCII_CODE         "\033[30m"
+#define RED_ASCII_CODE           "\033[31m"
+#define GREEN_ASCII_CODE         "\033[32m"
+#define YELLOW_ASCII_CODE        "\033[33m"
+#define BLUE_ASCII_CODE          "\033[34m"
+#define MAGENTA_ASCII_CODE       "\033[35m"
+#define CYAN_ASCII_CODE          "\033[36m"
+#define WHITE_ASCII_CODE         "\033[37m"
+
+// Bright colors
+#define BRIGHT_BLACK_ASCII_CODE  "\033[90m"
+#define BRIGHT_RED_ASCII_CODE    "\033[91m"
+#define BRIGHT_GREEN_ASCII_CODE  "\033[92m"
+#define BRIGHT_YELLOW_ASCII_CODE "\033[93m"
+#define BRIGHT_BLUE_ASCII_CODE   "\033[94m"
+#define BRIGHT_MAGENTA_ASCII_CODE "\033[95m"
+#define BRIGHT_CYAN_ASCII_CODE   "\033[96m"
+#define BRIGHT_WHITE_ASCII_CODE  "\033[97m"
+
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -84,6 +106,176 @@ struct Slice { // TODO: do safety checks in slices
 
 typedef Slice<u8> str;
 
+// @fixedarray
+template <typename T>
+struct FixedArray {
+    Slice<T> slice;
+    i64 len;
+
+    T& operator[](i64 index) {
+        return this->slice[index];
+    }
+
+    T* begin() {
+        return &slice[0];
+    }
+
+    T* end() {
+        return &slice[len];
+    }
+};
+
+// @stackarray
+template <typename T, i64 N>
+struct StackArray {
+    T data[N];
+    i64 size = N;
+    i64 len;
+
+    T& operator[](i64 index) {
+        return this->data[index];
+    }
+
+    T* begin() {
+        return data;
+    }
+
+    T* end() {
+        return data + len;
+    }
+};
+
+// @arena
+struct Arena {
+    i64 end;
+    Slice<u8> bytes;
+};
+
+// @dynamicarray
+template <typename T>
+struct DynamicArray {
+    Arena *arena;
+    Slice<T> slice;
+    i64 len;
+    i64 capacity;
+
+    T& operator[](i64 index) {
+        return this->slice[index];
+    }
+
+    T* begin() {
+        return &slice[0];
+    }
+
+    T* end() {
+        return &slice[len];
+    }
+};
+
+struct LogOptions {
+    const char *thread_name;
+    const char *thread_colour;
+};
+
+// @timer
+struct Timer {
+    std::chrono::steady_clock::time_point start_time;
+    std::chrono::milliseconds time_limit; 
+};
+
+// @sampler
+#define SAMPLER_SIZE 100
+struct Sampler {
+    f32         samples[SAMPLER_SIZE];
+    TimePoint   times[SAMPLER_SIZE];
+};
+
+// @atomicsnapshot
+template <typename T>
+struct AtomicSnapshot {
+    T buffers[2];
+    std::atomic<T*> read_ptr;
+    T* write_ptr;
+};
+
+// @file
+struct File {
+    str path;
+    FILE *handle;
+};
+
+template <typename T>   Slice<T> slice_create(T *data, i64 len);
+template <typename T>   Slice<T> slice_create_malloc(i64 len);
+template <typename T>   void slice_free(Slice<T> slice);
+template <typename T>   Slice<u8> slice_to_bytes(Slice<T> slice);
+template <typename T>   Slice<T> slice_from_bytes(Slice<u8> slice);
+template <typename T>   T *bytes_to_ptr(Slice<u8> slice);
+template <typename T>   Slice<u8> bytes_from_ptr(T *ptr);
+template <typename T>   void slice_copy(Slice<T> dst, Slice<T> src);
+template <typename T>   void slice_copy_raw_ptr(Slice<T> slice, void *ptr);
+
+template <typename T>   FixedArray<T> fixed_array_create(i64 size);
+template <typename T>   void append(FixedArray<T> *array, T value);
+template <typename T>   T* push(FixedArray<T> *array);
+template <typename T>   void reset(FixedArray<T> *array);
+template <typename T>   void swap_remove(FixedArray<T> *array, i64 index);
+
+template <typename T, i64 N>    StackArray<T, N> stack_array_create();
+template <typename T, i64 N>    void append(StackArray<T, N> *array, T value);
+template <typename T, i64 N>    T* push(StackArray<T, N> *array);
+template <typename T, i64 N>    void reset(StackArray<T, N> *array);
+template <typename T, i64 N>    void swap_remove(StackArray<T, N> *array, i64 index);
+
+Arena arena_create(i64 size);
+void arena_destroy(Arena *arena);
+void arena_reset(Arena *arena);
+template <typename T>   T *arena_alloc(Arena *arena);
+template <typename T>   Slice<T> arena_alloc_many(Arena *arena, i64 size);
+template <typename T>   Slice<T> arena_realloc(Arena *arena, Slice<T> old_slice, i64 new_size);
+template <typename T>   DynamicArray<T> dynamic_array_create(Arena *arena, i64 capacity); 
+template <typename T>   void dynamic_array_maybe_grow(DynamicArray<T> *array, i64 required_slots); 
+template <typename T>   void append(DynamicArray<T> *array, T value); 
+template <typename T>   void append_many(DynamicArray<T> *array, Slice<T> values); 
+template <typename T>   Slice<T> push_many(DynamicArray<T> *array, i64 count); 
+
+template<typename T>        void fmt_value(DynamicArray<u8> *bytes, T value);
+template<typename... Args>  str fmt(Arena *arena, str format, Args... args);
+template<typename T>        void fmt_arg(DynamicArray<u8> *bytes, str format, i64 &index, T arg); 
+template<>                  void fmt_value(DynamicArray<u8> *bytes, bool value);
+
+void logln(str s);
+void log_set_thread_options(LogOptions options);
+void log_thread_name();
+template<typename... Args>  void logln_fmt(Arena *arena, str format, Args... args);
+
+Timer timer_create_ms(i64 milliseconds); 
+bool timer_is_complete_reset(Timer *timer); 
+bool timer_is_complete(Timer *timer, f32 *delta_time); 
+
+Sampler sampler_create(); 
+void sampler_append(Sampler *sampler, f32 sample); 
+f32 sampler_average(Sampler *sampler); 
+f32 sampler_seconds_per_sample(Sampler *sampler); 
+f32 sampler_samples_per_second(Sampler *sampler); 
+
+template <typename T>   void atomic_snapshot_init(AtomicSnapshot<T> *snapshot); 
+template <typename T>   T *atomic_snapshot_write(AtomicSnapshot<T> *snapshot); 
+template <typename T>   T *atomic_snapshot_read(AtomicSnapshot<T> *snapshot); 
+template <typename T>   void atomic_snapshot_swap(AtomicSnapshot<T> *snapshot);
+
+f32 rand_f32();
+f32 rand_f32_negative();
+i64 rand_i64();
+
+str read_entire_file(str path);
+File new_file(str path); 
+bool create_file(File *file); 
+Slice<u8> read_entire_file(File *file); 
+bool write_file(File *file, Slice<u8> bytes); 
+void close_file(File *file); 
+str read_entire_file(str path); 
+
+// !!!!!!!!!!!!!!!!!!!!!!!!!
 template <typename T>
 Slice<T> slice_create(T *data, i64 len) {
     return Slice<T>(data, len);
@@ -149,27 +341,8 @@ void slice_copy_raw_ptr(Slice<T> slice, void *ptr) {
     }
 }
 
-// @fixedarray
 template <typename T>
-struct FixedArray {
-    Slice<T> slice;
-    i64 len;
-
-    T& operator[](i64 index) {
-        return this->slice[index];
-    }
-
-    T* begin() {
-        return &slice[0];
-    }
-
-    T* end() {
-        return &slice[len];
-    }
-};
-
-template <typename T>
-FixedArray<T> new_fixed_array(i64 size) {
+FixedArray<T> fixed_array_create(i64 size) {
     return FixedArray<T> {
         .slice = slice_create_malloc<T>(size),
         .len = 0
@@ -205,26 +378,6 @@ void swap_remove(FixedArray<T> *array, i64 index) {
     array->slice[index] = array->slice[array->len - 1];
     array->len -= 1;
 }
-
-// @stackarray
-template <typename T, i64 N>
-struct StackArray {
-    T data[N];
-    i64 size = N;
-    i64 len;
-
-    T& operator[](i64 index) {
-        return this->data[index];
-    }
-
-    T* begin() {
-        return data;
-    }
-
-    T* end() {
-        return data + len;
-    }
-};
 
 template <typename T, i64 N>
 StackArray<T, N> stack_array_create() {
@@ -269,12 +422,6 @@ void swap_remove(StackArray<T, N> *array, i64 index) {
     array->data[index] = array->data[array->len - 1];
     array->len -= 1;
 }
-
-// @arena
-struct Arena {
-    i64 end;
-    Slice<u8> bytes;
-};
 
 Arena arena_create(i64 size) {
     return Arena {
@@ -325,27 +472,6 @@ Slice<T> arena_realloc(Arena *arena, Slice<T> old_slice, i64 new_size) {
     slice_copy(new_slice, old_slice);
     return new_slice;
 }
-
-// @dynamicarray
-template <typename T>
-struct DynamicArray {
-    Arena *arena;
-    Slice<T> slice;
-    i64 len;
-    i64 capacity;
-
-    T& operator[](i64 index) {
-        return this->slice[index];
-    }
-
-    T* begin() {
-        return &slice[0];
-    }
-
-    T* end() {
-        return &slice[len];
-    }
-};
 
 template <typename T>
 DynamicArray<T> dynamic_array_create(Arena *arena, i64 capacity) {
@@ -436,33 +562,6 @@ FMT_VALUE_IMPL_PRIMITIVE(u8, "%hhu")
 FMT_VALUE_IMPL_PRIMITIVE(f32, "%f")
 FMT_VALUE_IMPL_PRIMITIVE(f64, "%f")
 
-template<>
-void fmt_value(DynamicArray<u8> *bytes, bool value) {
-    if (value) {
-        append_many<u8>(bytes, "true");
-    }
-    else {
-        append_many<u8>(bytes, "false");
-    }
-}
-
-template<typename T>
-void fmt_arg(DynamicArray<u8> *bytes, str format, i64 &index, T arg) {
-    while(index < format.len) {
-        u8 byte = format[index];
-
-        if (byte == '{' && index + 1 < format.len && format[index + 1] == '}') {
-            fmt_value(bytes, arg);
-            index += 2;
-            break;
-        }
-        else {
-            append(bytes, byte);
-            index++;
-        }
-    }
-}
-
 template<typename... Args>
 str fmt(Arena *arena, str format, Args... args) {
     i64 index = 0;
@@ -483,46 +582,35 @@ str fmt(Arena *arena, str format, Args... args) {
     return bytes.slice.slice(0, bytes.len);
 }
 
-struct LogOptions {
-    const char *thread_name;
-    const char *thread_colour;
-};
+template<typename T>
+void fmt_arg(DynamicArray<u8> *bytes, str format, i64 &index, T arg) {
+    while(index < format.len) {
+        u8 byte = format[index];
 
-void logln(str s);
-template<typename... Args>
-void logln_fmt(Arena *arena, str format, Args... args);
-void log_set_thread_options(LogOptions options);
-void log_thread_name();
+        if (byte == '{' && index + 1 < format.len && format[index + 1] == '}') {
+            fmt_value(bytes, arg);
+            index += 2;
+            break;
+        }
+        else {
+            append(bytes, byte);
+            index++;
+        }
+    }
+}
 
-f32 rand_f32();
-f32 rand_f32_negative();
-i64 rand_i64();
-str read_entire_file(str path);
+template<>
+void fmt_value(DynamicArray<u8> *bytes, bool value) {
+    if (value) {
+        append_many<u8>(bytes, "true");
+    }
+    else {
+        append_many<u8>(bytes, "false");
+    }
+}
 
 // @log
-#define RESET_ASCII_CODE         "\033[0m"
-
-// Regular colors
-#define BLACK_ASCII_CODE         "\033[30m"
-#define RED_ASCII_CODE           "\033[31m"
-#define GREEN_ASCII_CODE         "\033[32m"
-#define YELLOW_ASCII_CODE        "\033[33m"
-#define BLUE_ASCII_CODE          "\033[34m"
-#define MAGENTA_ASCII_CODE       "\033[35m"
-#define CYAN_ASCII_CODE          "\033[36m"
-#define WHITE_ASCII_CODE         "\033[37m"
-
-// Bright colors
-#define BRIGHT_BLACK_ASCII_CODE  "\033[90m"
-#define BRIGHT_RED_ASCII_CODE    "\033[91m"
-#define BRIGHT_GREEN_ASCII_CODE  "\033[92m"
-#define BRIGHT_YELLOW_ASCII_CODE "\033[93m"
-#define BRIGHT_BLUE_ASCII_CODE   "\033[94m"
-#define BRIGHT_MAGENTA_ASCII_CODE "\033[95m"
-#define BRIGHT_CYAN_ASCII_CODE   "\033[96m"
-#define BRIGHT_WHITE_ASCII_CODE  "\033[97m"
-
-thread_local LogOptions _options = LogOptions {
+thread_local LogOptions tl_options = LogOptions {
     .thread_name = NULL,
     .thread_colour = NULL,
 };
@@ -532,8 +620,8 @@ std::mutex log_mutex;
 void logln(str s) {
     log_mutex.lock();
 
-    if (_options.thread_colour != NULL) {
-        printf("%s", _options.thread_colour);
+    if (tl_options.thread_colour != NULL) {
+        printf("%s", tl_options.thread_colour);
     }
 
     log_thread_name();
@@ -546,31 +634,25 @@ void logln(str s) {
     log_mutex.unlock();
 }
 
-template<typename... Args>
-void logln_fmt(Arena *arena, str format, Args... args) {
-    str s = fmt(arena, format, args...);
-    logln(s);
-}
-
 void log_set_thread_options(LogOptions options) {
-    _options = options;
+    tl_options = options;
 }
 
 void log_thread_name() {
     const char *name = "?";
 
-    if (_options.thread_name != NULL) {
-        name = _options.thread_name;
+    if (tl_options.thread_name != NULL) {
+        name = tl_options.thread_name;
     }
 
     printf("[%s] ", name); 
 }
 
-// @timer
-struct Timer {
-    std::chrono::steady_clock::time_point start_time;
-    std::chrono::milliseconds time_limit; 
-};
+template<typename... Args>
+void logln_fmt(Arena *arena, str format, Args... args) {
+    str s = fmt(arena, format, args...);
+    logln(s);
+}
 
 Timer timer_create_ms(i64 milliseconds) {
     return Timer {
@@ -604,13 +686,6 @@ bool timer_is_complete(Timer *timer, f32 *delta_time) {
     *delta_time = 0;
     return false;
 }
-
-#define SAMPLER_SIZE 100
-
-struct Sampler {
-    f32         samples[SAMPLER_SIZE];
-    TimePoint   times[SAMPLER_SIZE];
-};
 
 Sampler sampler_create() {
     return Sampler {};
@@ -653,34 +728,27 @@ f32 sampler_samples_per_second(Sampler *sampler) {
 }
 
 template <typename T>
-struct AtomicSnapshot {
-    T buffers[2];
-    std::atomic<T*> read_ptr;
-    T* write_ptr;
-};
-
-template <typename T>
-void atomic_snapshot_init(AtomicSnapshot<T> *double_buffer) {
-    double_buffer->buffers[0] = T{};
-    double_buffer->buffers[1] = T{};
-    double_buffer->read_ptr.store(&double_buffer->buffers[0], std::memory_order_relaxed);
-    double_buffer->write_ptr = &double_buffer->buffers[1];
+void atomic_snapshot_init(AtomicSnapshot<T> *snapshot) {
+    snapshot->buffers[0] = T{};
+    snapshot->buffers[1] = T{};
+    snapshot->read_ptr.store(&snapshot->buffers[0], std::memory_order_relaxed);
+    snapshot->write_ptr = &snapshot->buffers[1];
 }
 
 template <typename T>
-T *atomic_snapshot_write(AtomicSnapshot<T> *double_buffer) {
-    return double_buffer->write_ptr;
+T *atomic_snapshot_write(AtomicSnapshot<T> *snapshot) {
+    return snapshot->write_ptr;
 }
 
 template <typename T>
-T *atomic_snapshot_read(AtomicSnapshot<T> *double_buffer) {
-    return double_buffer->read_ptr.load(std::memory_order_acquire);
+T *atomic_snapshot_read(AtomicSnapshot<T> *snapshot) {
+    return snapshot->read_ptr.load(std::memory_order_acquire);
 }
 
 template <typename T>
-void atomic_snapshot_swap(AtomicSnapshot<T> *double_buffer) {
-    T* old_read = double_buffer->read_ptr.exchange(double_buffer->write_ptr, std::memory_order_acq_rel);
-    double_buffer->write_ptr = old_read;
+void atomic_snapshot_swap(AtomicSnapshot<T> *snapshot) {
+    T* old_read = snapshot->read_ptr.exchange(snapshot->write_ptr, std::memory_order_acq_rel);
+    snapshot->write_ptr = old_read;
 }
 
 // 0 -> 1
@@ -697,11 +765,6 @@ f32 rand_f32_negative() {
 i64 rand_i64() {
     return (i64) rand();
 }
-
-struct File {
-    str path;
-    FILE *handle;
-};
 
 File new_file(str path) {
     return File {
