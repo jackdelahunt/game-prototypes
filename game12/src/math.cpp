@@ -1168,6 +1168,28 @@ static inline v3 as_floats(v3i A)
     return v3{(f32) A.x, (f32) A.y, (f32) A.z};
 }
 
+// get the largest component of the vector as an index into it:
+// 0 -> x
+// 1 -> y
+// 2 -> z
+static inline i64 max_axis(v3 A) 
+{
+    f32 max = A.x;
+    i64 max_index = 0;
+
+    if (A.y > max) {
+        max = A.y;
+        max_index = 1;
+    }
+
+    if (A.z > max) {
+        max = A.z;
+        max_index = 2;
+    }
+
+    return max_index;
+}
+
 /*
  * SSE stuff
  */

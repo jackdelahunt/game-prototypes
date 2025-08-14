@@ -15,14 +15,16 @@
 #include <queue>
 #include <atomic>
 
-// Total: 26:00
+// Total: 31:00
 // Started: 13:00
 
 #define MAX_ENTITIES 500
 
-f32 PLAYER_ACCELERATION = 12;
-f32 PLAYER_MAX_SPEED =  30;
+f32 PLAYER_MOVE_ACCELERATION = 12;
+f32 PLAYER_JUMP_ACCELERATION = 25;
+f32 PLAYER_MAX_SPEED = 20;
 f32 PLAYER_DRAG = 0.25;
+f32 GRAVITY = 2.1;
 
 #define LEVEL_INSTANCE_ID 0
 #define SERVER_INSTANCE_ID 1
@@ -81,6 +83,9 @@ struct NetworkMessage {
 
 enum EntityFlags {
     EF_PLAYER           = 1 << 0,
+    EF_SPAWN_POINT      = 1 << 1,
+    EF_SOLID_HITBOX     = 1 << 2,
+    EF_STATIC_HITBOX    = 1 << 3,
     EF_DELETE           = 1 << 16,
 };
 
@@ -208,6 +213,11 @@ Entity *get_client_player(State *state, u32 client_id);
 Entity *get_entity_with_id(State *state, u32 id);
 Entity *get_entity_with_flag(State *state, EntityFlags flag);
 bool entities_overlap(Entity *a, Entity *b);
+
+Entity *local_spawn_empty(State *state);
+Entity *local_spawn_player(State *state);
+Entity *local_spawn_spawn_point(State *state);
+Entity *local_spawn_static_box(State *state);
 
 void start_as_host();
 void connect_as_client();
@@ -384,7 +394,7 @@ void game_client_entry() {
     };
 
     g_editor = new Editor {
-        .camera = camera_create(CameraMode::FIRST_PERSON, 90, v3{0, 0, 0}, 0.1, 300),
+        .camera = camera_create(CameraMode::FIRST_PERSON, 90, v3{0, 5, -20}, 0.1, 300),
         .viewport =  Viewport {
             .focused = false,
             .size = WIN()->frame_buffer_size
@@ -428,30 +438,31 @@ void game_client_entry() {
     deserialise_level(&GC()->state);
 
     while (!glfwWindowShouldClose(WIN()->glfw_window)) {
-        poll_inputs();
         renderer_start_frame(REN());
 
-        if (KEYS[GLFW_KEY_ESCAPE] == InputState::DOWN) {
-            glfwSetWindowShouldClose(WIN()->glfw_window, GLFW_TRUE);
-        }
+        f32 delta_time = 0;
+        if (timer_is_complete(&tick_timer, &delta_time)) {
+            poll_inputs();
 
-        if (KEYS[GLFW_KEY_F1] == InputState::DOWN) {
-            set_mouse_captured(WIN(), !WIN()->mouse_captured);
-        }
+            if (KEYS[GLFW_KEY_ESCAPE] == InputState::DOWN) {
+                glfwSetWindowShouldClose(WIN()->glfw_window, GLFW_TRUE);
+            }
 
-        if (ED()->viewport.focused) {
-            update_editor(&GC()->state);
-        }
+            if (KEYS[GLFW_KEY_F1] == InputState::DOWN) {
+                set_mouse_captured(WIN(), !WIN()->mouse_captured);
+            }
+
+            if (ED()->viewport.focused) {
+                update_editor(&GC()->state);
+            }
         
-        if (GC()->mode == GC_HOSTED || GC()->mode == GC_CLIENT) {
-            f32 delta_time = 0;
-            if (timer_is_complete(&tick_timer, &delta_time)) {
+            if (GC()->mode == GC_HOSTED || GC()->mode == GC_CLIENT) {
                 process_network(&GC()->state);
-
+    
                 if (GC()->viewport.focused) {
                     poll_user_input(&GC()->state);
                 }
-
+ 
                 update_entities(&GC()->state, delta_time);
             }
         }
@@ -511,14 +522,10 @@ void poll_user_input(State *state) {
         keyboard_input.x += 1;
     }
              
-    if (KEYS[GLFW_KEY_SPACE] == InputState::PRESSED) {
+    if (KEYS[GLFW_KEY_SPACE] == InputState::DOWN) {
         keyboard_input.y += 1;
     }
              
-    if (KEYS[GLFW_KEY_LEFT_SHIFT] == InputState::PRESSED) {
-        keyboard_input.y -= 1;
-    }
-         
     if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
         keyboard_input.z += 1;
     }
@@ -531,6 +538,12 @@ void poll_user_input(State *state) {
         v3 forward = get_forward_direction(&GC()->camera);
         v3 up = {0, 1, 0};
         v3 right = get_right_direction(&GC()->camera);
+
+        forward.y = 0;
+        forward = norm(forward);
+
+        right.y = 0;
+        right = norm(right);
     
         v3 movement = v3{};
         movement += right * keyboard_input.x;
@@ -586,7 +599,7 @@ void update_entities(State *state, f32 delta_time) {
     if (is_client(state)) {
         Entity *player = get_client_player(state, state->instance_id);
         if (player != NULL) {
-            GC()->camera.position = player->position;
+            GC()->camera.position = player->position + v3{0, 0.7, 0};
         }
     }
 }
@@ -720,9 +733,11 @@ void draw_ui(State *state) {
         ImGui::Text("Mouse (NDC): [%4.2f, %4.2f]", mouse_position_ndc.x, mouse_position_ndc.y);
 
         ImGui::SeparatorText("Player");
-        ImGui::InputFloat("Acceleration", &PLAYER_ACCELERATION);
+        ImGui::InputFloat("Move acceleration", &PLAYER_MOVE_ACCELERATION);
+        ImGui::InputFloat("Jump acceleration", &PLAYER_JUMP_ACCELERATION);
         ImGui::InputFloat("Max speed", &PLAYER_MAX_SPEED);
         ImGui::InputFloat("Drag", &PLAYER_DRAG);
+        ImGui::InputFloat("Gravity", &GRAVITY);
 
         ImGui::End();
     }
@@ -800,17 +815,21 @@ void draw_ui(State *state) {
         }
     
         ImGui::SeparatorText("Entities");
-    
-        if (ImGui::Button("Create empty")) {
-            Entity entity = Entity {
-                .id = new_entity_id(),
-                .owner = LEVEL_INSTANCE_ID,
-                .size = v3{1, 1, 1},
-                .colour = WHITE,
-                .model = MT_CUBE
-            };
-    
-            ED()->selected_entity = local_spawn_entity(state, entity);
+
+        if (ImGui::Button("New empty")) {
+            ED()->selected_entity = local_spawn_empty(state);
+        }
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("New spawn point")) {
+            ED()->selected_entity = local_spawn_spawn_point(state);
+        }
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("New static box")) {
+            ED()->selected_entity = local_spawn_static_box(state);
         }
     
         if (ED()->selected_entity) {
@@ -877,23 +896,71 @@ void physics(State *state, f32 delta_time) {
             continue; 
         }
 
-        f32 speed = length(entity.velocity);
+        v3 h_velocity = v3{entity.velocity.x, 0, entity.velocity.z};
+        f32 h_speed = length(h_velocity);
 
-        if (speed < 0.01f) {
-            entity.velocity = v3 {};
-            continue;
+        //  cap velocity
+        if (length(h_velocity) > PLAYER_MAX_SPEED) {
+            v3 max_h_velocity = norm(h_velocity) * PLAYER_MAX_SPEED;
+
+            entity.velocity.x = max_h_velocity.x;
+            entity.velocity.z = max_h_velocity.z;
         }
 
-        if (speed > PLAYER_MAX_SPEED) {
-            entity.velocity = norm(entity.velocity) * PLAYER_MAX_SPEED;
-        }
-
-        if (speed > 0) {
-            v3 drag = -entity.velocity * PLAYER_DRAG;
+        //  apply drag to velocity
+        if (h_speed > 0) {
+            v3 drag = -h_velocity * PLAYER_DRAG;
             entity.velocity += drag;
         }
 
+        entity.velocity += v3{0, -GRAVITY, 0};
         entity.position += entity.velocity * delta_time;
+
+        for (Entity &other : state->entities) {
+            if (&entity == &other) {
+                continue;
+            }
+
+            if (!BIT_SET(other.flags, EF_STATIC_HITBOX)) {
+                continue;
+            }
+
+            auto [collided, overlap, distance] = cube_collision(entity.position, entity.size, other.position, other.size);
+            if (!collided) {
+                continue;
+            }
+
+            if (overlap.x < overlap.y && overlap.x < overlap.z) {
+                entity.position.x -= sign(distance.x) * overlap.x;
+                entity.velocity.x = 0;
+            } 
+            else if (overlap.y < overlap.x && overlap.y < overlap.z) {
+                entity.position.y -= sign(distance.y) * overlap.y;
+                entity.velocity.y = 0;
+            } 
+            else if (overlap.z < overlap.x && overlap.z < overlap.y) {
+                entity.position.z -= sign(distance.z) * overlap.z;
+                entity.velocity.z = 0;
+            }
+        }
+
+#if 0
+            i64 max = max_axis(overlap);
+            ASSERT(max >= 0 && max <= 2);
+
+            if (max == 0) {
+                entity.position.x -= sign(distance.x) * overlap.x;
+                entity.velocity.x = 0;
+            } 
+            else if (max == 1) {
+                entity.position.y -= sign(distance.y) * overlap.y;
+                entity.velocity.y = 0;
+            } 
+            else {
+                entity.position.z -= sign(distance.z) * overlap.z;
+                entity.velocity.z = 0;
+            }
+#endif
     }
 }
 
@@ -952,21 +1019,20 @@ void on_server_receive(State *state, NetworkMessage *message) {
             }
 
             { // spawn new player entity on all clients
+                v3 spawn_position = {};
 
-                Entity new_player = Entity {
-                    .flags = EF_PLAYER,
-                    .id = new_entity_id(),
-                    .owner = connection_id,
-                    .position = v3{0, 5, 0},
-                    .size = v3{1, 1, 1},
-                    .colour = v4{1, 0, 0, 1},
-                    .model = MT_CUBE 
-                };
+                Entity *spawn_point = get_entity_with_flag(state, EF_SPAWN_POINT);
+                if (spawn_point) {
+                    spawn_position = spawn_point->position;
+                }
 
-                logln_fmt(&state->arena, "Spawning new player entity: entity_id={}, owner={} x={} y={} z={}", new_player.id, new_player.owner, new_player.position.x, new_player.position.y, new_player.position.z);
-                local_spawn_entity(state, new_player);
+                Entity *new_player = local_spawn_player(state);
+                new_player->position = spawn_position;
+                new_player->owner = connection_id;
 
-                NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = new_player};
+                logln_fmt(&state->arena, "Spawning new player entity: entity_id={}, owner={} position={}", new_player->id, new_player->owner, new_player->position);
+
+                NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = *new_player};
                 server_send_to_all_clients(NET(), bytes_from_ptr(&message));
             }
         } break;
@@ -993,7 +1059,10 @@ void on_server_receive(State *state, NetworkMessage *message) {
                 return;
             }
 
-            player->velocity += message->move_player * PLAYER_ACCELERATION;
+            player->velocity.x += message->move_player.x * PLAYER_MOVE_ACCELERATION;
+            player->velocity.z += message->move_player.z * PLAYER_MOVE_ACCELERATION;
+
+            player->velocity.y += message->move_player.y * PLAYER_JUMP_ACCELERATION;
         } break;
         default: {
             logln("WARNING unknown message sent");
@@ -1106,6 +1175,57 @@ bool entities_overlap(Entity *a, Entity *b) {
     bool overlapY = (a_min_y < b_max_y) && (a_max_y > b_min_y);
 
     return overlapX && overlapY;
+}
+
+Entity *local_spawn_empty(State *state) {
+    Entity entity = Entity {
+        .id = new_entity_id(),
+        .owner = LEVEL_INSTANCE_ID,
+        .size = v3{1, 1, 1},
+        .colour = v4{1, 1, 1, 1},
+        .model = MT_CUBE 
+    };
+
+    return local_spawn_entity(state, entity);
+}
+
+Entity *local_spawn_player(State *state) {
+    Entity entity = Entity {
+        .flags = EF_PLAYER | EF_SOLID_HITBOX,
+        .id = new_entity_id(),
+        .owner = LEVEL_INSTANCE_ID,
+        .size = v3{1, 2, 1},
+        .colour = v4{1, 0, 0, 1},
+        .model = MT_CUBE 
+    };
+
+    return local_spawn_entity(state, entity);
+}
+
+Entity *local_spawn_spawn_point(State *state) {
+    Entity entity = Entity {
+        .flags = EF_SPAWN_POINT,
+        .id = new_entity_id(),
+        .owner = LEVEL_INSTANCE_ID,
+        .size = v3{1, 1, 1} * 0.3,
+        .colour = HOT_PINK,
+        .model = MT_CUBE
+    };
+
+    return local_spawn_entity(state, entity);
+}
+
+Entity *local_spawn_static_box(State *state) {
+    Entity entity = Entity {
+        .flags = EF_STATIC_HITBOX,
+        .id = new_entity_id(),
+        .owner = LEVEL_INSTANCE_ID,
+        .size = v3{1, 1, 1},
+        .colour = v4{1, 1, 1, 1},
+        .model = MT_CUBE 
+    };
+
+    return local_spawn_entity(state, entity);
 }
 
 void start_as_host() {

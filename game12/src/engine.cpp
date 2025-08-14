@@ -433,6 +433,7 @@ v4 BLUE             = {0, 0, 1, 1};
 v4 ORANGE           = {1, 0.64, 0.1, 1};
 v4 CORNFLOUR_BLUE   = {0.35, 0.80, 0.80, 1};
 v4 SUN_YELLOW       = {0.9, 0.9, 0.3, 1};
+v4 HOT_PINK         = {1, 0, 0.8, 1};
 
 // Camera API
 Camera camera_create(CameraMode mode, f32 fov, v3 position, f32 near_plane, f32 far_plane);
