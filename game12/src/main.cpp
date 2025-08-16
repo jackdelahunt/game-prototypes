@@ -14,9 +14,10 @@
 #include <chrono>
 #include <queue>
 #include <atomic>
+#include <iostream>
 
-// Total: 33:00
-// Started: 21:00
+// Total: 37:30
+// Started: 11:30
 
 #define MAX_ENTITIES 500
 
@@ -25,6 +26,7 @@ f32 PLAYER_JUMP_ACCELERATION = 25;
 f32 PLAYER_MAX_SPEED = 20;
 f32 PLAYER_DRAG = 0.25;
 f32 GRAVITY = 2.1;
+v3 WEAPON_DISPLAY_OFFSET = v3{0.5, 0, 1};
 
 #define LEVEL_INSTANCE_ID 0
 #define SERVER_INSTANCE_ID 1
@@ -39,9 +41,23 @@ enum ModelType : u32 {
 Model *g_models[_MT_COUNT];
 
 // @entity
+enum EntityFlag : u32 {
+    EF_PLAYER           = 1 << 0,
+    EF_SPAWN_POINT      = 1 << 1,
+    EF_SOLID_HITBOX     = 1 << 2,
+    EF_STATIC_HITBOX    = 1 << 3,
+    EF_HAS_HEALTH       = 1 << 4,
+    EF_DELETE           = 1 << 16,
+};
+
+template <>
+struct magic_enum::customize::enum_range<EntityFlag> {
+    static constexpr bool is_flags = true;
+};
+
 struct Entity {
     // meta
-    u64 flags;
+    u32 flags;
     u32 id;
 
     // networking
@@ -56,6 +72,10 @@ struct Entity {
     // rendering
     v4 colour;
     ModelType model;
+
+    // flag: health
+    f32 max_health;
+    f32 health;
 };
 
 enum NetworkMessageType {
@@ -65,7 +85,8 @@ enum NetworkMessageType {
     NM_SYNC_ENTITY,
     NM_DELETE_ENTITY,
     NM_MOVE_PLAYER,
-    NM_PLAYER_SHOOT,
+    NM_PLAYER_HIT,
+    NM_SPAWN_TARGET,
 }; 
 
 struct NetworkMessage {
@@ -79,16 +100,9 @@ struct NetworkMessage {
         Entity sync_entity;
         u32 delete_entity;
         v3 move_player;
-        v3 player_shoot;
+        u32 player_hit;
+        v3 spawn_target;
     };
-};
-
-enum EntityFlags {
-    EF_PLAYER           = 1 << 0,
-    EF_SPAWN_POINT      = 1 << 1,
-    EF_SOLID_HITBOX     = 1 << 2,
-    EF_STATIC_HITBOX    = 1 << 3,
-    EF_DELETE           = 1 << 16,
 };
 
 struct RaycastIterator {
@@ -176,13 +190,13 @@ void poll_user_input(State *state);
 void process_network(State *state);
 void sync_clients(State *state);
 
+void game_server_update(State *state, f32 delta_time);
 void game_server_physics(State *state, f32 delta_time);
 
 void game_client_update(State *state, f32 delta_time);
 void game_client_draw(State *state);
 
 void editor_update(State *state);
-void editor_draw(State *state);
 void editor_draw_ui(State *state);
 
 void on_server_receive(State *state, NetworkMessage *message);
@@ -191,17 +205,16 @@ void on_client_receive(State *state, NetworkMessage *message);
 u32 new_entity_id();
 Entity *local_spawn_entity(State *state, Entity entity);
 void server_spawn_entity(Entity entity);
-void local_delete_entity(State *state, u32 id);
-void server_delete_entity(u32 id);
 Entity *get_client_player(State *state, u32 client_id);
 Entity *get_entity_with_id(State *state, u32 id);
-Entity *get_entity_with_flag(State *state, EntityFlags flag);
+Entity *get_entity_with_flag(State *state, EntityFlag flag);
 bool entities_overlap(Entity *a, Entity *b);
 
 Entity *local_spawn_empty(State *state);
 Entity *local_spawn_player(State *state);
 Entity *local_spawn_spawn_point(State *state);
 Entity *local_spawn_static_box(State *state);
+Entity *local_spawn_has_health(State *state);
 
 void start_as_host();
 void connect_as_client();
@@ -216,7 +229,7 @@ Entity *next(RaycastIterator *it, State *state);
 
 CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size);
 
-Viewport imgui_viewport(const char *label, u32 texture_id);
+Viewport imgui_viewport(const char *label, u32 texture_id, bool force_focus);
 void imgui_v3_control(const char *label, v3 *vector);
 void imgui_v4_control(const char *label, v4 *vector);
 
@@ -239,7 +252,7 @@ int main(i32 argc, const char **argv) {
 
     bool ok = network_layer_init();
     if (!ok) {
-        logln("CRASH: failed to strart networking");
+        log("CRASH: failed to strart networking");
         return 1;
     }
 
@@ -300,8 +313,8 @@ void game_server_entry() {
 
     Timer tick_timer = timer_create_ms(GAME_SERVER_MS_PER_TICK);
 
-    logln_fmt(&GS()->state.arena, "Started game server [thread={}]", get_current_thread_id());
-    logln_fmt(&GS()->state.arena, "Server running at {}t/s", i64(1000.0f / f32(GAME_SERVER_MS_PER_TICK)));
+    logf("Started game server [thread={}]", get_current_thread_id());
+    logf("Server running at {}t/s", i64(1000.0f / f32(GAME_SERVER_MS_PER_TICK)));
 
     deserialise_level(&GS()->state);
 
@@ -314,6 +327,7 @@ void game_server_entry() {
         }
 
         process_network(&GS()->state);
+        game_server_update(&GS()->state, delta_time);
         game_server_physics(&GS()->state, delta_time);
         sync_clients(&GS()->state);
 
@@ -326,7 +340,7 @@ void game_server_entry() {
         arena_reset(&GS()->state.arena);
     }
 
-    logln("Game server was given shutdown signal.. stopping");
+    log("Game server was given shutdown signal.. stopping");
 }
 
 // @entrygc @gc
@@ -335,16 +349,20 @@ void game_client_entry() {
         bool ok = false;
 
         ok = window_init("Game12", 1280, 720);
+        ASSERT(ok);
+
         if (!ok) {
-            logln("Failed when trying to init the window");
+            log("Failed when trying to init the window");
+            return;
         }
 
         ok = renderer_init(WIN(), v4{1, 1, 1, 1} * 0.8, v3{0.1, 0.1, 0.1}, v3{0.5, 0.5, 0.5}, v3{50, 100, -100}, v3{-1, -1, 0.5});
-        if (!ok) {
-            logln("Failed when trying to init the renderer");
-        }
+        ASSERT(ok);
 
-        // g_models[MT_CUBE] = load_model(REN(), "resources/models/cuber/cube.obj");
+        if (!ok) {
+            log("Failed when trying to init the renderer");
+            return;
+        }
     }
 
     g_game_client = new GameClient {
@@ -379,33 +397,33 @@ void game_client_entry() {
     { // init editor and client frame buffer
         bool ok = frame_buffer_init(&g_game_client->g_buffer);
         if (!ok) {
-            logln("failed to init game client gBuffer");
+            log("failed to init game client gBuffer");
             return;
         }
 
         ok = frame_buffer_init(&g_game_client->lighting_buffer);
         if (!ok) {
-            logln("failed to init game lighting buffer");
+            log("failed to init game lighting buffer");
             return;
         }
 
         ok = frame_buffer_init(&g_editor->g_buffer);
         if (!ok) {
-            logln("failed to init editor gBuffer");
+            log("failed to init editor gBuffer");
             return;
         }
 
         ok = frame_buffer_init(&g_editor->lighting_buffer);
         if (!ok) {
-            logln("failed to init editor lighting buffer");
+            log("failed to init editor lighting buffer");
             return;
         }
     }
 
     Timer tick_timer = timer_create_ms(GAME_SERVER_MS_PER_TICK);
 
-    logln_fmt(&GC()->state.arena, "Started game client [thread={}]", get_current_thread_id());
-    logln_fmt(&GC()->state.arena, "Client running at {}t/s", i64(1000.0f / f32(GAME_SERVER_MS_PER_TICK)));
+    logf("Started game client [thread={}]", get_current_thread_id());
+    logf("Client running at {}t/s", i64(1000.0f / f32(GAME_SERVER_MS_PER_TICK)));
 
     deserialise_level(&GC()->state);
 
@@ -428,11 +446,6 @@ void game_client_entry() {
         
             if (GC()->mode == GC_HOSTED || GC()->mode == GC_CLIENT) {
                 process_network(&GC()->state);
-    
-                if (GC()->viewport.focused) {
-                    poll_user_input(&GC()->state);
-                }
- 
                 game_client_update(&GC()->state, delta_time);
             }
         }
@@ -441,14 +454,10 @@ void game_client_entry() {
         renderer_start_frame(REN());
 
         game_client_draw(&GC()->state);
+
         renderer_draw_geometry(REN(), &GC()->camera, GC()->viewport, &GC()->g_buffer);
         renderer_draw_lighting(REN(), &GC()->camera, GC()->viewport, &GC()->lighting_buffer, &GC()->g_buffer);
 
-        renderer_end_frame(REN());
-
-        renderer_start_frame(REN());
-
-        editor_draw(&GC()->state);
         renderer_draw_geometry(REN(), &ED()->camera, ED()->viewport, &ED()->g_buffer);
         renderer_draw_lighting(REN(), &ED()->camera, ED()->viewport, &ED()->lighting_buffer, &ED()->g_buffer);
 
@@ -478,66 +487,6 @@ void game_server_stop() {
 void poll_user_input(State *state) {
     ASSERT(is_client(state)); // what is the server doing here?
 
-    if (WIN()->mouse_captured) {
-        v2 mouse_input = MOUSE.delta;
-
-        if (length(mouse_input) > 0) {
-            f32 sensitivity = 0.09;
-
-            GC()->camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
-            GC()->camera.rotation.x = clamp(-90, GC()->camera.rotation.x, 90);
-        }
-    }
-
-
-    if (WIN()->mouse_captured) {
-        if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::DOWN) {
-            NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_PLAYER_SHOOT, .player_shoot = get_forward_direction(&GC()->camera)};
-            client_send_to_server(NET(), bytes_from_ptr(&message));
-        }
-    }
-
-    v3 keyboard_input = {};
- 
-    if (KEYS[GLFW_KEY_A] == InputState::PRESSED) {
-        keyboard_input.x -= 1;
-    }
-         
-    if (KEYS[GLFW_KEY_D] == InputState::PRESSED) {
-        keyboard_input.x += 1;
-    }
-             
-    if (KEYS[GLFW_KEY_SPACE] == InputState::DOWN) {
-        keyboard_input.y += 1;
-    }
-             
-    if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
-        keyboard_input.z += 1;
-    }
-     
-    if (KEYS[GLFW_KEY_S] == InputState::PRESSED) {
-        keyboard_input.z -= 1;
-    }
-
-    if (length(keyboard_input) > 0) {
-        v3 forward = get_forward_direction(&GC()->camera);
-        v3 up = {0, 1, 0};
-        v3 right = get_right_direction(&GC()->camera);
-
-        forward.y = 0;
-        forward = norm(forward);
-
-        right.y = 0;
-        right = norm(right);
-    
-        v3 movement = v3{};
-        movement += right * keyboard_input.x;
-        movement += up * keyboard_input.y;
-        movement += forward * keyboard_input.z;
-             
-        NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_MOVE_PLAYER, .move_player = movement};
-        client_send_to_server(NET(), bytes_from_ptr(&message));
-    }
 }
 
 void process_network(State *state) {
@@ -567,15 +516,41 @@ void process_network(State *state) {
 void sync_clients(State *state) {
     ASSERT(is_server(state));
 
-    for (Entity &entity : state->entities) {
+    i64 index = 0;
+    while (index < state->entities.len) {
+        Entity &entity = state->entities[index];
+
         // entity is static and is created from the level
         // no need to sync with clients
         if (entity.owner == LEVEL_INSTANCE_ID) {
+            index++;
+            continue;
+        }
+
+        if (BIT_SET(state->entities[index].flags, EF_DELETE)) {
+            NetworkMessage message = NetworkMessage{.type = NM_DELETE_ENTITY, .delete_entity = entity.id};
+            server_send_to_all_clients(NET(), bytes_from_ptr(&message));
+
+            swap_remove(&state->entities, index);
             continue;
         }
 
         NetworkMessage message = NetworkMessage{.type = NM_SYNC_ENTITY, .sync_entity = entity};
         server_send_to_all_clients(NET(), bytes_from_ptr(&message));
+
+        index++;
+    }
+}
+
+void game_server_update(State *state, f32 delta_time) {
+    ASSERT(is_server(state));
+
+    for (Entity &entity : state->entities) {
+        if (BIT_SET(entity.flags, EF_HAS_HEALTH)) {
+            if (entity.health <= 0) {
+                SET_BIT(entity.flags, EF_DELETE);
+            }
+        }
     }
 }
 
@@ -643,20 +618,126 @@ void game_client_update(State *state, f32 delta_time) {
     if (player != NULL) {
         GC()->camera.position = player->position + v3{0, 0.7, 0};
     }
+
+    // check player input
+    if (GC()->viewport.focused) {
+        if (KEYS[GLFW_KEY_T] == InputState::DOWN) {
+            NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_SPAWN_TARGET, .spawn_target = {0, 3, 0}};
+            client_send_to_server(NET(), bytes_from_ptr(&message));
+        }
+
+        if (WIN()->mouse_captured) {
+            v2 mouse_input = MOUSE.delta;
+    
+            if (length(mouse_input) > 0) {
+                f32 sensitivity = 0.09;
+    
+                GC()->camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
+                GC()->camera.rotation.x = clamp(-90, GC()->camera.rotation.x, 90);
+            }
+
+            // shooting
+            if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::DOWN) { 
+                Ray ray = ray_create(GC()->camera.position, get_forward_direction(&GC()->camera));
+                draw_line(REN(), ray.origin, ray.direction, 0.08, 0.5, GREEN);
+
+                RaycastIterator it = raycast_iterator_create(ray, GC()->camera.far_plane - GC()->camera.near_plane);
+
+                Entity *hit_entity = NULL;
+                while (true) {
+                    hit_entity = next(&it, state);
+                    if (!hit_entity) {
+                        break;
+                    }
+
+                    if (BIT_SET(hit_entity->flags, EF_PLAYER) && hit_entity->owner == state->instance_id) {
+                        continue; // the player shot temselves
+                    }
+
+                    if (BIT_SET(hit_entity->flags, EF_HAS_HEALTH)) {
+                        break;
+                    }
+                }
+
+                if (hit_entity) {
+                    NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_PLAYER_HIT, .player_hit = hit_entity->id};
+                    client_send_to_server(NET(), bytes_from_ptr(&message));
+                }
+            }
+        }
+
+        v3 keyboard_input = {};
+     
+        if (KEYS[GLFW_KEY_A] == InputState::PRESSED) {
+            keyboard_input.x -= 1;
+        }
+             
+        if (KEYS[GLFW_KEY_D] == InputState::PRESSED) {
+            keyboard_input.x += 1;
+        }
+                 
+        if (KEYS[GLFW_KEY_SPACE] == InputState::DOWN) {
+            keyboard_input.y += 1;
+        }
+                 
+        if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
+            keyboard_input.z += 1;
+        }
+         
+        if (KEYS[GLFW_KEY_S] == InputState::PRESSED) {
+            keyboard_input.z -= 1;
+        }
+
+        if (length(keyboard_input) > 0) {
+            v3 forward = get_forward_direction(&GC()->camera);
+            v3 up = {0, 1, 0};
+            v3 right = get_right_direction(&GC()->camera);
+    
+            forward.y = 0;
+            forward = norm(forward);
+    
+            right.y = 0;
+            right = norm(right);
+        
+            v3 movement = v3{};
+            movement += right * keyboard_input.x;
+            movement += up * keyboard_input.y;
+            movement += forward * keyboard_input.z;
+                 
+            NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_MOVE_PLAYER, .move_player = movement};
+            client_send_to_server(NET(), bytes_from_ptr(&message));
+        }
+    }
 }
 
 void game_client_draw(State *state) {
     ASSERT(is_client(state));
 
-    v3 forward = get_forward_direction(&GC()->camera);
-    draw_sphere(REN(), GC()->camera.position + forward, 0.005, BLACK);
+    { // player crosshair and weapon
+        v3 forward = get_forward_direction(&GC()->camera);
+        v3 up = {0, 1, 0};
+        v3 right = get_right_direction(&GC()->camera);
+    
+        draw_sphere(REN(), GC()->camera.position + forward, 0.005, BLACK);
+    
+        v3 weapon_offset = v3{};
+        weapon_offset += WEAPON_DISPLAY_OFFSET.x * right;
+        weapon_offset += WEAPON_DISPLAY_OFFSET.y * up;
+        weapon_offset += WEAPON_DISPLAY_OFFSET.z * forward;
+
+        v3 camera_rotation = GC()->camera.rotation;
+    
+        draw_model(REN(), REN()->deagle, GC()->camera.position + weapon_offset, {1, 1, 1}, norm(v3{camera_rotation.x, -camera_rotation.y, 0}), WHITE);
+    }
 
     for (Entity &entity : state->entities) {
-        if (BIT_SET(entity.flags, EF_PLAYER) && entity.owner == state->instance_id) {
-            continue;
+        v4 draw_colour = entity.colour;
+
+        if (ED()->selected_entity && ED()->selected_entity->id == entity.id) {
+            draw_colour = RED;
         }
 
-        draw_cube(REN(), entity.position, entity.size, entity.rotation, entity.colour);
+        draw_cube(REN(), entity.position, entity.size, entity.rotation, draw_colour);
     }
 }
 
@@ -667,7 +748,6 @@ void editor_update(State *state) {
 
     // mouse picking
     if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::DOWN) {
-        logln("you clicked");
         // TODO: there is still a problem with this not being exact...
         Ray ray = ray_from_screen_position(ED()->viewport, {ED()->viewport.mouse.x, ED()->viewport.mouse.y, -1});
         RaycastIterator it = raycast_iterator_create(ray, camera->far_plane - camera->near_plane);
@@ -750,20 +830,6 @@ void editor_update(State *state) {
     }
 }
 
-void editor_draw(State *state) {
-    ASSERT(is_client(state));
-
-    for (Entity &entity : state->entities) {
-        v4 draw_colour = entity.colour; 
-
-        if (ED()->selected_entity && ED()->selected_entity->id == entity.id) {
-            draw_colour = RED;
-        }
-            
-        draw_cube(REN(), entity.position, entity.size, entity.rotation, draw_colour);
-    }
-}
-
 void editor_draw_ui(State *state) {
     new_imgui_frame();
 
@@ -773,22 +839,55 @@ void editor_draw_ui(State *state) {
     // ImGui::ShowDemoWindow();
     
     {
-        ImGui::Begin("Settings");
-        ImGui::SeparatorText("Screen");
-        ImGui::Text("Logical size: %dx%d", WIN()->logical_size.x, WIN()->logical_size.y);
-        ImGui::Text("Frame buffer size: %dx%d", WIN()->frame_buffer_size.x, WIN()->frame_buffer_size.y);
+        ImGui::Begin("Debug info");
 
-        v3 mouse_position = v3{ED()->viewport.mouse.x, ED()->viewport.mouse.y, -1};
-        v3 mouse_position_ndc = screen_position_to_ndc(ED()->viewport, mouse_position);
-        ImGui::Text("Mouse: [%4.0f, %4.0f]", mouse_position.x, mouse_position.y);
-        ImGui::Text("Mouse (NDC): [%4.2f, %4.2f]", mouse_position_ndc.x, mouse_position_ndc.y);
+        { // main display info
+            ImGui::SeparatorText("Display");
+            ImGui::Text("Logical size: %dx%d", WIN()->logical_size.x, WIN()->logical_size.y);
+            ImGui::Text("Frame buffer size: %dx%d", WIN()->frame_buffer_size.x, WIN()->frame_buffer_size.y);
+    
+            v3 mouse_position = v3{MOUSE.position.x, MOUSE.position.y, -1};
+            v3 mouse_position_ndc = screen_position_to_ndc(Viewport {.size = WIN()->frame_buffer_size}, mouse_position);
+    
+            ImGui::Text("Mouse: [%4.0f, %4.0f]", mouse_position.x, mouse_position.y);
+            ImGui::Text("Mouse (NDC): [%4.2f, %4.2f]", mouse_position_ndc.x, mouse_position_ndc.y);
+        }
 
-        ImGui::SeparatorText("Player");
-        ImGui::InputFloat("Move acceleration", &PLAYER_MOVE_ACCELERATION);
-        ImGui::InputFloat("Jump acceleration", &PLAYER_JUMP_ACCELERATION);
-        ImGui::InputFloat("Max speed", &PLAYER_MAX_SPEED);
-        ImGui::InputFloat("Drag", &PLAYER_DRAG);
-        ImGui::InputFloat("Gravity", &GRAVITY);
+        { // scene viewport info
+            ImGui::SeparatorText("Scene viewport");
+            ImGui::Text("Size: %dx%d", ED()->viewport.size.x, ED()->viewport.size.y);
+    
+            v3 mouse_position = v3{ED()->viewport.mouse.x, ED()->viewport.mouse.y, -1};
+            v3 mouse_position_ndc = screen_position_to_ndc(ED()->viewport, mouse_position);
+    
+            ImGui::Text("Mouse: [%4.0f, %4.0f]", mouse_position.x, mouse_position.y);
+            ImGui::Text("Mouse (NDC): [%4.2f, %4.2f]", mouse_position_ndc.x, mouse_position_ndc.y);
+        }
+
+        { // game viewport info
+            ImGui::SeparatorText("Game viewport");
+            ImGui::Text("Size: %dx%d", GC()->viewport.size.x, GC()->viewport.size.y);
+    
+            v3 mouse_position = v3{GC()->viewport.mouse.x, GC()->viewport.mouse.y, -1};
+            v3 mouse_position_ndc = screen_position_to_ndc(GC()->viewport, mouse_position);
+    
+            ImGui::Text("Mouse: [%4.0f, %4.0f]", mouse_position.x, mouse_position.y);
+            ImGui::Text("Mouse (NDC): [%4.2f, %4.2f]", mouse_position_ndc.x, mouse_position_ndc.y);
+        }
+
+        { // game camera
+            ImGui::SeparatorText("Game camera");
+            imgui_v3_control("position", &GC()->camera.position);
+            imgui_v3_control("rotation", &GC()->camera.rotation);
+
+            v3 forward = get_forward_direction(&GC()->camera);
+            v3 right = get_right_direction(&GC()->camera);
+            v3 up = get_up_direction(&GC()->camera);
+
+            ImGui::Text("Forward: [%.3f, %.3f, %.3f]", forward.x, forward.y, forward.z);
+            ImGui::Text("Right: [%.3f, %.3f, %.3f]", right.x, right.y, right.z);
+            ImGui::Text("Up: [%.3f, %.3f, %.3f]", up.x, up.y, up.z);
+        }
 
         ImGui::End();
     }
@@ -874,6 +973,14 @@ void editor_draw_ui(State *state) {
             ED()->selected_entity = NULL;
             deserialise_level(state);
         }
+
+        ImGui::SeparatorText("Player");
+        ImGui::InputFloat("Move acceleration", &PLAYER_MOVE_ACCELERATION);
+        ImGui::InputFloat("Jump acceleration", &PLAYER_JUMP_ACCELERATION);
+        ImGui::InputFloat("Max speed", &PLAYER_MAX_SPEED);
+        ImGui::InputFloat("Drag", &PLAYER_DRAG);
+        ImGui::InputFloat("Gravity", &GRAVITY);
+        ImGui::InputFloat3("Weapon offset", &WEAPON_DISPLAY_OFFSET.x);
     
         ImGui::SeparatorText("Entities");
 
@@ -887,10 +994,14 @@ void editor_draw_ui(State *state) {
             ED()->selected_entity = local_spawn_spawn_point(state);
         }
 
-        ImGui::SameLine();
-
         if (ImGui::Button("New static box")) {
             ED()->selected_entity = local_spawn_static_box(state);
+        }
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("New has health")) {
+            ED()->selected_entity = local_spawn_has_health(state);
         }
     
         if (ED()->selected_entity) {
@@ -909,8 +1020,8 @@ void editor_draw_ui(State *state) {
             ImGui::Text("colour: ");
             ImGui::SameLine();
             ImGui::ColorEdit4("##colour", &entity->colour[0], ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
-    
-            //  bool ImGui::SliderFloat3(const char* label, float v[3], float v_min, float v_max, const char* format, ImGuiSliderFlags flags)
+            ImGui::InputFloat("max health", &entity->max_health);
+            ImGui::InputFloat("health", &entity->health);
         }
     
         for (i64 i = 0; i < state->entities.len; i++) {
@@ -944,8 +1055,8 @@ void editor_draw_ui(State *state) {
         ImGui::End();
     }
 
-    GC()->viewport = imgui_viewport("Game", GC()->lighting_buffer.position_attachment);
-    ED()->viewport = imgui_viewport("Editor", ED()->lighting_buffer.position_attachment);
+    GC()->viewport = imgui_viewport("Game", GC()->lighting_buffer.position_attachment, WIN()->mouse_captured);
+    ED()->viewport = imgui_viewport("Editor", ED()->lighting_buffer.position_attachment, false);
 
     draw_imgui_frame();
 }
@@ -971,17 +1082,17 @@ void on_server_receive(State *state, NetworkMessage *message) {
             // 3. The player entity is spawn on all clients and is owned by the new client
             // - 09/08/25
             ConnectionId connection_id = message->client_connected;
-            logln_fmt(&state->arena, "Processing new client connection: connection_id={}", connection_id);
+            logf("Processing new client connection: connection_id={}", connection_id);
             
             { // assign client id
-                logln_fmt(&state->arena, "Assigning new client: id={}", connection_id);
+                logf( "Assigning new client: id={}", connection_id);
 
                 NetworkMessage message = NetworkMessage{.type = NM_ASSIGN_CLIENT_ID, .assign_client_id = connection_id};
                 server_send_to_client(NET(), bytes_from_ptr(&message), connection_id);
             }
 
             { // spawn any entities on new client
-                logln_fmt(&state->arena, "Spawning {} existing entities on new client", state->entities.len);
+                logf( "Spawning {} existing entities on new client", state->entities.len);
 
                 for (Entity &entity : state->entities) {
                     NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = entity};
@@ -1001,7 +1112,7 @@ void on_server_receive(State *state, NetworkMessage *message) {
                 new_player->position = spawn_position;
                 new_player->owner = connection_id;
 
-                logln_fmt(&state->arena, "Spawning new player entity: entity_id={}, owner={} position={}", new_player->id, new_player->owner, new_player->position);
+                logf( "Spawning new player entity: entity_id={}, owner={} position={}", new_player->id, new_player->owner, new_player->position);
 
                 NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = *new_player};
                 server_send_to_all_clients(NET(), bytes_from_ptr(&message));
@@ -1011,17 +1122,9 @@ void on_server_receive(State *state, NetworkMessage *message) {
             Entity entity = message->spawn_entity;
             entity.id = new_entity_id();
 
-            logln_fmt(&state->arena, "Server spawning entity: id={}, owner={}", entity.id, entity.owner);
+            logf("Server spawning entity: id={}, owner={}", entity.id, entity.owner);
             local_spawn_entity(state, entity);
             NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = entity};
-            server_send_to_all_clients(NET(), bytes_from_ptr(&message));
-        } break;
-        case NM_DELETE_ENTITY: {
-            u32 id = message->delete_entity;
-
-            logln_fmt(&state->arena, "Server deleting entity: id={}", id);
-            local_delete_entity(state, id);
-            NetworkMessage message = NetworkMessage{.type = NM_DELETE_ENTITY, .delete_entity = id};
             server_send_to_all_clients(NET(), bytes_from_ptr(&message));
         } break;
         case NM_MOVE_PLAYER: {
@@ -1035,22 +1138,22 @@ void on_server_receive(State *state, NetworkMessage *message) {
 
             player->velocity.y += message->move_player.y * PLAYER_JUMP_ACCELERATION;
         } break;
-        case NM_PLAYER_SHOOT: {
-            Entity *player = get_client_player(state, message->client_id);
-            if (!player) {
-                return;
+        case NM_PLAYER_HIT: {
+            Entity *entity = get_entity_with_id(state, message->player_hit);
+            if (entity && BIT_SET(entity->flags, EF_HAS_HEALTH)) {
+                entity->health -= 10;
             }
+        } break;
+        case NM_SPAWN_TARGET: {
+            Entity *target = local_spawn_has_health(state);
+            target->owner = SERVER_INSTANCE_ID;
+            target->position = message->spawn_target;
 
-            Entity *bullet = local_spawn_empty(state);
-            bullet->id = new_entity_id();
-            bullet->owner = SERVER_INSTANCE_ID;
-            bullet->position = player->position + (message->player_shoot * 5);
-
-            NetworkMessage out = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = *bullet};
-            server_send_to_all_clients(NET(), bytes_from_ptr(&out));
+            NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = *target};
+            server_send_to_all_clients(NET(), bytes_from_ptr(&message));
         } break;
         default: {
-            logln("WARNING unknown message sent");
+            log("WARNING unknown message sent");
         } break;
     }
 }
@@ -1059,10 +1162,10 @@ void on_client_receive(State *state, NetworkMessage *message) {
     switch (message->type) {
         case NM_ASSIGN_CLIENT_ID: {
             state->instance_id = message->assign_client_id;
-            logln_fmt(&state->arena, "Client assigned id={}", state->instance_id);
+            logf( "Client assigned id={}", state->instance_id);
         } break;
         case NM_SPAWN_ENTITY: {
-            logln_fmt(&state->arena, "Client spawning entity: id={}, owner={}", message->spawn_entity.id, message->spawn_entity.owner);
+            logf( "Client spawning entity: id={}, owner={}", message->spawn_entity.id, message->spawn_entity.owner);
             local_spawn_entity(state, message->spawn_entity);
         } break;
         case NM_SYNC_ENTITY: {
@@ -1072,11 +1175,19 @@ void on_client_receive(State *state, NetworkMessage *message) {
             }
         } break;
         case NM_DELETE_ENTITY: {
-            logln_fmt(&state->arena, "Client deleting entity: id={}", message->delete_entity);
-            local_delete_entity(state, message->delete_entity);
+            logf("Client deleting entity: id={}", message->delete_entity);
+
+            for (i64 i = 0; i < state->entities.len; i++) {
+                Entity *entity = &state->entities[i];
+        
+                if (entity->id == message->delete_entity) {
+                    swap_remove(&state->entities, i);
+                    return;
+                }
+            }
         } break;
         default: {
-            logln("WARNING unknown message sent");
+            log("WARNING unknown message sent");
         } break;
     }
 }
@@ -1092,24 +1203,8 @@ Entity *local_spawn_entity(State *state, Entity entity) {
     return ptr;
 }
 
-void local_delete_entity(State *state, u32 id) {
-    for (i64 i = 0; i < state->entities.len; i++) {
-        Entity *entity = &state->entities[i];
-
-        if (entity->id == id) {
-            swap_remove(&state->entities, i);
-            return;
-        }
-    }
-}
-
 void server_spawn_entity(Entity entity) {
     NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = entity};
-    client_send_to_server(NET(), bytes_from_ptr(&message));
-}
-
-void server_delete_entity(u32 id) {
-    NetworkMessage message = NetworkMessage{.type = NM_DELETE_ENTITY, .delete_entity = id};
     client_send_to_server(NET(), bytes_from_ptr(&message));
 }
 
@@ -1133,7 +1228,7 @@ Entity *get_entity_with_id(State *state, u32 id) {
     return NULL;
 }
 
-Entity *get_entity_with_flag(State *state, EntityFlags flag) {
+Entity *get_entity_with_flag(State *state, EntityFlag flag) {
     for (Entity &entity : state->entities) {
         if (BIT_SET(entity.flags, flag)) {
             return &entity;
@@ -1213,8 +1308,23 @@ Entity *local_spawn_static_box(State *state) {
     return local_spawn_entity(state, entity);
 }
 
+Entity *local_spawn_has_health(State *state) {
+    Entity entity = Entity {
+        .flags = EF_HAS_HEALTH,
+        .id = new_entity_id(),
+        .owner = LEVEL_INSTANCE_ID,
+        .size = v3{2, 2, 2},
+        .colour = GREEN,
+        .model = MT_CUBE,
+        .max_health = 100,
+        .health = 100,
+    };
+
+    return local_spawn_entity(state, entity);
+}
+
 void start_as_host() {
-    logln("starting hosted game");
+    log("starting hosted game");
 
     GC()->mode = GC_HOSTED;
 
@@ -1224,7 +1334,7 @@ void start_as_host() {
 }
 
 void connect_as_client() {
-    logln("starting and connecting to local-hosted game");
+    log("starting and connecting to local-hosted game");
 
     GC()->mode = GC_CLIENT;
 
@@ -1253,7 +1363,7 @@ bool is_client(State *state) {
 }
 
 void server_on_new_connection(NetworkLayer *net, Server *server, ConnectionId id) {
-    logln_fmt(&net->arena, "New connection received, sending server new connection message [thread={}]", get_current_thread_id());
+    logf("New connection received, sending server new connection message [thread={}]", get_current_thread_id());
 
     NetworkMessage message = NetworkMessage {.type = NM_CLIENT_CONNECTED, .client_connected = id};
     network_queue_push(&net->server_in_queue, bytes_from_ptr(&message));
@@ -1302,7 +1412,7 @@ CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size)
     };
 }
 
-Viewport imgui_viewport(const char *label, u32 texture_id) {
+Viewport imgui_viewport(const char *label, u32 texture_id, bool force_focus) {
     // https://www.youtube.com/watch?v=Qbt-1rcSqZc&list=PLlrATfBNZ98dC-V-N3m0Go4deliWHPFwT&index=72&ab_channel=TheCherno
     // Mainly adapted from this video ^
     // He uses a differant size which is from the min and max bounds
@@ -1346,6 +1456,10 @@ Viewport imgui_viewport(const char *label, u32 texture_id) {
     viewport.mouse = v2{mouse_x, (-mouse_y) + im_viewport_size.y};
 
     // get viewport focused 
+    if (force_focus) {
+        ImGui::SetWindowFocus();
+    }
+
     viewport.focused = ImGui::IsWindowFocused();
 
     ImGui::End();
@@ -1475,7 +1589,7 @@ void serialise_level(State *state) {
 
     bool ok = create_file(&file);
     if (!ok) {
-        logln("Failed to create file for saving level");
+        log("Failed to create file for saving level");
         return;
     }
 
@@ -1483,26 +1597,28 @@ void serialise_level(State *state) {
 
     ok = write_file(&file, bytes);
     if (!ok) {
-        logln("Failed to write data to file when saving level");
+        log("Failed to write data to file when saving level");
         return;
     }
 
     close_file(&file);
 
-    logln("Level was saved");
+    log("Level was saved");
 }
 
 void serialise_entity(YAML::Emitter &out, Entity *entity) {
     out << YAML::BeginMap;
-    out << YAML::Key << "flags"     << YAML::Value << entity->flags;
-    out << YAML::Key << "id"        << YAML::Value << entity->id;
-    out << YAML::Key << "owner"     << YAML::Value << entity->owner;
-    out << YAML::Key << "position"  << YAML::Value << entity->position;
-    out << YAML::Key << "size"      << YAML::Value << entity->size;
-    out << YAML::Key << "rotation"  << YAML::Value << entity->rotation;
-    out << YAML::Key << "velocity"  << YAML::Value << entity->velocity;
-    out << YAML::Key << "colour"    << YAML::Value << entity->colour;
-    out << YAML::Key << "model"     << YAML::Value << entity->model;
+    out << YAML::Key << "flags"         << YAML::Value << entity->flags;
+    out << YAML::Key << "id"            << YAML::Value << entity->id;
+    out << YAML::Key << "owner"         << YAML::Value << entity->owner;
+    out << YAML::Key << "position"      << YAML::Value << entity->position;
+    out << YAML::Key << "size"          << YAML::Value << entity->size;
+    out << YAML::Key << "rotation"      << YAML::Value << entity->rotation;
+    out << YAML::Key << "velocity"      << YAML::Value << entity->velocity;
+    out << YAML::Key << "colour"        << YAML::Value << entity->colour;
+    out << YAML::Key << "model"         << YAML::Value << entity->model;
+    out << YAML::Key << "max_health"    << YAML::Value << entity->max_health;
+    out << YAML::Key << "health"        << YAML::Value << entity->health;
     out << YAML::EndMap;
 }
 
@@ -1511,7 +1627,7 @@ void deserialise_level(State *state) {
 
     YAML::Node entities = root["entities"];
     if (!entities) {
-        logln("No entities field in level file");
+        log("No entities field in level file");
         return;
     }
 
@@ -1520,20 +1636,22 @@ void deserialise_level(State *state) {
     for (auto entity : entities) {
         Entity e = Entity {};
 
-        e.flags = entity["flags"].as<u64>();
-        e.id = entity["id"].as<u32>();
-        e.owner = entity["owner"].as<u32>();
-        e.position = entity["position"].as<v3>();
-        e.size = entity["size"].as<v3>();
-        e.rotation = entity["rotation"].as<v3>();
-        e.velocity = entity["velocity"].as<v3>();
-        e.colour = entity["colour"].as<v4>();
-        e.model = (ModelType) entity["model"].as<u32>();
+        e.flags =               entity["flags"].as<u32>();
+        e.id =                  entity["id"].as<u32>();
+        e.owner =               entity["owner"].as<u32>();
+        e.position =            entity["position"].as<v3>();
+        e.size =                entity["size"].as<v3>();
+        e.rotation =            entity["rotation"].as<v3>();
+        e.velocity =            entity["velocity"].as<v3>();
+        e.colour =              entity["colour"].as<v4>();
+        e.model = (ModelType)   entity["model"].as<u32>();
+        e.max_health =          entity["max_health"].as<f32>();
+        e.health =              entity["health"].as<f32>();
 
         append(&state->entities, e);
     }
 
-    logln("Level was loaded");
+    log("Level was loaded");
 }
 
 YAML::Emitter &operator<<(YAML::Emitter &out, v3 vector) {

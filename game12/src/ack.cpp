@@ -16,6 +16,10 @@
 #define UNSET_BIT(a, b) (a) &= ~(b) 
 #define SCOPE }switch(0){default:
 
+#define KB(x) ((x) * 1024)
+#define MB(x) ((x) * 1024 * 1024)
+#define GB(x) ((x) * 1024 * 1024 * 1024)
+
 #define RESET_ASCII_CODE         "\033[0m"
 
 // Regular colors
@@ -243,10 +247,10 @@ template<typename... Args>  str fmt(Arena *arena, str format, Args... args);
 template<typename T>        void fmt_arg(DynamicArray<u8> *bytes, str format, i64 &index, T arg); 
 template<>                  void fmt_value(DynamicArray<u8> *bytes, bool value);
 
-void logln(str s);
+void log(str s);
 void log_set_thread_options(LogOptions options);
 void log_thread_name();
-template<typename... Args>  void logln_fmt(Arena *arena, str format, Args... args);
+template<typename... Args>  void logf(str format, Args... args);
 
 Timer timer_create_ms(i64 milliseconds); 
 bool timer_is_complete_reset(Timer *timer); 
@@ -617,7 +621,7 @@ thread_local LogOptions tl_options = LogOptions {
 
 std::mutex log_mutex;
 
-void logln(str s) {
+void log(str s) {
     log_mutex.lock();
 
     if (tl_options.thread_colour != NULL) {
@@ -649,9 +653,13 @@ void log_thread_name() {
 }
 
 template<typename... Args>
-void logln_fmt(Arena *arena, str format, Args... args) {
-    str s = fmt(arena, format, args...);
-    logln(s);
+void logf(str format, Args... args) {
+    Arena scratch = arena_create(KB(1));
+
+    str s = fmt(&scratch, format, args...);
+    log(s);
+
+    arena_destroy(&scratch);
 }
 
 Timer timer_create_ms(i64 milliseconds) {

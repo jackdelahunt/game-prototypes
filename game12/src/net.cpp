@@ -119,7 +119,7 @@ bool network_layer_init() {
 
     SteamDatagramErrMsg error_message;
     if (!GameNetworkingSockets_Init(nullptr, error_message)) {
-        logln_fmt(&g_network_layer->arena, "GameNetworkingSockets_Init failed: {}", error_message);
+        logf("GameNetworkingSockets_Init failed: {}", error_message);
         return false;
     }
 
@@ -127,7 +127,7 @@ bool network_layer_init() {
     
     SteamNetworkingUtils()->SetDebugOutputFunction(k_ESteamNetworkingSocketsDebugOutputType_Msg, networking_debug_callback);
 
-    logln("Initialised network layer");
+    log("Initialised network layer");
     return true;
 }
 
@@ -141,8 +141,8 @@ net->thread = std::thread([net] () {
         .thread_colour = CYAN_ASCII_CODE,
     });
 
-    logln_fmt(&net->arena, "Started networking thread [thread={}]", get_current_thread_id());
-    logln_fmt(&net->arena, "Polling network {}/s", i64(1000.0f / f32(NETWORK_DELAY_MS)));
+    logf("Started networking thread [thread={}]", get_current_thread_id());
+    logf("Polling network {}/s", i64(1000.0f / f32(NETWORK_DELAY_MS)));
 
     net->running = true;
 
@@ -216,7 +216,7 @@ void network_layer_update_client(NetworkLayer *net) {
         
             bool ok = address.ParseString(net->client.server_address);
             if (!ok) {
-                logln_fmt(&net->arena, "Could not parse server address supplied: {}", net->client.server_address);
+                logf("Could not parse server address supplied: {}", net->client.server_address);
                 return;
             }
     
@@ -229,7 +229,7 @@ void network_layer_update_client(NetworkLayer *net) {
             
             connection = net->interface->ConnectByIPAddress(address, 1, &connect_options);
             if (connection == k_HSteamNetConnection_Invalid ) {
-                logln("Problem when creating network client, invalid connection to server");
+                log("Problem when creating network client, invalid connection to server");
                 return;
             }
         }
@@ -238,7 +238,7 @@ void network_layer_update_client(NetworkLayer *net) {
     }
 
     if (net->client.client_state == STOP) {
-        logln("Shutting down network client");
+        log("Shutting down network client");
 
         net->interface->CloseConnection(net->client.connection, 0, nullptr, false);
         net->client.connection = k_HSteamNetConnection_Invalid;
@@ -290,24 +290,24 @@ void network_layer_update_server(NetworkLayer *net) {
             
             net->server.socket = net->interface->CreateListenSocketIP(address, 1, &connect_options);
             if (net->server.socket == k_HSteamListenSocket_Invalid) {
-                logln_fmt(&net->arena, "Error creating server socket, failed to listen on port {}", DEFAULT_PORT);
+                logf("Error creating server socket, failed to listen on port {}", DEFAULT_PORT);
                 return;
             }
 
             net->server.poll_group = net->interface->CreatePollGroup();
             if (net->server.poll_group == k_HSteamNetPollGroup_Invalid) {
-                logln("Error creating poll group for network server");
+                log("Error creating poll group for network server");
                 return;
             }
 
-            logln_fmt(&net->arena, "Started server and listening on port {}", DEFAULT_PORT);
+            logf("Started server and listening on port {}", DEFAULT_PORT);
         }
     
         net->server.server_state = RUNNING;
     }
 
     if (net->server.server_state == STOP) {
-        logln("Shutting down server gracefully");
+        log("Shutting down server gracefully");
     
         for (HSteamNetConnection connection : net->server.connections) {
             net->interface->CloseConnection(connection, 0, "Server shutdown", true);
@@ -353,20 +353,20 @@ void server_on_connection_changed(NetworkLayer *net, Server *server, SteamNetCon
         case k_ESteamNetworkingConnectionState_ProblemDetectedLocally:  break;
         case k_ESteamNetworkingConnectionState_Connected:               break;
         case k_ESteamNetworkingConnectionState_Connecting: {
-            logln_fmt(&net->arena, "Server received connection request from {}", info->m_info.m_szConnectionDescription);
+            logf("Server received connection request from {}", info->m_info.m_szConnectionDescription);
     
             if (net->interface->AcceptConnection(info->m_hConn) != k_EResultOK) {
                 // This could fail.  If the remote host tried to connect, but then
                 // disconnected, the connection may already be half closed.  Just
                 // destroy whatever we have on our side.
                 net->interface->CloseConnection(info->m_hConn, 0, nullptr, false);
-                logln("Server could not accept connection");
+                log("Server could not accept connection");
                 break;
             }
     
             if (!net->interface->SetConnectionPollGroup(info->m_hConn, server->poll_group)) {
                 net->interface->CloseConnection(info->m_hConn, 0, nullptr, false );
-                logln("Server failed to set poll group for connection");
+                log("Server failed to set poll group for connection");
                 break;
             }
     
@@ -382,13 +382,13 @@ void client_on_connection_changed(NetworkLayer *net, Client *client, SteamNetCon
 
     switch (info->m_info.m_eState) {
         case k_ESteamNetworkingConnectionState_None: {
-            logln_fmt(&net->arena, "Client connection is in a none state: {}", info->m_info.m_szEndDebug);
+            logf("Client connection is in a none state: {}", info->m_info.m_szEndDebug);
         } break;
         case k_ESteamNetworkingConnectionState_ClosedByPeer: {
-            logln_fmt(&net->arena, "Client connection closed by peer: {}", info->m_info.m_szEndDebug);
+            logf("Client connection closed by peer: {}", info->m_info.m_szEndDebug);
         } break;
         case k_ESteamNetworkingConnectionState_Connecting: {
-            logln("Client is trying to connect");
+            log("Client is trying to connect");
         } break;
         case k_ESteamNetworkingConnectionState_ProblemDetectedLocally: {
             // TODO: maybe its fine to set it to stop and print what happened
@@ -396,13 +396,13 @@ void client_on_connection_changed(NetworkLayer *net, Client *client, SteamNetCon
             client->client_state = NOT_RUNNING;
     
             if (info->m_eOldState == k_ESteamNetworkingConnectionState_Connecting ) {
-                logln_fmt(&net->arena, "Client tried to connect but failed: {}", info->m_info.m_szEndDebug);
+                logf("Client tried to connect but failed: {}", info->m_info.m_szEndDebug);
             }
             else if (info->m_info.m_eState == k_ESteamNetworkingConnectionState_ProblemDetectedLocally) {
-                logln_fmt(&net->arena, "Client lost contact with the host: {}", info->m_info.m_szEndDebug);
+                logf("Client lost contact with the host: {}", info->m_info.m_szEndDebug);
             }
             else {
-                logln_fmt(&net->arena, "Client disconnected from server: {}", info->m_info.m_szEndDebug);
+                logf("Client disconnected from server: {}", info->m_info.m_szEndDebug);
             }
     
             // Clean up the connection.  This is important!
@@ -415,7 +415,7 @@ void client_on_connection_changed(NetworkLayer *net, Client *client, SteamNetCon
             client->connection = k_HSteamNetConnection_Invalid;
         } break;
         case k_ESteamNetworkingConnectionState_Connected: {
-            logln("Client connected to server");
+            log("Client connected to server");
         } break;
         default: break;
     }

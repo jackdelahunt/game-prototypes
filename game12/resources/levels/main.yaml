@@ -1,20 +1,24 @@
 name: <empty>
 entities:
   - flags: 8
-    id: 15358
+    id: 499
     owner: 0
     position: [0, 0, 0]
     size: [30, 1, 30]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
-    colour: [1, 0.452133834, 0.0686274767, 1]
+    colour: [1, 1, 1, 1]
     model: 0
+    max_health: 0
+    health: 0
   - flags: 2
-    id: 28352
+    id: 25094
     owner: 0
-    position: [0, 10, 0]
+    position: [0, 12, 0]
     size: [0.300000012, 0.300000012, 0.300000012]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 0, 0.800000012, 1]
     model: 0
+    max_health: 0
+    health: 0

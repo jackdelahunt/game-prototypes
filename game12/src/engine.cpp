@@ -69,7 +69,7 @@ void glfw_error_callback(int error_code, const char* description);
 
 bool window_init(str title, i32 width, i32 height) {
     if (glfwInit() == 0) {
-        logln("Failed to init glfw");
+        log("Failed to init glfw");
         return false;
     }
 
@@ -93,7 +93,7 @@ bool window_init(str title, i32 width, i32 height) {
 
     g_window->glfw_window = glfwCreateWindow(g_window->logical_size.x, g_window->logical_size.y, g_window->title.c(), NULL, NULL);
     if (g_window->glfw_window == NULL) {
-        logln("Failed to create window");
+        log("Failed to create window");
         return false;
     }
 
@@ -398,6 +398,7 @@ struct Renderer {
 
     Model *cube_primitive;
     Model *sphere_primitive;
+    Model *deagle;
 
     m4 view_matrix;
     m4 projection_matrix;
@@ -406,9 +407,6 @@ struct Renderer {
     Texture *default_normal;
 
     Font font;
-
-    FrameBuffer g_buffer;
-    FrameBuffer lighting_frame_buffer;
 
     u32 vertex_array_id;
     u32 vertex_buffer_id;
@@ -495,7 +493,6 @@ bool load_font(Renderer *renderer, str path, i64 width, i64 height, f32 pixel_he
 // Renderer frame API
 void renderer_clear_frame(Renderer *renderer, v4 colour);
 void renderer_start_frame(Renderer *renderer);
-void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport);
 void renderer_draw_geometry(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target_buffer);
 void renderer_draw_lighting(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target_buffer, FrameBuffer *source_buffer);
 void renderer_end_frame(Renderer *renderer);
@@ -513,6 +510,7 @@ Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color,
 Quad *push_screen_quad(Renderer *renderer, v4 color);
 
 // Primitive drawing
+void draw_line(Renderer *renderer, v3 position, v3 direction, f32 radius, f32 step, v4 colour);
 void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 colour);
 void draw_sphere(Renderer *renderer, v3 position, f32 radius, v4 colour);
 
@@ -575,11 +573,11 @@ v3 get_forward_direction(Camera *camera) {
 }
 
 v3 get_right_direction(Camera *camera) {
-    return HMM_Cross(get_up_direction(camera), get_forward_direction(camera));
+    return norm(HMM_Cross({0, 1, 0}, get_forward_direction(camera)));
 }
 
 v3 get_up_direction(Camera *camera) {
-    return {0, 1, 0};
+    return norm(HMM_Cross(get_forward_direction(camera), get_right_direction(camera)));
 }
 
 v3 get_forward_direction(v3 rotation) {
@@ -911,7 +909,7 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
 
     bool ok = load_shaders(renderer);
     if (!ok) {
-        logln("Error when loading and compiling shaders");
+        log("Error when loading and compiling shaders");
         return false;
     }
 
@@ -1007,28 +1005,10 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     }
 
-    { // init frame buffers
-         renderer->g_buffer = FrameBuffer {.size = window->frame_buffer_size};
-    
-        ok = frame_buffer_init(&renderer->g_buffer);
-        if (!ok) {
-            logln("failed to init g frame buffer");
-            return false;
-        }
-
-        renderer->lighting_frame_buffer = FrameBuffer {.size = window->frame_buffer_size};
-
-        ok = frame_buffer_init(&renderer->lighting_frame_buffer);
-        if (!ok) {
-            logln("failed to init lighting frame buffer");
-            return false;
-        }
-    }
-
     { // load default normal texture
         Texture *texture = load_texture(renderer, "resources/textures/defaults/normal.png");
         if (texture == NULL) {
-            logln("failed to load default texture");
+            log("failed to load default texture");
             return false;
         }
 
@@ -1041,6 +1021,9 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
 
         renderer->sphere_primitive = load_model(REN(), "resources/models/primitives/sphere.obj");
         ASSERT(renderer->sphere_primitive);
+
+        renderer->deagle = load_model(REN(), "resources/models/deagle/deagle.obj");
+        ASSERT(renderer->deagle);
     }
 
     return true;
@@ -1049,7 +1032,7 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
 bool load_shaders(Renderer *renderer) {
     bool ok = init_shader(&renderer->default_shader, "Default shader", "resources/shaders/default_vertex.shader", "resources/shaders/default_fragment.shader");
     if (!ok) {
-        logln("Error when creating default shader program");
+        log("Error when creating default shader program");
         return false;
     }
 
@@ -1058,7 +1041,7 @@ bool load_shaders(Renderer *renderer) {
 
     ok = init_shader(&renderer->geometry_shader, "Geometry shader", "resources/shaders/geometry_vertex.shader", "resources/shaders/geometry_fragment.shader");
     if (!ok) {
-        logln("Error when creating mesh shader program");
+        log("Error when creating mesh shader program");
         return false;
     }
 
@@ -1066,7 +1049,7 @@ bool load_shaders(Renderer *renderer) {
 
     ok = init_shader(&renderer->post_processing_shader, "Post processing shader", "resources/shaders/default_vertex.shader", "resources/shaders/post_processing_fragment.shader");
     if (!ok) {
-        logln("Error when creating post processing shader program");
+        log("Error when creating post processing shader program");
         return false;
     }
 
@@ -1074,7 +1057,7 @@ bool load_shaders(Renderer *renderer) {
 
     ok = init_shader(&renderer->lighting_shader, "Lighting shader", "resources/shaders/lighting_vertex.shader", "resources/shaders/lighting_fragment.shader");
     if (!ok) {
-        logln("Error when creating lighting shader program");
+        log("Error when creating lighting shader program");
         return false;
     }
 
@@ -1087,7 +1070,7 @@ bool load_shaders(Renderer *renderer) {
 
     ok = init_shader(&renderer->mesh_shader, "Mesh shader", "resources/shaders/mesh_vertex.shader", "resources/shaders/mesh_fragment.shader");
     if (!ok) {
-        logln("Error when creating mesh shader program");
+        log("Error when creating mesh shader program");
         return false;
     }
 
@@ -1376,69 +1359,6 @@ void renderer_clear_frame(Renderer *renderer, v4 colour) {
 
 void renderer_start_frame(Renderer *renderer) {
     renderer_clear_frame(renderer, renderer->clear_colour);
-}
-
-void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport) {
-    renderer->view_matrix = get_view_matrix(camera);
-    renderer->projection_matrix = get_projection_matrix(camera, f32(viewport.size.x) / f32(viewport.size.y));
-    renderer->projection_matrix_ortho = get_projection_matrix_ortho(camera,  f32(viewport.size.x) / f32(viewport.size.y));
-
-    { // geometry pass
-        frame_buffer_maybe_resize(&renderer->g_buffer, viewport.size);
-        frame_buffer_bind(&renderer->g_buffer, v4{0, 0, 0, 1});
-
-        for (RenderCommand &command : renderer->commands) {
-            m4 model_matrix = HMM_M4D(1.0f);
-            model_matrix = HMM_MulM4(model_matrix, HMM_Translate(command.position));
-            model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command.rotation.x * HMM_DegToRad, {1, 0, 0}));
-            model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command.rotation.y * HMM_DegToRad, {0, 1, 0}));
-            model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command.rotation.z * HMM_DegToRad, {0, 0, 1}));
-            model_matrix = HMM_MulM4(model_matrix, HMM_Scale({command.scale.x, command.scale.y, command.scale.z}));
-    
-            use_shader(renderer->mesh_shader);
-    
-            set_uniform_m4(renderer->mesh_shader, "model", &model_matrix);
-            set_uniform_m4(renderer->mesh_shader, "view", &renderer->view_matrix);
-            set_uniform_m4(renderer->mesh_shader, "projection", &renderer->projection_matrix);
-            set_uniform_v4(renderer->mesh_shader, "colour", command.colour);
-    
-            GL_CALL(glBindVertexArray(command.model->mesh->vertex_array_id));
-            GL_CALL(glDrawElements(GL_TRIANGLES, command.model->mesh->indices.len, GL_UNSIGNED_INT, 0));
-        }
-    
-        frame_buffer_unbind();
-    }
-
-    { // lighting pass
-        frame_buffer_maybe_resize(&renderer->lighting_frame_buffer, viewport.size);
-        frame_buffer_bind(&renderer->lighting_frame_buffer, renderer->clear_colour);
-
-        Quad *quad = push_screen_quad(renderer, WHITE);
-    
-        glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
-        glBindVertexArray(renderer->vertex_array_id);
- 
-        use_shader(renderer->lighting_shader);
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.position_attachment);
-
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.normals_attachment);
-
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.albedo_attachment);
-
-        set_uniform_v3(renderer->lighting_shader, "ambient_light", renderer->ambient_light);
-        set_uniform_v3(renderer->lighting_shader, "sun_position", renderer->sun_position);
-        set_uniform_v3(renderer->lighting_shader, "sun_colour", renderer->sun_colour);
-        set_uniform_v3(renderer->lighting_shader, "shadow_colour", renderer->shadow_colour);
-
-        glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
-
-        frame_buffer_unbind();
-    }
 }
 
 void renderer_draw_geometry(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *frame_buffer) {
@@ -1747,6 +1667,15 @@ Quad *push_screen_quad(Renderer *renderer, v4 color) {
     quad->vertices[3].draw_type = 0;
 
     return quad;
+}
+
+void draw_line(Renderer *renderer, v3 position, v3 direction, f32 radius, f32 step, v4 colour) {
+    v3 dir = norm(direction);
+
+    for (i64 i = 0; i < 200; i++) {
+        v3 draw_position = position + (dir * step * f32(i));
+        draw_sphere(renderer, draw_position, radius, colour);
+    }
 }
 
 void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 colour) {
