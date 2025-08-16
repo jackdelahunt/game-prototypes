@@ -365,21 +365,17 @@ struct Mesh {
     u32 index_buffer_id;
 };
 
-struct Model {
-    Mesh *mesh;
-};
-
 enum RenderCommandType {
     RC_MODEL,
     RC_QUAD,
     _RC_COUNT
 };
 
-struct ModelRenderCommand {
+struct MeshRenderCommand {
     v3 position;
     v3 rotation;
     v3 scale;
-    Model *model;
+    Mesh *mesh;
     v4 colour;
 };
 
@@ -395,7 +391,7 @@ struct RenderCommand {
     RenderCommandType type;
 
     union {
-        ModelRenderCommand model;
+        MeshRenderCommand mesh;
         QuadRenderCommand quad;
     };
 };
@@ -410,15 +406,14 @@ struct Renderer {
     v3 shadow_colour;
 
     FixedArray<Mesh> meshes;
-    FixedArray<Model> models;
     FixedArray<Quad> quads;
     FixedArray<RenderCommand> commands;
     StackArray<Texture, MAX_TEXTURES> textures;
 
-    Model *cube_primitive;
-    Model *sphere_primitive;
-    Model *quad_primitive;
-    Model *deagle;
+    Mesh *cube_primitive;
+    Mesh *sphere_primitive;
+    Mesh *deagle;
+    Mesh *quad_primitive;
 
     m4 view_matrix;
     m4 projection_matrix;
@@ -484,13 +479,9 @@ void set_uniform_v3(Shader shader, str name, v3 vector);
 void set_uniform_v4(Shader shader, str name, v4 vector);
 
 // Mesh API
-Mesh *new_mesh(Renderer *renderer, FixedArray<MeshVertex> vertices, FixedArray<u32> indices);
-Mesh *new_quad_mesh(Renderer *renderer);
-void reset_mesh(Mesh *mesh);
+Mesh *mesh_create(Renderer *renderer, Slice<MeshVertex> vertices, Slice<u32> indices);
+Mesh *mesh_create_from_file(Renderer *renderer, str mesh_path);
 void upload_mesh(Mesh *mesh);
-
-// Model API
-Model *load_model(Renderer *renderer, str mesh_path);
 
 // Render Texture API
 RenderTexture load_render_texture(Renderer *renderer, str path);
@@ -522,17 +513,17 @@ void draw_imgui_frame();
 void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color);
 void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 color);
-void draw_model(Renderer *renderer, Model *model, v3 position, v3 scale, v3 rotation, v4 colour);
-void draw_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, DrawType draw_type);
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
 Quad *push_screen_quad(Renderer *renderer, v4 color);
 
-// Primitive drawing
+// Drawing API
+void draw_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, DrawType draw_type);
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
 void draw_line(Renderer *renderer, v3 position, v3 direction, f32 radius, f32 step, v4 colour);
 void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 colour);
 void draw_sphere(Renderer *renderer, v3 position, f32 radius, v4 colour);
+void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position, v3 scale, v3 rotation, v4 colour);
 
 void toggle_wireframe(Renderer *renderer);
 f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
@@ -733,8 +724,9 @@ void set_uniform_v4(Shader shader, str name, v4 vector) {
     );
 }
 
-Mesh *new_mesh(Renderer *renderer, Slice<MeshVertex> vertices, Slice<u32> indices) {
-    Mesh *mesh = push(&renderer->meshes);
+Mesh *mesh_create(Renderer *renderer, Slice<MeshVertex> vertices, Slice<u32> indices) {
+    Mesh* mesh = push(&renderer->meshes);
+
     *mesh = Mesh {
         .vertices = vertices,
         .indices = indices
@@ -769,9 +761,11 @@ Mesh *new_mesh(Renderer *renderer, Slice<MeshVertex> vertices, Slice<u32> indice
     { // vertex attributes
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, position));
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, normal));
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(MeshVertex), (void *) offsetof(MeshVertex, uv));
 
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
+        glEnableVertexAttribArray(2);
     }
 
     glBindVertexArray(0);
@@ -781,12 +775,7 @@ Mesh *new_mesh(Renderer *renderer, Slice<MeshVertex> vertices, Slice<u32> indice
     return mesh;
 }
 
-void upload_mesh(Mesh *mesh) {
-    glBindBuffer(GL_ARRAY_BUFFER, mesh->vertex_buffer_id);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(MeshVertex) * mesh->vertices.len, &mesh->vertices[0]);
-}
-
-Model *load_model(Renderer *renderer, str mesh_path) {
+Mesh *mesh_create_from_file(Renderer *renderer, str mesh_path) {
     // Create an instance of the Importer class
     Assimp::Importer importer;
     
@@ -801,20 +790,20 @@ Model *load_model(Renderer *renderer, str mesh_path) {
     aiNode *node = scene->mRootNode->mChildren[0];
 
     ASSERT(node->mNumMeshes == 1);
-    aiMesh *mesh = scene->mMeshes[node->mMeshes[0]];
+    aiMesh *loaded_mesh = scene->mMeshes[node->mMeshes[0]];
 
-    Slice<MeshVertex> vertices = slice_create_malloc<MeshVertex>(mesh->mNumVertices);
-    Slice<u32> indices = slice_create_malloc<u32>(mesh->mNumFaces * 3);
+    Slice<MeshVertex> vertices = slice_create_malloc<MeshVertex>(loaded_mesh->mNumVertices);
+    Slice<u32> indices = slice_create_malloc<u32>(loaded_mesh->mNumFaces * 3);
 
-    for(i64 v = 0; v < mesh->mNumVertices; v++) {
+    for(i64 v = 0; v < loaded_mesh->mNumVertices; v++) {
         MeshVertex vertex = {};
-        vertex.position.x = mesh->mVertices[v].x;
-        vertex.position.y = mesh->mVertices[v].y;
-        vertex.position.z = mesh->mVertices[v].z;
+        vertex.position.x = loaded_mesh->mVertices[v].x;
+        vertex.position.y = loaded_mesh->mVertices[v].y;
+        vertex.position.z = loaded_mesh->mVertices[v].z;
 
-        vertex.normal.x = mesh->mNormals[v].x;
-        vertex.normal.y = mesh->mNormals[v].y;
-        vertex.normal.z = mesh->mNormals[v].z;
+        vertex.normal.x = loaded_mesh->mNormals[v].x;
+        vertex.normal.y = loaded_mesh->mNormals[v].y;
+        vertex.normal.z = loaded_mesh->mNormals[v].z;
 
         // is this needed ?
         // vertex.normal = norm(vertex.normal);
@@ -824,22 +813,22 @@ Model *load_model(Renderer *renderer, str mesh_path) {
 
     i64 index = 0;
 
-    for(i64 f = 0; f < mesh->mNumFaces; f++) {
-        aiFace face = mesh->mFaces[f];
+    for(i64 f = 0; f < loaded_mesh->mNumFaces; f++) {
+        aiFace face = loaded_mesh->mFaces[f];
         for(i64 j = 0; j < face.mNumIndices; j++) {
             indices[index] = face.mIndices[j];
             index++;
         }
     }
 
-    Mesh *model_mesh = new_mesh(renderer, vertices, indices);
-
-    Model *model = push(&renderer->models);
-    *model = Model {.mesh = model_mesh};
-
     printf("Loaded model with path \"%s\"\n", mesh_path.c());
 
-    return model;
+    return mesh_create(renderer, vertices, indices);
+}
+
+void upload_mesh(Mesh *mesh) {
+    glBindBuffer(GL_ARRAY_BUFFER, mesh->vertex_buffer_id);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(MeshVertex) * mesh->vertices.len, &mesh->vertices[0]);
 }
 
 RenderTexture load_render_texture(Renderer *renderer, str path) {
@@ -894,7 +883,6 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         .sun_position = sun_position,
         .shadow_colour = shadow_colour,
         .meshes = fixed_array_create<Mesh>(MAX_MESHES),
-        .models = fixed_array_create<Model>(MAX_MODELS),
         .quads = fixed_array_create<Quad>(MAX_QUADS),
         .commands = fixed_array_create<RenderCommand>(MAX_RENDER_COMMANDS),
         .textures = stack_array_create<Texture, MAX_TEXTURES>(),
@@ -1040,17 +1028,32 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
     }
 
     { // load primitive models 
-        renderer->cube_primitive = load_model(REN(), "resources/models/primitives/cube.obj");
+        renderer->cube_primitive = mesh_create_from_file(REN(), "resources/models/primitives/cube.obj");
         ASSERT(renderer->cube_primitive);
 
-        renderer->sphere_primitive = load_model(REN(), "resources/models/primitives/sphere.obj");
+        renderer->sphere_primitive = mesh_create_from_file(REN(), "resources/models/primitives/sphere.obj");
         ASSERT(renderer->sphere_primitive);
 
-        renderer->quad_primitive = load_model(REN(), "resources/models/primitives/quad.obj");
-        ASSERT(renderer->quad_primitive);
-
-        renderer->deagle = load_model(REN(), "resources/models/deagle/deagle.obj");
+        renderer->deagle = mesh_create_from_file(REN(), "resources/models/deagle/deagle.obj");
         ASSERT(renderer->deagle);
+
+        Slice<MeshVertex> verts = slice_create_malloc<MeshVertex>(4);
+        Slice<u32> indices = slice_create_malloc<u32>(6);
+
+        verts[0] = MeshVertex {.position = {-0.5,  0.5, 0}, .normal = {0, 0, -1}, .uv = {0, 1}};
+        verts[1] = MeshVertex {.position = { 0.5,  0.5, 0}, .normal = {0, 0, -1}, .uv = {1, 1}};
+        verts[2] = MeshVertex {.position = { 0.5, -0.5, 0}, .normal = {0, 0, -1}, .uv = {1, 0}};
+        verts[3] = MeshVertex {.position = {-0.5, -0.5, 0}, .normal = {0, 0, -1}, .uv = {0, 0}};
+
+        indices[0] = 0;
+        indices[1] = 2;
+        indices[2] = 1;
+        indices[3] = 0;
+        indices[4] = 3;
+        indices[5] = 2;
+
+        renderer->quad_primitive = mesh_create(REN(), verts, indices);
+        ASSERT(renderer->quad_primitive);
     }
 
     return true;
@@ -1380,7 +1383,7 @@ void renderer_draw_geometry(Renderer *renderer, Camera *camera, Viewport viewpor
 
     for (RenderCommand &command : renderer->commands) {
         if (command.type == RC_MODEL) {
-            ModelRenderCommand *model_cmd = &command.model;
+            MeshRenderCommand *model_cmd = &command.mesh;
 
             m4 model_matrix = HMM_M4D(1.0f);
             model_matrix = HMM_MulM4(model_matrix, HMM_Translate(model_cmd->position));
@@ -1396,8 +1399,8 @@ void renderer_draw_geometry(Renderer *renderer, Camera *camera, Viewport viewpor
             set_uniform_m4(renderer->mesh_shader, "projection", &renderer->projection_matrix);
             set_uniform_v4(renderer->mesh_shader, "colour", model_cmd->colour);
         
-            GL_CALL(glBindVertexArray(model_cmd->model->mesh->vertex_array_id));
-            GL_CALL(glDrawElements(GL_TRIANGLES, model_cmd->model->mesh->indices.len, GL_UNSIGNED_INT, 0));
+            GL_CALL(glBindVertexArray(model_cmd->mesh->vertex_array_id));
+            GL_CALL(glDrawElements(GL_TRIANGLES, model_cmd->mesh->indices.len, GL_UNSIGNED_INT, 0));
         }
         
         if (command.type == RC_QUAD) {
@@ -1418,8 +1421,8 @@ void renderer_draw_geometry(Renderer *renderer, Camera *camera, Viewport viewpor
             set_uniform_v4(renderer->default_shader, "colour", quad_cmd->colour);
             set_uniform_i32(renderer->default_shader, "draw_type", (i32) quad_cmd->draw_type);
         
-            GL_CALL(glBindVertexArray(renderer->quad_primitive->mesh->vertex_array_id));
-            GL_CALL(glDrawElements(GL_TRIANGLES, renderer->cube_primitive->mesh->indices.len, GL_UNSIGNED_INT, 0));
+            GL_CALL(glBindVertexArray(renderer->quad_primitive->vertex_array_id));
+            GL_CALL(glDrawElements(GL_TRIANGLES, renderer->cube_primitive->indices.len, GL_UNSIGNED_INT, 0));
         }
     }
 
@@ -1570,26 +1573,6 @@ void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 colo
     slice_free(glyphs);
 }
 
-void draw_model(Renderer *renderer, Model *model, v3 position, v3 scale, v3 rotation, v4 colour) {
-    RenderCommand *command = push(&renderer->commands);
-    command->type = RC_MODEL;
-    command->model.position = position;
-    command->model.rotation = rotation;
-    command->model.scale = scale;
-    command->model.model = model;
-    command->model.colour = colour;
-}
-
-void draw_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, DrawType draw_type) {
-    RenderCommand *command = push(&renderer->commands);
-    command->type = RC_QUAD;
-    command->quad.position = position;
-    command->quad.size = size;
-    command->quad.rotation = rotation;
-    command->quad.colour = color;
-    command->quad.draw_type = draw_type;
-}
-
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type) {
     const v4 top_left      = {-0.5,   0.5, 0, 1};
     const v4 top_right     = { 0.5,   0.5, 0, 1};
@@ -1691,12 +1674,22 @@ Quad *push_screen_quad(Renderer *renderer, v4 color) {
     return quad;
 }
 
+void draw_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, DrawType draw_type) {
+    RenderCommand *command = push(&renderer->commands);
+    command->type = RC_QUAD;
+    command->quad.position = position;
+    command->quad.size = size;
+    command->quad.rotation = rotation;
+    command->quad.colour = color;
+    command->quad.draw_type = draw_type;
+}
+
 void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color) {
     draw_quad(renderer, position, size, {}, color, DrawType::RECTANGLE);
 }
 
 void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color) {
-    draw_quad(renderer, position, v2{radius, radius} * 2, {}, color, DrawType::RECTANGLE);
+    draw_quad(renderer, position, v2{radius, radius} * 2, {}, color, DrawType::CIRCLE);
 }
 
 void draw_line(Renderer *renderer, v3 position, v3 direction, f32 radius, f32 step, v4 colour) {
@@ -1709,11 +1702,21 @@ void draw_line(Renderer *renderer, v3 position, v3 direction, f32 radius, f32 st
 }
 
 void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 colour) {
-    draw_model(renderer, renderer->cube_primitive, position, size, rotation, colour);
+    draw_mesh(renderer, renderer->cube_primitive, position, size, rotation, colour);
 }
 
 void draw_sphere(Renderer *renderer, v3 position, f32 radius, v4 colour) {
-    draw_model(renderer, renderer->sphere_primitive, position, v3{radius, radius, radius} * 2, v3{}, colour);
+    draw_mesh(renderer, renderer->sphere_primitive, position, v3{radius, radius, radius} * 2, v3{}, colour);
+}
+
+void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position, v3 scale, v3 rotation, v4 colour) {
+    RenderCommand *command = push(&renderer->commands);
+    command->type = RC_MODEL;
+    command->mesh.position = position;
+    command->mesh.rotation = rotation;
+    command->mesh.scale = scale;
+    command->mesh.mesh = mesh;
+    command->mesh.colour = colour;
 }
 
 void toggle_wireframe(Renderer *renderer) {

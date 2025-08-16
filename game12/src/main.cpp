@@ -15,8 +15,8 @@
 #include <queue>
 #include <atomic>
 
-// Total: 39:30
-// Started: 17:00
+// Total: 40:30
+// Started: 20:30
 
 #define MAX_ENTITIES 500
 
@@ -37,8 +37,6 @@ enum ModelType : u32 {
     MT_CUBE,
     _MT_COUNT
 };
-
-Model *g_models[_MT_COUNT];
 
 struct Weapon {
     f32 damage;

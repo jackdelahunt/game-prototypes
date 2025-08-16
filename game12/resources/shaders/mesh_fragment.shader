@@ -6,6 +6,7 @@ layout(location = 2) out vec4 g_albedo;
 
 in vec3 fragment_position;
 in vec3 normal;
+in vec2 uv;
 
 uniform vec4 colour;
 

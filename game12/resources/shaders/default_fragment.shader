@@ -6,6 +6,7 @@ layout(location = 2) out vec4 g_albedo;
 
 in vec3 fragment_position;
 in vec3 normal;
+in vec2 uv;
 
 uniform sampler2D atlas_texture;
 uniform sampler2D font_texture;
@@ -15,7 +16,6 @@ uniform int draw_type;
 
 void main()
 {
-    vec2 uv = vec2(0, 0);
     g_position = vec4(fragment_position, 1);
     g_normal = vec4(normal, 1);
 
