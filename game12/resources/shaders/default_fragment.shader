@@ -1,21 +1,23 @@
 #version 460 core
 
-in vec4 colour;
-in vec2 uv;
-flat in int draw_type;
-
 layout(location = 0) out vec4 g_position;
 layout(location = 1) out vec4 g_normal;
-layout(location = 2) out vec4 g_view_normal;
-layout(location = 3) out vec4 g_albedo;
-layout(location = 4) out vec4 g_sun_position;
+layout(location = 2) out vec4 g_albedo;
+
+in vec3 fragment_position;
+in vec3 normal;
 
 uniform sampler2D atlas_texture;
 uniform sampler2D font_texture;
 
+uniform vec4 colour;
+uniform int draw_type;
+
 void main()
 {
-    g_position = colour;
+    vec2 uv = vec2(0, 0);
+    g_position = vec4(fragment_position, 1);
+    g_normal = vec4(normal, 1);
 
     // rectangle
     if (draw_type == 0) {

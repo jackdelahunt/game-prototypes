@@ -14,10 +14,9 @@
 #include <chrono>
 #include <queue>
 #include <atomic>
-#include <iostream>
 
-// Total: 37:30
-// Started: 11:30
+// Total: 39:30
+// Started: 17:00
 
 #define MAX_ENTITIES 500
 
@@ -26,7 +25,8 @@ f32 PLAYER_JUMP_ACCELERATION = 25;
 f32 PLAYER_MAX_SPEED = 20;
 f32 PLAYER_DRAG = 0.25;
 f32 GRAVITY = 2.1;
-v3 WEAPON_DISPLAY_OFFSET = v3{0.5, 0, 1};
+v3 WEAPON_DISPLAY_OFFSET = v3{1.18, -0.67, 1.1};
+f32 WEAPON_DISPLAY_SIZE = 0.37;
 
 #define LEVEL_INSTANCE_ID 0
 #define SERVER_INSTANCE_ID 1
@@ -40,6 +40,30 @@ enum ModelType : u32 {
 
 Model *g_models[_MT_COUNT];
 
+struct Weapon {
+    f32 damage;
+    v4 colour;
+};
+
+enum WeaponType : u32 {
+    WT_NONE,
+    WT_DEAGLE,
+    WT_M4,
+    _WT_COUNT
+};
+
+Weapon g_weapons[_WT_COUNT] = {
+    {},
+    Weapon {
+        .damage = 30,
+        .colour = v4 {0.8, 0.8, 0.8, 1},
+    },
+    Weapon {
+        .damage = 15,
+        .colour = v4 {0.2, 0.2, 0.2, 1},
+    }
+};
+
 // @entity
 enum EntityFlag : u32 {
     EF_PLAYER           = 1 << 0,
@@ -47,6 +71,7 @@ enum EntityFlag : u32 {
     EF_SOLID_HITBOX     = 1 << 2,
     EF_STATIC_HITBOX    = 1 << 3,
     EF_HAS_HEALTH       = 1 << 4,
+    EF_HAS_WEAPON       = 1 << 5,
     EF_DELETE           = 1 << 16,
 };
 
@@ -73,9 +98,12 @@ struct Entity {
     v4 colour;
     ModelType model;
 
-    // flag: health
+    // flag: has_health
     f32 max_health;
     f32 health;
+
+    // flag: has_weapon
+    WeaponType weapon;
 };
 
 enum NetworkMessageType {
@@ -456,9 +484,9 @@ void game_client_entry() {
         game_client_draw(&GC()->state);
 
         renderer_draw_geometry(REN(), &GC()->camera, GC()->viewport, &GC()->g_buffer);
-        renderer_draw_lighting(REN(), &GC()->camera, GC()->viewport, &GC()->lighting_buffer, &GC()->g_buffer);
-
         renderer_draw_geometry(REN(), &ED()->camera, ED()->viewport, &ED()->g_buffer);
+
+        renderer_draw_lighting(REN(), &GC()->camera, GC()->viewport, &GC()->lighting_buffer, &GC()->g_buffer);
         renderer_draw_lighting(REN(), &ED()->camera, ED()->viewport, &ED()->lighting_buffer, &ED()->g_buffer);
 
         renderer_end_frame(REN());
@@ -713,25 +741,37 @@ void game_client_update(State *state, f32 delta_time) {
 void game_client_draw(State *state) {
     ASSERT(is_client(state));
 
-    { // player crosshair and weapon
-        v3 forward = get_forward_direction(&GC()->camera);
-        v3 up = {0, 1, 0};
-        v3 right = get_right_direction(&GC()->camera);
-    
-        draw_sphere(REN(), GC()->camera.position + forward, 0.005, BLACK);
-    
-        v3 weapon_offset = v3{};
-        weapon_offset += WEAPON_DISPLAY_OFFSET.x * right;
-        weapon_offset += WEAPON_DISPLAY_OFFSET.y * up;
-        weapon_offset += WEAPON_DISPLAY_OFFSET.z * forward;
-
-        v3 camera_rotation = GC()->camera.rotation;
-    
-        draw_model(REN(), REN()->deagle, GC()->camera.position + weapon_offset, {1, 1, 1}, norm(v3{camera_rotation.x, -camera_rotation.y, 0}), WHITE);
-    }
+    // draw_rectangle(REN(), {0, 5, 0}, {3, 3}, RED);
+    draw_circle(REN(), {0, 5, 0}, 1, RED);
 
     for (Entity &entity : state->entities) {
         v4 draw_colour = entity.colour;
+
+        // client's player
+        if (BIT_SET(entity.flags, EF_PLAYER) && entity.owner == state->instance_id) {
+
+            v3 forward = get_forward_direction(&GC()->camera);
+            v3 up = get_up_direction(&GC()->camera);
+            v3 right = get_right_direction(&GC()->camera);
+       
+            // draw crosshair
+            draw_sphere(REN(), GC()->camera.position + forward, 0.005, BLACK);
+       
+            // draw weapon
+            if (BIT_SET(entity.flags, EF_HAS_WEAPON)) {
+                v3 weapon_offset = v3{};
+                weapon_offset += WEAPON_DISPLAY_OFFSET.x * right;
+                weapon_offset += WEAPON_DISPLAY_OFFSET.y * up;
+                weapon_offset += WEAPON_DISPLAY_OFFSET.z * forward;
+       
+                draw_sphere(REN(), GC()->camera.position + weapon_offset, WEAPON_DISPLAY_SIZE, g_weapons[entity.weapon].colour);
+            }
+        }
+
+        // other players
+        if (BIT_SET(entity.flags, EF_HAS_HEALTH)) {
+            // draw_rectangle(REN(), entity.position + v3{0, 2, 0}, {1, 1}, BLACK);
+        }
 
         if (ED()->selected_entity && ED()->selected_entity->id == entity.id) {
             draw_colour = RED;
@@ -837,6 +877,48 @@ void editor_draw_ui(State *state) {
 
     // https://github.com/ocornut/imgui/blob/master/imgui_demo.cpp
     // ImGui::ShowDemoWindow();
+    
+    {
+        i32 image_downscale = 4;
+        Viewport *gcv = &GC()->viewport;
+        Viewport *edv = &GC()->viewport;
+
+        ImGui::Begin("Render output");
+
+        if (ImGui::CollapsingHeader("Game g_buffer")) {
+            ImGui::Text("Position  //  Normals");
+            ImGui::Image(GC()->g_buffer.position_attachment, ImVec2(gcv->size.x / image_downscale, gcv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::SameLine();
+            ImGui::Image(GC()->g_buffer.normals_attachment, ImVec2(gcv->size.x / image_downscale, gcv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
+
+            ImGui::Text("Albedo  //  Depth");
+            ImGui::Image(GC()->g_buffer.albedo_attachment, ImVec2(gcv->size.x / image_downscale, gcv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::SameLine();
+            ImGui::Image(GC()->g_buffer.depth_attachment, ImVec2(gcv->size.x / image_downscale, gcv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
+        }
+
+        if (ImGui::CollapsingHeader("Game lighting")) {
+            ImGui::Image(GC()->lighting_buffer.position_attachment, ImVec2(gcv->size.x / image_downscale, gcv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
+        }
+
+        if (ImGui::CollapsingHeader("Editor g_buffer")) {
+            ImGui::Text("Position  //  Normals");
+            ImGui::Image(ED()->g_buffer.position_attachment, ImVec2(gcv->size.x / image_downscale, gcv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::SameLine();
+            ImGui::Image(ED()->g_buffer.normals_attachment, ImVec2(gcv->size.x / image_downscale, gcv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
+
+            ImGui::Text("Albedo  //  Depth");
+            ImGui::Image(ED()->g_buffer.albedo_attachment, ImVec2(gcv->size.x / image_downscale, gcv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::SameLine();
+            ImGui::Image(ED()->g_buffer.depth_attachment, ImVec2(gcv->size.x / image_downscale, gcv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
+        }
+
+        if (ImGui::CollapsingHeader("Editor lighting")) {
+            ImGui::Image(ED()->lighting_buffer.position_attachment, ImVec2(gcv->size.x / image_downscale, gcv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
+        }
+
+        ImGui::End();
+    }
     
     {
         ImGui::Begin("Debug info");
@@ -980,9 +1062,10 @@ void editor_draw_ui(State *state) {
         ImGui::InputFloat("Max speed", &PLAYER_MAX_SPEED);
         ImGui::InputFloat("Drag", &PLAYER_DRAG);
         ImGui::InputFloat("Gravity", &GRAVITY);
-        ImGui::InputFloat3("Weapon offset", &WEAPON_DISPLAY_OFFSET.x);
+        ImGui::SliderFloat3("Weapon offset", &WEAPON_DISPLAY_OFFSET.x, -2, 2);
+        ImGui::SliderFloat("Weapon size", &WEAPON_DISPLAY_SIZE, -1, 1);
     
-        ImGui::SeparatorText("Entities");
+        ImGui::SeparatorText("Spawn Entities");
 
         if (ImGui::Button("New empty")) {
             ED()->selected_entity = local_spawn_empty(state);
@@ -1022,7 +1105,10 @@ void editor_draw_ui(State *state) {
             ImGui::ColorEdit4("##colour", &entity->colour[0], ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
             ImGui::InputFloat("max health", &entity->max_health);
             ImGui::InputFloat("health", &entity->health);
+            ImGui::Text("weapon: %u", (u32) entity->weapon);
         }
+
+        ImGui::SeparatorText("Entities in level");
     
         for (i64 i = 0; i < state->entities.len; i++) {
             Entity *entity = &state->entities[i];
@@ -1271,12 +1357,15 @@ Entity *local_spawn_empty(State *state) {
 
 Entity *local_spawn_player(State *state) {
     Entity entity = Entity {
-        .flags = EF_PLAYER | EF_SOLID_HITBOX,
+        .flags = EF_PLAYER | EF_SOLID_HITBOX | EF_HAS_HEALTH | EF_HAS_WEAPON,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{1, 2, 1},
         .colour = v4{1, 0, 0, 1},
-        .model = MT_CUBE 
+        .model = MT_CUBE,
+        .max_health = 100,
+        .health = 100,
+        .weapon = WT_DEAGLE
     };
 
     return local_spawn_entity(state, entity);
@@ -1619,6 +1708,7 @@ void serialise_entity(YAML::Emitter &out, Entity *entity) {
     out << YAML::Key << "model"         << YAML::Value << entity->model;
     out << YAML::Key << "max_health"    << YAML::Value << entity->max_health;
     out << YAML::Key << "health"        << YAML::Value << entity->health;
+    out << YAML::Key << "weapon"        << YAML::Value << entity->weapon;
     out << YAML::EndMap;
 }
 
@@ -1647,6 +1737,8 @@ void deserialise_level(State *state) {
         e.model = (ModelType)   entity["model"].as<u32>();
         e.max_health =          entity["max_health"].as<f32>();
         e.health =              entity["health"].as<f32>();
+        e.weapon = WT_NONE;
+        // e.weapon = (WeaponType) entity["weapon"].as<u32>();
 
         append(&state->entities, e);
     }

@@ -237,7 +237,7 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 /////////////////////////////////////////////////////////////////////////////
 //////////////////////////////// @renderer //////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
-#define MAX_QUADS 1000
+#define MAX_QUADS 100
 #define MAX_RENDER_COMMANDS 5000
 #define MAX_MESHES 128
 #define MAX_MODELS 128
@@ -248,6 +248,7 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 struct MeshVertex {
     v3 position;
     v3 normal;
+    v2 uv;
 };
 
 struct Vertex {
@@ -368,17 +369,35 @@ struct Model {
     Mesh *mesh;
 };
 
-enum class RenderMode {
-    PERSPECTIVE,
-    ORTHOGRAPHIC
+enum RenderCommandType {
+    RC_MODEL,
+    RC_QUAD,
+    _RC_COUNT
 };
 
-struct RenderCommand {
+struct ModelRenderCommand {
     v3 position;
     v3 rotation;
     v3 scale;
     Model *model;
     v4 colour;
+};
+
+struct QuadRenderCommand {
+    v3 position;
+    v2 size;
+    v3 rotation;
+    v4 colour;
+    DrawType draw_type;
+};
+
+struct RenderCommand {
+    RenderCommandType type;
+
+    union {
+        ModelRenderCommand model;
+        QuadRenderCommand quad;
+    };
 };
 
 struct Renderer {
@@ -398,6 +417,7 @@ struct Renderer {
 
     Model *cube_primitive;
     Model *sphere_primitive;
+    Model *quad_primitive;
     Model *deagle;
 
     m4 view_matrix;
@@ -413,8 +433,6 @@ struct Renderer {
     u32 index_buffer_id;
 
     Shader default_shader;
-    Shader geometry_shader;
-    Shader post_processing_shader;
     Shader lighting_shader;
     Shader mesh_shader;
 
@@ -458,6 +476,7 @@ v3 get_up_direction(v3 rotation);
 bool init_shader(Shader *shader, str debug_name, str vertex_shader_path, str fragment_shader_path);
 void assign_texture_slot(Shader *shader, str texture_name, i32 slot);
 void use_shader(Shader shader);
+void set_uniform_i32(Shader shader, str name, i32 value);
 void set_uniform_f32(Shader shader, str name, f32 value);
 void set_uniform_m4(Shader shader, str name, m4 *matrix);
 void set_uniform_v2(Shader shader, str name, v2 vector);
@@ -500,16 +519,17 @@ void new_imgui_frame();
 void draw_imgui_frame();
 
 // Immediate rendering API
-void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
-void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
 void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color);
 void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
 void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 color);
 void draw_model(Renderer *renderer, Model *model, v3 position, v3 scale, v3 rotation, v4 colour);
+void draw_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, DrawType draw_type);
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
 Quad *push_screen_quad(Renderer *renderer, v4 color);
 
 // Primitive drawing
+void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
+void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
 void draw_line(Renderer *renderer, v3 position, v3 direction, f32 radius, f32 step, v4 colour);
 void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 colour);
 void draw_sphere(Renderer *renderer, v3 position, f32 radius, v4 colour);
@@ -673,6 +693,10 @@ void assign_texture_slot(Shader *shader, str texture_name, i32 slot) {
 
 void use_shader(Shader shader) {
     glUseProgram(shader.id);
+}
+
+void set_uniform_i32(Shader shader, str name, i32 value) {
+    glUniform1i(glGetUniformLocation(shader.id, name.c()), value);
 }
 
 void set_uniform_f32(Shader shader, str name, f32 value) {
@@ -1022,6 +1046,9 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         renderer->sphere_primitive = load_model(REN(), "resources/models/primitives/sphere.obj");
         ASSERT(renderer->sphere_primitive);
 
+        renderer->quad_primitive = load_model(REN(), "resources/models/primitives/quad.obj");
+        ASSERT(renderer->quad_primitive);
+
         renderer->deagle = load_model(REN(), "resources/models/deagle/deagle.obj");
         ASSERT(renderer->deagle);
     }
@@ -1038,22 +1065,6 @@ bool load_shaders(Renderer *renderer) {
 
     assign_texture_slot(&renderer->default_shader, "atlas_texture", 0);
     assign_texture_slot(&renderer->default_shader, "font_texture", 1);
-
-    ok = init_shader(&renderer->geometry_shader, "Geometry shader", "resources/shaders/geometry_vertex.shader", "resources/shaders/geometry_fragment.shader");
-    if (!ok) {
-        log("Error when creating mesh shader program");
-        return false;
-    }
-
-    assign_texture_slot(&renderer->geometry_shader, "atlas_texture", 0);
-
-    ok = init_shader(&renderer->post_processing_shader, "Post processing shader", "resources/shaders/default_vertex.shader", "resources/shaders/post_processing_fragment.shader");
-    if (!ok) {
-        log("Error when creating post processing shader program");
-        return false;
-    }
-
-    assign_texture_slot(&renderer->post_processing_shader, "scene_texture", 0);
 
     ok = init_shader(&renderer->lighting_shader, "Lighting shader", "resources/shaders/lighting_vertex.shader", "resources/shaders/lighting_fragment.shader");
     if (!ok) {
@@ -1079,8 +1090,6 @@ bool load_shaders(Renderer *renderer) {
 
 void delete_shaders(Renderer *renderer) {
     glDeleteProgram(renderer->default_shader.id);
-    glDeleteProgram(renderer->geometry_shader.id);
-    glDeleteProgram(renderer->post_processing_shader.id);
     glDeleteProgram(renderer->lighting_shader.id);
     glDeleteProgram(renderer->mesh_shader.id);
 }
@@ -1370,24 +1379,50 @@ void renderer_draw_geometry(Renderer *renderer, Camera *camera, Viewport viewpor
     frame_buffer_bind(frame_buffer, v4{0, 0, 0, 1});
 
     for (RenderCommand &command : renderer->commands) {
-        m4 model_matrix = HMM_M4D(1.0f);
-        model_matrix = HMM_MulM4(model_matrix, HMM_Translate(command.position));
-        model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command.rotation.x * HMM_DegToRad, {1, 0, 0}));
-        model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command.rotation.y * HMM_DegToRad, {0, 1, 0}));
-        model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(command.rotation.z * HMM_DegToRad, {0, 0, 1}));
-        model_matrix = HMM_MulM4(model_matrix, HMM_Scale({command.scale.x, command.scale.y, command.scale.z}));
- 
-        use_shader(renderer->mesh_shader);
- 
-        set_uniform_m4(renderer->mesh_shader, "model", &model_matrix);
-        set_uniform_m4(renderer->mesh_shader, "view", &renderer->view_matrix);
-        set_uniform_m4(renderer->mesh_shader, "projection", &renderer->projection_matrix);
-        set_uniform_v4(renderer->mesh_shader, "colour", command.colour);
-    
-        GL_CALL(glBindVertexArray(command.model->mesh->vertex_array_id));
-        GL_CALL(glDrawElements(GL_TRIANGLES, command.model->mesh->indices.len, GL_UNSIGNED_INT, 0));
+        if (command.type == RC_MODEL) {
+            ModelRenderCommand *model_cmd = &command.model;
+
+            m4 model_matrix = HMM_M4D(1.0f);
+            model_matrix = HMM_MulM4(model_matrix, HMM_Translate(model_cmd->position));
+            model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(model_cmd->rotation.x * HMM_DegToRad, {1, 0, 0}));
+            model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(model_cmd->rotation.y * HMM_DegToRad, {0, 1, 0}));
+            model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(model_cmd->rotation.z * HMM_DegToRad, {0, 0, 1}));
+            model_matrix = HMM_MulM4(model_matrix, HMM_Scale({model_cmd->scale.x, model_cmd->scale.y, model_cmd->scale.z}));
+     
+            use_shader(renderer->mesh_shader);
+     
+            set_uniform_m4(renderer->mesh_shader, "model", &model_matrix);
+            set_uniform_m4(renderer->mesh_shader, "view", &renderer->view_matrix);
+            set_uniform_m4(renderer->mesh_shader, "projection", &renderer->projection_matrix);
+            set_uniform_v4(renderer->mesh_shader, "colour", model_cmd->colour);
+        
+            GL_CALL(glBindVertexArray(model_cmd->model->mesh->vertex_array_id));
+            GL_CALL(glDrawElements(GL_TRIANGLES, model_cmd->model->mesh->indices.len, GL_UNSIGNED_INT, 0));
+        }
+        
+        if (command.type == RC_QUAD) {
+            QuadRenderCommand *quad_cmd = &command.quad;
+
+            m4 model_matrix = HMM_M4D(1.0f);
+            model_matrix = HMM_MulM4(model_matrix, HMM_Translate(quad_cmd->position));
+            model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(quad_cmd->rotation.x * HMM_DegToRad, {1, 0, 0}));
+            model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(quad_cmd->rotation.y * HMM_DegToRad, {0, 1, 0}));
+            model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(quad_cmd->rotation.z * HMM_DegToRad, {0, 0, 1}));
+            model_matrix = HMM_MulM4(model_matrix, HMM_Scale({quad_cmd->size.x, quad_cmd->size.y, 1}));
+     
+            use_shader(renderer->default_shader);
+     
+            set_uniform_m4(renderer->default_shader, "model", &model_matrix);
+            set_uniform_m4(renderer->default_shader, "view", &renderer->view_matrix);
+            set_uniform_m4(renderer->default_shader, "projection", &renderer->projection_matrix);
+            set_uniform_v4(renderer->default_shader, "colour", quad_cmd->colour);
+            set_uniform_i32(renderer->default_shader, "draw_type", (i32) quad_cmd->draw_type);
+        
+            GL_CALL(glBindVertexArray(renderer->quad_primitive->mesh->vertex_array_id));
+            GL_CALL(glDrawElements(GL_TRIANGLES, renderer->cube_primitive->mesh->indices.len, GL_UNSIGNED_INT, 0));
+        }
     }
- 
+
     frame_buffer_unbind();
 }
 
@@ -1444,30 +1479,6 @@ void draw_imgui_frame() {
     ImGui::UpdatePlatformWindows();
     ImGui::RenderPlatformWindowsDefault();
     glfwMakeContextCurrent(current);
-}
-
-void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color) {
-    v2 uvs[4] = {
-        {0, 1},
-        {1, 1},
-        {1, 0},
-        {0, 0},
-    };
-
-    push_quad(renderer, position, size, {}, color, uvs, {}, DrawType::RECTANGLE);
-}
-
-void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color) {
-    v2 size = {radius * 2, radius * 2};
-
-    v2 uvs[4] = {
-        {0, 1},
-        {1, 1},
-        {1, 0},
-        {0, 0},
-    };
-
-    push_quad(renderer, position, size, {}, color, uvs, {}, DrawType::CIRCLE);
 }
 
 void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 color) {
@@ -1561,11 +1572,22 @@ void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 colo
 
 void draw_model(Renderer *renderer, Model *model, v3 position, v3 scale, v3 rotation, v4 colour) {
     RenderCommand *command = push(&renderer->commands);
-    command->position = position;
-    command->rotation = rotation;
-    command->scale = scale;
-    command->model = model;
-    command->colour = colour;
+    command->type = RC_MODEL;
+    command->model.position = position;
+    command->model.rotation = rotation;
+    command->model.scale = scale;
+    command->model.model = model;
+    command->model.colour = colour;
+}
+
+void draw_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, DrawType draw_type) {
+    RenderCommand *command = push(&renderer->commands);
+    command->type = RC_QUAD;
+    command->quad.position = position;
+    command->quad.size = size;
+    command->quad.rotation = rotation;
+    command->quad.colour = color;
+    command->quad.draw_type = draw_type;
 }
 
 Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type) {
@@ -1667,6 +1689,14 @@ Quad *push_screen_quad(Renderer *renderer, v4 color) {
     quad->vertices[3].draw_type = 0;
 
     return quad;
+}
+
+void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color) {
+    draw_quad(renderer, position, size, {}, color, DrawType::RECTANGLE);
+}
+
+void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color) {
+    draw_quad(renderer, position, v2{radius, radius} * 2, {}, color, DrawType::RECTANGLE);
 }
 
 void draw_line(Renderer *renderer, v3 position, v3 direction, f32 radius, f32 step, v4 colour) {
