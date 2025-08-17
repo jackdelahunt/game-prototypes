@@ -577,6 +577,8 @@ v4 rgba(i64 r, i64 g, i64 b, i64 a);
 v4 alpha(v4 base, f32 alpha);
 v4 brightness(v4 base, f32 brightness);
 
+void set_imgui_theme();
+
 void clear_gl_errors();
 bool check_gl_errors();
 
@@ -972,10 +974,7 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         io.Fonts->Build();
 
         // set custom colours
-        ImVec4* colors = ImGui::GetStyle().Colors;
-        colors[ImGuiCol_TitleBgActive]          = ImVec4(0.81f, 0.24f, 0.24f, 1.00f);
-        colors[ImGuiCol_PlotLines]              = ImVec4(0.85f, 0.25f, 0.25f, 1.00f);
-
+        set_imgui_theme();
         ImGui::GetStyle().FrameRounding = 2;
 
         ImGui_ImplGlfw_InitForOpenGL(window->glfw_window, true);
@@ -2055,6 +2054,76 @@ v4 brightness(v4 base, f32 brightness) {
     result.a = base.a;
 
     return result;
+}
+
+void set_imgui_theme() {
+    ImVec4 window_background    = ImVec4(0.07f, 0.08f, 0.09f, 0.94f);
+    ImVec4 border               = ImVec4(0.26f, 0.26f, 0.26f, 0.50f);
+    ImVec4 widget               = ImVec4(0.21f, 0.21f, 0.21f, 0.54f);
+    ImVec4 widget_hovered       = ImVec4(0.31f, 0.31f, 0.31f, 0.54f);
+    ImVec4 widget_active        = ImVec4(0.31f, 0.31f, 0.31f, 0.54f);
+    ImVec4 title_background     = ImVec4(0.10f, 0.10f, 0.10f, 1.00f);
+    ImVec4 title_active        = ImVec4(0.73f, 0.68f, 0.09f, 1.00f);
+
+    ImVec4* colors = ImGui::GetStyle().Colors;
+    colors[ImGuiCol_Text]                   = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
+    colors[ImGuiCol_TextDisabled]           = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
+    colors[ImGuiCol_WindowBg]               = window_background;
+    colors[ImGuiCol_ChildBg]                = window_background;
+    colors[ImGuiCol_PopupBg]                = window_background;
+    colors[ImGuiCol_Border]                 = border;
+    colors[ImGuiCol_BorderShadow]           = border;
+    colors[ImGuiCol_FrameBg]                = widget;
+    colors[ImGuiCol_FrameBgHovered]         = widget_hovered;
+    colors[ImGuiCol_FrameBgActive]          = widget_active;
+    colors[ImGuiCol_TitleBg]                = title_background;
+    colors[ImGuiCol_TitleBgActive]          = title_active;
+    colors[ImGuiCol_TitleBgCollapsed]       = title_background;
+    colors[ImGuiCol_MenuBarBg]              = window_background;
+    colors[ImGuiCol_ScrollbarBg]            = window_background;
+    colors[ImGuiCol_ScrollbarGrab]          = widget;
+    colors[ImGuiCol_ScrollbarGrabHovered]   = widget_hovered;
+    colors[ImGuiCol_ScrollbarGrabActive]    = widget_active;
+    colors[ImGuiCol_CheckMark]              = widget_active;
+    colors[ImGuiCol_SliderGrab]             = widget;
+    colors[ImGuiCol_SliderGrabActive]       = widget_active;
+    colors[ImGuiCol_Button]                 = widget;
+    colors[ImGuiCol_ButtonHovered]          = widget_hovered;
+    colors[ImGuiCol_ButtonActive]           = widget_active;
+    colors[ImGuiCol_Header]                 = widget;
+    colors[ImGuiCol_HeaderHovered]          = widget_hovered;
+    colors[ImGuiCol_HeaderActive]           = widget_active;
+    colors[ImGuiCol_Separator]              = widget;
+    colors[ImGuiCol_SeparatorHovered]       = widget_hovered;
+    colors[ImGuiCol_SeparatorActive]        = widget_active;
+    colors[ImGuiCol_ResizeGrip]             = widget;
+    colors[ImGuiCol_ResizeGripHovered]      = widget_hovered;
+    colors[ImGuiCol_ResizeGripActive]       = widget_active;
+    colors[ImGuiCol_TabHovered]             = widget_hovered;
+    colors[ImGuiCol_Tab]                    = widget;
+    colors[ImGuiCol_TabSelected]            = widget_active;
+    colors[ImGuiCol_TabSelectedOverline]    = widget;
+    colors[ImGuiCol_TabDimmed]              = widget;
+    colors[ImGuiCol_TabDimmedSelected]      = widget_active;
+    colors[ImGuiCol_TabDimmedSelectedOverline]  = widget;
+    colors[ImGuiCol_DockingPreview]         = ImVec4(0.26f, 0.59f, 0.98f, 0.70f);
+    colors[ImGuiCol_DockingEmptyBg]         = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
+    colors[ImGuiCol_PlotLines]              = ImVec4(0.61f, 0.61f, 0.61f, 1.00f);
+    colors[ImGuiCol_PlotLinesHovered]       = ImVec4(1.00f, 0.43f, 0.35f, 1.00f);
+    colors[ImGuiCol_PlotHistogram]          = ImVec4(0.90f, 0.70f, 0.00f, 1.00f);
+    colors[ImGuiCol_PlotHistogramHovered]   = ImVec4(1.00f, 0.60f, 0.00f, 1.00f);
+    colors[ImGuiCol_TableHeaderBg]          = ImVec4(0.19f, 0.19f, 0.20f, 1.00f);
+    colors[ImGuiCol_TableBorderStrong]      = ImVec4(0.31f, 0.31f, 0.35f, 1.00f);
+    colors[ImGuiCol_TableBorderLight]       = ImVec4(0.23f, 0.23f, 0.25f, 1.00f);
+    colors[ImGuiCol_TableRowBg]             = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    colors[ImGuiCol_TableRowBgAlt]          = ImVec4(1.00f, 1.00f, 1.00f, 0.06f);
+    colors[ImGuiCol_TextLink]               = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
+    colors[ImGuiCol_TextSelectedBg]         = ImVec4(0.26f, 0.59f, 0.98f, 0.35f);
+    colors[ImGuiCol_DragDropTarget]         = ImVec4(1.00f, 1.00f, 0.00f, 0.90f);
+    colors[ImGuiCol_NavCursor]              = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
+    colors[ImGuiCol_NavWindowingHighlight]  = ImVec4(1.00f, 1.00f, 1.00f, 0.70f);
+    colors[ImGuiCol_NavWindowingDimBg]      = ImVec4(0.80f, 0.80f, 0.80f, 0.20f);
+    colors[ImGuiCol_ModalWindowDimBg]       = ImVec4(0.80f, 0.80f, 0.80f, 0.35f);
 }
 
 void clear_gl_errors() {
