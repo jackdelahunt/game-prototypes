@@ -16,7 +16,7 @@ void main()
 {
     // rectangle
     if (draw_type == 0) {
-        g_albedo = colour;
+        g_position = colour;
     }
 
     // circle
@@ -26,7 +26,7 @@ void main()
             discard;
         }
 
-        g_albedo = colour;
+        g_position = colour;
     }
 
     // texture
@@ -40,11 +40,11 @@ void main()
             discard;
         }
 
-        g_albedo = sample_colour * colour;
+        g_position = sample_colour * colour;
     }
 
     // font
     if (draw_type == 3) {
-        g_albedo = texture(font_texture, uv).r * colour;
+        g_position = texture(font_texture, uv).r * colour;
     }
 } 

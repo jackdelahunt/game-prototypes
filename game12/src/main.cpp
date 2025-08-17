@@ -16,11 +16,10 @@
 #include <atomic>
 
 // Total: 44:30
-// Started: 17:30
+// Started: 19:30
 //
 //
 // What do a programmer do?:
-// - ui text rendering combined with rendering on top of scene 
 // - combine vs and fs in the one file
 // - define assets in editor and get handles in game
 
@@ -183,11 +182,8 @@ enum GameClientMode {
 // @editor
 struct Editor {
     Camera camera;
-
     Viewport viewport;
-    FrameBuffer g_buffer;
-    FrameBuffer lighting_buffer;
-    FrameBuffer ui_buffer;
+    FrameBuffer editor_view;
 
     Entity *selected_entity;
 };
@@ -197,9 +193,7 @@ struct GameClient {
 
     Camera camera;
     Viewport viewport;
-    FrameBuffer g_buffer;
-    FrameBuffer lighting_buffer;
-    FrameBuffer ui_buffer;
+    FrameBuffer game_view;
 
     State state;
 };
@@ -406,9 +400,7 @@ void game_client_entry() {
             .focused = false,
             .size = WIN()->frame_buffer_size
         },
-        .g_buffer = FrameBuffer {.size = WIN()->frame_buffer_size},
-        .lighting_buffer = FrameBuffer {.size = WIN()->frame_buffer_size},
-        .ui_buffer = FrameBuffer {.size = WIN()->frame_buffer_size},
+        .game_view = FrameBuffer {.size = WIN()->frame_buffer_size},
         .state = State {
             .instance_type = IT_CLIENT,
             .instance_id = 0,
@@ -424,46 +416,20 @@ void game_client_entry() {
             .focused = false,
             .size = WIN()->frame_buffer_size
         },
-        .g_buffer = FrameBuffer {.size = WIN()->frame_buffer_size},
-        .lighting_buffer = FrameBuffer {.size = WIN()->frame_buffer_size},
-        .ui_buffer = FrameBuffer {.size = WIN()->frame_buffer_size},
+        .editor_view = FrameBuffer {.size = WIN()->frame_buffer_size},
         .selected_entity = NULL,
     };
 
     { // init editor and client frame buffer
-        bool ok = frame_buffer_init(&g_game_client->g_buffer);
+        bool ok = frame_buffer_init(&g_game_client->game_view);
         if (!ok) {
-            log("failed to init game client gBuffer");
+            log("failed to init game view frame buffer");
             return;
         }
 
-        ok = frame_buffer_init(&g_game_client->lighting_buffer);
+        ok = frame_buffer_init(&g_editor->editor_view);
         if (!ok) {
-            log("failed to init game lighting buffer");
-            return;
-        }
-
-        ok = frame_buffer_init(&g_game_client->ui_buffer);
-        if (!ok) {
-            log("failed to init game ui buffer");
-            return;
-        }
-
-        ok = frame_buffer_init(&g_editor->g_buffer);
-        if (!ok) {
-            log("failed to init editor gBuffer");
-            return;
-        }
-
-        ok = frame_buffer_init(&g_editor->lighting_buffer);
-        if (!ok) {
-            log("failed to init editor lighting buffer");
-            return;
-        }
-
-        ok = frame_buffer_init(&g_editor->ui_buffer);
-        if (!ok) {
-            log("failed to init editor ui buffer");
+            log("failed to init editor view frame buffer");
             return;
         }
     }
@@ -502,16 +468,10 @@ void game_client_entry() {
         renderer_start_frame(REN());
 
         game_client_draw(&GC()->state);
+        draw_text_ui(REN(), "Ammo 05/10", {10, 10, 0}, 50, RED);
 
-        // renderer_draw_geometry(REN(), &GC()->camera, GC()->viewport, &GC()->g_buffer);
-        renderer_draw_geometry(REN(), &ED()->camera, ED()->viewport, &ED()->g_buffer);
-
-        // renderer_draw_lighting(REN(), &GC()->camera, GC()->viewport, &GC()->lighting_buffer, &GC()->g_buffer);
-        renderer_draw_lighting(REN(), &ED()->camera, ED()->viewport, &ED()->lighting_buffer, &ED()->g_buffer);
-
-        // draw_text_ui(REN(), "Ammo 05/10", {10, 10, 0}, 50, RED);
-        // renderer_draw_ui(REN(), &GC()->camera, GC()->viewport, &GC()->ui_buffer, &GC()->lighting_buffer);
-        // renderer_draw_ui(REN(), &ED()->camera, ED()->viewport, &ED()->ui_buffer, &ED()->lighting_buffer);
+        renderer_draw_frame(REN(), &ED()->camera, ED()->viewport, &ED()->editor_view);
+        renderer_draw_frame(REN(), &GC()->camera, GC()->viewport, &GC()->game_view);
 
         renderer_end_frame(REN());
 
@@ -902,52 +862,33 @@ void editor_draw_ui(State *state) {
     // ImGui::ShowDemoWindow();
     
     {
-        i32 image_downscale = 4;
-        Viewport *gcv = &GC()->viewport;
-        Viewport *edv = &GC()->viewport;
+        f32 image_downscale = 4;
+        ImVec2 size = ImVec2(GC()->viewport.size.x / image_downscale, GC()->viewport.size.y / image_downscale);
 
         ImGui::Begin("Render output");
 
-        if (ImGui::CollapsingHeader("Game g_buffer")) {
+        if (ImGui::CollapsingHeader("G buffer")) {
             ImGui::Text("Position  //  Normals");
-            ImGui::Image(GC()->g_buffer.position_attachment, ImVec2(gcv->size.x / image_downscale, gcv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::Image(REN()->g_buffer.position_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
             ImGui::SameLine();
-            ImGui::Image(GC()->g_buffer.normals_attachment, ImVec2(gcv->size.x / image_downscale, gcv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::Image(REN()->g_buffer.normals_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
 
             ImGui::Text("Albedo  //  Depth");
-            ImGui::Image(GC()->g_buffer.albedo_attachment, ImVec2(gcv->size.x / image_downscale, gcv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::Image(REN()->g_buffer.albedo_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
             ImGui::SameLine();
-            ImGui::Image(GC()->g_buffer.depth_attachment, ImVec2(gcv->size.x / image_downscale, gcv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::Image(REN()->g_buffer.depth_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
         }
 
-        if (ImGui::CollapsingHeader("Game lighting")) {
-            ImGui::Image(GC()->lighting_buffer.position_attachment, ImVec2(gcv->size.x / image_downscale, gcv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
-        }
-
-        if (ImGui::CollapsingHeader("Game ui")) {
-            ImGui::Text("Albedo");
-            ImGui::Image(GC()->ui_buffer.albedo_attachment, ImVec2(gcv->size.x / image_downscale, gcv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
-        }
-
-        if (ImGui::CollapsingHeader("Editor g_buffer")) {
+        if (ImGui::CollapsingHeader("Lighting buffer")) {
             ImGui::Text("Position  //  Normals");
-            ImGui::Image(ED()->g_buffer.position_attachment, ImVec2(edv->size.x / image_downscale, edv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::Image(REN()->lighting_buffer.position_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
             ImGui::SameLine();
-            ImGui::Image(ED()->g_buffer.normals_attachment, ImVec2(edv->size.x / image_downscale, edv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::Image(REN()->lighting_buffer.normals_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
 
             ImGui::Text("Albedo  //  Depth");
-            ImGui::Image(ED()->g_buffer.albedo_attachment, ImVec2(edv->size.x / image_downscale, edv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::Image(REN()->lighting_buffer.albedo_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
             ImGui::SameLine();
-            ImGui::Image(ED()->g_buffer.depth_attachment, ImVec2(edv->size.x / image_downscale, edv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
-        }
-
-        if (ImGui::CollapsingHeader("Editor lighting")) {
-            ImGui::Image(ED()->lighting_buffer.position_attachment, ImVec2(edv->size.x / image_downscale, edv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
-        }
-
-        if (ImGui::CollapsingHeader("Editor ui")) {
-            ImGui::Text("Albedo");
-            ImGui::Image(ED()->ui_buffer.albedo_attachment, ImVec2(edv->size.x / image_downscale, edv->size.y / image_downscale), ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::Image(REN()->lighting_buffer.depth_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
         }
 
         ImGui::End();
@@ -1188,8 +1129,8 @@ void editor_draw_ui(State *state) {
         ImGui::End();
     }
 
-    GC()->viewport = imgui_viewport("Game", GC()->lighting_buffer.position_attachment, WIN()->mouse_captured);
-    ED()->viewport = imgui_viewport("Editor", ED()->lighting_buffer.position_attachment, false);
+    GC()->viewport = imgui_viewport("Game", GC()->game_view.albedo_attachment, WIN()->mouse_captured);
+    ED()->viewport = imgui_viewport("Editor", ED()->editor_view.albedo_attachment, false);
 
     draw_imgui_frame();
 }

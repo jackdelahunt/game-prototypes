@@ -439,6 +439,10 @@ struct Renderer {
     QuadBuffer ui_quads;
     QuadBuffer screen_quad;
 
+    FrameBuffer g_buffer;
+    FrameBuffer lighting_buffer;
+    FrameBuffer ui_buffer;
+
     u32 vertex_array_id;
     u32 vertex_buffer_id;
     u32 index_buffer_id;
@@ -517,11 +521,9 @@ u32 upload_font_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
 bool load_font(Renderer *renderer, str path, i64 width, i64 height, f32 pixel_height);
 
 // Renderer frame API
-void renderer_clear_frame(Renderer *renderer, v4 colour);
+void renderer_clear_frame(v4 colour);
 void renderer_start_frame(Renderer *renderer);
-void renderer_draw_geometry(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target_buffer);
-void renderer_draw_lighting(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target_buffer, FrameBuffer *source_buffer);
-void renderer_draw_ui(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target_buffer, FrameBuffer *source_buffer);
+void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target);
 void renderer_end_frame(Renderer *renderer);
 void new_imgui_frame();
 void draw_imgui_frame();
@@ -548,10 +550,11 @@ void toggle_wireframe(Renderer *renderer);
 f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
 
 bool frame_buffer_init(FrameBuffer *frame_buffer);
-void frame_buffer_bind(FrameBuffer *frame_buffer, v4 colour);
+void frame_buffer_bind(FrameBuffer *frame_buffer);
 void frame_buffer_unbind();
 bool frame_buffer_maybe_resize(FrameBuffer *frame_buffer, v2i new_size);
 bool frame_buffer_rebuild(FrameBuffer *frame_buffer);
+void frame_buffer_copy_to(FrameBuffer *source_buffer, FrameBuffer *dest_buffer);
 
 v3 screen_position_to_world_position(Renderer *renderer, Viewport viewport, v3 screen_position);
 v3 screen_position_to_ndc(Viewport viewport, v3 screen_position);
@@ -911,6 +914,9 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         .quads = fixed_array_create<Quad>(MAX_QUADS),
         .commands = fixed_array_create<RenderCommand>(MAX_RENDER_COMMANDS),
         .textures = stack_array_create<Texture, MAX_TEXTURES>(),
+        .g_buffer = FrameBuffer {.size = {100, 100}},
+        .lighting_buffer = FrameBuffer {.size = {100, 100}},
+        .ui_buffer = FrameBuffer {.size = {100, 100}},
     };
 
     Renderer *renderer = REN();
@@ -962,11 +968,13 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
         io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
+        io.Fonts->AddFontFromFileTTF("resources/fonts/OpenSans-Bold.ttf", 16);
+        io.Fonts->Build();
+
         // set custom colours
         ImVec4* colors = ImGui::GetStyle().Colors;
         colors[ImGuiCol_TitleBgActive]          = ImVec4(0.81f, 0.24f, 0.24f, 1.00f);
         colors[ImGuiCol_PlotLines]              = ImVec4(0.85f, 0.25f, 0.25f, 1.00f);
-
 
         ImGui::GetStyle().FrameRounding = 2;
 
@@ -1040,11 +1048,6 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     }
 
-    { // create ui quad buffer
-        renderer->ui_quads = quad_buffer_create(MAX_UI_QUADS);
-        renderer->screen_quad = quad_buffer_create(1);
-    }
-
     { // load default normal texture
         Texture *texture = load_texture(renderer, "resources/textures/defaults/normal.png");
         if (texture == NULL) {
@@ -1090,6 +1093,17 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
 
         renderer->quad_primitive = mesh_create(REN(), verts, indices);
         ASSERT(renderer->quad_primitive);
+    }
+
+    { // create ui quad buffer
+        renderer->ui_quads = quad_buffer_create(MAX_UI_QUADS);
+        renderer->screen_quad = quad_buffer_create(1);
+    }
+
+    { // create frame buffers 
+        frame_buffer_init(&renderer->g_buffer);
+        frame_buffer_init(&renderer->lighting_buffer);
+        frame_buffer_init(&renderer->ui_buffer);
     }
 
     return true;
@@ -1394,7 +1408,7 @@ bool load_font(Renderer *renderer, str path, i64 width, i64 height, f32 pixel_he
     return true;
 }
 
-void renderer_clear_frame(Renderer *renderer, v4 colour) {
+void renderer_clear_frame(v4 colour) {
     glClearColor(
         colour.r,
         colour.g,
@@ -1406,105 +1420,109 @@ void renderer_clear_frame(Renderer *renderer, v4 colour) {
 }
 
 void renderer_start_frame(Renderer *renderer) {
-    renderer_clear_frame(renderer, renderer->clear_colour);
+    renderer_clear_frame(renderer->clear_colour);
 }
 
-void renderer_draw_geometry(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *frame_buffer) {
+void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target) {
     renderer->view_matrix = get_view_matrix(camera);
     renderer->projection_matrix = get_projection_matrix(camera, f32(viewport.size.x) / f32(viewport.size.y));
     renderer->projection_matrix_ortho = get_projection_matrix_ortho(camera,  f32(viewport.size.x) / f32(viewport.size.y));
 
-    frame_buffer_maybe_resize(frame_buffer, viewport.size);
-    frame_buffer_bind(frame_buffer, v4{0, 0, 0, 1});
-
-    for (RenderCommand &command : renderer->commands) {
-        if (command.type == RC_MODEL) {
-            MeshRenderCommand *model_cmd = &command.mesh;
-
-            m4 model_matrix = HMM_M4D(1.0f);
-            model_matrix = HMM_MulM4(model_matrix, HMM_Translate(model_cmd->position));
-            model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(model_cmd->rotation.x * HMM_DegToRad, {1, 0, 0}));
-            model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(model_cmd->rotation.y * HMM_DegToRad, {0, 1, 0}));
-            model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(model_cmd->rotation.z * HMM_DegToRad, {0, 0, 1}));
-            model_matrix = HMM_MulM4(model_matrix, HMM_Scale({model_cmd->scale.x, model_cmd->scale.y, model_cmd->scale.z}));
-     
-            use_shader(renderer->mesh_shader);
-     
-            set_uniform_m4(renderer->mesh_shader, "model", &model_matrix);
-            set_uniform_m4(renderer->mesh_shader, "view", &renderer->view_matrix);
-            set_uniform_m4(renderer->mesh_shader, "projection", &renderer->projection_matrix);
-            set_uniform_v4(renderer->mesh_shader, "colour", model_cmd->colour);
-        
-            GL_CALL(glBindVertexArray(model_cmd->mesh->vertex_array_id));
-            GL_CALL(glDrawElements(GL_TRIANGLES, model_cmd->mesh->indices.len, GL_UNSIGNED_INT, 0));
+    { // geometry pass
+        frame_buffer_maybe_resize(&renderer->g_buffer, viewport.size);
+        frame_buffer_bind(&renderer->g_buffer);
+        renderer_clear_frame(BLACK);
+    
+        for (RenderCommand &command : renderer->commands) {
+            if (command.type == RC_MODEL) {
+                MeshRenderCommand *model_cmd = &command.mesh;
+    
+                m4 model_matrix = HMM_M4D(1.0f);
+                model_matrix = HMM_MulM4(model_matrix, HMM_Translate(model_cmd->position));
+                model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(model_cmd->rotation.x * HMM_DegToRad, {1, 0, 0}));
+                model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(model_cmd->rotation.y * HMM_DegToRad, {0, 1, 0}));
+                model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(model_cmd->rotation.z * HMM_DegToRad, {0, 0, 1}));
+                model_matrix = HMM_MulM4(model_matrix, HMM_Scale({model_cmd->scale.x, model_cmd->scale.y, model_cmd->scale.z}));
+         
+                use_shader(renderer->mesh_shader);
+         
+                set_uniform_m4(renderer->mesh_shader, "model", &model_matrix);
+                set_uniform_m4(renderer->mesh_shader, "view", &renderer->view_matrix);
+                set_uniform_m4(renderer->mesh_shader, "projection", &renderer->projection_matrix);
+                set_uniform_v4(renderer->mesh_shader, "colour", model_cmd->colour);
+            
+                GL_CALL(glBindVertexArray(model_cmd->mesh->vertex_array_id));
+                GL_CALL(glDrawElements(GL_TRIANGLES, model_cmd->mesh->indices.len, GL_UNSIGNED_INT, 0));
+            }
         }
+    
+        frame_buffer_unbind();
     }
 
-    frame_buffer_unbind();
-}
-
-void renderer_draw_lighting(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target_buffer, FrameBuffer *source_buffer) {
-    renderer->view_matrix = get_view_matrix(camera);
-    renderer->projection_matrix = get_projection_matrix(camera, f32(viewport.size.x) / f32(viewport.size.y));
-    renderer->projection_matrix_ortho = get_projection_matrix_ortho(camera,  f32(viewport.size.x) / f32(viewport.size.y));
-
-    push_screen_quad(renderer, WHITE);
-
-    frame_buffer_maybe_resize(target_buffer, viewport.size);
-    frame_buffer_bind(target_buffer, renderer->clear_colour);
-
-    quad_buffer_bind_and_update(&renderer->screen_quad);
+    { // lighting pass
+        frame_buffer_maybe_resize(&renderer->lighting_buffer, viewport.size);
+        frame_buffer_bind(&renderer->lighting_buffer);
+        renderer_clear_frame(renderer->clear_colour);
     
-    use_shader(renderer->lighting_shader);
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, source_buffer->position_attachment);
-
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, source_buffer->normals_attachment);
-
-    glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, source_buffer->albedo_attachment);
-
-    set_uniform_v3(renderer->lighting_shader, "ambient_light", renderer->ambient_light);
-    set_uniform_v3(renderer->lighting_shader, "sun_position", renderer->sun_position);
-    set_uniform_v3(renderer->lighting_shader, "sun_colour", renderer->sun_colour);
-    set_uniform_v3(renderer->lighting_shader, "shadow_colour", renderer->shadow_colour);
+        push_screen_quad(renderer, WHITE);
+        quad_buffer_bind_and_update(&renderer->screen_quad);
         
-    glDrawElements(GL_TRIANGLES, 6 * renderer->screen_quad.quads.len, GL_UNSIGNED_INT, 0);
+        use_shader(renderer->lighting_shader);
+    
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.position_attachment);
+    
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.normals_attachment);
+    
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.albedo_attachment);
+    
+        set_uniform_v3(renderer->lighting_shader, "ambient_light", renderer->ambient_light);
+        set_uniform_v3(renderer->lighting_shader, "sun_position", renderer->sun_position);
+        set_uniform_v3(renderer->lighting_shader, "sun_colour", renderer->sun_colour);
+        set_uniform_v3(renderer->lighting_shader, "shadow_colour", renderer->shadow_colour);
+            
+        glDrawElements(GL_TRIANGLES, 6 * renderer->screen_quad.quads.len, GL_UNSIGNED_INT, 0);
+    
+        quad_buffer_reset(&renderer->screen_quad);
+        quad_buffer_unbind();
+    
+        frame_buffer_unbind();
+    }
 
-    quad_buffer_reset(&renderer->screen_quad);
-    quad_buffer_unbind();
+    { // ui pass
+        m4 model_matrix = HMM_M4D(1.0f);
+        m4 view_matrix = HMM_M4D(1.0f);
+        m4 projection_matrix = HMM_Orthographic_LH_NO(0, viewport.size.x, 0, viewport.size.y,  -1, 1);
 
-    frame_buffer_unbind();
-}
+        // drawing on top of lighting buffer output
+        frame_buffer_bind(&renderer->lighting_buffer);
+    
+        quad_buffer_bind_and_update(&renderer->ui_quads);
+     
+        use_shader(renderer->default_shader);
+    
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
+    
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, renderer->font_texture_id);
+    
+        set_uniform_m4(renderer->default_shader, "model", &model_matrix);
+        set_uniform_m4(renderer->default_shader, "view", &view_matrix);
+        set_uniform_m4(renderer->default_shader, "projection", &projection_matrix);
+    
+        glDrawElements(GL_TRIANGLES, 6 * renderer->ui_quads.quads.len, GL_UNSIGNED_INT, 0);
+    
+        quad_buffer_unbind();
+        frame_buffer_unbind();
+    }
 
-void renderer_draw_ui(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target_buffer, FrameBuffer *source_buffer) {
-    m4 model_matrix = HMM_M4D(1.0f);
-    m4 view_matrix = HMM_M4D(1.0f);
-    m4 projection_matrix = HMM_Orthographic_LH_NO(0, viewport.size.x, 0, viewport.size.y,  -1, 1);
-
-    frame_buffer_maybe_resize(target_buffer, viewport.size);
-    frame_buffer_bind(target_buffer, renderer->clear_colour);
-
-    quad_buffer_bind_and_update(&renderer->ui_quads);
- 
-    use_shader(renderer->default_shader);
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
-
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, renderer->font_texture_id);
-
-    set_uniform_m4(renderer->default_shader, "model", &model_matrix);
-    set_uniform_m4(renderer->default_shader, "view", &view_matrix);
-    set_uniform_m4(renderer->default_shader, "projection", &projection_matrix);
-
-    glDrawElements(GL_TRIANGLES, 6 * renderer->ui_quads.quads.len, GL_UNSIGNED_INT, 0);
-
-    quad_buffer_unbind();
-    frame_buffer_unbind();
+    { // copy to target buffer
+        frame_buffer_maybe_resize(target, viewport.size);
+        frame_buffer_copy_to(&renderer->lighting_buffer, target);
+    }
 }
 
 void renderer_end_frame(Renderer *renderer) {
@@ -1531,11 +1549,12 @@ void draw_imgui_frame() {
 void push_screen_quad(Renderer *renderer, v4 color) {
     Quad *quad = quad_buffer_push(&renderer->screen_quad);
 
+    // 0.99 so it is barely in clip space and behind everything else
     v3 pos[4] = {
-        {-1,  1, 0}, // top left
-        { 1,  1, 0}, // top right
-        { 1, -1, 0}, // bottom right 
-        {-1, -1, 0}, // bottom left
+        {-1,  1, 0.99}, // top left
+        { 1,  1, 0.99}, // top right
+        { 1, -1, 0.99}, // bottom right 
+        {-1, -1, 0.99}, // bottom left
     };
 
     quad->vertices[0].position = pos[0];
@@ -1717,13 +1736,9 @@ bool frame_buffer_init(FrameBuffer *frame_buffer) {
     return frame_buffer_rebuild(frame_buffer);
 }
 
-void frame_buffer_bind(FrameBuffer *frame_buffer, v4 colour) {
+void frame_buffer_bind(FrameBuffer *frame_buffer) {
     glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer->id);
 
-    // clear colour settings
-    glClearColor(colour.r, colour.g, colour.b, 1);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    
     // viewport settings
     glViewport(0, 0, frame_buffer->size.x, frame_buffer->size.y);
 }
@@ -1811,6 +1826,20 @@ bool frame_buffer_rebuild(FrameBuffer *frame_buffer) {
         printf("error when createing frame buffer, was not complete\n");
         return false;
     }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void frame_buffer_copy_to(FrameBuffer *source_buffer, FrameBuffer *dest_buffer) {
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, source_buffer->id);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dest_buffer->id);
+
+    glBlitFramebuffer(
+        0, 0, source_buffer->size.x, source_buffer->size.y,
+        0, 0, dest_buffer->size.x, dest_buffer->size.y,
+        GL_COLOR_BUFFER_BIT,
+        GL_NEAREST
+    );
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
@@ -1920,7 +1949,7 @@ QuadBuffer quad_buffer_create(i64 size) {
         u32 vertex_buffer;
         glGenBuffers(1, &vertex_buffer);
         glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(Quad) * MAX_QUADS, buffer.quads.slice.ptr, GL_DYNAMIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(Quad) * size, buffer.quads.slice.ptr, GL_DYNAMIC_DRAW);
 
         buffer.vertex_buffer_id = vertex_buffer;
     }
