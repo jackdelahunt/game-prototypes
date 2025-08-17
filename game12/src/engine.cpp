@@ -245,6 +245,20 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 #define MAX_SPRITES 256
 #define MAX_TEXTURES 256
 
+v3 QUAD_POSITIONS[4] = {
+    {-1,  1, 0}, // top left
+    { 1,  1, 0}, // top right
+    { 1, -1, 0}, // bottom right 
+    {-1, -1, 0}, // bottom left
+};
+
+v2 QUAD_UVS[4] = {
+    {0, 1},
+    {1, 1},
+    {1, 0},
+    {0, 0},
+};
+
 struct MeshVertex {
     v3 position;
     v3 normal;
@@ -252,10 +266,9 @@ struct MeshVertex {
 };
 
 struct Vertex {
-    v4 position;
+    v3 position;
     v4 colour;
     v2 uv;
-    v2 normal_uv;
     i32 draw_type;
 };
 
@@ -379,20 +392,11 @@ struct MeshRenderCommand {
     v4 colour;
 };
 
-struct QuadRenderCommand {
-    v3 position;
-    v2 size;
-    v3 rotation;
-    v4 colour;
-    DrawType draw_type;
-};
-
 struct RenderCommand {
     RenderCommandType type;
 
     union {
         MeshRenderCommand mesh;
-        QuadRenderCommand quad;
     };
 };
 
@@ -505,6 +509,7 @@ void renderer_clear_frame(Renderer *renderer, v4 colour);
 void renderer_start_frame(Renderer *renderer);
 void renderer_draw_geometry(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target_buffer);
 void renderer_draw_lighting(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target_buffer, FrameBuffer *source_buffer);
+void renderer_draw_ui(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target_buffer, FrameBuffer *source_buffer);
 void renderer_end_frame(Renderer *renderer);
 void new_imgui_frame();
 void draw_imgui_frame();
@@ -512,18 +517,21 @@ void draw_imgui_frame();
 // Immediate rendering API
 void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color);
 void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
-void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 color);
-Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type);
+Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour, v2 uvs[4], DrawType draw_type);
 Quad *push_screen_quad(Renderer *renderer, v4 color);
 
 // Drawing API
-void draw_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, DrawType draw_type);
-void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color);
-void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color);
+void draw_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour);
 void draw_line(Renderer *renderer, v3 position, v3 direction, f32 radius, f32 step, v4 colour);
 void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 colour);
 void draw_sphere(Renderer *renderer, v3 position, f32 radius, v4 colour);
 void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position, v3 scale, v3 rotation, v4 colour);
+
+// Drawing UI API
+void draw_quad_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour, v2 uvs[4], DrawType type);
+void draw_rectangle_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour);
+void draw_circle_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour);
+void draw_text_ui(Renderer *renderer, str text, v3 position, f32 font_size, v4 color);
 
 void toggle_wireframe(Renderer *renderer);
 f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
@@ -1000,17 +1008,15 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
     }
 
     { // vertex attributes
-        glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, position));   // position
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, position));   // position
         glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, colour));     // colour
         glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, uv));         // uv
-        glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, normal_uv));  // normal_uv
-        glVertexAttribIPointer(4, 1, GL_INT, sizeof(Vertex), (void *) offsetof(Vertex, draw_type));             // draw_type
+        glVertexAttribIPointer(3, 1, GL_INT, sizeof(Vertex), (void *) offsetof(Vertex, draw_type));             // draw_type
 
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
         glEnableVertexAttribArray(2);
         glEnableVertexAttribArray(3);
-        glEnableVertexAttribArray(4);
 
         glBindVertexArray(0);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -1025,6 +1031,14 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         }
 
         renderer->default_normal = texture;
+    }
+
+    { // load default font
+        bool ok = load_font(renderer, "resources/fonts/LibreBaskerville.ttf", 1000, 1000, 160);
+        if (!ok) {
+            log("failed to load default font");
+            return false;
+        }
     }
 
     { // load primitive models 
@@ -1402,28 +1416,6 @@ void renderer_draw_geometry(Renderer *renderer, Camera *camera, Viewport viewpor
             GL_CALL(glBindVertexArray(model_cmd->mesh->vertex_array_id));
             GL_CALL(glDrawElements(GL_TRIANGLES, model_cmd->mesh->indices.len, GL_UNSIGNED_INT, 0));
         }
-        
-        if (command.type == RC_QUAD) {
-            QuadRenderCommand *quad_cmd = &command.quad;
-
-            m4 model_matrix = HMM_M4D(1.0f);
-            model_matrix = HMM_MulM4(model_matrix, HMM_Translate(quad_cmd->position));
-            model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(quad_cmd->rotation.x * HMM_DegToRad, {1, 0, 0}));
-            model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(quad_cmd->rotation.y * HMM_DegToRad, {0, 1, 0}));
-            model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(quad_cmd->rotation.z * HMM_DegToRad, {0, 0, 1}));
-            model_matrix = HMM_MulM4(model_matrix, HMM_Scale({quad_cmd->size.x, quad_cmd->size.y, 1}));
-     
-            use_shader(renderer->default_shader);
-     
-            set_uniform_m4(renderer->default_shader, "model", &model_matrix);
-            set_uniform_m4(renderer->default_shader, "view", &renderer->view_matrix);
-            set_uniform_m4(renderer->default_shader, "projection", &renderer->projection_matrix);
-            set_uniform_v4(renderer->default_shader, "colour", quad_cmd->colour);
-            set_uniform_i32(renderer->default_shader, "draw_type", (i32) quad_cmd->draw_type);
-        
-            GL_CALL(glBindVertexArray(renderer->quad_primitive->vertex_array_id));
-            GL_CALL(glDrawElements(GL_TRIANGLES, renderer->cube_primitive->indices.len, GL_UNSIGNED_INT, 0));
-        }
     }
 
     frame_buffer_unbind();
@@ -1464,6 +1456,35 @@ void renderer_draw_lighting(Renderer *renderer, Camera *camera, Viewport viewpor
     frame_buffer_unbind();
 }
 
+void renderer_draw_ui(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target_buffer, FrameBuffer *source_buffer) {
+    m4 model_matrix = HMM_M4D(1.0f);
+    m4 view_matrix = HMM_M4D(1.0f);
+    m4 projection_matrix = HMM_Orthographic_LH_NO(0, viewport.size.x, 0, viewport.size.y,  -1, 1);
+
+    frame_buffer_maybe_resize(target_buffer, viewport.size);
+    frame_buffer_bind(target_buffer, renderer->clear_colour);
+
+    glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
+    glBindVertexArray(renderer->vertex_array_id);
+ 
+    use_shader(renderer->default_shader);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, renderer->font_texture_id);
+
+    set_uniform_m4(renderer->default_shader, "model", &model_matrix);
+    set_uniform_m4(renderer->default_shader, "view", &view_matrix);
+    set_uniform_m4(renderer->default_shader, "projection", &projection_matrix);
+
+    glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
+
+    frame_buffer_unbind();
+}
+
 void renderer_end_frame(Renderer *renderer) {
     reset(&renderer->quads);
     reset(&renderer->commands);
@@ -1484,7 +1505,135 @@ void draw_imgui_frame() {
     glfwMakeContextCurrent(current);
 }
 
-void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 color) {
+Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour, v2 uvs[4], DrawType draw_type) {
+    const v4 top_left      = {-0.5,   0.5, 0, 1};
+    const v4 top_right     = { 0.5,   0.5, 0, 1};
+    const v4 bottom_right  = { 0.5,  -0.5, 0, 1};
+    const v4 bottom_left   = {-0.5,  -0.5, 0, 1};
+
+    // After looking at how unity does their rotations I am doing the oppisite.
+    // In unity, when looking down the negative of an axis towards origin, 
+    // increasing the rotation of that axis means it rotates to the right. 
+    // For me it was when looking in the positive of that axis.
+    //
+    // After trying it I think I rather my approach so I am keeping it, maybe
+    // this will change. If in the future I am confused, always remember that
+    // when looking from the origin, down an axis, a positive rotation means
+    // it rotates to the right
+    // - 31/05/25
+
+    m4 model_matrix = HMM_M4D(1.0f);
+    model_matrix = HMM_MulM4(model_matrix, HMM_Translate(position));
+    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.x * HMM_DegToRad, {1, 0, 0}));
+    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.y * HMM_DegToRad, {0, 1, 0}));
+    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.z * HMM_DegToRad, {0, 0, 1}));
+    model_matrix = HMM_MulM4(model_matrix, HMM_Scale({size.x, size.y, 1}));
+              
+    m4 mvp_matrix = HMM_MulM4(HMM_MulM4(renderer->projection_matrix, renderer->view_matrix), model_matrix);
+
+    Quad *quad = push(&renderer->quads);
+#if 0
+    quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left);
+    quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right);
+    quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right);
+    quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left);
+#endif
+                
+    quad->vertices[0].colour = colour;
+    quad->vertices[1].colour = colour;
+    quad->vertices[2].colour = colour;
+    quad->vertices[3].colour = colour;
+
+    quad->vertices[0].uv = uvs[0];
+    quad->vertices[1].uv = uvs[1];
+    quad->vertices[2].uv = uvs[2];
+    quad->vertices[3].uv = uvs[3];
+
+    quad->vertices[0].draw_type = (i32) draw_type;
+    quad->vertices[1].draw_type = (i32) draw_type;
+    quad->vertices[2].draw_type = (i32) draw_type;
+    quad->vertices[3].draw_type = (i32) draw_type;
+
+    return quad;
+}
+
+Quad *push_screen_quad(Renderer *renderer, v4 color) {
+    Quad *quad = push(&renderer->quads);
+
+    quad->vertices[0].position = QUAD_POSITIONS[0];
+    quad->vertices[1].position = QUAD_POSITIONS[1];
+    quad->vertices[2].position = QUAD_POSITIONS[2];
+    quad->vertices[3].position = QUAD_POSITIONS[3];
+                
+    quad->vertices[0].colour = color;
+    quad->vertices[1].colour = color;
+    quad->vertices[2].colour = color;
+    quad->vertices[3].colour = color;
+
+    quad->vertices[0].uv = QUAD_UVS[0];
+    quad->vertices[1].uv = QUAD_UVS[1];
+    quad->vertices[2].uv = QUAD_UVS[2];
+    quad->vertices[3].uv = QUAD_UVS[3];
+
+    quad->vertices[0].draw_type = 0;
+    quad->vertices[1].draw_type = 0;
+    quad->vertices[2].draw_type = 0;
+    quad->vertices[3].draw_type = 0;
+
+    return quad;
+}
+
+void draw_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour) {
+    draw_mesh(renderer, renderer->quad_primitive, position, v3{size.x, size.y, 1}, rotation, colour);
+}
+
+void draw_line(Renderer *renderer, v3 position, v3 direction, f32 radius, f32 step, v4 colour) {
+    v3 dir = norm(direction);
+
+    for (i64 i = 0; i < 200; i++) {
+        v3 draw_position = position + (dir * step * f32(i));
+        draw_sphere(renderer, draw_position, radius, colour);
+    }
+}
+
+void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 colour) {
+    draw_mesh(renderer, renderer->cube_primitive, position, size, rotation, colour);
+}
+
+void draw_sphere(Renderer *renderer, v3 position, f32 radius, v4 colour) {
+    draw_mesh(renderer, renderer->sphere_primitive, position, v3{radius, radius, radius} * 2, v3{}, colour);
+}
+
+void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position, v3 scale, v3 rotation, v4 colour) {
+    RenderCommand *command = push(&renderer->commands);
+    command->type = RC_MODEL;
+    command->mesh.position = position;
+    command->mesh.rotation = rotation;
+    command->mesh.scale = scale;
+    command->mesh.mesh = mesh;
+    command->mesh.colour = colour;
+}
+
+void draw_quad_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour, v2 uvs[4], DrawType type) {
+    Quad *quad = push(&renderer->quads);
+
+    for (i64 i = 0; i < 4; i++) {
+        quad->vertices[i].position  = (QUAD_POSITIONS[i] * v3{size.x, size.y, 1}) + position;
+        quad->vertices[i].colour    = colour;
+        quad->vertices[i].uv        = uvs[i];
+        quad->vertices[i].draw_type = (i32) type;
+    }
+}
+
+void draw_rectangle_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour) {
+    draw_quad_ui(renderer, position, size, rotation, colour, QUAD_UVS, DrawType::RECTANGLE);
+}
+
+void draw_circle_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour) {
+    draw_quad_ui(renderer, position, size, rotation, colour, QUAD_UVS, DrawType::CIRCLE);
+}
+
+void draw_text_ui(Renderer *renderer, str text, v3 position, f32 font_size, v4 color) {
     if (text.len == 0) {
         return;
     }
@@ -1566,157 +1715,14 @@ void draw_text(Renderer *renderer, str text, v3 position, f32 font_size, v4 colo
 
         // quad needs position to be centre of quad so just convert that here
         v2 quad_centered_position = translated_position + (scaled_size * 0.5f);
+        v3 centered_v3 = v3{quad_centered_position.x, quad_centered_position.y, position.z};
 
-        push_quad(renderer, v3{quad_centered_position.x, quad_centered_position.y, position.z}, scaled_size, {}, color, glyph->uvs, {}, DrawType::TEXT);
+        draw_circle_ui(renderer, centered_v3, {15, 15}, {}, GREEN);
+        draw_circle_ui(renderer, {translated_position.x, translated_position.y, position.z}, {15, 15}, {}, BLUE);
+        draw_quad_ui(renderer, centered_v3, scaled_size, {}, color, glyph->uvs, DrawType::TEXT);
    }
 
     slice_free(glyphs);
-}
-
-Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, v2 uvs[4], v2 normal_uvs[4], DrawType draw_type) {
-    const v4 top_left      = {-0.5,   0.5, 0, 1};
-    const v4 top_right     = { 0.5,   0.5, 0, 1};
-    const v4 bottom_right  = { 0.5,  -0.5, 0, 1};
-    const v4 bottom_left   = {-0.5,  -0.5, 0, 1};
-
-    // After looking at how unity does their rotations I am doing the oppisite.
-    // In unity, when looking down the negative of an axis towards origin, 
-    // increasing the rotation of that axis means it rotates to the right. 
-    // For me it was when looking in the positive of that axis.
-    //
-    // After trying it I think I rather my approach so I am keeping it, maybe
-    // this will change. If in the future I am confused, always remember that
-    // when looking from the origin, down an axis, a positive rotation means
-    // it rotates to the right
-    // - 31/05/25
-
-    m4 model_matrix = HMM_M4D(1.0f);
-    model_matrix = HMM_MulM4(model_matrix, HMM_Translate(position));
-    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.x * HMM_DegToRad, {1, 0, 0}));
-    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.y * HMM_DegToRad, {0, 1, 0}));
-    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.z * HMM_DegToRad, {0, 0, 1}));
-    model_matrix = HMM_MulM4(model_matrix, HMM_Scale({size.x, size.y, 1}));
-              
-    m4 mvp_matrix = HMM_MulM4(HMM_MulM4(renderer->projection_matrix, renderer->view_matrix), model_matrix);
-
-    Quad *quad = push(&renderer->quads);
-
-    quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left);
-    quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right);
-    quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right);
-    quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left);
-                
-    quad->vertices[0].colour = color;
-    quad->vertices[1].colour = color;
-    quad->vertices[2].colour = color;
-    quad->vertices[3].colour = color;
-
-    quad->vertices[0].uv = uvs[0];
-    quad->vertices[1].uv = uvs[1];
-    quad->vertices[2].uv = uvs[2];
-    quad->vertices[3].uv = uvs[3];
-
-    if (normal_uvs != NULL) {
-        quad->vertices[0].normal_uv = normal_uvs[0];
-        quad->vertices[1].normal_uv = normal_uvs[1];
-        quad->vertices[2].normal_uv = normal_uvs[2];
-        quad->vertices[3].normal_uv = normal_uvs[3];
-    }
-
-    quad->vertices[0].draw_type = (i32) draw_type;
-    quad->vertices[1].draw_type = (i32) draw_type;
-    quad->vertices[2].draw_type = (i32) draw_type;
-    quad->vertices[3].draw_type = (i32) draw_type;
-
-    return quad;
-}
-
-Quad *push_screen_quad(Renderer *renderer, v4 color) {
-    const v4 top_left      = {-1,   1, 0, 1};
-    const v4 top_right     = { 1,   1, 0, 1};
-    const v4 bottom_right  = { 1,  -1, 0, 1};
-    const v4 bottom_left   = {-1,  -1, 0, 1};
-
-    v2 uvs[4] = {
-        {0, 1},
-        {1, 1},
-        {1, 0},
-        {0, 0},
-    };
-
-    Quad *quad = push(&renderer->quads);
-
-    quad->vertices[0].position = top_left;
-    quad->vertices[1].position = top_right;
-    quad->vertices[2].position = bottom_right;
-    quad->vertices[3].position = bottom_left;
-                
-    quad->vertices[0].colour = color;
-    quad->vertices[1].colour = color;
-    quad->vertices[2].colour = color;
-    quad->vertices[3].colour = color;
-
-    quad->vertices[0].uv = uvs[0];
-    quad->vertices[1].uv = uvs[1];
-    quad->vertices[2].uv = uvs[2];
-    quad->vertices[3].uv = uvs[3];
-
-    quad->vertices[0].normal_uv = uvs[0];
-    quad->vertices[1].normal_uv = uvs[1];
-    quad->vertices[2].normal_uv = uvs[2];
-    quad->vertices[3].normal_uv = uvs[3];
-
-    quad->vertices[0].draw_type = 0;
-    quad->vertices[1].draw_type = 0;
-    quad->vertices[2].draw_type = 0;
-    quad->vertices[3].draw_type = 0;
-
-    return quad;
-}
-
-void draw_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 color, DrawType draw_type) {
-    RenderCommand *command = push(&renderer->commands);
-    command->type = RC_QUAD;
-    command->quad.position = position;
-    command->quad.size = size;
-    command->quad.rotation = rotation;
-    command->quad.colour = color;
-    command->quad.draw_type = draw_type;
-}
-
-void draw_rectangle(Renderer *renderer, v3 position, v2 size, v4 color) {
-    draw_quad(renderer, position, size, {}, color, DrawType::RECTANGLE);
-}
-
-void draw_circle(Renderer *renderer, v3 position, f32 radius, v4 color) {
-    draw_quad(renderer, position, v2{radius, radius} * 2, {}, color, DrawType::CIRCLE);
-}
-
-void draw_line(Renderer *renderer, v3 position, v3 direction, f32 radius, f32 step, v4 colour) {
-    v3 dir = norm(direction);
-
-    for (i64 i = 0; i < 200; i++) {
-        v3 draw_position = position + (dir * step * f32(i));
-        draw_sphere(renderer, draw_position, radius, colour);
-    }
-}
-
-void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 colour) {
-    draw_mesh(renderer, renderer->cube_primitive, position, size, rotation, colour);
-}
-
-void draw_sphere(Renderer *renderer, v3 position, f32 radius, v4 colour) {
-    draw_mesh(renderer, renderer->sphere_primitive, position, v3{radius, radius, radius} * 2, v3{}, colour);
-}
-
-void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position, v3 scale, v3 rotation, v4 colour) {
-    RenderCommand *command = push(&renderer->commands);
-    command->type = RC_MODEL;
-    command->mesh.position = position;
-    command->mesh.rotation = rotation;
-    command->mesh.scale = scale;
-    command->mesh.mesh = mesh;
-    command->mesh.colour = colour;
 }
 
 void toggle_wireframe(Renderer *renderer) {
