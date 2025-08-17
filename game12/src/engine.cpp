@@ -237,7 +237,8 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 /////////////////////////////////////////////////////////////////////////////
 //////////////////////////////// @renderer //////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
-#define MAX_QUADS 100
+#define MAX_UI_QUADS 100
+#define MAX_QUADS 500
 #define MAX_RENDER_COMMANDS 5000
 #define MAX_MESHES 128
 #define MAX_MODELS 128
@@ -400,6 +401,14 @@ struct RenderCommand {
     };
 };
 
+struct QuadBuffer {
+    u32 vertex_array_id;
+    u32 vertex_buffer_id;
+    u32 index_buffer_id;
+
+    FixedArray<Quad> quads;
+};
+
 struct Renderer {
     bool wireframe;
 
@@ -426,6 +435,9 @@ struct Renderer {
     Texture *default_normal;
 
     Font font;
+
+    QuadBuffer ui_quads;
+    QuadBuffer screen_quad;
 
     u32 vertex_array_id;
     u32 vertex_buffer_id;
@@ -517,8 +529,7 @@ void draw_imgui_frame();
 // Immediate rendering API
 void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color);
 void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
-Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour, v2 uvs[4], DrawType draw_type);
-Quad *push_screen_quad(Renderer *renderer, v4 color);
+void push_screen_quad(Renderer *renderer, v4 color);
 
 // Drawing API
 void draw_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour);
@@ -551,6 +562,12 @@ m4 get_projection_matrix_ortho(Camera *camera, f32 aspect);
 
 Ray ray_create(v3 origin, v3 direction);
 Ray ray_from_screen_position(Viewport viewport, v3 screen_position);
+
+QuadBuffer quad_buffer_create(i64 size);
+void quad_buffer_bind_and_update(QuadBuffer *buffer);
+void quad_buffer_unbind();
+Quad *quad_buffer_push(QuadBuffer *buffer);
+void quad_buffer_reset(QuadBuffer *buffer);
 
 v4 rgb(i64 r, i64 g, i64 b);
 v4 rgba(i64 r, i64 g, i64 b, i64 a);
@@ -1023,6 +1040,11 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     }
 
+    { // create ui quad buffer
+        renderer->ui_quads = quad_buffer_create(MAX_UI_QUADS);
+        renderer->screen_quad = quad_buffer_create(1);
+    }
+
     { // load default normal texture
         Texture *texture = load_texture(renderer, "resources/textures/defaults/normal.png");
         if (texture == NULL) {
@@ -1426,15 +1448,13 @@ void renderer_draw_lighting(Renderer *renderer, Camera *camera, Viewport viewpor
     renderer->projection_matrix = get_projection_matrix(camera, f32(viewport.size.x) / f32(viewport.size.y));
     renderer->projection_matrix_ortho = get_projection_matrix_ortho(camera,  f32(viewport.size.x) / f32(viewport.size.y));
 
+    push_screen_quad(renderer, WHITE);
+
     frame_buffer_maybe_resize(target_buffer, viewport.size);
     frame_buffer_bind(target_buffer, renderer->clear_colour);
 
-    Quad *quad = push_screen_quad(renderer, WHITE);
+    quad_buffer_bind_and_update(&renderer->screen_quad);
     
-    glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
-    glBindVertexArray(renderer->vertex_array_id);
- 
     use_shader(renderer->lighting_shader);
 
     glActiveTexture(GL_TEXTURE0);
@@ -1451,7 +1471,10 @@ void renderer_draw_lighting(Renderer *renderer, Camera *camera, Viewport viewpor
     set_uniform_v3(renderer->lighting_shader, "sun_colour", renderer->sun_colour);
     set_uniform_v3(renderer->lighting_shader, "shadow_colour", renderer->shadow_colour);
         
-    glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
+    glDrawElements(GL_TRIANGLES, 6 * renderer->screen_quad.quads.len, GL_UNSIGNED_INT, 0);
+
+    quad_buffer_reset(&renderer->screen_quad);
+    quad_buffer_unbind();
 
     frame_buffer_unbind();
 }
@@ -1464,9 +1487,7 @@ void renderer_draw_ui(Renderer *renderer, Camera *camera, Viewport viewport, Fra
     frame_buffer_maybe_resize(target_buffer, viewport.size);
     frame_buffer_bind(target_buffer, renderer->clear_colour);
 
-    glBindBuffer(GL_ARRAY_BUFFER, renderer->vertex_buffer_id);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * renderer->quads.len, renderer->quads.slice.ptr);
-    glBindVertexArray(renderer->vertex_array_id);
+    quad_buffer_bind_and_update(&renderer->ui_quads);
  
     use_shader(renderer->default_shader);
 
@@ -1480,14 +1501,16 @@ void renderer_draw_ui(Renderer *renderer, Camera *camera, Viewport viewport, Fra
     set_uniform_m4(renderer->default_shader, "view", &view_matrix);
     set_uniform_m4(renderer->default_shader, "projection", &projection_matrix);
 
-    glDrawElements(GL_TRIANGLES, 6 * renderer->quads.len, GL_UNSIGNED_INT, 0);
+    glDrawElements(GL_TRIANGLES, 6 * renderer->ui_quads.quads.len, GL_UNSIGNED_INT, 0);
 
+    quad_buffer_unbind();
     frame_buffer_unbind();
 }
 
 void renderer_end_frame(Renderer *renderer) {
     reset(&renderer->quads);
     reset(&renderer->commands);
+    quad_buffer_reset(&renderer->ui_quads);
 }
 
 void new_imgui_frame() {
@@ -1505,65 +1528,20 @@ void draw_imgui_frame() {
     glfwMakeContextCurrent(current);
 }
 
-Quad *push_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour, v2 uvs[4], DrawType draw_type) {
-    const v4 top_left      = {-0.5,   0.5, 0, 1};
-    const v4 top_right     = { 0.5,   0.5, 0, 1};
-    const v4 bottom_right  = { 0.5,  -0.5, 0, 1};
-    const v4 bottom_left   = {-0.5,  -0.5, 0, 1};
+void push_screen_quad(Renderer *renderer, v4 color) {
+    Quad *quad = quad_buffer_push(&renderer->screen_quad);
 
-    // After looking at how unity does their rotations I am doing the oppisite.
-    // In unity, when looking down the negative of an axis towards origin, 
-    // increasing the rotation of that axis means it rotates to the right. 
-    // For me it was when looking in the positive of that axis.
-    //
-    // After trying it I think I rather my approach so I am keeping it, maybe
-    // this will change. If in the future I am confused, always remember that
-    // when looking from the origin, down an axis, a positive rotation means
-    // it rotates to the right
-    // - 31/05/25
+    v3 pos[4] = {
+        {-1,  1, 0}, // top left
+        { 1,  1, 0}, // top right
+        { 1, -1, 0}, // bottom right 
+        {-1, -1, 0}, // bottom left
+    };
 
-    m4 model_matrix = HMM_M4D(1.0f);
-    model_matrix = HMM_MulM4(model_matrix, HMM_Translate(position));
-    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.x * HMM_DegToRad, {1, 0, 0}));
-    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.y * HMM_DegToRad, {0, 1, 0}));
-    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.z * HMM_DegToRad, {0, 0, 1}));
-    model_matrix = HMM_MulM4(model_matrix, HMM_Scale({size.x, size.y, 1}));
-              
-    m4 mvp_matrix = HMM_MulM4(HMM_MulM4(renderer->projection_matrix, renderer->view_matrix), model_matrix);
-
-    Quad *quad = push(&renderer->quads);
-#if 0
-    quad->vertices[0].position = HMM_MulM4V4(mvp_matrix, top_left);
-    quad->vertices[1].position = HMM_MulM4V4(mvp_matrix, top_right);
-    quad->vertices[2].position = HMM_MulM4V4(mvp_matrix, bottom_right);
-    quad->vertices[3].position = HMM_MulM4V4(mvp_matrix, bottom_left);
-#endif
-                
-    quad->vertices[0].colour = colour;
-    quad->vertices[1].colour = colour;
-    quad->vertices[2].colour = colour;
-    quad->vertices[3].colour = colour;
-
-    quad->vertices[0].uv = uvs[0];
-    quad->vertices[1].uv = uvs[1];
-    quad->vertices[2].uv = uvs[2];
-    quad->vertices[3].uv = uvs[3];
-
-    quad->vertices[0].draw_type = (i32) draw_type;
-    quad->vertices[1].draw_type = (i32) draw_type;
-    quad->vertices[2].draw_type = (i32) draw_type;
-    quad->vertices[3].draw_type = (i32) draw_type;
-
-    return quad;
-}
-
-Quad *push_screen_quad(Renderer *renderer, v4 color) {
-    Quad *quad = push(&renderer->quads);
-
-    quad->vertices[0].position = QUAD_POSITIONS[0];
-    quad->vertices[1].position = QUAD_POSITIONS[1];
-    quad->vertices[2].position = QUAD_POSITIONS[2];
-    quad->vertices[3].position = QUAD_POSITIONS[3];
+    quad->vertices[0].position = pos[0];
+    quad->vertices[1].position = pos[1];
+    quad->vertices[2].position = pos[2];
+    quad->vertices[3].position = pos[3];
                 
     quad->vertices[0].colour = color;
     quad->vertices[1].colour = color;
@@ -1579,8 +1557,6 @@ Quad *push_screen_quad(Renderer *renderer, v4 color) {
     quad->vertices[1].draw_type = 0;
     quad->vertices[2].draw_type = 0;
     quad->vertices[3].draw_type = 0;
-
-    return quad;
 }
 
 void draw_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour) {
@@ -1615,7 +1591,7 @@ void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position, v3 scale, v3 rotatio
 }
 
 void draw_quad_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour, v2 uvs[4], DrawType type) {
-    Quad *quad = push(&renderer->quads);
+    Quad *quad = quad_buffer_push(&renderer->ui_quads);
 
     for (i64 i = 0; i < 4; i++) {
         quad->vertices[i].position  = (QUAD_POSITIONS[i] * v3{size.x, size.y, 1}) + position;
@@ -1925,6 +1901,103 @@ Ray ray_from_screen_position(Viewport viewport, v3 screen_position) {
     v3 end = screen_position_to_world_position(REN(), viewport, v3{screen_position.x, screen_position.y, 1});
 
     return ray_create(start, norm(end - start));
+}
+
+QuadBuffer quad_buffer_create(i64 size) {
+    QuadBuffer buffer = QuadBuffer {
+        .quads = fixed_array_create<Quad>(size),
+    };
+
+    { // vertex array
+        u32 vertex_array;
+        glGenVertexArrays(1, &vertex_array);
+        glBindVertexArray(vertex_array);
+
+        buffer.vertex_array_id = vertex_array;
+    }
+
+    { // vertex buffer
+        u32 vertex_buffer;
+        glGenBuffers(1, &vertex_buffer);
+        glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(Quad) * MAX_QUADS, buffer.quads.slice.ptr, GL_DYNAMIC_DRAW);
+
+        buffer.vertex_buffer_id = vertex_buffer;
+    }
+
+    { // index buffer
+        const i64 index_buffer_length = size * 6;
+        Slice<u32> indices = slice_create_malloc<u32>(index_buffer_length);
+
+        i64 i = 0;
+        while (i < index_buffer_length) {
+            // updated order of indices to be CCW as that is the default
+            // for opengl and we want to use back face culling now that
+            // we are rendering in 3d
+            // 31/05/25
+
+            // vertex offset pattern to draw a quad
+            // { 0, 1, 2,  0, 2, 3 } -> CW winding 
+            // { 0, 2, 1,  0, 3, 2 } -> CCW winding
+            indices[i + 0] = ((i/6)*4 + 0);
+            indices[i + 1] = ((i/6)*4 + 2);
+            indices[i + 2] = ((i/6)*4 + 1);
+            indices[i + 3] = ((i/6)*4 + 0);
+            indices[i + 4] = ((i/6)*4 + 3);
+            indices[i + 5] = ((i/6)*4 + 2);
+            i += 6;
+        }
+
+        u32 index_buffer;
+        glGenBuffers(1, &index_buffer);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u32) * index_buffer_length, indices.ptr, GL_STATIC_DRAW);
+
+        buffer.index_buffer_id = index_buffer;
+
+        slice_free(indices);
+    }
+
+    { // vertex attributes
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, position));   // position
+        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, colour));     // colour
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, uv));         // uv
+        glVertexAttribIPointer(3, 1, GL_INT, sizeof(Vertex), (void *) offsetof(Vertex, draw_type));             // draw_type
+
+        glEnableVertexAttribArray(0);
+        glEnableVertexAttribArray(1);
+        glEnableVertexAttribArray(2);
+        glEnableVertexAttribArray(3);
+
+        glBindVertexArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    }
+
+    return buffer;
+}
+
+void quad_buffer_bind_and_update(QuadBuffer *buffer) {
+    // update vertex buffer data
+    glBindBuffer(GL_ARRAY_BUFFER, buffer->vertex_buffer_id);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Quad) * buffer->quads.len, buffer->quads.slice.ptr);
+
+    // bind vertex array
+    glBindVertexArray(buffer->vertex_array_id);
+}
+
+void quad_buffer_unbind() {
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+}
+
+Quad *quad_buffer_push(QuadBuffer *buffer) {
+    return push(&buffer->quads);
+}
+
+void quad_buffer_reset(QuadBuffer *buffer) {
+    reset(&buffer->quads);
 }
 
 v4 rgb(i64 r, i64 g, i64 b) {

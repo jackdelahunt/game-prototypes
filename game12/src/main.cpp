@@ -15,7 +15,7 @@
 #include <queue>
 #include <atomic>
 
-// Total: 43:30
+// Total: 44:30
 // Started: 17:30
 //
 //
@@ -504,13 +504,14 @@ void game_client_entry() {
         game_client_draw(&GC()->state);
 
         // renderer_draw_geometry(REN(), &GC()->camera, GC()->viewport, &GC()->g_buffer);
-        // renderer_draw_geometry(REN(), &ED()->camera, ED()->viewport, &ED()->g_buffer);
+        renderer_draw_geometry(REN(), &ED()->camera, ED()->viewport, &ED()->g_buffer);
 
         // renderer_draw_lighting(REN(), &GC()->camera, GC()->viewport, &GC()->lighting_buffer, &GC()->g_buffer);
-        // renderer_draw_lighting(REN(), &ED()->camera, ED()->viewport, &ED()->lighting_buffer, &ED()->g_buffer);
+        renderer_draw_lighting(REN(), &ED()->camera, ED()->viewport, &ED()->lighting_buffer, &ED()->g_buffer);
 
-        draw_text_ui(REN(), "Ammo 05/10", {10, 10, 0}, 50, RED);
-        renderer_draw_ui(REN(), &GC()->camera, GC()->viewport, &GC()->ui_buffer, &GC()->lighting_buffer);
+        // draw_text_ui(REN(), "Ammo 05/10", {10, 10, 0}, 50, RED);
+        // renderer_draw_ui(REN(), &GC()->camera, GC()->viewport, &GC()->ui_buffer, &GC()->lighting_buffer);
+        // renderer_draw_ui(REN(), &ED()->camera, ED()->viewport, &ED()->ui_buffer, &ED()->lighting_buffer);
 
         renderer_end_frame(REN());
 
@@ -1187,8 +1188,8 @@ void editor_draw_ui(State *state) {
         ImGui::End();
     }
 
-    GC()->viewport = imgui_viewport("Game", GC()->ui_buffer.albedo_attachment, WIN()->mouse_captured);
-    ED()->viewport = imgui_viewport("Editor", ED()->ui_buffer.albedo_attachment, false);
+    GC()->viewport = imgui_viewport("Game", GC()->lighting_buffer.position_attachment, WIN()->mouse_captured);
+    ED()->viewport = imgui_viewport("Editor", ED()->lighting_buffer.position_attachment, false);
 
     draw_imgui_frame();
 }
