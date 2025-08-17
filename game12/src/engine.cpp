@@ -246,10 +246,10 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 #define MAX_TEXTURES 256
 
 v3 QUAD_POSITIONS[4] = {
-    {-1,  1, 0}, // top left
-    { 1,  1, 0}, // top right
-    { 1, -1, 0}, // bottom right 
-    {-1, -1, 0}, // bottom left
+    {-0.5,  0.5, 0}, // top left
+    { 0.5,  0.5, 0}, // top right
+    { 0.5, -0.5, 0}, // bottom right 
+    {-0.5, -0.5, 0}, // bottom left
 };
 
 v2 QUAD_UVS[4] = {
@@ -1717,8 +1717,6 @@ void draw_text_ui(Renderer *renderer, str text, v3 position, f32 font_size, v4 c
         v2 quad_centered_position = translated_position + (scaled_size * 0.5f);
         v3 centered_v3 = v3{quad_centered_position.x, quad_centered_position.y, position.z};
 
-        draw_circle_ui(renderer, centered_v3, {15, 15}, {}, GREEN);
-        draw_circle_ui(renderer, {translated_position.x, translated_position.y, position.z}, {15, 15}, {}, BLUE);
         draw_quad_ui(renderer, centered_v3, scaled_size, {}, color, glyph->uvs, DrawType::TEXT);
    }
 
@@ -1746,8 +1744,11 @@ bool frame_buffer_init(FrameBuffer *frame_buffer) {
 void frame_buffer_bind(FrameBuffer *frame_buffer, v4 colour) {
     glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer->id);
 
-    glClearColor(colour.r, colour.g, colour.b, 1 );
+    // clear colour settings
+    glClearColor(colour.r, colour.g, colour.b, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    
+    // viewport settings
     glViewport(0, 0, frame_buffer->size.x, frame_buffer->size.y);
 }
 

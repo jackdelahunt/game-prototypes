@@ -16,12 +16,13 @@
 #include <atomic>
 
 // Total: 43:30
-// Started: 12:30
+// Started: 17:30
 //
 //
 // What do a programmer do?:
-// - create dynamic quad buffer to use for text rendering
+// - ui text rendering combined with rendering on top of scene 
 // - combine vs and fs in the one file
+// - define assets in editor and get handles in game
 
 #define MAX_ENTITIES 500
 
@@ -376,9 +377,6 @@ void game_server_entry() {
     log("Game server was given shutdown signal.. stopping");
 }
 
-v3 rect_pos = v3{300, 400, 0};
-f32 font_size = 50;
-
 // @entrygc @gc
 void game_client_entry() {
     { // init all the global stuff
@@ -511,11 +509,8 @@ void game_client_entry() {
         // renderer_draw_lighting(REN(), &GC()->camera, GC()->viewport, &GC()->lighting_buffer, &GC()->g_buffer);
         // renderer_draw_lighting(REN(), &ED()->camera, ED()->viewport, &ED()->lighting_buffer, &ED()->g_buffer);
 
-        // draw_circle_ui(REN(), rect_pos, {300, 300}, {}, GREEN);
-        // draw_rectangle_ui(REN(), rect_pos, {300, 300}, {}, RED);
-        draw_text_ui(REN(), "HHH", rect_pos, font_size, RED);
-        // renderer_draw_ui(REN(), &GC()->camera, GC()->viewport, &GC()->ui_buffer, &GC()->lighting_buffer);
-        renderer_draw_ui(REN(), &ED()->camera, ED()->viewport, &ED()->ui_buffer, &ED()->lighting_buffer);
+        draw_text_ui(REN(), "Ammo 05/10", {10, 10, 0}, 50, RED);
+        renderer_draw_ui(REN(), &GC()->camera, GC()->viewport, &GC()->ui_buffer, &GC()->lighting_buffer);
 
         renderer_end_frame(REN());
 
@@ -911,9 +906,6 @@ void editor_draw_ui(State *state) {
         Viewport *edv = &GC()->viewport;
 
         ImGui::Begin("Render output");
-
-        imgui_v3_control("rect pos", &rect_pos);
-        ImGui::SliderFloat("font size", &font_size, 1, 300);
 
         if (ImGui::CollapsingHeader("Game g_buffer")) {
             ImGui::Text("Position  //  Normals");

@@ -31,16 +31,16 @@ void main()
 
     // texture
     if (draw_type == 2) {
-        vec4 final_colour = texture(atlas_texture, uv) * colour;
+        vec4 sample_colour = texture(atlas_texture, uv);
 
         // remove if 0 alpha so the empty pixels in the texture
         // dont add redundent info to the depth buffer and cover
         // things they shouldn't
-        if(final_colour.a == 0) {
+        if(sample_colour.a == 0) {
             discard;
         }
 
-        g_albedo = final_colour;
+        g_albedo = sample_colour * colour;
     }
 
     // font
