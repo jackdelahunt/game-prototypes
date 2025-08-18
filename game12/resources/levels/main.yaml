@@ -14,7 +14,18 @@ entities:
   - flags: 2
     id: 25094
     owner: 0
-    position: [0, 12, 0]
+    position: [-8, 5, 8]
+    size: [0.300000012, 0.300000012, 0.300000012]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 0, 0.800000012, 1]
+    model: 0
+    max_health: 0
+    health: 0
+  - flags: 2
+    id: 2192
+    owner: 0
+    position: [8, 5, -8]
     size: [0.300000012, 0.300000012, 0.300000012]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]

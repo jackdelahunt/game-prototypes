@@ -271,6 +271,7 @@ template <typename T>   void atomic_snapshot_swap(AtomicSnapshot<T> *snapshot);
 f32 rand_f32();
 f32 rand_f32_negative();
 i64 rand_i64();
+i64 rand_i64(i64 min, i64 max);
 
 str read_entire_file(str path);
 File new_file(str path); 
@@ -774,6 +775,11 @@ f32 rand_f32_negative() {
 // 0 -> RAND_MAX
 i64 rand_i64() {
     return (i64) rand();
+}
+
+// min -> max - 1
+i64 rand_i64(i64 min, i64 max) {
+    return min + (i64)(rand() % (max - min));
 }
 
 File new_file(str path) {

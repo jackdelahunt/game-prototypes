@@ -15,19 +15,22 @@
 #include <queue>
 #include <atomic>
 
-// Total: 49:30
-// Started: 19:00
+// Total: 50:00
+// Started: 21:30
 //
 //
 // What do a programmer do?:
 // Game:
-// - m4 sounds
-// - default weapon is deagle then weapon pickups and they last as long as the ammo?
-// - weapon models
+// - player respawning
+// - pickups - health and weapons
+// - fix 3d models for viewmodel
+// - m4 sounds working properaly
+// - player sounds, running jumping, maybe taking damage?
 //
 // Engine:
 // - combine vs and fs in the one file
 // - define assets in editor and get handles in game
+// - sky box
 
 #define MAX_ENTITIES 500
 #define LEVEL_INSTANCE_ID 0
@@ -37,11 +40,14 @@
 f32 PLAYER_HEIGHT = 2;
 f32 PLAYER_WIDTH = 0.65;
 f32 PLAYER_EYES_OFFSET = 0.8;
+
+f32 PLAYER_DEATH_COOLDOWN = 3;
 f32 PLAYER_MOVE_ACCELERATION = 12;
 f32 PLAYER_JUMP_ACCELERATION = 25;
 f32 PLAYER_MAX_SPEED = 20;
 f32 PLAYER_DRAG = 0.25;
 f32 GRAVITY = 2.1;
+
 v3 WEAPON_DISPLAY_OFFSET = v3{1.18, -0.67, 1.1};
 f32 WEAPON_DISPLAY_SIZE = 0.37;
 
@@ -105,8 +111,7 @@ enum EntityFlag : u32 {
     EF_SPAWN_POINT      = 1 << 1,
     EF_SOLID_HITBOX     = 1 << 2,
     EF_STATIC_HITBOX    = 1 << 3,
-    EF_HAS_HEALTH       = 1 << 4,
-    EF_HAS_WEAPON       = 1 << 5,
+    EF_DEAD             = 1 << 4,
     EF_DELETE           = 1 << 16,
 };
 
@@ -133,9 +138,10 @@ struct Entity {
     v4 colour;
     ModelType model;
 
-    // flag: has_health
+    // flag: player
     f32 max_health;
     f32 health;
+    f32 death_cooldown;
 };
 
 enum NetworkMessageType {
@@ -201,6 +207,7 @@ struct State {
     Weapon player_weapon;
     i64 player_ammo;
     f32 player_firing_cooldown;
+    i64 spawn_point_count;
     StackArray<Entity, MAX_ENTITIES> entities;
 };
 
@@ -277,12 +284,12 @@ Entity *get_client_player(State *state, u32 client_id);
 Entity *get_entity_with_id(State *state, u32 id);
 Entity *get_entity_with_flag(State *state, EntityFlag flag);
 bool entities_overlap(Entity *a, Entity *b);
+void move_to_random_spawn_point(State *state, Entity *entity);
 
 Entity *local_spawn_empty(State *state);
 Entity *local_spawn_player(State *state);
 Entity *local_spawn_spawn_point(State *state);
 Entity *local_spawn_static_box(State *state);
-Entity *local_spawn_has_health(State *state);
 
 void game_client_host();
 void game_client_connect();
@@ -297,6 +304,7 @@ RaycastIteratorResult next(RaycastIterator *it, State *state);
 
 CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size);
 
+void imgui_entity(Entity *entity);
 Viewport imgui_viewport(const char *label, u32 texture_id, bool force_focus);
 void imgui_v3_control(const char *label, v3 *vector);
 void imgui_v4_control(const char *label, v4 *vector);
@@ -614,9 +622,23 @@ void game_server_update(State *state, f32 delta_time) {
     ASSERT(is_server(state));
 
     for (Entity &entity : state->entities) {
-        if (BIT_SET(entity.flags, EF_HAS_HEALTH)) {
-            if (entity.health <= 0) {
-                SET_BIT(entity.flags, EF_DELETE);
+
+        if (BIT_SET(entity.flags, EF_DEAD)) {
+            entity.death_cooldown -= delta_time;
+
+            if (entity.death_cooldown < 0) {
+                entity.health = entity.max_health;
+
+                UNSET_BIT(entity.flags, EF_DEAD);
+                entity.death_cooldown = 0;
+                move_to_random_spawn_point(state, &entity);
+            }
+        }
+
+        if (BIT_SET(entity.flags, EF_PLAYER)) {
+            if (entity.health <= 0 && entity.death_cooldown == 0) {
+                entity.death_cooldown = PLAYER_DEATH_COOLDOWN;
+                SET_BIT(entity.flags, EF_DEAD);
             }
         }
     }
@@ -742,6 +764,7 @@ void game_client_update(State *state, f32 delta_time) {
                         // 1. didn't hit anything, stop
                         // 2. didn't hit the player, stop
                         // 3. hit the clients player, try again
+                        // 4. hit another player but they are danother player but they are dead 
                         if (result.entity == NULL) {
                             break;
                         }
@@ -752,6 +775,10 @@ void game_client_update(State *state, f32 delta_time) {
 
                         if (result.entity->owner == state->instance_id) {
                             continue;
+                        }
+
+                        if (BIT_SET(result.entity->flags, EF_DEAD)) {
+                            break;
                         }
 
                         hit_entity = result.entity;
@@ -867,8 +894,7 @@ void game_client_draw(State *state) {
                 draw_rectangle_ui(REN(), centre, {max_width, height}, {}, brightness(RED, 0.5));
             }
        
-            // draw weapon
-            if (BIT_SET(entity.flags, EF_HAS_WEAPON)) {
+            { // draw weapon
                 v3 weapon_offset = v3{};
                 weapon_offset += WEAPON_DISPLAY_OFFSET.x * right;
                 weapon_offset += WEAPON_DISPLAY_OFFSET.y * up;
@@ -1176,6 +1202,11 @@ void editor_draw_ui(State *state) {
         }
 
         if (ImGui::CollapsingHeader("Player")) {
+            Entity *player = get_client_player(state, state->instance_id);
+            if (player) {
+                imgui_entity(player);
+            }
+
             ImGui::SeparatorText("Movement");
             ImGui::InputFloat("Move acceleration", &PLAYER_MOVE_ACCELERATION);
             ImGui::InputFloat("Jump acceleration", &PLAYER_JUMP_ACCELERATION);
@@ -1249,30 +1280,9 @@ void editor_draw_ui(State *state) {
             ED()->selected_entity = local_spawn_static_box(state);
         }
 
-        ImGui::SameLine();
-
-        if (ImGui::Button("New has health")) {
-            ED()->selected_entity = local_spawn_has_health(state);
-        }
-    
         if (ED()->selected_entity) {
-    
             ImGui::SeparatorText("Selected Entity");
-    
-            Entity *entity = ED()->selected_entity;
-            ImGui::Text("flags: %llu", entity->flags);
-            ImGui::Text("id: %u", entity->id);
-            ImGui::Text("owner: %u", entity->owner);
-            imgui_v3_control("position", &entity->position);
-            imgui_v3_control("size", &entity->size);
-            imgui_v3_control("rotation", &entity->rotation);
-            imgui_v3_control("velocity", &entity->velocity);
-            ImGui::Text("model: %u", (u32) entity->model);
-            ImGui::Text("colour: ");
-            ImGui::SameLine();
-            ImGui::ColorEdit4("##colour", &entity->colour[0], ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
-            ImGui::InputFloat("max health", &entity->max_health);
-            ImGui::InputFloat("health", &entity->health);
+            imgui_entity(ED()->selected_entity);
         }
 
         ImGui::SeparatorText("Entities in level");
@@ -1354,18 +1364,13 @@ void on_server_receive(State *state, NetworkMessage *message) {
             }
 
             { // spawn new player entity on all clients
-                v3 spawn_position = {};
-
-                Entity *spawn_point = get_entity_with_flag(state, EF_SPAWN_POINT);
-                if (spawn_point) {
-                    spawn_position = spawn_point->position;
-                }
-
                 Entity *new_player = local_spawn_player(state);
-                new_player->position = spawn_position;
+                new_player->position = {};
                 new_player->owner = connection_id;
 
-                logf( "Spawning new player entity: entity_id={}, owner={} position={}", new_player->id, new_player->owner, new_player->position);
+                move_to_random_spawn_point(state, new_player);
+
+                logf("Spawning new player entity: entity_id={}, owner={} position={}", new_player->id, new_player->owner, new_player->position);
 
                 NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = *new_player};
                 server_send_to_all_clients(NET(), bytes_from_ptr(&message));
@@ -1386,6 +1391,10 @@ void on_server_receive(State *state, NetworkMessage *message) {
                 return;
             }
 
+            if (player->death_cooldown > 0) {
+                return;
+            }
+
             player->velocity.x += message->move_player.x * PLAYER_MOVE_ACCELERATION;
             player->velocity.z += message->move_player.z * PLAYER_MOVE_ACCELERATION;
 
@@ -1393,9 +1402,15 @@ void on_server_receive(State *state, NetworkMessage *message) {
         } break;
         case NM_PLAYER_HIT: {
             Entity *entity = get_entity_with_id(state, message->player_hit.target_id);
-            if (entity && BIT_SET(entity->flags, EF_HAS_HEALTH)) {
-                entity->health -= message->player_hit.damage;
+            if (entity == NULL || !BIT_SET(entity->flags, EF_PLAYER)) {
+                return;
             }
+
+            if (entity->death_cooldown > 0) {
+                return;
+            }
+
+            entity->health -= message->player_hit.damage;
         } break;
         case NM_SPAWN_DUMMY: {
             Entity *dummy = local_spawn_player(state);
@@ -1512,6 +1527,25 @@ bool entities_overlap(Entity *a, Entity *b) {
     return overlapX && overlapY;
 }
 
+void move_to_random_spawn_point(State *state, Entity *entity) {
+    // get a random number from 0 -> spawn point count
+    // skip that number of spawn points in the list and
+    // pick the next in the list
+    i64 spawn_point_number = rand_i64(0, state->spawn_point_count);
+    i64 current_spawn_point_number = 0;
+
+    for (Entity &other : state->entities) {
+        if (BIT_SET(other.flags, EF_SPAWN_POINT)) {
+            if (spawn_point_number == current_spawn_point_number) {
+                entity->position = other.position + v3{0, PLAYER_HEIGHT * 1.5f, 0};
+                break;
+            }
+
+            current_spawn_point_number++;
+        }
+    }
+}
+
 Entity *local_spawn_empty(State *state) {
     Entity entity = Entity {
         .id = new_entity_id(),
@@ -1526,7 +1560,7 @@ Entity *local_spawn_empty(State *state) {
 
 Entity *local_spawn_player(State *state) {
     Entity entity = Entity {
-        .flags = EF_PLAYER | EF_SOLID_HITBOX | EF_HAS_HEALTH | EF_HAS_WEAPON,
+        .flags = EF_PLAYER | EF_SOLID_HITBOX,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{PLAYER_WIDTH, PLAYER_HEIGHT, PLAYER_WIDTH},
@@ -1560,21 +1594,6 @@ Entity *local_spawn_static_box(State *state) {
         .size = v3{1, 1, 1},
         .colour = v4{1, 1, 1, 1},
         .model = MT_CUBE 
-    };
-
-    return local_spawn_entity(state, entity);
-}
-
-Entity *local_spawn_has_health(State *state) {
-    Entity entity = Entity {
-        .flags = EF_HAS_HEALTH,
-        .id = new_entity_id(),
-        .owner = LEVEL_INSTANCE_ID,
-        .size = v3{2, 2, 2},
-        .colour = GREEN,
-        .model = MT_CUBE,
-        .max_health = 100,
-        .health = 100,
     };
 
     return local_spawn_entity(state, entity);
@@ -1667,6 +1686,21 @@ CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size)
         .overlap = overlap,
         .distance = distance
     };
+}
+
+void imgui_entity(Entity *entity) {
+    ImGui::Text("flags: %u", entity->flags);
+    ImGui::Text("id: %u", entity->id);
+    ImGui::Text("owner: %u", entity->owner);
+    imgui_v3_control("position", &entity->position);
+    imgui_v3_control("size", &entity->size);
+    imgui_v3_control("rotation", &entity->rotation);
+    imgui_v3_control("velocity", &entity->velocity);
+    ImGui::Text("model: %u", (u32) entity->model);
+    ImGui::Text("colour: "); ImGui::SameLine(); ImGui::ColorEdit4("##colour", &entity->colour[0], ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
+    ImGui::InputFloat("max health", &entity->max_health);
+    ImGui::InputFloat("health", &entity->health);
+    ImGui::InputFloat("death cooldown", &entity->death_cooldown);
 }
 
 Viewport imgui_viewport(const char *label, u32 texture_id, bool force_focus) {
@@ -1888,6 +1922,7 @@ void deserialise_level(State *state) {
         return;
     }
 
+    state->spawn_point_count = 0;
     reset(&state->entities);
 
     for (auto entity : entities) {
@@ -1905,13 +1940,17 @@ void deserialise_level(State *state) {
         e.max_health =          entity["max_health"].as<f32>();
         e.health =              entity["health"].as<f32>();
 
+        if (BIT_SET(e.flags, EF_SPAWN_POINT)) {
+            state->spawn_point_count += 1;
+        }
+
         append(&state->entities, e);
     }
 
     state->player_weapon = g_weapons.deagle;
     state->player_ammo = state->player_weapon.ammo_count; 
 
-    log("Level was loaded");
+    logf("Level was loaded with {} entities and {} spawn points", state->entities.len, state->spawn_point_count);
 }
 
 YAML::Emitter &operator<<(YAML::Emitter &out, v3 vector) {
