@@ -242,10 +242,11 @@ template <typename T>   void append(DynamicArray<T> *array, T value);
 template <typename T>   void append_many(DynamicArray<T> *array, Slice<T> values); 
 template <typename T>   Slice<T> push_many(DynamicArray<T> *array, i64 count); 
 
-template<typename T>        void fmt_value(DynamicArray<u8> *bytes, T value);
 template<typename... Args>  str fmt(Arena *arena, str format, Args... args);
 template<typename T>        void fmt_arg(DynamicArray<u8> *bytes, str format, i64 &index, T arg); 
+template<typename T>        void fmt_value(DynamicArray<u8> *bytes, T value);
 template<>                  void fmt_value(DynamicArray<u8> *bytes, bool value);
+template<>                  void fmt_value(DynamicArray<u8> *bytes, str value);
 
 void log(str s);
 void log_set_thread_options(LogOptions options);
@@ -279,7 +280,6 @@ bool write_file(File *file, Slice<u8> bytes);
 void close_file(File *file); 
 str read_entire_file(str path); 
 
-// !!!!!!!!!!!!!!!!!!!!!!!!!
 template <typename T>
 Slice<T> slice_create(T *data, i64 len) {
     return Slice<T>(data, len);
@@ -546,9 +546,6 @@ void fmt_value(DynamicArray<u8> *bytes, TYPE value) {                           
     ASSERT(written == required_bytes);                                                          \
 }
 
-template<typename T>
-void fmt_value(DynamicArray<u8> *bytes, T value);
-
 FMT_VALUE_IMPL_PRIMITIVE(void *, "%p")
 FMT_VALUE_IMPL_PRIMITIVE(const char *, "%s")
 FMT_VALUE_IMPL_PRIMITIVE(char *, "%s")
@@ -611,6 +608,11 @@ void fmt_value(DynamicArray<u8> *bytes, bool value) {
     else {
         append_many<u8>(bytes, "false");
     }
+}
+
+template<> 
+void fmt_value(DynamicArray<u8> *bytes, str value) {
+    append_many(bytes, value);
 }
 
 // @log

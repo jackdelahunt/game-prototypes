@@ -15,16 +15,28 @@
 #include <queue>
 #include <atomic>
 
-// Total: 46:00
-// Started: 19:30
+// Total: 49:00
+// Started: 14:00
 //
 //
 // What do a programmer do?:
+// Game:
+// - m4 sounds
+// - default weapon is deagle then weapon pickups and they last as long as the ammo?
+// - weapon models
+//
+// Engine:
 // - combine vs and fs in the one file
 // - define assets in editor and get handles in game
 
 #define MAX_ENTITIES 500
+#define LEVEL_INSTANCE_ID 0
+#define SERVER_INSTANCE_ID 1
+#define GAME_SERVER_MS_PER_TICK 16
 
+f32 PLAYER_HEIGHT = 2;
+f32 PLAYER_WIDTH = 0.65;
+f32 PLAYER_EYES_OFFSET = 0.8;
 f32 PLAYER_MOVE_ACCELERATION = 12;
 f32 PLAYER_JUMP_ACCELERATION = 25;
 f32 PLAYER_MAX_SPEED = 20;
@@ -33,39 +45,54 @@ f32 GRAVITY = 2.1;
 v3 WEAPON_DISPLAY_OFFSET = v3{1.18, -0.67, 1.1};
 f32 WEAPON_DISPLAY_SIZE = 0.37;
 
-#define LEVEL_INSTANCE_ID 0
-#define SERVER_INSTANCE_ID 1
-
-#define GAME_SERVER_MS_PER_TICK 16
-
 enum ModelType : u32 {
     MT_CUBE,
     _MT_COUNT
 };
 
+enum SoundHandle : u32 {
+    SH_FIRE,
+    SH_TARGET_HIT,
+    SH_HEADSHOT_HIT,
+    _SH_COUNT
+};
+
+Sound *g_sounds[_SH_COUNT] = {};
+
 struct Weapon {
-    f32 damage;
+    str display_name;
     v4 colour;
+    f32 damage;
+    f32 headshot_damage;
+    i64 ammo_count;
+    bool automatic;
+    f32 firing_cooldown;
+    SoundHandle firing_sound; 
 };
 
-enum WeaponType : u32 {
-    WT_NONE,
-    WT_DEAGLE,
-    WT_M4,
-    _WT_COUNT
-};
-
-Weapon g_weapons[_WT_COUNT] = {
-    {},
-    Weapon {
-        .damage = 30,
+struct {
+    Weapon deagle = Weapon {
+        .display_name = "Deagle",
         .colour = v4 {0.8, 0.8, 0.8, 1},
-    },
-    Weapon {
-        .damage = 15,
+        .damage = 40,
+        .headshot_damage = 110,
+        .ammo_count = 7,
+        .automatic = false,
+        .firing_cooldown = 0.8,
+        .firing_sound = SH_FIRE,
+    };
+
+    Weapon m4 = Weapon {
+        .display_name = "M4",
         .colour = v4 {0.2, 0.2, 0.2, 1},
-    }
-};
+        .damage = 20,
+        .headshot_damage = 60,
+        .ammo_count = 30,
+        .automatic = true,
+        .firing_cooldown = 0.15,
+        .firing_sound = SH_FIRE,
+    };
+} g_weapons;
 
 // @entity
 enum EntityFlag : u32 {
@@ -104,9 +131,6 @@ struct Entity {
     // flag: has_health
     f32 max_health;
     f32 health;
-
-    // flag: has_weapon
-    WeaponType weapon;
 };
 
 enum NetworkMessageType {
@@ -117,7 +141,7 @@ enum NetworkMessageType {
     NM_DELETE_ENTITY,
     NM_MOVE_PLAYER,
     NM_PLAYER_HIT,
-    NM_SPAWN_TARGET,
+    NM_SPAWN_DUMMY,
 }; 
 
 struct NetworkMessage {
@@ -131,8 +155,11 @@ struct NetworkMessage {
         Entity sync_entity;
         u32 delete_entity;
         v3 move_player;
-        u32 player_hit;
-        v3 spawn_target;
+        struct {
+            u32 target_id;
+            f32 damage;
+        } player_hit;
+        v3 spawn_dummy;
     };
 };
 
@@ -140,6 +167,11 @@ struct RaycastIterator {
     Ray ray;
     f32 distance;
     v3 check_position;
+};
+
+struct RaycastIteratorResult {
+    Entity *entity;
+    v3 hit_position;
 };
 
 struct CubeCollision {
@@ -161,6 +193,9 @@ struct State {
     Arena arena;
     Sampler network_in_sampler;
 
+    Weapon player_weapon;
+    i64 player_ammo;
+    f32 player_firing_cooldown;
     StackArray<Entity, MAX_ENTITIES> entities;
 };
 
@@ -244,16 +279,16 @@ Entity *local_spawn_spawn_point(State *state);
 Entity *local_spawn_static_box(State *state);
 Entity *local_spawn_has_health(State *state);
 
-void start_as_host();
-void connect_as_client();
-void stop_game();
+void game_client_host();
+void game_client_connect();
+void game_client_stop_game();
 
 bool is_server(State *state);
 bool is_client(State *state);
 void server_on_new_connection(NetworkLayer *net, Server *server, ConnectionId id);
 
 RaycastIterator raycast_iterator_create(Ray ray, f32 distance);
-Entity *next(RaycastIterator *it, State *state);
+RaycastIteratorResult next(RaycastIterator *it, State *state);
 
 CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size);
 
@@ -289,7 +324,7 @@ int main(i32 argc, const char **argv) {
     network_layer_start();
 
     game_client_entry();
-    stop_game();
+    game_client_stop_game();
     
     network_layer_stop();
 }
@@ -391,6 +426,23 @@ void game_client_entry() {
             log("Failed when trying to init the renderer");
             return;
         }
+
+        ok = sound_engine_init();
+        ASSERT(ok);
+
+        if (!ok) {
+            log("Failed when trying to init the sound engine");
+            return;
+        }
+
+        g_sounds[SH_FIRE] = sound_engine_load(SE(), "resources/sounds/deagle_fire.wav");
+        ASSERT(g_sounds[SH_FIRE]);
+
+        g_sounds[SH_TARGET_HIT] = sound_engine_load(SE(), "resources/sounds/short_target_hit.wav");
+        ASSERT(g_sounds[SH_TARGET_HIT]);
+
+        g_sounds[SH_HEADSHOT_HIT] = sound_engine_load(SE(), "resources/sounds/short_headshot_hit.wav");
+        ASSERT(g_sounds[SH_HEADSHOT_HIT]);
     }
 
     g_game_client = new GameClient {
@@ -468,7 +520,6 @@ void game_client_entry() {
         renderer_start_frame(REN());
 
         game_client_draw(&GC()->state);
-        draw_text_ui(REN(), "Ammo 05/10", {10, 10, 0}, 50, RED);
 
         renderer_draw_frame(REN(), &ED()->camera, ED()->viewport, &ED()->editor_view);
         renderer_draw_frame(REN(), &GC()->camera, GC()->viewport, &GC()->game_view);
@@ -626,15 +677,31 @@ void game_server_physics(State *state, f32 delta_time) {
 }
 
 void game_client_update(State *state, f32 delta_time) {
+    state->player_firing_cooldown -= delta_time;
+    if (state->player_firing_cooldown <= 0) {
+        state->player_firing_cooldown = 0;
+    }
+
+    { // weapon reaload and switching to default
+        ASSERT(state->player_ammo >= 0);
+
+        // reset to deagle and add high cooldown 
+        if (state->player_ammo == 0) {
+            state->player_weapon = g_weapons.deagle;
+            state->player_ammo = state->player_weapon.ammo_count;
+            state->player_firing_cooldown = 1.5;
+        }
+    }
+
     Entity *player = get_client_player(state, state->instance_id);
     if (player != NULL) {
-        GC()->camera.position = player->position + v3{0, 0.7, 0};
+        GC()->camera.position = player->position + v3{0, PLAYER_EYES_OFFSET, 0};
     }
 
     // check player input
     if (GC()->viewport.focused) {
         if (KEYS[GLFW_KEY_T] == InputState::DOWN) {
-            NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_SPAWN_TARGET, .spawn_target = {0, 3, 0}};
+            NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_SPAWN_DUMMY, .spawn_dummy = {0, 3, 0}};
             client_send_to_server(NET(), bytes_from_ptr(&message));
         }
 
@@ -649,31 +716,69 @@ void game_client_update(State *state, f32 delta_time) {
             }
 
             // shooting
-            if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::DOWN) { 
-                Ray ray = ray_create(GC()->camera.position, get_forward_direction(&GC()->camera));
-                draw_line(REN(), ray.origin, ray.direction, 0.08, 0.5, GREEN);
+            InputState state_needed = state->player_weapon.automatic ? InputState::PRESSED : InputState::DOWN;
 
-                RaycastIterator it = raycast_iterator_create(ray, GC()->camera.far_plane - GC()->camera.near_plane);
+            if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == state_needed) {
+                if (state->player_ammo > 0 && state->player_firing_cooldown <= 0) {
+                    state->player_ammo -= 1; 
+                    state->player_firing_cooldown = state->player_weapon.firing_cooldown;
+                    sound_engine_play(g_sounds[state->player_weapon.firing_sound]);
 
-                Entity *hit_entity = NULL;
-                while (true) {
-                    hit_entity = next(&it, state);
-                    if (!hit_entity) {
+                    Ray ray = ray_create(GC()->camera.position, get_forward_direction(&GC()->camera));
+                    RaycastIterator it = raycast_iterator_create(ray, GC()->camera.far_plane - GC()->camera.near_plane);
+    
+                    Entity *hit_entity = NULL;
+                    v3 hit_position = v3{};
+
+                    while (true) {
+                        RaycastIteratorResult result = next(&it, state);
+
+                        // ray cast failed if:
+                        // 1. didn't hit anything, stop
+                        // 2. didn't hit the player, stop
+                        // 3. hit the clients player, try again
+                        if (result.entity == NULL) {
+                            break;
+                        }
+
+                        if (!BIT_SET(result.entity->flags, EF_PLAYER)) {
+                            break;
+                        }
+
+                        if (result.entity->owner == state->instance_id) {
+                            continue;
+                        }
+
+                        hit_entity = result.entity;
+                        hit_position = result.hit_position;
                         break;
                     }
+    
+                    if (hit_entity) {
+                        f32 damage = state->player_weapon.damage;
+                        SoundHandle hit_sound = SH_TARGET_HIT;
 
-                    if (BIT_SET(hit_entity->flags, EF_PLAYER) && hit_entity->owner == state->instance_id) {
-                        continue; // the player shot temselves
+                        f32 hit_height_offset = hit_position.y - hit_entity->position.y;
+                        f32 half_head_size = (PLAYER_HEIGHT * 0.5)  - PLAYER_EYES_OFFSET;
+
+                        if (hit_height_offset >= PLAYER_EYES_OFFSET - half_head_size) {
+                            damage = state->player_weapon.headshot_damage;
+                            hit_sound = SH_HEADSHOT_HIT;
+                        }
+
+                        sound_engine_play(g_sounds[hit_sound]);
+
+                        NetworkMessage message = NetworkMessage {
+                            .client_id = state->instance_id, 
+                            .type = NM_PLAYER_HIT, 
+                            .player_hit = {
+                                .target_id = hit_entity->id,
+                                .damage = damage 
+                            } 
+                        };
+
+                        client_send_to_server(NET(), bytes_from_ptr(&message));
                     }
-
-                    if (BIT_SET(hit_entity->flags, EF_HAS_HEALTH)) {
-                        break;
-                    }
-                }
-
-                if (hit_entity) {
-                    NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_PLAYER_HIT, .player_hit = hit_entity->id};
-                    client_send_to_server(NET(), bytes_from_ptr(&message));
                 }
             }
         }
@@ -725,8 +830,6 @@ void game_client_update(State *state, f32 delta_time) {
 void game_client_draw(State *state) {
     ASSERT(is_client(state));
 
-    draw_quad(REN(), {0, 5, 0}, {2, 2}, {}, RED);
-
     for (Entity &entity : state->entities) {
         v4 draw_colour = entity.colour;
 
@@ -746,14 +849,28 @@ void game_client_draw(State *state) {
                 weapon_offset += WEAPON_DISPLAY_OFFSET.x * right;
                 weapon_offset += WEAPON_DISPLAY_OFFSET.y * up;
                 weapon_offset += WEAPON_DISPLAY_OFFSET.z * forward;
+
+                v4 weapon_colour = state->player_firing_cooldown > 0 ? RED : state->player_weapon.colour;
        
-                draw_sphere(REN(), GC()->camera.position + weapon_offset, WEAPON_DISPLAY_SIZE, g_weapons[entity.weapon].colour);
+                draw_sphere(REN(), GC()->camera.position + weapon_offset, WEAPON_DISPLAY_SIZE, weapon_colour);
             }
+
+            // draw ammo
+            draw_text_ui(REN(), fmt(&state->arena, "{}: {}", state->player_weapon.display_name, state->player_ammo), {7, 10, 0}, 30, BLACK);
         }
 
-        // other players
-        if (BIT_SET(entity.flags, EF_HAS_HEALTH)) {
-            // draw_rectangle(REN(), entity.position + v3{0, 2, 0}, {1, 1}, BLACK);
+        // every player
+        if (BIT_SET(entity.flags, EF_PLAYER)) {
+            // special case for player, we want to draw a second cube where the head
+            // will be. The centre of this cube is where the eye position is
+
+            f32 eyes_to_top = (PLAYER_HEIGHT * 0.5)  - PLAYER_EYES_OFFSET;
+            v3 head_size = v3{PLAYER_WIDTH, eyes_to_top * 2, PLAYER_WIDTH};
+
+            // add a little extra to stop z fighting
+            head_size += v3{0.01, 0.01, 0.01};
+
+            draw_cube(REN(), entity.position + v3{0, PLAYER_EYES_OFFSET, 0}, head_size, entity.rotation, RED);
         }
 
         if (ED()->selected_entity && ED()->selected_entity->id == entity.id) {
@@ -775,7 +892,7 @@ void editor_update(State *state) {
         Ray ray = ray_from_screen_position(ED()->viewport, {ED()->viewport.mouse.x, ED()->viewport.mouse.y, -1});
         RaycastIterator it = raycast_iterator_create(ray, camera->far_plane - camera->near_plane);
 
-        Entity *entity = next(&it, state);
+        auto [entity, _] = next(&it, state);
         if (entity) {
             ED()->selected_entity = entity; 
         }
@@ -966,22 +1083,24 @@ void editor_draw_ui(State *state) {
         ImGui::Begin("Network");
     
         if (ImGui::Button("Host")) {
+            ED()->selected_entity = NULL;
             clear_level(state);
-            start_as_host();
+            game_client_host();
         }
 
         ImGui::SameLine();
     
         if (ImGui::Button("Connect")) {
+            ED()->selected_entity = NULL;
             clear_level(state);
-            connect_as_client();
+            game_client_connect();
         }
 
         if (GC()->mode != GC_EDITOR) {
             ImGui::SameLine();
         
             if (ImGui::Button("Stop game")) {
-                stop_game();
+                game_client_stop_game();
                 clear_level(state);
                 deserialise_level(state);
             }
@@ -1044,14 +1163,37 @@ void editor_draw_ui(State *state) {
             deserialise_level(state);
         }
 
-        ImGui::SeparatorText("Player");
-        ImGui::InputFloat("Move acceleration", &PLAYER_MOVE_ACCELERATION);
-        ImGui::InputFloat("Jump acceleration", &PLAYER_JUMP_ACCELERATION);
-        ImGui::InputFloat("Max speed", &PLAYER_MAX_SPEED);
-        ImGui::InputFloat("Drag", &PLAYER_DRAG);
-        ImGui::InputFloat("Gravity", &GRAVITY);
-        ImGui::SliderFloat3("Weapon offset", &WEAPON_DISPLAY_OFFSET.x, -2, 2);
-        ImGui::SliderFloat("Weapon size", &WEAPON_DISPLAY_SIZE, -1, 1);
+        if (ImGui::CollapsingHeader("Player")) {
+            ImGui::SeparatorText("Movement");
+            ImGui::InputFloat("Move acceleration", &PLAYER_MOVE_ACCELERATION);
+            ImGui::InputFloat("Jump acceleration", &PLAYER_JUMP_ACCELERATION);
+            ImGui::InputFloat("Max speed", &PLAYER_MAX_SPEED);
+            ImGui::InputFloat("Drag", &PLAYER_DRAG);
+            ImGui::InputFloat("Gravity", &GRAVITY);
+
+            ImGui::SeparatorText("Character");
+            ImGui::SliderFloat("Eyes offset", &PLAYER_EYES_OFFSET, 0, PLAYER_HEIGHT * 0.5);
+
+            ImGui::SeparatorText("Weapon");
+            ImGui::SliderFloat("Fire Cooldown", &state->player_firing_cooldown, 0, state->player_weapon.firing_cooldown);
+            ImGui::InputInt("Ammo", (i32 *) &state->player_ammo);
+            ImGui::SliderFloat3("Weapon offset", &WEAPON_DISPLAY_OFFSET.x, -2, 2);
+            ImGui::SliderFloat("Weapon size", &WEAPON_DISPLAY_SIZE, -1, 1);
+
+            if (ImGui::Button("Give deagle")) {
+                state->player_weapon = g_weapons.deagle;
+                state->player_ammo = state->player_weapon.ammo_count;
+                state->player_firing_cooldown = 0;
+            }
+
+            ImGui::SameLine();
+
+            if (ImGui::Button("Give m4")) {
+                state->player_weapon = g_weapons.m4;
+                state->player_ammo = state->player_weapon.ammo_count;
+                state->player_firing_cooldown = 0;
+            }
+        }
     
         ImGui::SeparatorText("Spawn Entities");
 
@@ -1093,7 +1235,6 @@ void editor_draw_ui(State *state) {
             ImGui::ColorEdit4("##colour", &entity->colour[0], ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
             ImGui::InputFloat("max health", &entity->max_health);
             ImGui::InputFloat("health", &entity->health);
-            ImGui::Text("weapon: %u", (u32) entity->weapon);
         }
 
         ImGui::SeparatorText("Entities in level");
@@ -1213,17 +1354,19 @@ void on_server_receive(State *state, NetworkMessage *message) {
             player->velocity.y += message->move_player.y * PLAYER_JUMP_ACCELERATION;
         } break;
         case NM_PLAYER_HIT: {
-            Entity *entity = get_entity_with_id(state, message->player_hit);
+            Entity *entity = get_entity_with_id(state, message->player_hit.target_id);
             if (entity && BIT_SET(entity->flags, EF_HAS_HEALTH)) {
-                entity->health -= 10;
+                entity->health -= message->player_hit.damage;
             }
         } break;
-        case NM_SPAWN_TARGET: {
-            Entity *target = local_spawn_has_health(state);
-            target->owner = SERVER_INSTANCE_ID;
-            target->position = message->spawn_target;
+        case NM_SPAWN_DUMMY: {
+            Entity *dummy = local_spawn_player(state);
+            dummy->position = message->spawn_dummy;
+            dummy->owner = SERVER_INSTANCE_ID;
 
-            NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = *target};
+            logf("Spawning new dummy entity: entity_id={}, owner={} position={}", dummy->id, dummy->owner, dummy->position);
+
+            NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = *dummy};
             server_send_to_all_clients(NET(), bytes_from_ptr(&message));
         } break;
         default: {
@@ -1348,12 +1491,11 @@ Entity *local_spawn_player(State *state) {
         .flags = EF_PLAYER | EF_SOLID_HITBOX | EF_HAS_HEALTH | EF_HAS_WEAPON,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
-        .size = v3{1, 2, 1},
-        .colour = v4{1, 0, 0, 1},
+        .size = v3{PLAYER_WIDTH, PLAYER_HEIGHT, PLAYER_WIDTH},
+        .colour = GREEN,
         .model = MT_CUBE,
         .max_health = 100,
         .health = 100,
-        .weapon = WT_DEAGLE
     };
 
     return local_spawn_entity(state, entity);
@@ -1400,7 +1542,7 @@ Entity *local_spawn_has_health(State *state) {
     return local_spawn_entity(state, entity);
 }
 
-void start_as_host() {
+void game_client_host() {
     log("starting hosted game");
 
     GC()->mode = GC_HOSTED;
@@ -1410,7 +1552,7 @@ void start_as_host() {
     network_layer_start_client(NET(), "::1");
 }
 
-void connect_as_client() {
+void game_client_connect() {
     log("starting and connecting to local-hosted game");
 
     GC()->mode = GC_CLIENT;
@@ -1418,7 +1560,7 @@ void connect_as_client() {
     network_layer_start_client(NET(), "::1");
 }
 
-void stop_game() {
+void game_client_stop_game() {
     if (GC()->mode == GC_HOSTED) {
         game_server_stop();
         network_layer_stop_server(NET());
@@ -1454,7 +1596,7 @@ RaycastIterator raycast_iterator_create(Ray ray, f32 distance) {
     };
 }
 
-Entity *next(RaycastIterator *it, State *state) {
+RaycastIteratorResult next(RaycastIterator *it, State *state) {
     // how much to step along the ray
     // I have no idea what is good here
     const f32 STEP = 0.05f;
@@ -1466,12 +1608,12 @@ Entity *next(RaycastIterator *it, State *state) {
         for (Entity &entity : state->entities) {
             bool hit = point_collision(it->check_position, entity.position, entity.size);
             if (hit) {
-                return &entity;
+                return RaycastIteratorResult {.entity = &entity, .hit_position = it->check_position};
             }
         }
     }
 
-    return NULL;
+    return RaycastIteratorResult {.entity = NULL, .hit_position = {}};
 }
 
 CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size) {
@@ -1696,7 +1838,6 @@ void serialise_entity(YAML::Emitter &out, Entity *entity) {
     out << YAML::Key << "model"         << YAML::Value << entity->model;
     out << YAML::Key << "max_health"    << YAML::Value << entity->max_health;
     out << YAML::Key << "health"        << YAML::Value << entity->health;
-    out << YAML::Key << "weapon"        << YAML::Value << entity->weapon;
     out << YAML::EndMap;
 }
 
@@ -1725,11 +1866,12 @@ void deserialise_level(State *state) {
         e.model = (ModelType)   entity["model"].as<u32>();
         e.max_health =          entity["max_health"].as<f32>();
         e.health =              entity["health"].as<f32>();
-        e.weapon = WT_NONE;
-        // e.weapon = (WeaponType) entity["weapon"].as<u32>();
 
         append(&state->entities, e);
     }
+
+    state->player_weapon = g_weapons.deagle;
+    state->player_ammo = state->player_weapon.ammo_count; 
 
     log("Level was loaded");
 }

@@ -2165,66 +2165,61 @@ f32 accel_lerp(f32 a, f32 b, f32 f) {
 ////////////////////////////////////////////////////////////////////////////
 //////////////////////////////// @sound ////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
-enum SoundHandle {
-    SH_DASH,
-    SH_COUNT__
-};
+#define MAX_SOUNDS 10
+
+typedef ma_sound Sound;
 
 struct SoundEngine {
     ma_engine engine;
 
-    StackArray<ma_sound, SH_COUNT__> sounds;
+    StackArray<Sound, MAX_SOUNDS> sounds;
 };
 
-bool init_sound_engine(SoundEngine *sound_engine);
-bool load_sounds(SoundEngine *sound_engine);
-void play_sound(SoundEngine *sound_engine, SoundHandle handle);
+// call sound_engine_init() and SE()
+SoundEngine *g_sound_engine = NULL;
 
-str sound_path(SoundHandle handle);
+SoundEngine *SE();
+bool sound_engine_init();
+Sound *sound_engine_load(SoundEngine *sound_engine, str path);
+void sound_engine_play(Sound *sound);
 
-bool init_sound_engine(SoundEngine *sound_engine) {
-    ma_result result = ma_engine_init(NULL, &sound_engine->engine);
+SoundEngine *SE() {
+    ASSERT(g_sound_engine != NULL);
+    return g_sound_engine;
+}
+
+bool sound_engine_init() {
+    ASSERT(g_sound_engine == NULL);
+
+    g_sound_engine = new SoundEngine {
+        .sounds = stack_array_create<ma_sound, MAX_SOUNDS>() 
+    };
+
+    ma_result result = ma_engine_init(NULL, &g_sound_engine->engine);
     if (result != MA_SUCCESS) {
-        printf("failed to init sound engine\n");
+        log("failed to init sound engine");
         return false;
     }
 
     return true;
 }
 
-bool load_sounds(SoundEngine *sound_engine) {
-    for (i64 i = 0; i < sound_engine->sounds.size; i++) {
-        SoundHandle handle = (SoundHandle) i;
+Sound *sound_engine_load(SoundEngine *sound_engine, str path) {
+    Sound *sound = push(&sound_engine->sounds);
 
-        str path = sound_path(handle);
-        ma_sound *sound = &sound_engine->sounds[i];
-
-        ma_result result = ma_sound_init_from_file(&sound_engine->engine, path.c(), 0, NULL, NULL, sound);
-        if (result != MA_SUCCESS) {
-            printf("failed to load sound: %s\n", path.c());
-            return false;
-        }
-
-        printf("Loaded sound with path \"%s\"\n", path.c());
+    ma_result result = ma_sound_init_from_file(&sound_engine->engine, path.c(), 0, NULL, NULL, sound);
+    if (result != MA_SUCCESS) {
+        logf("failed to load sound with path: \"{}\"", path.c());
+        return NULL;
     }
 
-    return true; 
+    logf("Loaded sound with path \"{}\"\n", path.c());
+
+    return sound; 
 }
 
-void play_sound(SoundEngine *sound_engine, SoundHandle handle) {
-    ma_sound *sound = &sound_engine->sounds[handle];
+void sound_engine_play(Sound *sound) {
     ma_sound_start(sound);
-}
-
-str sound_path(SoundHandle handle) {
-    switch (handle) {
-        case SH_DASH: 
-            return "resources/sounds/dash.wav";
-        default: 
-            assert(0);
-    }
-
-    return {};
 }
 
 #endif
