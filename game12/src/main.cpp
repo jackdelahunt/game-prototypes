@@ -15,8 +15,8 @@
 #include <queue>
 #include <atomic>
 
-// Total: 49:00
-// Started: 14:00
+// Total: 49:30
+// Started: 19:00
 //
 //
 // What do a programmer do?:
@@ -44,6 +44,11 @@ f32 PLAYER_DRAG = 0.25;
 f32 GRAVITY = 2.1;
 v3 WEAPON_DISPLAY_OFFSET = v3{1.18, -0.67, 1.1};
 f32 WEAPON_DISPLAY_SIZE = 0.37;
+
+f32 CROSSHAIR_GAP = 10;
+f32 CROSSHAIR_LENGTH = 12;
+f32 CROSSHAIR_THICKNESS = 3;
+v4 CROSSHAIR_COLOUR = RED;
 
 enum ModelType : u32 {
     MT_CUBE,
@@ -521,8 +526,8 @@ void game_client_entry() {
 
         game_client_draw(&GC()->state);
 
-        renderer_draw_frame(REN(), &ED()->camera, ED()->viewport, &ED()->editor_view);
-        renderer_draw_frame(REN(), &GC()->camera, GC()->viewport, &GC()->game_view);
+        renderer_draw_frame(REN(), &ED()->camera, ED()->viewport, &ED()->editor_view, false);
+        renderer_draw_frame(REN(), &GC()->camera, GC()->viewport, &GC()->game_view, true);
 
         renderer_end_frame(REN());
 
@@ -835,13 +840,32 @@ void game_client_draw(State *state) {
 
         // client's player
         if (BIT_SET(entity.flags, EF_PLAYER) && entity.owner == state->instance_id) {
-
             v3 forward = get_forward_direction(&GC()->camera);
             v3 up = get_up_direction(&GC()->camera);
             v3 right = get_right_direction(&GC()->camera);
        
-            // draw crosshair
-            draw_sphere(REN(), GC()->camera.position + forward, 0.005, BLACK);
+            { // draw crosshair
+                v3 centre = relative_to_screen_position(GC()->viewport, {0.5, 0.5});
+
+                // horizontal
+                draw_rectangle_ui(REN(), centre - v3{CROSSHAIR_GAP, 0, 0}, {CROSSHAIR_LENGTH, CROSSHAIR_THICKNESS}, {}, CROSSHAIR_COLOUR);
+                draw_rectangle_ui(REN(), centre + v3{CROSSHAIR_GAP, 0, 0}, {CROSSHAIR_LENGTH, CROSSHAIR_THICKNESS}, {}, CROSSHAIR_COLOUR);
+
+                // vertical
+                draw_rectangle_ui(REN(), centre - v3{0, CROSSHAIR_GAP, 0}, {CROSSHAIR_THICKNESS, CROSSHAIR_LENGTH}, {}, CROSSHAIR_COLOUR);
+                draw_rectangle_ui(REN(), centre + v3{0, CROSSHAIR_GAP, 0}, {CROSSHAIR_THICKNESS, CROSSHAIR_LENGTH}, {}, CROSSHAIR_COLOUR);
+            }
+
+            { // draw health
+                f32 max_width = 600;
+                f32 height = 30;
+                v3 centre = relative_to_screen_position(GC()->viewport, {0.5, 0.98});
+
+                f32 health_scale = entity.health / entity.max_health;
+
+                draw_rectangle_ui(REN(), centre, {max_width * health_scale, height}, {}, RED);
+                draw_rectangle_ui(REN(), centre, {max_width, height}, {}, brightness(RED, 0.5));
+            }
        
             // draw weapon
             if (BIT_SET(entity.flags, EF_HAS_WEAPON)) {
@@ -855,8 +879,9 @@ void game_client_draw(State *state) {
                 draw_sphere(REN(), GC()->camera.position + weapon_offset, WEAPON_DISPLAY_SIZE, weapon_colour);
             }
 
-            // draw ammo
-            draw_text_ui(REN(), fmt(&state->arena, "{}: {}", state->player_weapon.display_name, state->player_ammo), {7, 10, 0}, 30, BLACK);
+            { // draw ammo
+                draw_text_ui(REN(), fmt(&state->arena, "{}:  {}", state->player_weapon.display_name, state->player_ammo), {7, 10, 0}, 30, alpha(BLACK, 0.4));
+            }
         }
 
         // every player
@@ -1141,26 +1166,13 @@ void editor_draw_ui(State *state) {
     }
 
     {
-        ImGui::Begin("Tools");
-    
-        ImGui::SeparatorText("Level");
-    
-        if (ImGui::Button("New")) {
-            ED()->selected_entity = NULL;
-            clear_level(state);
-        }
-    
-        ImGui::SameLine();
-    
-        if (ImGui::Button("Save")) {
-            serialise_level(state);
-        }
-    
-        ImGui::SameLine();
-    
-        if (ImGui::Button("Load")) {
-            ED()->selected_entity = NULL;
-            deserialise_level(state);
+        ImGui::Begin("Setttings");
+
+        if (ImGui::CollapsingHeader("Crosshair")) {
+            ImGui::SliderFloat("Gap", &CROSSHAIR_GAP, 0, 20);
+            ImGui::SliderFloat("Length", &CROSSHAIR_LENGTH, 0, 20);
+            ImGui::SliderFloat("Thickness", &CROSSHAIR_THICKNESS, 0, 20);
+            ImGui::ColorEdit4("Colour", &CROSSHAIR_COLOUR[0]);
         }
 
         if (ImGui::CollapsingHeader("Player")) {
@@ -1194,7 +1206,33 @@ void editor_draw_ui(State *state) {
                 state->player_firing_cooldown = 0;
             }
         }
+
+        ImGui::End();
+    }
+
+    {
+        ImGui::Begin("Level & Entities");
     
+        ImGui::SeparatorText("Level");
+    
+        if (ImGui::Button("New")) {
+            ED()->selected_entity = NULL;
+            clear_level(state);
+        }
+    
+        ImGui::SameLine();
+    
+        if (ImGui::Button("Save")) {
+            serialise_level(state);
+        }
+    
+        ImGui::SameLine();
+    
+        if (ImGui::Button("Load")) {
+            ED()->selected_entity = NULL;
+            deserialise_level(state);
+        }
+ 
         ImGui::SeparatorText("Spawn Entities");
 
         if (ImGui::Button("New empty")) {

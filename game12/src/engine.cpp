@@ -523,7 +523,7 @@ bool load_font(Renderer *renderer, str path, i64 width, i64 height, f32 pixel_he
 // Renderer frame API
 void renderer_clear_frame(v4 colour);
 void renderer_start_frame(Renderer *renderer);
-void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target);
+void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target, bool draw_ui);
 void renderer_end_frame(Renderer *renderer);
 void new_imgui_frame();
 void draw_imgui_frame();
@@ -558,6 +558,7 @@ void frame_buffer_copy_to(FrameBuffer *source_buffer, FrameBuffer *dest_buffer);
 
 v3 screen_position_to_world_position(Renderer *renderer, Viewport viewport, v3 screen_position);
 v3 screen_position_to_ndc(Viewport viewport, v3 screen_position);
+v3 relative_to_screen_position(Viewport viewport, v2 relative_position);
 
 m4 get_view_matrix(Camera *camera);
 m4 get_projection_matrix(Camera *camera, f32 aspect);
@@ -1058,7 +1059,7 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
     }
 
     { // load default font
-        bool ok = load_font(renderer, "resources/fonts/LibreBaskerville.ttf", 1000, 1000, 160);
+        bool ok = load_font(renderer, "resources/fonts/OpenSans-Bold.ttf", 1000, 1000, 160);
         if (!ok) {
             log("failed to load default font");
             return false;
@@ -1422,7 +1423,7 @@ void renderer_start_frame(Renderer *renderer) {
     renderer_clear_frame(renderer->clear_colour);
 }
 
-void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target) {
+void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target, bool draw_ui) {
     renderer->view_matrix = get_view_matrix(camera);
     renderer->projection_matrix = get_projection_matrix(camera, f32(viewport.size.x) / f32(viewport.size.y));
     renderer->projection_matrix_ortho = get_projection_matrix_ortho(camera,  f32(viewport.size.x) / f32(viewport.size.y));
@@ -1490,7 +1491,7 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
         frame_buffer_unbind();
     }
 
-    { // ui pass
+    if (draw_ui) { // ui pass
         m4 model_matrix = HMM_M4D(1.0f);
         m4 view_matrix = HMM_M4D(1.0f);
         m4 projection_matrix = HMM_Orthographic_LH_NO(0, viewport.size.x, 0, viewport.size.y,  -1, 1);
@@ -1882,6 +1883,10 @@ v3 screen_position_to_ndc(Viewport viewport, v3 screen_position) {
     v_ndc.y /= (f32(viewport.size.y) * 0.5f);
 
     return v_ndc;
+}
+
+v3 relative_to_screen_position(Viewport viewport, v2 relative_position) {
+    return v3{f32(viewport.size.x), f32(viewport.size.y), 0} * v3{relative_position.x, relative_position.y, 0};
 }
 
 m4 get_view_matrix(Camera *camera) {
