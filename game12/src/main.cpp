@@ -15,14 +15,14 @@
 #include <queue>
 #include <atomic>
 
-// Total: 57:00
-// Started: 18:30
+// Total: 58:00
+// Started: 20:30
 //
 //
 // What do a programmer do?:
 // Game:
-// - pickups - health, weapons ammo? 
-//  	health: floating cross when usable
+// - finsh missles
+// - ammo pickup
 //	ammo: restore some amount of ammor for a gun (full for deagle, half for m4, 3 for sniper)
 // - jump pads
 // - actually make a real map
@@ -40,6 +40,7 @@
 #define LEVEL_INSTANCE_ID 0
 #define SERVER_INSTANCE_ID 1
 #define GAME_SERVER_MS_PER_TICK 16
+#define GAME_CLIENT_MS_PER_TICK 16
 
 f32 PLAYER_HEIGHT = 2;
 f32 PLAYER_WIDTH = 0.65;
@@ -55,7 +56,8 @@ f32 GRAVITY = 2.1;
 v3 WEAPON_DISPLAY_OFFSET = v3{1, -0.6, 0.98};
 f32 WEAPON_SWITCH_COOLDOWN = 1.5;
 
-f32 M4_PICKUP_COOLDOWN = 12;
+f32 M4_PICKUP_COOLDOWN = 10;
+f32 TAP_PICKUP_COOLDOWN = 10;
 f32 HEALTH_PICKUP_COOLDOWN = 7;
 
 f32 CROSSHAIR_GAP = 10;
@@ -67,6 +69,7 @@ enum MeshHandle : u32 {
     MH_NONE,
     MH_DEAGLE,
     MH_M4,
+    MH_CROSS,
     _MH_COUNT
 };
 
@@ -87,6 +90,7 @@ Sound *g_sounds[_SH_COUNT] = {};
 enum WeaponHandle : u32 {
     WH_DEAGLE,
     WH_M4,
+    WH_TAP,
     _WH_COUNT
 };
 
@@ -127,12 +131,25 @@ Weapon g_weapons[_WH_COUNT] = {
         .mesh = MH_M4,
         .firing_sound = SH_FIRE_SILENCED_GUN_HIGH,
         .recoil_offset = v3{0, -0.01, -0.15}
+    },
+    Weapon {
+        .display_name = "Thoughts & Prayers",
+        .colour = v4 {0.05, 0.5, 0.05, 1},
+        .damage = 100,
+        .headshot_damage = 100,
+        .ammo_count = 5,
+        .automatic = false,
+        .firing_cooldown = 1,
+        .mesh = MH_DEAGLE,
+        .firing_sound = SH_FIRE_DEAGLE,
+        .recoil_offset = v3{0, -0.08, -0.4}
     }
 };
 
 enum PickupType : u32 {
     PT_NONE,
     PT_M4,
+    PT_TAP,
     PT_HEALTH
 };
 
@@ -189,6 +206,7 @@ enum NetworkMessageType {
     NM_PLAYER_HIT,
     NM_SPAWN_DUMMY,
     NM_SET_WEAPON,
+    NM_SPAWN_MISSLE,
 }; 
 
 struct NetworkMessage {
@@ -208,6 +226,7 @@ struct NetworkMessage {
         } player_hit;
         v3 spawn_dummy;
         WeaponHandle set_weapon;
+        Ray spawn_missle;
     };
 };
 
@@ -238,6 +257,7 @@ struct State {
     InstanceType instance_type;
     u32 instance_id;
     
+    f32 time;
     Arena arena;
     Sampler network_in_sampler;
 
@@ -359,6 +379,8 @@ YAML::Emitter &operator<<(YAML::Emitter &out, v4 value);
 Weapon *get_player_weapon(State *state);
 void set_player_weapon(State *state, WeaponHandle weapon, f32 cooldown);
 void play_weapon_fire_sound(SoundHandle sound);
+void fire_raycast_weapon(State *state, WeaponHandle weapon);
+void fire_tap(State *state);
 
 // @main
 int main(i32 argc, const char **argv) { 
@@ -445,6 +467,8 @@ void game_server_entry() {
             continue;
         }
 
+        GS()->state.time += delta_time;
+
         process_network(&GS()->state);
         game_server_update(&GS()->state, delta_time);
         game_server_physics(&GS()->state, delta_time);
@@ -488,6 +512,9 @@ void game_client_entry() {
 
         g_meshes[MH_M4] = mesh_create_from_file(REN(), "resources/models/m4/m4.obj");
         ASSERT(g_meshes[MH_M4]);
+
+        g_meshes[MH_CROSS] = mesh_create_from_file(REN(), "resources/models/cross/cross.obj");
+        ASSERT(g_meshes[MH_CROSS]);
 
         ok = sound_engine_init();
         ASSERT(ok);
@@ -557,7 +584,7 @@ void game_client_entry() {
         }
     }
 
-    Timer tick_timer = timer_create_ms(GAME_SERVER_MS_PER_TICK);
+    Timer tick_timer = timer_create_ms(GAME_CLIENT_MS_PER_TICK);
 
     logf("Started game client [thread={}]", get_current_thread_id());
     logf("Client running at {}t/s", i64(1000.0f / f32(GAME_SERVER_MS_PER_TICK)));
@@ -567,6 +594,8 @@ void game_client_entry() {
     while (!glfwWindowShouldClose(WIN()->glfw_window)) {
         f32 delta_time = 0;
         if (timer_is_complete(&tick_timer, &delta_time)) {
+            GC()->state.time += delta_time;
+
             poll_inputs();
 
             if (KEYS[GLFW_KEY_ESCAPE] == InputState::DOWN) {
@@ -704,6 +733,11 @@ void game_server_update(State *state, f32 delta_time) {
                             NetworkMessage message = NetworkMessage{.type = NM_SET_WEAPON, .set_weapon = WH_M4};
                             server_send_to_client(NET(), bytes_from_ptr(&message), other.owner);
                         } break;
+                        case PT_TAP: {
+                            entity.pickup_cooldown = TAP_PICKUP_COOLDOWN;
+                            NetworkMessage message = NetworkMessage{.type = NM_SET_WEAPON, .set_weapon = WH_TAP};
+                            server_send_to_client(NET(), bytes_from_ptr(&message), other.owner);
+                        } break;
                         case PT_HEALTH: {
                             entity.pickup_cooldown = HEALTH_PICKUP_COOLDOWN;
                             other.health = other.max_health;
@@ -739,29 +773,28 @@ void game_server_physics(State *state, f32 delta_time) {
     ASSERT(is_server(state));
 
     for (Entity &entity : state->entities) {
-        // currently only simming physics for the player
-        if (!BIT_SET(entity.flags, EF_PLAYER)) {
-            continue; 
-        }
-
         v3 h_velocity = v3{entity.velocity.x, 0, entity.velocity.z};
         f32 h_speed = length(h_velocity);
 
-        //  cap velocity
-        if (length(h_velocity) > PLAYER_MAX_SPEED) {
-            v3 max_h_velocity = norm(h_velocity) * PLAYER_MAX_SPEED;
+        if (BIT_SET(entity.flags, EF_PLAYER)) {
+            //  cap velocity
+            if (length(h_velocity) > PLAYER_MAX_SPEED) {
+                v3 max_h_velocity = norm(h_velocity) * PLAYER_MAX_SPEED;
+    
+                entity.velocity.x = max_h_velocity.x;
+                entity.velocity.z = max_h_velocity.z;
+            }
+    
+            //  apply drag to velocity
+            if (h_speed > 0) {
+                v3 drag = -h_velocity * PLAYER_DRAG;
+                entity.velocity += drag;
+            }
 
-            entity.velocity.x = max_h_velocity.x;
-            entity.velocity.z = max_h_velocity.z;
+            // apply gravity
+            entity.velocity += v3{0, -GRAVITY, 0};
         }
 
-        //  apply drag to velocity
-        if (h_speed > 0) {
-            v3 drag = -h_velocity * PLAYER_DRAG;
-            entity.velocity += drag;
-        }
-
-        entity.velocity += v3{0, -GRAVITY, 0};
         entity.position += entity.velocity * delta_time;
 
         for (Entity &other : state->entities) {
@@ -842,65 +875,14 @@ void game_client_update(State *state, f32 delta_time) {
 
                     play_weapon_fire_sound(player_weapon->firing_sound);
 
-                    Ray ray = ray_create(GC()->camera.position, get_forward_direction(&GC()->camera));
-                    RaycastIterator it = raycast_iterator_create(ray, GC()->camera.far_plane - GC()->camera.near_plane);
-    
-                    Entity *hit_entity = NULL;
-                    v3 hit_position = v3{};
-
-                    while (true) {
-                        RaycastIteratorResult result = next(&it, state);
-
-                        // ray cast failed if:
-                        // 1. didn't hit anything, stop
-                        // 2. didn't hit the player, stop
-                        // 3. hit the clients player, try again
-                        // 4. hit another player but they are danother player but they are dead 
-                        if (result.entity == NULL) {
-                            break;
-                        }
-
-                        if (!BIT_SET(result.entity->flags, EF_PLAYER)) {
-                            break;
-                        }
-
-                        if (result.entity->owner == state->instance_id) {
-                            continue;
-                        }
-
-                        if (BIT_SET(result.entity->flags, EF_DEAD)) {
-                            break;
-                        }
-
-                        hit_entity = result.entity;
-                        hit_position = result.hit_position;
+                    switch (state->player_weapon) {
+                        case WH_DEAGLE:
+                        case WH_M4:
+                            fire_raycast_weapon(state, state->player_weapon);
                         break;
-                    }
-    
-                    if (hit_entity) {
-                        f32 damage = player_weapon->damage;
-                        SoundHandle hit_sound = SH_TARGET_HIT;
-
-                        f32 hit_height_offset = hit_position.y - hit_entity->position.y;
-                        f32 half_head_size = (PLAYER_HEIGHT * 0.5)  - PLAYER_EYES_OFFSET;
-
-                        if (hit_height_offset >= PLAYER_EYES_OFFSET - half_head_size) {
-                            damage = player_weapon->headshot_damage;
-                            hit_sound = SH_HEADSHOT_HIT;
-                        }
-
-                        sound_engine_play(g_sounds[hit_sound]);
-
-                        NetworkMessage message = NetworkMessage {
-                            .client_id = state->instance_id, 
-                            .type = NM_PLAYER_HIT, 
-                            .player_hit = {
-                                .target_id = hit_entity->id,
-                                .damage = damage 
-                            } 
-                        };
-
-                        client_send_to_server(NET(), bytes_from_ptr(&message));
+                        case WH_TAP:
+                            fire_tap(state);
+                        break;
                     }
                 }
             }
@@ -1068,19 +1050,34 @@ void game_client_draw(State *state) {
 
         // pickups 
         if (BIT_SET(entity.flags, EF_PICKUP)) {
-            v4 pickup_colour = entity.pickup_cooldown > 0 ? brightness(RED, 0.8) : brightness(GREEN, 0.8);
-            v3 pickup_position = entity.position + v3{0, 2, 0};
-            v3 pickup_size = v3{1, 1, 1};
+            f32 t = sin(state->time * 0.5f);
+            v3 pickup_position = entity.position + v3{0, 1.5f + t, 0};
+            v3 pickup_rotation = v3{0, t * 360, 0};
+
+            Mesh *mesh = NULL;
+            v4 pickup_colour = {};
+            v3 pickup_size = {};
 
             switch (entity.pickup_type) {
-                case PT_M4: {
-                    Mesh *mesh = g_meshes[g_weapons[WH_M4].mesh];
-                    draw_mesh(REN(), mesh, pickup_position, pickup_size, {}, pickup_colour);
+                case PT_M4: { 
+                    mesh = g_meshes[g_weapons[WH_M4].mesh];
+                    pickup_colour = entity.pickup_cooldown > 0 ? brightness(RED, 0.5) : g_weapons[WH_M4].colour;
+                    pickup_size = v3{0.8, 0.8, 0.8};
+                } break;
+                case PT_TAP: { 
+                    mesh = g_meshes[g_weapons[WH_TAP].mesh];
+                    pickup_colour = entity.pickup_cooldown > 0 ? brightness(RED, 0.5) : g_weapons[WH_TAP].colour;
+                    pickup_size = v3{1, 1, 1};
                 } break;
                 case PT_HEALTH: {
+                    mesh = g_meshes[MH_CROSS];
+                    pickup_colour = entity.pickup_cooldown > 0 ? brightness(RED, 0.5) : brightness({0.2, 1, 0.2, 1}, 0.8);
+                    pickup_size = v3{0.3, 0.3, 0.3};
                 } break;
                 default: ASSERT(0);
             }
+
+            draw_mesh(REN(), mesh, pickup_position, pickup_size, pickup_rotation, pickup_colour);
         }
 
         if (ED()->selected_entity && ED()->selected_entity->id == entity.id) {
@@ -1446,6 +1443,10 @@ void editor_draw_ui(State *state) {
             ED()->selected_entity = local_spawn_pickup(state, PT_M4);
         }
 
+        if (ImGui::Button("New tap pickup")) {
+            ED()->selected_entity = local_spawn_pickup(state, PT_TAP);
+        }
+
         if (ImGui::Button("New health pickup")) {
             ED()->selected_entity = local_spawn_pickup(state, PT_HEALTH);
         }
@@ -1598,6 +1599,15 @@ void on_server_receive(State *state, NetworkMessage *message) {
             logf("Spawning new dummy entity: entity_id={}, owner={} position={}", dummy->id, dummy->owner, dummy->position);
 
             NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = *dummy};
+            server_send_to_all_clients(NET(), bytes_from_ptr(&message));
+        } break;
+        case NM_SPAWN_MISSLE: {
+            Entity *missle = local_spawn_empty(state);
+            missle->position = message->spawn_missle.origin;
+            missle->velocity = message->spawn_missle.direction * 15;
+            missle->owner = SERVER_INSTANCE_ID;
+
+            NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = *missle};
             server_send_to_all_clients(NET(), bytes_from_ptr(&message));
         } break;
         default: {
@@ -2231,6 +2241,83 @@ void play_weapon_fire_sound(SoundHandle sound) {
             last_played = 0;
         }
     }
+}
+
+void fire_raycast_weapon(State *state, WeaponHandle weapon) {
+    Ray ray = ray_create(GC()->camera.position, get_forward_direction(&GC()->camera));
+    RaycastIterator it = raycast_iterator_create(ray, GC()->camera.far_plane - GC()->camera.near_plane);
+
+    Weapon *player_weapon = &g_weapons[weapon];
+    
+    Entity *hit_entity = NULL;
+    v3 hit_position = v3{};
+
+    while (true) {
+        RaycastIteratorResult result = next(&it, state);
+        // ray cast failed if:
+        // 1. didn't hit anything, stop
+        // 2. didn't hit the player, stop
+        // 3. hit the clients player, try again
+        // 4. hit another player but they are danother player but they are dead 
+        if (result.entity == NULL) {
+            break;
+        }
+
+        if (!BIT_SET(result.entity->flags, EF_PLAYER)) {
+            break;
+        }
+
+        if (result.entity->owner == state->instance_id) {
+            continue;
+        }
+
+        if (BIT_SET(result.entity->flags, EF_DEAD)) {
+            break;
+        }
+
+        hit_entity = result.entity;
+        hit_position = result.hit_position;
+        break;
+    } 
+
+    if (hit_entity) {
+        f32 damage = player_weapon->damage;
+        SoundHandle hit_sound = SH_TARGET_HIT;
+        f32 hit_height_offset = hit_position.y - hit_entity->position.y;
+        f32 half_head_size = (PLAYER_HEIGHT * 0.5)  - PLAYER_EYES_OFFSET;
+
+        if (hit_height_offset >= PLAYER_EYES_OFFSET - half_head_size) {
+            damage = player_weapon->headshot_damage;
+            hit_sound = SH_HEADSHOT_HIT;
+        }
+
+        sound_engine_play(g_sounds[hit_sound]);
+
+        NetworkMessage message = NetworkMessage {
+            .client_id = state->instance_id, 
+            .type = NM_PLAYER_HIT, 
+            .player_hit = {
+                .target_id = hit_entity->id,
+                .damage = damage 
+            } 
+        };
+
+        client_send_to_server(NET(), bytes_from_ptr(&message));
+    }
+}
+
+void fire_tap(State *state) {
+    v3 forward = get_forward_direction(&GC()->camera);
+    // spawn it at little how so we dont hit the player 
+    Ray ray = ray_create(GC()->camera.position + forward, forward);
+
+    NetworkMessage message = NetworkMessage {
+        .client_id = state->instance_id, 
+        .type = NM_SPAWN_MISSLE,
+        .spawn_missle = ray
+    };
+
+    client_send_to_server(NET(), bytes_from_ptr(&message));
 }
 
 template<>
