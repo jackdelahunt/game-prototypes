@@ -15,20 +15,22 @@
 #include <queue>
 #include <atomic>
 
-// Total: 51:00
-// Started: 00:30
+// Total: 56:00
+// Started: 11:00
 //
 //
 // What do a programmer do?:
 // Game:
-// - player respawning
 // - pickups - health and weapons
-// - fix 3d models for viewmodel
-// - m4 sounds working properaly
+// - jump pads
+// - actually make a real map
+// - scoreboard
 // - player sounds, running jumping, maybe taking damage?
 //
 // Engine:
 // - combine vs and fs in the one file
+// - fond out why camera yaw (Y) is flipped
+// - switch to quaternions for rotation 
 // - define assets in editor and get handles in game
 // - sky box
 
@@ -48,21 +50,27 @@ f32 PLAYER_MAX_SPEED = 20;
 f32 PLAYER_DRAG = 0.25;
 f32 GRAVITY = 2.1;
 
-v3 WEAPON_DISPLAY_OFFSET = v3{1.18, -0.67, 1.1};
-f32 WEAPON_DISPLAY_SIZE = 0.37;
+v3 WEAPON_DISPLAY_OFFSET = v3{1, -0.6, 0.98};
 
 f32 CROSSHAIR_GAP = 10;
 f32 CROSSHAIR_LENGTH = 12;
 f32 CROSSHAIR_THICKNESS = 3;
 v4 CROSSHAIR_COLOUR = RED;
 
-enum ModelType : u32 {
-    MT_CUBE,
-    _MT_COUNT
+enum MeshHandle : u32 {
+    MH_NONE,
+    MH_DEAGLE,
+    MH_M4,
+    _MH_COUNT
 };
 
+Mesh *g_meshes[_MH_COUNT] = {};
+
 enum SoundHandle : u32 {
-    SH_FIRE,
+    SH_FIRE_DEAGLE,
+    SH_FIRE_SILENCED_GUN_HIGH, // keep silenced sounds in order
+    SH_FIRE_SILENCED_GUN_MID,
+    SH_FIRE_SILENCED_GUN_LOW,
     SH_TARGET_HIT,
     SH_HEADSHOT_HIT,
     _SH_COUNT
@@ -78,30 +86,36 @@ struct Weapon {
     i64 ammo_count;
     bool automatic;
     f32 firing_cooldown;
-    SoundHandle firing_sound; 
+    MeshHandle mesh; 
+    SoundHandle firing_sound;
+    v3 recoil_offset;
 };
 
 struct {
     Weapon deagle = Weapon {
         .display_name = "Deagle",
-        .colour = v4 {0.8, 0.8, 0.8, 1},
-        .damage = 40,
-        .headshot_damage = 110,
+        .colour = brightness(WHITE, 0.6),
+        .damage = 25,
+        .headshot_damage = 55,
         .ammo_count = 7,
         .automatic = false,
         .firing_cooldown = 0.8,
-        .firing_sound = SH_FIRE,
+        .mesh = MH_DEAGLE,
+        .firing_sound = SH_FIRE_DEAGLE,
+        .recoil_offset = v3{0, -0.08, -0.4}
     };
 
     Weapon m4 = Weapon {
         .display_name = "M4",
         .colour = v4 {0.2, 0.2, 0.2, 1},
-        .damage = 20,
-        .headshot_damage = 60,
-        .ammo_count = 30,
+        .damage = 8,
+        .headshot_damage = 20,
+        .ammo_count = 35,
         .automatic = true,
-        .firing_cooldown = 0.15,
-        .firing_sound = SH_FIRE,
+        .firing_cooldown = 0.10,
+        .mesh = MH_M4,
+        .firing_sound = SH_FIRE_SILENCED_GUN_HIGH,
+        .recoil_offset = v3{0, -0.01, -0.15}
     };
 } g_weapons;
 
@@ -136,7 +150,6 @@ struct Entity {
 
     // rendering
     v4 colour;
-    ModelType model;
 
     // flag: player
     f32 max_health;
@@ -317,6 +330,8 @@ void deserialise_level(State *state);
 YAML::Emitter &operator<<(YAML::Emitter &out, v3 value);
 YAML::Emitter &operator<<(YAML::Emitter &out, v4 value);
 
+void play_weapon_fire_sound(SoundHandle sound);
+
 // @main
 int main(i32 argc, const char **argv) { 
     log_set_thread_options(LogOptions {
@@ -440,6 +455,12 @@ void game_client_entry() {
             return;
         }
 
+        g_meshes[MH_DEAGLE] = mesh_create_from_file(REN(), "resources/models/deagle/deagle.obj");
+        ASSERT(g_meshes[MH_DEAGLE]);
+
+        g_meshes[MH_M4] = mesh_create_from_file(REN(), "resources/models/m4/m4.obj");
+        ASSERT(g_meshes[MH_M4]);
+
         ok = sound_engine_init();
         ASSERT(ok);
 
@@ -448,8 +469,17 @@ void game_client_entry() {
             return;
         }
 
-        g_sounds[SH_FIRE] = sound_engine_load(SE(), "resources/sounds/deagle_fire.wav");
-        ASSERT(g_sounds[SH_FIRE]);
+        g_sounds[SH_FIRE_DEAGLE] = sound_engine_load(SE(), "resources/sounds/deagle_fire.wav");
+        ASSERT(g_sounds[SH_FIRE_DEAGLE]);
+
+        g_sounds[SH_FIRE_SILENCED_GUN_HIGH] = sound_engine_load(SE(), "resources/sounds/silenced_gun_high.wav");
+        ASSERT(g_sounds[SH_FIRE_SILENCED_GUN_HIGH]);
+
+        g_sounds[SH_FIRE_SILENCED_GUN_MID] = sound_engine_load(SE(), "resources/sounds/silenced_gun_mid.wav");
+        ASSERT(g_sounds[SH_FIRE_SILENCED_GUN_MID]);
+
+        g_sounds[SH_FIRE_SILENCED_GUN_LOW] = sound_engine_load(SE(), "resources/sounds/silenced_gun_low.wav");
+        ASSERT(g_sounds[SH_FIRE_SILENCED_GUN_LOW]);
 
         g_sounds[SH_TARGET_HIT] = sound_engine_load(SE(), "resources/sounds/short_target_hit.wav");
         ASSERT(g_sounds[SH_TARGET_HIT]);
@@ -733,10 +763,10 @@ void game_client_update(State *state, f32 delta_time) {
         }
 
         if (WIN()->mouse_captured) {
+            f32 sensitivity = 0.09;
             v2 mouse_input = MOUSE.delta;
     
             if (length(mouse_input) > 0) {
-                f32 sensitivity = 0.09;
     
                 GC()->camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
                 GC()->camera.rotation.x = clamp(-90, GC()->camera.rotation.x, 90);
@@ -749,7 +779,8 @@ void game_client_update(State *state, f32 delta_time) {
                 if (state->player_ammo > 0 && state->player_firing_cooldown <= 0) {
                     state->player_ammo -= 1; 
                     state->player_firing_cooldown = state->player_weapon.firing_cooldown;
-                    sound_engine_play(g_sounds[state->player_weapon.firing_sound]);
+
+                    play_weapon_fire_sound(state->player_weapon.firing_sound);
 
                     Ray ray = ray_create(GC()->camera.position, get_forward_direction(&GC()->camera));
                     RaycastIterator it = raycast_iterator_create(ray, GC()->camera.far_plane - GC()->camera.near_plane);
@@ -870,6 +901,49 @@ void game_client_draw(State *state) {
             v3 forward = get_forward_direction(&GC()->camera);
             v3 up = get_up_direction(&GC()->camera);
             v3 right = get_right_direction(&GC()->camera);
+
+            { // draw weapon
+                v3 weapon_position = v3{};
+                weapon_position += WEAPON_DISPLAY_OFFSET.x * right;
+                weapon_position += WEAPON_DISPLAY_OFFSET.y * up;
+                weapon_position += WEAPON_DISPLAY_OFFSET.z * forward;
+
+                // apply recoil if there is cooldown
+                if (state->player_firing_cooldown > 0) { 
+                    f32 cooldown_scale = state->player_firing_cooldown / state->player_weapon.firing_cooldown;
+
+                    v3 wro = state->player_weapon.recoil_offset;
+
+                    v3 recoil_offset = v3{};
+                    recoil_offset += wro.x * right;
+                    recoil_offset += wro.y * up;
+                    recoil_offset += wro.z * forward;
+                    recoil_offset *= cooldown_scale;
+
+                    weapon_position += recoil_offset;
+                }
+
+                weapon_position += GC()->camera.position;
+
+                v3 weapon_rotation = v3{GC()->camera.rotation.x, -GC()->camera.rotation.y, 0};
+
+                draw_mesh(REN(), g_meshes[state->player_weapon.mesh], weapon_position, {1, 1, 1}, weapon_rotation, state->player_weapon.colour);
+            }
+
+            // @hud
+
+            // draw fire cooldown when using non auto gun
+            if (!state->player_weapon.automatic && state->player_firing_cooldown > 0) { 
+                f32 max_width = 40;
+                f32 height = 3;
+
+                v3 centre = relative_to_screen_position(GC()->viewport, {0.5, 0.5});
+                v3 centre_offset = v3{0, -50, 0};
+
+                f32 cooldown_scale = state->player_firing_cooldown / state->player_weapon.firing_cooldown;
+
+                draw_rectangle_ui(REN(), centre + centre_offset, {max_width * cooldown_scale, height}, {}, alpha(BLACK, 0.3));
+            }
        
             { // draw crosshair
                 v3 centre = relative_to_screen_position(GC()->viewport, {0.5, 0.5});
@@ -893,18 +967,16 @@ void game_client_draw(State *state) {
                 draw_rectangle_ui(REN(), centre, {max_width * health_scale, height}, {}, brightness(RED, 0.8));
                 draw_rectangle_ui(REN(), centre, {max_width, height}, {}, brightness(RED, 0.4));
             }
-       
-            { // draw weapon
-                v3 weapon_offset = v3{};
-                weapon_offset += WEAPON_DISPLAY_OFFSET.x * right;
-                weapon_offset += WEAPON_DISPLAY_OFFSET.y * up;
-                weapon_offset += WEAPON_DISPLAY_OFFSET.z * forward;
 
-                v4 weapon_colour = state->player_firing_cooldown > 0 ? RED : state->player_weapon.colour;
-       
-                draw_sphere(REN(), GC()->camera.position + weapon_offset, WEAPON_DISPLAY_SIZE, weapon_colour);
+            // blood overlay when dead 
+            if (BIT_SET(entity.flags, EF_DEAD)) {
+                v3 top_right = relative_to_screen_position(GC()->viewport, {1, 1});
+                v3 centre = top_right * 0.5;
+                v2 size = top_right.xy;
+
+                draw_rectangle_ui(REN(), centre, size, {}, alpha(RED, 0.3));
             }
-
+       
             { // draw ammo
                 draw_text_ui(REN(), fmt(&state->arena, "{}:  {}", state->player_weapon.display_name, state->player_ammo), {7, 10, 0}, 30, alpha(BLACK, 0.4));
             }
@@ -912,16 +984,24 @@ void game_client_draw(State *state) {
 
         // every player
         if (BIT_SET(entity.flags, EF_PLAYER)) {
-            // special case for player, we want to draw a second cube where the head
-            // will be. The centre of this cube is where the eye position is
+            v4 head_colour = BEIGE;
 
-            f32 eyes_to_top = (PLAYER_HEIGHT * 0.5)  - PLAYER_EYES_OFFSET;
-            v3 head_size = v3{PLAYER_WIDTH, eyes_to_top * 2, PLAYER_WIDTH};
+            // shade red when dead
+            if (BIT_SET(entity.flags, EF_DEAD)) {
+                draw_colour = mix(draw_colour, RED, 0.65);
+                head_colour = mix(draw_colour, RED, 0.65);
+            }
 
-            // add a little extra to stop z fighting
-            head_size += v3{0.01, 0.01, 0.01};
-
-            draw_cube(REN(), entity.position + v3{0, PLAYER_EYES_OFFSET, 0}, head_size, entity.rotation, RED);
+            { // draw head
+                // want to draw a second cube where the head will be, centre of this cube is eye position
+                f32 eyes_to_top = (PLAYER_HEIGHT * 0.5)  - PLAYER_EYES_OFFSET;
+                v3 head_size = v3{PLAYER_WIDTH, eyes_to_top * 2, PLAYER_WIDTH};
+    
+                // add a little extra to stop z fighting
+                head_size += v3{0.01, 0.01, 0.01};
+    
+                draw_cube(REN(), entity.position + v3{0, PLAYER_EYES_OFFSET, 0}, head_size, entity.rotation, head_colour);
+            }
         }
 
         if (ED()->selected_entity && ED()->selected_entity->id == entity.id) {
@@ -1229,7 +1309,6 @@ void editor_draw_ui(State *state) {
             ImGui::SliderFloat("Fire Cooldown", &state->player_firing_cooldown, 0, state->player_weapon.firing_cooldown);
             ImGui::InputInt("Ammo", (i32 *) &state->player_ammo);
             ImGui::SliderFloat3("Weapon offset", &WEAPON_DISPLAY_OFFSET.x, -2, 2);
-            ImGui::SliderFloat("Weapon size", &WEAPON_DISPLAY_SIZE, -1, 1);
 
             if (ImGui::Button("Give deagle")) {
                 state->player_weapon = g_weapons.deagle;
@@ -1542,10 +1621,6 @@ void move_to_random_spawn_point(State *state, Entity *entity) {
     i64 spawn_point_number = rand_i64(0, state->spawn_point_count);
     i64 current_spawn_point_number = 0;
 
-    for (i64 i = 0; i < 100; i++) {
-        logf("{}", rand_i64(0, state->spawn_point_count)); 
-    }
-
     for (Entity &other : state->entities) {
         if (BIT_SET(other.flags, EF_SPAWN_POINT)) {
             if (spawn_point_number == current_spawn_point_number) {
@@ -1564,7 +1639,6 @@ Entity *local_spawn_empty(State *state) {
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{1, 1, 1},
         .colour = v4{1, 1, 1, 1},
-        .model = MT_CUBE 
     };
 
     return local_spawn_entity(state, entity);
@@ -1576,8 +1650,7 @@ Entity *local_spawn_player(State *state) {
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{PLAYER_WIDTH, PLAYER_HEIGHT, PLAYER_WIDTH},
-        .colour = GREEN,
-        .model = MT_CUBE,
+        .colour = TURQUOISE,
         .max_health = 100,
         .health = 100,
     };
@@ -1592,7 +1665,6 @@ Entity *local_spawn_spawn_point(State *state) {
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{1, 1, 1} * 0.3,
         .colour = HOT_PINK,
-        .model = MT_CUBE
     };
 
     return local_spawn_entity(state, entity);
@@ -1605,7 +1677,6 @@ Entity *local_spawn_static_box(State *state) {
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{1, 1, 1},
         .colour = v4{1, 1, 1, 1},
-        .model = MT_CUBE 
     };
 
     return local_spawn_entity(state, entity);
@@ -1708,7 +1779,6 @@ void imgui_entity(Entity *entity) {
     imgui_v3_control("size", &entity->size);
     imgui_v3_control("rotation", &entity->rotation);
     imgui_v3_control("velocity", &entity->velocity);
-    ImGui::Text("model: %u", (u32) entity->model);
     ImGui::Text("colour: "); ImGui::SameLine(); ImGui::ColorEdit4("##colour", &entity->colour[0], ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
     ImGui::InputFloat("max health", &entity->max_health);
     ImGui::InputFloat("health", &entity->health);
@@ -1919,7 +1989,6 @@ void serialise_entity(YAML::Emitter &out, Entity *entity) {
     out << YAML::Key << "rotation"      << YAML::Value << entity->rotation;
     out << YAML::Key << "velocity"      << YAML::Value << entity->velocity;
     out << YAML::Key << "colour"        << YAML::Value << entity->colour;
-    out << YAML::Key << "model"         << YAML::Value << entity->model;
     out << YAML::Key << "max_health"    << YAML::Value << entity->max_health;
     out << YAML::Key << "health"        << YAML::Value << entity->health;
     out << YAML::EndMap;
@@ -1948,7 +2017,6 @@ void deserialise_level(State *state) {
         e.rotation =            entity["rotation"].as<v3>();
         e.velocity =            entity["velocity"].as<v3>();
         e.colour =              entity["colour"].as<v4>();
-        e.model = (ModelType)   entity["model"].as<u32>();
         e.max_health =          entity["max_health"].as<f32>();
         e.health =              entity["health"].as<f32>();
 
@@ -2007,6 +2075,25 @@ struct YAML::convert<v4> {
         return true;
     }
 };
+
+void play_weapon_fire_sound(SoundHandle sound) {
+    if (sound == SH_FIRE_DEAGLE) {
+        sound_engine_play(g_sounds[sound]);
+    } 
+    else if (sound == SH_FIRE_SILENCED_GUN_HIGH) {
+        static i64 last_played = 0;
+
+        SoundHandle actual_sound = (SoundHandle) (SH_FIRE_SILENCED_GUN_HIGH + last_played);
+        sound_engine_play(g_sounds[actual_sound]);
+
+        i64 sound_variations = SH_FIRE_SILENCED_GUN_LOW - SH_FIRE_SILENCED_GUN_HIGH;
+        last_played += 1;
+
+        if (last_played > sound_variations) {
+            last_played = 0;
+        }
+    }
+}
 
 template<>
 void fmt_value(DynamicArray<u8> *bytes, v2i value) {

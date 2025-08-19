@@ -11,6 +11,68 @@
 #include <stdlib.h>
 #include <random>
 
+////////////////////////////////////////////////
+///             engine.cpp                   ///
+////////////////////////////////////////////////
+//
+// IMPORTANT NOTES & ASSUMPTIONS
+//
+// Co-ordinate system is left handed:
+// -X & +X = left & right
+// -Y & +Y = down & up
+// -Z & +Z = back & front
+//
+// Rotation should be defined as the following when looking forward along +Z:
+// -X & +X = pitch down & pitch up
+// -Y & +Y = yaw right  & yaw left (camera roation is oppisite)
+// -Z & +Z = roll right & roll left
+//
+// All matrices are column major:
+// - Also assumes column vectors so, matrix-vector multiplication is M * V 
+//
+// Model matrix transformation order:
+// 1. Scale locally
+// 2. Rotate locally 
+// 3. Translate to world position
+//     
+//    Matrix order -> M = T * R * S
+//
+// Rotation is a 3 component euler angle and is applied to model matrix as:
+// 1. Rotate about X
+// 2. Rotate about Y
+// 3. Rotate about Z
+//
+//    Matrix order -> R = Rz * Ry * Rx
+//
+// Screen positions are bottom left origin:
+// tl = [0, h]
+// tr = [w, h]
+// br = [w, 0]
+// bl = [0, 0]
+//
+// If a screen position requires a Z component, it is
+// ignored or always assumed to be 0
+//
+// UV coords are bottom left origin:
+// tl = [0, 1]
+// tr = [1, 1]
+// br = [1, 0]
+// bl = [0, 0]
+//
+// Default quad vertex order is:
+// 1. Top left
+// 2. Top right
+// 3. Bottom right
+// 4. Bottom left
+//
+// Indices are in CCW winding order
+//       b
+//      /|
+//     / |
+//    /  |     indices = [a, c, b]
+//   /   |
+//  a----c
+//
 
 #define REPORT_GL_ERRORS 0
 
@@ -76,7 +138,7 @@ bool window_init(str title, i32 width, i32 height) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_MAXIMIZED, GL_TRUE); // start maximised and then inputed size is minimised size
+    glfwWindowHint(GLFW_MAXIMIZED, GL_FALSE); // start maximised and then inputed size is minimised size
 
     g_window = new Window {
         .glfw_window = NULL,
@@ -260,6 +322,20 @@ v2 QUAD_UVS[4] = {
     {0, 0},
 };
 
+v4 WHITE            = {1, 1, 1, 1};
+v4 BLACK            = {0, 0, 0, 1};
+
+v4 RED              = {1, 0, 0, 1};
+v4 GREEN            = {0, 1, 0, 1};
+v4 BLUE             = {0, 0, 1, 1};
+
+v4 ORANGE           = {1, 0.64, 0.1, 1};
+v4 CORNFLOUR_BLUE   = {0.35, 0.80, 0.80, 1};
+v4 SUN_YELLOW       = {0.9, 0.9, 0.3, 1};
+v4 HOT_PINK         = {1, 0, 0.8, 1};
+v4 TURQUOISE        = {0.090f, 0.78, 0.78, 1};
+v4 BEIGE            = {0.75, 0.58, 0.47, 1};
+
 struct MeshVertex {
     v3 position;
     v3 normal;
@@ -387,8 +463,8 @@ enum RenderCommandType {
 
 struct MeshRenderCommand {
     v3 position;
-    v3 rotation;
     v3 scale;
+    v3 rotation;
     Mesh *mesh;
     v4 colour;
 };
@@ -419,13 +495,11 @@ struct Renderer {
     v3 shadow_colour;
 
     FixedArray<Mesh> meshes;
-    FixedArray<Quad> quads;
     FixedArray<RenderCommand> commands;
     StackArray<Texture, MAX_TEXTURES> textures;
 
     Mesh *cube_primitive;
     Mesh *sphere_primitive;
-    Mesh *deagle;
     Mesh *quad_primitive;
 
     m4 view_matrix;
@@ -463,18 +537,6 @@ struct Ray {
 
 // call renderer_init() and REN()
 Renderer *g_renderer = NULL;
-
-v4 WHITE            = {1, 1, 1, 1};
-v4 BLACK            = {0, 0, 0, 1};
-
-v4 RED              = {1, 0, 0, 1};
-v4 GREEN            = {0, 1, 0, 1};
-v4 BLUE             = {0, 0, 1, 1};
-
-v4 ORANGE           = {1, 0.64, 0.1, 1};
-v4 CORNFLOUR_BLUE   = {0.35, 0.80, 0.80, 1};
-v4 SUN_YELLOW       = {0.9, 0.9, 0.3, 1};
-v4 HOT_PINK         = {1, 0, 0.8, 1};
 
 // Camera API
 Camera camera_create(CameraMode mode, f32 fov, v3 position, f32 near_plane, f32 far_plane);
@@ -560,6 +622,7 @@ v3 screen_position_to_world_position(Renderer *renderer, Viewport viewport, v3 s
 v3 screen_position_to_ndc(Viewport viewport, v3 screen_position);
 v3 relative_to_screen_position(Viewport viewport, v2 relative_position);
 
+m4 get_model_matrix(v3 position, v3 scale, v3 rotation);
 m4 get_view_matrix(Camera *camera);
 m4 get_projection_matrix(Camera *camera, f32 aspect);
 m4 get_projection_matrix_ortho(Camera *camera, f32 aspect);
@@ -577,6 +640,7 @@ v4 rgb(i64 r, i64 g, i64 b);
 v4 rgba(i64 r, i64 g, i64 b, i64 a);
 v4 alpha(v4 base, f32 alpha);
 v4 brightness(v4 base, f32 brightness);
+v4 mix(v4 c1, v4 c2, f32 t);
 
 void set_imgui_theme();
 
@@ -651,13 +715,13 @@ bool init_shader(Shader *shader, str debug_name, str vertex_shader_path, str fra
     
     str vertex_shader_source = read_entire_file(vertex_shader_path);
     if (vertex_shader_source.len == 0) {
-        printf("%s: failed to load vertex shader file\n", debug_name.c());
+        logf("{}: failed to load vertex shader file", debug_name.c());
         return false;
     }
 
     str fragment_shader_source = read_entire_file(fragment_shader_path);
     if (fragment_shader_source.len == 0) {
-        printf("%s: failed to load default fragment shader file\n", debug_name.c());
+        logf("{}: failed to load default fragment shader file", debug_name.c());
         return false;
     }
 
@@ -669,7 +733,7 @@ bool init_shader(Shader *shader, str debug_name, str vertex_shader_path, str fra
     glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &compile_status);
     if (compile_status == 0) {
         glGetShaderInfoLog(vertex_shader, buffer_size, nullptr, &error_buffer[0]);
-        printf("%s: failed to compile vertex shader: %s\n", debug_name.c(), error_buffer);
+        logf("{}: failed to compile vertex shader: {}", debug_name.c(), error_buffer);
         return false;
     }
 
@@ -681,7 +745,7 @@ bool init_shader(Shader *shader, str debug_name, str vertex_shader_path, str fra
     glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &compile_status);
     if (compile_status == 0) {
         glGetShaderInfoLog(fragment_shader, buffer_size, nullptr, &error_buffer[0]);
-        printf("%s: failed to compile fragment shader: %s\n", debug_name.c(), error_buffer);
+        logf("{}: failed to compile fragment shader: {}", debug_name.c(), error_buffer);
         return false;
     }
 
@@ -695,14 +759,14 @@ bool init_shader(Shader *shader, str debug_name, str vertex_shader_path, str fra
 
     if (link_status == 0) {
         glGetProgramInfoLog(shader_program, buffer_size, nullptr, &error_buffer[0]);
-        printf("%s: failed to link shader program: %s\n", debug_name.c(), error_buffer);
+        logf("{}: failed to link shader program: {}", debug_name.c(), error_buffer);
         return false;
     }
  
     shader->id = shader_program; 
     shader->debug_name = debug_name;
 
-    printf("Compiled and linked %s\n", debug_name.c());
+    logf("Compiled and linked {}", debug_name.c());
 
     return true;
 }
@@ -812,7 +876,7 @@ Mesh *mesh_create_from_file(Renderer *renderer, str mesh_path) {
     
     const aiScene *scene = importer.ReadFile(mesh_path.c(), aiProcess_Triangulate | aiProcess_MakeLeftHanded | aiProcess_GenSmoothNormals);	
     if(scene == NULL || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-        printf("assimp error: %s\n", importer.GetErrorString());
+        logf("assimp error: {}", importer.GetErrorString());
         return NULL;
     }
 
@@ -852,7 +916,7 @@ Mesh *mesh_create_from_file(Renderer *renderer, str mesh_path) {
         }
     }
 
-    printf("Loaded model with path \"%s\"\n", mesh_path.c());
+    logf("Loaded model with path \"{}\"", mesh_path.c());
 
     return mesh_create(renderer, vertices, indices);
 }
@@ -876,7 +940,7 @@ RenderTexture load_render_texture(Renderer *renderer, str path) {
         return {};
     }
 
-    printf("Loaded texture with path \"%s\" [%dx%d] %d bytes\n", path.c(), width, height, width * height * channels);
+    logf("loaded texture with path \"{}\" [{}x{}] {} bytes", path.c(), width, height, width * height * channels);
 
     return RenderTexture {
         .id = 0,
@@ -914,7 +978,6 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         .sun_position = sun_position,
         .shadow_colour = shadow_colour,
         .meshes = fixed_array_create<Mesh>(MAX_MESHES),
-        .quads = fixed_array_create<Quad>(MAX_QUADS),
         .commands = fixed_array_create<RenderCommand>(MAX_RENDER_COMMANDS),
         .textures = stack_array_create<Texture, MAX_TEXTURES>(),
         .g_buffer = FrameBuffer {.size = {100, 100}},
@@ -982,72 +1045,6 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         ImGui_ImplOpenGL3_Init("#version 460");
     } 
 
-    { // vertex array
-        u32 vertex_array;
-        glGenVertexArrays(1, &vertex_array);
-        glBindVertexArray(vertex_array);
-
-        renderer->vertex_array_id = vertex_array;
-    }
-
-    { // vertex buffer
-        u32 vertex_buffer;
-        glGenBuffers(1, &vertex_buffer);
-        glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(Quad) * MAX_QUADS, renderer->quads.slice.ptr, GL_DYNAMIC_DRAW);
-
-        renderer->vertex_buffer_id = vertex_buffer;
-    }
-
-    { // index buffer
-        const i64 index_buffer_length = MAX_QUADS * 6;
-        Slice<u32> indices = slice_create_malloc<u32>(index_buffer_length);
-
-        i64 i = 0;
-        while (i < index_buffer_length) {
-            // updated order of indices to be CCW as that is the default
-            // for opengl and we want to use back face culling now that
-            // we are rendering in 3d
-            // 31/05/25
-
-            // vertex offset pattern to draw a quad
-            // { 0, 1, 2,  0, 2, 3 } -> CW winding 
-            // { 0, 2, 1,  0, 3, 2 } -> CCW winding
-            indices[i + 0] = ((i/6)*4 + 0);
-            indices[i + 1] = ((i/6)*4 + 2);
-            indices[i + 2] = ((i/6)*4 + 1);
-            indices[i + 3] = ((i/6)*4 + 0);
-            indices[i + 4] = ((i/6)*4 + 3);
-            indices[i + 5] = ((i/6)*4 + 2);
-            i += 6;
-        }
-
-        u32 index_buffer;
-        glGenBuffers(1, &index_buffer);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u32) * index_buffer_length, indices.ptr, GL_STATIC_DRAW);
-
-        renderer->index_buffer_id = index_buffer;
-
-        slice_free(indices);
-    }
-
-    { // vertex attributes
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, position));   // position
-        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, colour));     // colour
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *) offsetof(Vertex, uv));         // uv
-        glVertexAttribIPointer(3, 1, GL_INT, sizeof(Vertex), (void *) offsetof(Vertex, draw_type));             // draw_type
-
-        glEnableVertexAttribArray(0);
-        glEnableVertexAttribArray(1);
-        glEnableVertexAttribArray(2);
-        glEnableVertexAttribArray(3);
-
-        glBindVertexArray(0);
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-    }
-
     { // load default normal texture
         Texture *texture = load_texture(renderer, "resources/textures/defaults/normal.png");
         if (texture == NULL) {
@@ -1072,9 +1069,6 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
 
         renderer->sphere_primitive = mesh_create_from_file(REN(), "resources/models/primitives/sphere.obj");
         ASSERT(renderer->sphere_primitive);
-
-        renderer->deagle = mesh_create_from_file(REN(), "resources/models/deagle/deagle.obj");
-        ASSERT(renderer->deagle);
 
         Slice<MeshVertex> verts = slice_create_malloc<MeshVertex>(4);
         Slice<u32> indices = slice_create_malloc<u32>(6);
@@ -1161,7 +1155,7 @@ Texture *load_texture(Renderer *renderer, str path) {
         return NULL;
     }
 
-    printf("Loaded texture with path \"%s\" [%dx%d] %d bytes\n", path.c(), width, height, width * height * channels);
+    logf("Loaded texture with path \"{}\" [{}x{}] {} bytes", path.c(), width, height, width * height * channels);
 
     i64 id = renderer->textures.len;
 
@@ -1436,13 +1430,8 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
         for (RenderCommand &command : renderer->commands) {
             if (command.type == RC_MODEL) {
                 MeshRenderCommand *model_cmd = &command.mesh;
-    
-                m4 model_matrix = HMM_M4D(1.0f);
-                model_matrix = HMM_MulM4(model_matrix, HMM_Translate(model_cmd->position));
-                model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(model_cmd->rotation.x * HMM_DegToRad, {1, 0, 0}));
-                model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(model_cmd->rotation.y * HMM_DegToRad, {0, 1, 0}));
-                model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(model_cmd->rotation.z * HMM_DegToRad, {0, 0, 1}));
-                model_matrix = HMM_MulM4(model_matrix, HMM_Scale({model_cmd->scale.x, model_cmd->scale.y, model_cmd->scale.z}));
+                 
+                m4 model_matrix = get_model_matrix(model_cmd->position, model_cmd->scale, model_cmd->rotation);
          
                 use_shader(renderer->mesh_shader);
          
@@ -1526,9 +1515,9 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
 }
 
 void renderer_end_frame(Renderer *renderer) {
-    reset(&renderer->quads);
     reset(&renderer->commands);
     quad_buffer_reset(&renderer->ui_quads);
+    quad_buffer_reset(&renderer->screen_quad);
 }
 
 void new_imgui_frame() {
@@ -1603,8 +1592,8 @@ void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position, v3 scale, v3 rotatio
     RenderCommand *command = push(&renderer->commands);
     command->type = RC_MODEL;
     command->mesh.position = position;
-    command->mesh.rotation = rotation;
     command->mesh.scale = scale;
+    command->mesh.rotation = rotation;
     command->mesh.mesh = mesh;
     command->mesh.colour = colour;
 }
@@ -1889,16 +1878,31 @@ v3 relative_to_screen_position(Viewport viewport, v2 relative_position) {
     return v3{f32(viewport.size.x), f32(viewport.size.y), 0} * v3{relative_position.x, relative_position.y, 0};
 }
 
-m4 get_view_matrix(Camera *camera) {
-    v3 target = {};
+m4 get_model_matrix(v3 position, v3 scale, v3 rotation) {
+    // IMPORTANT: if any of this stuff changes you need to update the docs 
+    m4 model_matrix = HMM_M4D(1.0f);
 
-    target = camera->position + get_forward_direction(camera);
+    model_matrix = HMM_MulM4(model_matrix, HMM_Translate(position));
+
+    // flip z axis to ensure -z = roll right & +z = roll left
+    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.z * HMM_DegToRad, {0, 0, -1}));
+    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.y * HMM_DegToRad, {0, 1, 0}));
+    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.x * HMM_DegToRad, {1, 0, 0}));
+
+    model_matrix = HMM_MulM4(model_matrix, HMM_Scale({scale.x, scale.y, scale.z}));
+
+    return model_matrix;
+}
+
+m4 get_view_matrix(Camera *camera) {
+    v3 target = camera->position + get_forward_direction(camera);
+    v3 up = get_up_direction(camera);
 
     // FIXME: having the up always be y = 1 is probably wrong - 04/06/25
     m4 view_matrix = HMM_LookAt_LH(
         camera->position, 
         target, 
-        {0, 1, 0}
+        up 
     );
 
     return view_matrix;
@@ -2058,6 +2062,15 @@ v4 brightness(v4 base, f32 brightness) {
     result.b = clamp(base.b * brightness, 0.0f, 1.0f);
     result.a = base.a;
 
+    return result;
+}
+
+v4 mix(v4 c1, v4 c2, f32 t) {
+    v4 result;
+    result.r = (1.0f - t) * c1.r + t * c2.r;
+    result.g = (1.0f - t) * c1.g + t * c2.g;
+    result.b = (1.0f - t) * c1.b + t * c2.b;
+    result.a = (1.0f - t) * c1.a + t * c2.a;
     return result;
 }
 
