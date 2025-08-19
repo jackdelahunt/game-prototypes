@@ -15,13 +15,15 @@
 #include <queue>
 #include <atomic>
 
-// Total: 56:00
-// Started: 11:00
+// Total: 57:00
+// Started: 18:30
 //
 //
 // What do a programmer do?:
 // Game:
-// - pickups - health and weapons
+// - pickups - health, weapons ammo? 
+//  	health: floating cross when usable
+//	ammo: restore some amount of ammor for a gun (full for deagle, half for m4, 3 for sniper)
 // - jump pads
 // - actually make a real map
 // - scoreboard
@@ -51,6 +53,10 @@ f32 PLAYER_DRAG = 0.25;
 f32 GRAVITY = 2.1;
 
 v3 WEAPON_DISPLAY_OFFSET = v3{1, -0.6, 0.98};
+f32 WEAPON_SWITCH_COOLDOWN = 1.5;
+
+f32 M4_PICKUP_COOLDOWN = 12;
+f32 HEALTH_PICKUP_COOLDOWN = 7;
 
 f32 CROSSHAIR_GAP = 10;
 f32 CROSSHAIR_LENGTH = 12;
@@ -78,6 +84,12 @@ enum SoundHandle : u32 {
 
 Sound *g_sounds[_SH_COUNT] = {};
 
+enum WeaponHandle : u32 {
+    WH_DEAGLE,
+    WH_M4,
+    _WH_COUNT
+};
+
 struct Weapon {
     str display_name;
     v4 colour;
@@ -91,8 +103,8 @@ struct Weapon {
     v3 recoil_offset;
 };
 
-struct {
-    Weapon deagle = Weapon {
+Weapon g_weapons[_WH_COUNT] = {
+    Weapon {
         .display_name = "Deagle",
         .colour = brightness(WHITE, 0.6),
         .damage = 25,
@@ -103,9 +115,8 @@ struct {
         .mesh = MH_DEAGLE,
         .firing_sound = SH_FIRE_DEAGLE,
         .recoil_offset = v3{0, -0.08, -0.4}
-    };
-
-    Weapon m4 = Weapon {
+    },
+    Weapon {
         .display_name = "M4",
         .colour = v4 {0.2, 0.2, 0.2, 1},
         .damage = 8,
@@ -116,8 +127,14 @@ struct {
         .mesh = MH_M4,
         .firing_sound = SH_FIRE_SILENCED_GUN_HIGH,
         .recoil_offset = v3{0, -0.01, -0.15}
-    };
-} g_weapons;
+    }
+};
+
+enum PickupType : u32 {
+    PT_NONE,
+    PT_M4,
+    PT_HEALTH
+};
 
 // @entity
 enum EntityFlag : u32 {
@@ -126,6 +143,7 @@ enum EntityFlag : u32 {
     EF_SOLID_HITBOX     = 1 << 2,
     EF_STATIC_HITBOX    = 1 << 3,
     EF_DEAD             = 1 << 4,
+    EF_PICKUP           = 1 << 5,
     EF_DELETE           = 1 << 16,
 };
 
@@ -154,7 +172,11 @@ struct Entity {
     // flag: player
     f32 max_health;
     f32 health;
-    f32 death_cooldown;
+    f32 death_cooldown; // not saved
+
+    // flag: pickup
+    PickupType pickup_type;
+    f32 pickup_cooldown; // not saved
 };
 
 enum NetworkMessageType {
@@ -166,6 +188,7 @@ enum NetworkMessageType {
     NM_MOVE_PLAYER,
     NM_PLAYER_HIT,
     NM_SPAWN_DUMMY,
+    NM_SET_WEAPON,
 }; 
 
 struct NetworkMessage {
@@ -184,6 +207,7 @@ struct NetworkMessage {
             f32 damage;
         } player_hit;
         v3 spawn_dummy;
+        WeaponHandle set_weapon;
     };
 };
 
@@ -217,7 +241,7 @@ struct State {
     Arena arena;
     Sampler network_in_sampler;
 
-    Weapon player_weapon;
+    WeaponHandle player_weapon;
     i64 player_ammo;
     f32 player_firing_cooldown;
     i64 spawn_point_count;
@@ -293,6 +317,7 @@ void on_client_receive(State *state, NetworkMessage *message);
 u32 new_entity_id();
 Entity *local_spawn_entity(State *state, Entity entity);
 void server_spawn_entity(Entity entity);
+bool local_delete_entity(State *state, u32 id);
 Entity *get_client_player(State *state, u32 client_id);
 Entity *get_entity_with_id(State *state, u32 id);
 Entity *get_entity_with_flag(State *state, EntityFlag flag);
@@ -303,6 +328,7 @@ Entity *local_spawn_empty(State *state);
 Entity *local_spawn_player(State *state);
 Entity *local_spawn_spawn_point(State *state);
 Entity *local_spawn_static_box(State *state);
+Entity *local_spawn_pickup(State *state, PickupType type);
 
 void game_client_host();
 void game_client_connect();
@@ -330,6 +356,8 @@ void deserialise_level(State *state);
 YAML::Emitter &operator<<(YAML::Emitter &out, v3 value);
 YAML::Emitter &operator<<(YAML::Emitter &out, v4 value);
 
+Weapon *get_player_weapon(State *state);
+void set_player_weapon(State *state, WeaponHandle weapon, f32 cooldown);
 void play_weapon_fire_sound(SoundHandle sound);
 
 // @main
@@ -653,6 +681,39 @@ void game_server_update(State *state, f32 delta_time) {
 
     for (Entity &entity : state->entities) {
 
+        if (BIT_SET(entity.flags, EF_PICKUP)) {
+            entity.pickup_cooldown -= delta_time;
+            if (entity.pickup_cooldown <= 0) {
+                entity.pickup_cooldown = 0;
+            }
+
+            if (entity.pickup_cooldown == 0) {
+                for (Entity &other : state->entities) {
+                    if (!BIT_SET(other.flags, EF_PLAYER)) {
+                        continue;
+                    }
+    
+                    auto [collided, overlap, distance] = cube_collision(entity.position, v3{entity.size.x, 2, entity.size.z}, other.position, other.size);
+                    if (!collided) {
+                        continue;
+                    }
+
+                    switch (entity.pickup_type) {
+                        case PT_M4: {
+                            entity.pickup_cooldown = M4_PICKUP_COOLDOWN;
+                            NetworkMessage message = NetworkMessage{.type = NM_SET_WEAPON, .set_weapon = WH_M4};
+                            server_send_to_client(NET(), bytes_from_ptr(&message), other.owner);
+                        } break;
+                        case PT_HEALTH: {
+                            entity.pickup_cooldown = HEALTH_PICKUP_COOLDOWN;
+                            other.health = other.max_health;
+                        } break;
+                        default: ASSERT(0);
+                    }
+                }
+            }
+        }
+
         if (BIT_SET(entity.flags, EF_DEAD)) {
             entity.death_cooldown -= delta_time;
 
@@ -742,11 +803,8 @@ void game_client_update(State *state, f32 delta_time) {
     { // weapon reaload and switching to default
         ASSERT(state->player_ammo >= 0);
 
-        // reset to deagle and add high cooldown 
         if (state->player_ammo == 0) {
-            state->player_weapon = g_weapons.deagle;
-            state->player_ammo = state->player_weapon.ammo_count;
-            state->player_firing_cooldown = 1.5;
+            set_player_weapon(state, WH_DEAGLE, WEAPON_SWITCH_COOLDOWN);
         }
     }
 
@@ -765,7 +823,8 @@ void game_client_update(State *state, f32 delta_time) {
         if (WIN()->mouse_captured) {
             f32 sensitivity = 0.09;
             v2 mouse_input = MOUSE.delta;
-    
+   
+            // camera control
             if (length(mouse_input) > 0) {
     
                 GC()->camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
@@ -773,14 +832,15 @@ void game_client_update(State *state, f32 delta_time) {
             }
 
             // shooting
-            InputState state_needed = state->player_weapon.automatic ? InputState::PRESSED : InputState::DOWN;
+            Weapon *player_weapon = get_player_weapon(state);
+            InputState state_needed = player_weapon->automatic ? InputState::PRESSED : InputState::DOWN;
 
             if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == state_needed) {
                 if (state->player_ammo > 0 && state->player_firing_cooldown <= 0) {
                     state->player_ammo -= 1; 
-                    state->player_firing_cooldown = state->player_weapon.firing_cooldown;
+                    state->player_firing_cooldown = player_weapon->firing_cooldown;
 
-                    play_weapon_fire_sound(state->player_weapon.firing_sound);
+                    play_weapon_fire_sound(player_weapon->firing_sound);
 
                     Ray ray = ray_create(GC()->camera.position, get_forward_direction(&GC()->camera));
                     RaycastIterator it = raycast_iterator_create(ray, GC()->camera.far_plane - GC()->camera.near_plane);
@@ -818,14 +878,14 @@ void game_client_update(State *state, f32 delta_time) {
                     }
     
                     if (hit_entity) {
-                        f32 damage = state->player_weapon.damage;
+                        f32 damage = player_weapon->damage;
                         SoundHandle hit_sound = SH_TARGET_HIT;
 
                         f32 hit_height_offset = hit_position.y - hit_entity->position.y;
                         f32 half_head_size = (PLAYER_HEIGHT * 0.5)  - PLAYER_EYES_OFFSET;
 
                         if (hit_height_offset >= PLAYER_EYES_OFFSET - half_head_size) {
-                            damage = state->player_weapon.headshot_damage;
+                            damage = player_weapon->headshot_damage;
                             hit_sound = SH_HEADSHOT_HIT;
                         }
 
@@ -902,6 +962,8 @@ void game_client_draw(State *state) {
             v3 up = get_up_direction(&GC()->camera);
             v3 right = get_right_direction(&GC()->camera);
 
+            Weapon *player_weapon = get_player_weapon(state);
+
             { // draw weapon
                 v3 weapon_position = v3{};
                 weapon_position += WEAPON_DISPLAY_OFFSET.x * right;
@@ -910,9 +972,9 @@ void game_client_draw(State *state) {
 
                 // apply recoil if there is cooldown
                 if (state->player_firing_cooldown > 0) { 
-                    f32 cooldown_scale = state->player_firing_cooldown / state->player_weapon.firing_cooldown;
+                    f32 cooldown_scale = state->player_firing_cooldown / player_weapon->firing_cooldown;
 
-                    v3 wro = state->player_weapon.recoil_offset;
+                    v3 wro = player_weapon->recoil_offset;
 
                     v3 recoil_offset = v3{};
                     recoil_offset += wro.x * right;
@@ -927,20 +989,20 @@ void game_client_draw(State *state) {
 
                 v3 weapon_rotation = v3{GC()->camera.rotation.x, -GC()->camera.rotation.y, 0};
 
-                draw_mesh(REN(), g_meshes[state->player_weapon.mesh], weapon_position, {1, 1, 1}, weapon_rotation, state->player_weapon.colour);
+                draw_mesh(REN(), g_meshes[player_weapon->mesh], weapon_position, {1, 1, 1}, weapon_rotation, player_weapon->colour);
             }
 
             // @hud
 
             // draw fire cooldown when using non auto gun
-            if (!state->player_weapon.automatic && state->player_firing_cooldown > 0) { 
+            if (!player_weapon->automatic && state->player_firing_cooldown > 0) { 
                 f32 max_width = 40;
                 f32 height = 3;
 
                 v3 centre = relative_to_screen_position(GC()->viewport, {0.5, 0.5});
                 v3 centre_offset = v3{0, -50, 0};
 
-                f32 cooldown_scale = state->player_firing_cooldown / state->player_weapon.firing_cooldown;
+                f32 cooldown_scale = state->player_firing_cooldown / player_weapon->firing_cooldown;
 
                 draw_rectangle_ui(REN(), centre + centre_offset, {max_width * cooldown_scale, height}, {}, alpha(BLACK, 0.3));
             }
@@ -978,7 +1040,7 @@ void game_client_draw(State *state) {
             }
        
             { // draw ammo
-                draw_text_ui(REN(), fmt(&state->arena, "{}:  {}", state->player_weapon.display_name, state->player_ammo), {7, 10, 0}, 30, alpha(BLACK, 0.4));
+                draw_text_ui(REN(), fmt(&state->arena, "{}:  {}", player_weapon->display_name, state->player_ammo), {7, 10, 0}, 30, alpha(BLACK, 0.4));
             }
         }
 
@@ -1001,6 +1063,23 @@ void game_client_draw(State *state) {
                 head_size += v3{0.01, 0.01, 0.01};
     
                 draw_cube(REN(), entity.position + v3{0, PLAYER_EYES_OFFSET, 0}, head_size, entity.rotation, head_colour);
+            }
+        }
+
+        // pickups 
+        if (BIT_SET(entity.flags, EF_PICKUP)) {
+            v4 pickup_colour = entity.pickup_cooldown > 0 ? brightness(RED, 0.8) : brightness(GREEN, 0.8);
+            v3 pickup_position = entity.position + v3{0, 2, 0};
+            v3 pickup_size = v3{1, 1, 1};
+
+            switch (entity.pickup_type) {
+                case PT_M4: {
+                    Mesh *mesh = g_meshes[g_weapons[WH_M4].mesh];
+                    draw_mesh(REN(), mesh, pickup_position, pickup_size, {}, pickup_colour);
+                } break;
+                case PT_HEALTH: {
+                } break;
+                default: ASSERT(0);
             }
         }
 
@@ -1306,22 +1385,18 @@ void editor_draw_ui(State *state) {
             ImGui::SliderFloat("Eyes offset", &PLAYER_EYES_OFFSET, 0, PLAYER_HEIGHT * 0.5);
 
             ImGui::SeparatorText("Weapon");
-            ImGui::SliderFloat("Fire Cooldown", &state->player_firing_cooldown, 0, state->player_weapon.firing_cooldown);
+            ImGui::SliderFloat("Fire Cooldown", &state->player_firing_cooldown, 0, g_weapons[state->player_weapon].firing_cooldown);
             ImGui::InputInt("Ammo", (i32 *) &state->player_ammo);
             ImGui::SliderFloat3("Weapon offset", &WEAPON_DISPLAY_OFFSET.x, -2, 2);
 
             if (ImGui::Button("Give deagle")) {
-                state->player_weapon = g_weapons.deagle;
-                state->player_ammo = state->player_weapon.ammo_count;
-                state->player_firing_cooldown = 0;
+                set_player_weapon(state, WH_DEAGLE, 0);
             }
 
             ImGui::SameLine();
 
             if (ImGui::Button("Give m4")) {
-                state->player_weapon = g_weapons.m4;
-                state->player_ammo = state->player_weapon.ammo_count;
-                state->player_firing_cooldown = 0;
+                set_player_weapon(state, WH_M4, 0);
             }
         }
 
@@ -1367,8 +1442,30 @@ void editor_draw_ui(State *state) {
             ED()->selected_entity = local_spawn_static_box(state);
         }
 
+        if (ImGui::Button("New m4 pickup")) {
+            ED()->selected_entity = local_spawn_pickup(state, PT_M4);
+        }
+
+        if (ImGui::Button("New health pickup")) {
+            ED()->selected_entity = local_spawn_pickup(state, PT_HEALTH);
+        }
+
         if (ED()->selected_entity) {
             ImGui::SeparatorText("Selected Entity");
+
+            if (ImGui::Button("Delete")) {
+                ASSERT(local_delete_entity(state, ED()->selected_entity->id));
+                ED()->selected_entity = NULL;
+            }
+
+            ImGui::SameLine();
+
+            if (ImGui::Button("Deselect")) {
+                ED()->selected_entity = NULL;
+            }
+        }
+
+        if (ED()->selected_entity) {
             imgui_entity(ED()->selected_entity);
         }
 
@@ -1388,15 +1485,9 @@ void editor_draw_ui(State *state) {
             }
     
             ImGui::SameLine();
-            if (ImGui::Button("O")) {
+
+            if (ImGui::Button("Goto")) {
                 ED()->camera.position = entity->position;
-            }
-    
-            if (is_selected) {
-                ImGui::SameLine();
-                if (ImGui::Button("X")) {
-                    ED()->selected_entity = NULL;
-                }
             }
     
             ImGui::PopID();
@@ -1543,6 +1634,10 @@ void on_client_receive(State *state, NetworkMessage *message) {
                 }
             }
         } break;
+        case NM_SET_WEAPON: {
+            logf("Client was told to use a new weapon: {}", (u32) message->set_weapon);
+            set_player_weapon(state, message->set_weapon, 0);
+        } break;
         default: {
             log("WARNING unknown message sent");
         } break;
@@ -1563,6 +1658,19 @@ Entity *local_spawn_entity(State *state, Entity entity) {
 void server_spawn_entity(Entity entity) {
     NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = entity};
     client_send_to_server(NET(), bytes_from_ptr(&message));
+}
+
+bool local_delete_entity(State *state, u32 id) {
+    for (i64 i = 0; i < state->entities.len; i++) {
+        Entity *entity = &state->entities[i];
+ 
+        if (entity->id == id) {
+            swap_remove(&state->entities, i);
+            return true;
+        }
+    }
+
+    return false;
 }
 
 Entity *get_client_player(State *state, u32 client_id) {
@@ -1682,6 +1790,19 @@ Entity *local_spawn_static_box(State *state) {
     return local_spawn_entity(state, entity);
 }
 
+Entity *local_spawn_pickup(State *state, PickupType type) {
+    Entity entity = Entity {
+        .flags = EF_PICKUP,
+        .id = new_entity_id(),
+        .owner = SERVER_INSTANCE_ID,
+        .size = v3{2, 0.1, 2},
+        .colour = brightness(WHITE, 0.5),
+        .pickup_type = type
+    };
+
+    return local_spawn_entity(state, entity);
+}
+
 void game_client_host() {
     log("starting hosted game");
 
@@ -1783,6 +1904,8 @@ void imgui_entity(Entity *entity) {
     ImGui::InputFloat("max health", &entity->max_health);
     ImGui::InputFloat("health", &entity->health);
     ImGui::InputFloat("death cooldown", &entity->death_cooldown);
+    ImGui::Text("pickup type: %u", entity->pickup_type);
+    ImGui::InputFloat("pickup cooldown", &entity->pickup_cooldown);
 }
 
 Viewport imgui_viewport(const char *label, u32 texture_id, bool force_focus) {
@@ -1991,6 +2114,7 @@ void serialise_entity(YAML::Emitter &out, Entity *entity) {
     out << YAML::Key << "colour"        << YAML::Value << entity->colour;
     out << YAML::Key << "max_health"    << YAML::Value << entity->max_health;
     out << YAML::Key << "health"        << YAML::Value << entity->health;
+    out << YAML::Key << "pickup_type"   << YAML::Value << entity->pickup_type;
     out << YAML::EndMap;
 }
 
@@ -2009,16 +2133,17 @@ void deserialise_level(State *state) {
     for (auto entity : entities) {
         Entity e = Entity {};
 
-        e.flags =               entity["flags"].as<u32>();
-        e.id =                  entity["id"].as<u32>();
-        e.owner =               entity["owner"].as<u32>();
-        e.position =            entity["position"].as<v3>();
-        e.size =                entity["size"].as<v3>();
-        e.rotation =            entity["rotation"].as<v3>();
-        e.velocity =            entity["velocity"].as<v3>();
-        e.colour =              entity["colour"].as<v4>();
-        e.max_health =          entity["max_health"].as<f32>();
-        e.health =              entity["health"].as<f32>();
+        e.flags =                       entity["flags"].as<u32>();
+        e.id =                          entity["id"].as<u32>();
+        e.owner =                       entity["owner"].as<u32>();
+        e.position =                    entity["position"].as<v3>();
+        e.size =                        entity["size"].as<v3>();
+        e.rotation =                    entity["rotation"].as<v3>();
+        e.velocity =                    entity["velocity"].as<v3>();
+        e.colour =                      entity["colour"].as<v4>();
+        e.max_health =                  entity["max_health"].as<f32>();
+        e.health =                      entity["health"].as<f32>();
+        e.pickup_type = (PickupType)    entity["pickup_type"].as<u32>();
 
         if (BIT_SET(e.flags, EF_SPAWN_POINT)) {
             state->spawn_point_count += 1;
@@ -2027,8 +2152,7 @@ void deserialise_level(State *state) {
         append(&state->entities, e);
     }
 
-    state->player_weapon = g_weapons.deagle;
-    state->player_ammo = state->player_weapon.ammo_count; 
+    set_player_weapon(state, WH_DEAGLE, 0);
 
     logf("Level was loaded with {} entities and {} spawn points", state->entities.len, state->spawn_point_count);
 }
@@ -2075,6 +2199,20 @@ struct YAML::convert<v4> {
         return true;
     }
 };
+
+Weapon *get_player_weapon(State *state) {
+    ASSERT(state->player_weapon >= 0 && state->player_weapon < _WH_COUNT);
+
+    return &g_weapons[state->player_weapon];
+}
+
+void set_player_weapon(State *state, WeaponHandle weapon, f32 cooldown) {
+    Weapon *w = &g_weapons[weapon];
+
+    state->player_weapon = weapon;
+    state->player_ammo = w->ammo_count;
+    state->player_firing_cooldown = cooldown;
+}
 
 void play_weapon_fire_sound(SoundHandle sound) {
     if (sound == SH_FIRE_DEAGLE) {
