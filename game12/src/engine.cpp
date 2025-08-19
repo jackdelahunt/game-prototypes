@@ -76,7 +76,7 @@ bool window_init(str title, i32 width, i32 height) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_MAXIMIZED, GL_FALSE); // start maximised and then inputed size is minimised size
+    glfwWindowHint(GLFW_MAXIMIZED, GL_TRUE); // start maximised and then inputed size is minimised size
 
     g_window = new Window {
         .glfw_window = NULL,
@@ -2218,7 +2218,7 @@ Sound *sound_engine_load(SoundEngine *sound_engine, str path) {
         return NULL;
     }
 
-    logf("Loaded sound with path \"{}\"\n", path.c());
+    logf("Loaded sound with path \"{}\"", path.c());
 
     return sound; 
 }

@@ -15,8 +15,8 @@
 #include <queue>
 #include <atomic>
 
-// Total: 50:00
-// Started: 21:30
+// Total: 51:00
+// Started: 00:30
 //
 //
 // What do a programmer do?:
@@ -42,7 +42,7 @@ f32 PLAYER_WIDTH = 0.65;
 f32 PLAYER_EYES_OFFSET = 0.8;
 
 f32 PLAYER_DEATH_COOLDOWN = 3;
-f32 PLAYER_MOVE_ACCELERATION = 12;
+f32 PLAYER_MOVE_ACCELERATION = 4;
 f32 PLAYER_JUMP_ACCELERATION = 25;
 f32 PLAYER_MAX_SPEED = 20;
 f32 PLAYER_DRAG = 0.25;
@@ -324,7 +324,7 @@ int main(i32 argc, const char **argv) {
         .thread_colour = GREEN_ASCII_CODE,
     });
 
-    srand(time(NULL));
+    srand((u32) time(NULL));
 
     bool ok = network_layer_init();
     if (!ok) {
@@ -432,7 +432,7 @@ void game_client_entry() {
             return;
         }
 
-        ok = renderer_init(WIN(), v4{1, 1, 1, 1} * 0.8, v3{0.1, 0.1, 0.1}, v3{0.5, 0.5, 0.5}, v3{50, 100, -100}, v3{-1, -1, 0.5});
+        ok = renderer_init(WIN(), v4{0.3, 0.45, 0.72, 1}, v3{0.38, 0.38, 0.38}, v3{0.61, 0.61, 0.61}, v3{50, 100, -100}, v3{0, 0, 0});
         ASSERT(ok);
 
         if (!ok) {
@@ -890,8 +890,8 @@ void game_client_draw(State *state) {
 
                 f32 health_scale = entity.health / entity.max_health;
 
-                draw_rectangle_ui(REN(), centre, {max_width * health_scale, height}, {}, RED);
-                draw_rectangle_ui(REN(), centre, {max_width, height}, {}, brightness(RED, 0.5));
+                draw_rectangle_ui(REN(), centre, {max_width * health_scale, height}, {}, brightness(RED, 0.8));
+                draw_rectangle_ui(REN(), centre, {max_width, height}, {}, brightness(RED, 0.4));
             }
        
             { // draw weapon
@@ -1193,6 +1193,14 @@ void editor_draw_ui(State *state) {
 
     {
         ImGui::Begin("Setttings");
+
+        if (ImGui::CollapsingHeader("Renderer")) {
+            ImGui::ColorEdit4("Clear colour",   &REN()->clear_colour[0]);
+            ImGui::ColorEdit3("Ambient light",  &REN()->ambient_light[0]);
+            ImGui::ColorEdit3("Sun colour",     &REN()->sun_colour[0]);
+            ImGui::ColorEdit3("Shadow colour",  &REN()->shadow_colour[0]);
+            imgui_v3_control("Sun position", &REN()->sun_position);
+        }
 
         if (ImGui::CollapsingHeader("Crosshair")) {
             ImGui::SliderFloat("Gap", &CROSSHAIR_GAP, 0, 20);
@@ -1533,6 +1541,10 @@ void move_to_random_spawn_point(State *state, Entity *entity) {
     // pick the next in the list
     i64 spawn_point_number = rand_i64(0, state->spawn_point_count);
     i64 current_spawn_point_number = 0;
+
+    for (i64 i = 0; i < 100; i++) {
+        logf("{}", rand_i64(0, state->spawn_point_count)); 
+    }
 
     for (Entity &other : state->entities) {
         if (BIT_SET(other.flags, EF_SPAWN_POINT)) {
