@@ -73,15 +73,25 @@
 //   /   |
 //  a----c
 //
+// Naming convention:
+// - Function names: foo_bar()
+// - Function macros: Foo()
+// - Value macros: FOO_BAR
+// - Struct type: FooBar
+// - Struct member: foo_bar
+// - Local variable: foo_bar
+// - Global variable: g_foo_bar
+// - Global thread local variable: tl_foo_bar
+// - Global constants: FOO_BAR
 
 #define REPORT_GL_ERRORS 0
 
-#define GL_CALL(x) \
+#define GLCall(x) \
     clear_gl_errors(); \
     x;\
     Assert(check_gl_errors());
 
-#define GL_VERIFY() Assert(check_gl_errors());
+#define GLVerify() Assert(check_gl_errors());
 
 /////////////////////////////////////////////////////////////////////////////
 //////////////////////////////// @window ////////////////////////////////////
@@ -1440,8 +1450,8 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
                 set_uniform_m4(renderer->mesh_shader, "projection", &renderer->projection_matrix);
                 set_uniform_v4(renderer->mesh_shader, "colour", model_cmd->colour);
             
-                GL_CALL(glBindVertexArray(model_cmd->mesh->vertex_array_id));
-                GL_CALL(glDrawElements(GL_TRIANGLES, model_cmd->mesh->indices.len, GL_UNSIGNED_INT, 0));
+                GLCall(glBindVertexArray(model_cmd->mesh->vertex_array_id));
+                GLCall(glDrawElements(GL_TRIANGLES, model_cmd->mesh->indices.len, GL_UNSIGNED_INT, 0));
             }
         }
     

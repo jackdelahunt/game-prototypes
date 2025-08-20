@@ -15,8 +15,8 @@
 #include <queue>
 #include <atomic>
 
-// Total: 58:30
-// Started: 11:30
+// Total: 63:00
+// Started: 12:30
 //
 //
 // What do a programmer do?:
@@ -343,6 +343,7 @@ void sync_clients(State *state);
 
 void game_server_update(State *state, f32 delta_time);
 void game_server_physics(State *state, f32 delta_time);
+void game_server_on_trigger_collision(State *state, Entity *trigger, Entity *other);
 
 void game_client_update(State *state, f32 delta_time);
 void game_client_draw(State *state);
@@ -362,6 +363,7 @@ Entity *get_entity_with_id(State *state, u32 id);
 Entity *get_entity_with_flag(State *state, EntityFlag flag);
 bool entities_overlap(Entity *a, Entity *b);
 void move_to_random_spawn_point(State *state, Entity *entity);
+void log_entity_flags(Entity *entity);
 
 Entity *local_spawn_empty(State *state);
 Entity *local_spawn_player(State *state);
@@ -709,11 +711,12 @@ void sync_clients(State *state) {
             continue;
         }
 
-        if (BitSet(state->entities[index].flags, EF_DELETE)) {
+        if (BitSet(entity.flags, EF_DELETE)) {
             NetworkMessage message = NetworkMessage{.type = NM_DELETE_ENTITY, .delete_entity = entity.id};
             server_send_to_all_clients(NET(), bytes_from_ptr(&message));
 
-            swap_remove(&state->entities, index);
+            local_delete_entity(state, entity.id);
+
             continue;
         }
 
@@ -768,6 +771,8 @@ void game_server_update(State *state, f32 delta_time) {
         }
 
         if (BitSet(entity.flags, EF_DEAD)) {
+            Assert(BitSet(entity.flags, EF_PLAYER));
+
             entity.death_cooldown -= delta_time;
 
             if (entity.death_cooldown < 0) {
@@ -792,70 +797,97 @@ void game_server_physics(State *state, f32 delta_time) {
     Assert(is_server(state));
 
     for (Entity &entity : state->entities) {
-        v3 h_velocity = v3{entity.velocity.x, 0, entity.velocity.z};
-        f32 h_speed = length(h_velocity);
+        v3 starting_position = entity.position;
 
-        if (BitSet(entity.flags, EF_PLAYER)) {
-            //  cap velocity
-            if (length(h_velocity) > PLAYER_MAX_SPEED) {
-                v3 max_h_velocity = norm(h_velocity) * PLAYER_MAX_SPEED;
+        { // simulate physics 
+            v3 h_velocity = v3{entity.velocity.x, 0, entity.velocity.z};
+            f32 h_speed = length(h_velocity);
     
-                entity.velocity.x = max_h_velocity.x;
-                entity.velocity.z = max_h_velocity.z;
-            }
-    
-            //  apply drag to velocity
-            if (h_speed > 0) {
-                v3 drag = -h_velocity * PLAYER_DRAG;
-                entity.velocity += drag;
-            }
+            if (BitSet(entity.flags, EF_PLAYER)) {
+                // player is a special case so here we cap velocity,
+                // apply drag and then apply gravity - 20/08/25
 
-            // apply gravity
-            entity.velocity += v3{0, -GRAVITY, 0};
-        }
-
-        entity.position += entity.velocity * delta_time;
-
-        // dont do collision check if:
-        // 1. have no hitbox
-        // 2. have a static hitbox
-        if (BitSet(entity.flags, EF_STATIC_HITBOX)) {
-            continue;
-        }
-
-        if (!BitSet(entity.flags, EF_SOLID_HITBOX) && !BitSet(entity.flags, EF_TRIGGER_HITBOX)) {
-            continue;
-        }
+                if (length(h_velocity) > PLAYER_MAX_SPEED) {
+                    v3 max_h_velocity = norm(h_velocity) * PLAYER_MAX_SPEED;
         
-        // detect and resolve collisions
-        for (Entity &other : state->entities) {
-            if (&entity == &other) {
+                    entity.velocity.x = max_h_velocity.x;
+                    entity.velocity.z = max_h_velocity.z;
+                }
+        
+                if (h_speed > 0) {
+                    v3 drag = -h_velocity * PLAYER_DRAG;
+                    entity.velocity += drag;
+                }
+    
+                entity.velocity += v3{0, -GRAVITY, 0};
+            }
+    
+            entity.position += entity.velocity * delta_time;
+        }
+
+        { // detect and resolve collisions
+            if (BitSet(entity.flags, EF_STATIC_HITBOX)) {
                 continue;
             }
-
-            if (!BitSet(other.flags, EF_STATIC_HITBOX)) {
-                continue;
+    
+            if (BitSet(entity.flags, EF_SOLID_HITBOX)) {
+                for (Entity &other : state->entities) {
+                    if (&entity == &other) {
+                        continue;
+                    }
+       
+                    // TODO: players don't collide then..
+                    if (!BitSet(other.flags, EF_STATIC_HITBOX)) {
+                        continue;
+                    }
+        
+                    auto [collided, overlap, distance] = cube_collision(entity.position, entity.size, other.position, other.size);
+                    if (!collided) {
+                        continue;
+                    }
+        
+                    if (overlap.x < overlap.y && overlap.x < overlap.z) {
+                        entity.position.x -= sign(distance.x) * overlap.x;
+                        entity.velocity.x = 0;
+                    } 
+                    else if (overlap.y < overlap.x && overlap.y < overlap.z) {
+                        entity.position.y -= sign(distance.y) * overlap.y;
+                        entity.velocity.y = 0;
+                    } 
+                    else if (overlap.z < overlap.x && overlap.z < overlap.y) {
+                        entity.position.z -= sign(distance.z) * overlap.z;
+                        entity.velocity.z = 0;
+                    }
+                }
             }
+    
+            if (BitSet(entity.flags, EF_TRIGGER_HITBOX)) {
+                for (Entity &other : state->entities) {
+                    if (&entity == &other) {
+                        continue;
+                    }
 
-            auto [collided, overlap, distance] = cube_collision(entity.position, entity.size, other.position, other.size);
-            if (!collided) {
-                continue;
-            }
+                    // collision for each other entiity is checked twice for trigger
+                    // hitboxes, trigger collision events are only when a new collision
+                    // starts so if there was a collision last frame then dont do anything
+                    CubeCollision c_last = cube_collision(starting_position, entity.size, other.position, other.size);
+                    if (c_last.collision) {
+                        continue;
+                    }
 
-            if (overlap.x < overlap.y && overlap.x < overlap.z) {
-                entity.position.x -= sign(distance.x) * overlap.x;
-                entity.velocity.x = 0;
-            } 
-            else if (overlap.y < overlap.x && overlap.y < overlap.z) {
-                entity.position.y -= sign(distance.y) * overlap.y;
-                entity.velocity.y = 0;
-            } 
-            else if (overlap.z < overlap.x && overlap.z < overlap.y) {
-                entity.position.z -= sign(distance.z) * overlap.z;
-                entity.velocity.z = 0;
+                    CubeCollision c_now = cube_collision(entity.position, entity.size, other.position, other.size);
+                    if (c_now.collision) {
+                        game_server_on_trigger_collision(state, &entity, &other);
+                    }
+                }
             }
         }
     }
+}
+
+void game_server_on_trigger_collision(State *state, Entity *trigger, Entity *other) {
+    Assertf(BitSet(trigger->flags, EF_MISSLE), "Just assuming missles for now");
+    SetBit(trigger->flags, EF_DELETE);
 }
 
 void game_client_update(State *state, f32 delta_time) {
@@ -1351,26 +1383,27 @@ void editor_draw_ui(State *state) {
         { // client events sampler info
             f32 average = sampler_average(&state->network_in_sampler);
             f32 samples_per_second = sampler_samples_per_second(&state->network_in_sampler);
-            f32 events_per_second = average * samples_per_second;
-            f32 MB_per_second = events_per_second * message_in_MB;
+            f32 messages_per_second = average * samples_per_second;
+            f32 MB_per_second = messages_per_second * message_in_MB;
      
             ImGui::Text("Avg: %f", average);
-            ImGui::Text("Messages/s: %f", samples_per_second);
-            ImGui::Text("Events/s: %f", events_per_second);
+            ImGui::Text("Samples/s: %f", samples_per_second);
+            ImGui::Text("Messages/s: %f", messages_per_second);
             ImGui::Text("MB/s: %f", MB_per_second);
             ImGui::PlotLines("Client", state->network_in_sampler.samples, SAMPLER_SIZE, 0, NULL, FLT_MAX, FLT_MAX, ImVec2(0, 60));
         }
      
-        if (g_game_server != NULL) { // client events sampler info
+        if (g_game_server != NULL) { // server events sampler info
             Sampler *sampler = atomic_snapshot_read(&server_messages_snapshot);
+
             f32 average = sampler_average(sampler);
             f32 samples_per_second = sampler_samples_per_second(sampler);
-            f32 events_per_second = average * samples_per_second;
-            f32 MB_per_second = events_per_second * message_in_MB;
+            f32 messages_per_second = average * samples_per_second;
+            f32 MB_per_second = messages_per_second * message_in_MB;
      
             ImGui::Text("Avg: %f", average);
             ImGui::Text("Samples/s: %f", samples_per_second);
-            ImGui::Text("Messages/s: %f", events_per_second);
+            ImGui::Text("Messages/s: %f", messages_per_second);
             ImGui::Text("MB/s: %f", MB_per_second);
             ImGui::PlotLines("Server", sampler->samples, SAMPLER_SIZE, 0, NULL, FLT_MAX, FLT_MAX, ImVec2(0, 60));
         }
@@ -1555,17 +1588,17 @@ void on_server_receive(State *state, NetworkMessage *message) {
             // 3. The player entity is spawn on all clients and is owned by the new client
             // - 09/08/25
             ConnectionId connection_id = message->client_connected;
-            Logf("Processing new client connection: connection_id={}", connection_id);
+            Infof("Processing new client connection: connection_id={}", connection_id);
             
             { // assign client id
-                Logf( "Assigning new client: id={}", connection_id);
+                Logf("Assigning new client: id={}", connection_id);
 
                 NetworkMessage message = NetworkMessage{.type = NM_ASSIGN_CLIENT_ID, .assign_client_id = connection_id};
                 server_send_to_client(NET(), bytes_from_ptr(&message), connection_id);
             }
 
             { // spawn any entities on new client
-                Logf( "Spawning {} existing entities on new client", state->entities.len);
+                Logf("Spawning {} existing entities on new client", state->entities.len);
 
                 for (Entity &entity : state->entities) {
                     NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = entity};
@@ -1580,7 +1613,7 @@ void on_server_receive(State *state, NetworkMessage *message) {
 
                 move_to_random_spawn_point(state, new_player);
 
-                Logf("Spawning new player entity: entity_id={}, owner={} position={}", new_player->id, new_player->owner, new_player->position);
+                Infof("Spawning new player entity: entity_id={}, owner={} position={}", new_player->id, new_player->owner, new_player->position);
 
                 NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = *new_player};
                 server_send_to_all_clients(NET(), bytes_from_ptr(&message));
@@ -1651,10 +1684,10 @@ void on_client_receive(State *state, NetworkMessage *message) {
     switch (message->type) {
         case NM_ASSIGN_CLIENT_ID: {
             state->instance_id = message->assign_client_id;
-            Logf( "Client assigned id={}", state->instance_id);
+            Logf("Client assigned id={}", state->instance_id);
         } break;
         case NM_SPAWN_ENTITY: {
-            Logf( "Client spawning entity: id={}, owner={}", message->spawn_entity.id, message->spawn_entity.owner);
+            Logf("Client spawning entity: id={}, owner={}", message->spawn_entity.id, message->spawn_entity.owner);
             local_spawn_entity(state, message->spawn_entity);
         } break;
         case NM_SYNC_ENTITY: {
@@ -1779,6 +1812,44 @@ void move_to_random_spawn_point(State *state, Entity *entity) {
 
             current_spawn_point_number++;
         }
+    }
+}
+
+void log_entity_flags(Entity *entity) {
+    if (BitSet(entity->flags, EF_PLAYER)) {
+        Log("PLAYER");
+    }
+
+    if (BitSet(entity->flags, EF_SPAWN_POINT)) {
+        Log("SPAWN");
+    }
+
+    if (BitSet(entity->flags, EF_SOLID_HITBOX)) {
+        Log("SOLID");
+    }
+
+    if (BitSet(entity->flags, EF_STATIC_HITBOX)) {
+        Log("STATIC");
+    }
+
+    if (BitSet(entity->flags, EF_DEAD)) {
+        Log("DEAD");
+    }
+
+    if (BitSet(entity->flags, EF_PICKUP)) {
+        Log("PICKUP");
+    }
+
+    if (BitSet(entity->flags, EF_TRIGGER_HITBOX)) {
+        Log("trigger");
+    }
+
+    if (BitSet(entity->flags, EF_MISSLE)) {
+        Log("missle");
+    }
+
+    if (BitSet(entity->flags, EF_DELETE)) {
+        Log("delete");
     }
 }
 
