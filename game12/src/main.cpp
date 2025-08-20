@@ -16,15 +16,17 @@
 #include <atomic>
 
 // Total: 63:00
-// Started: 12:30
+// Started: 20:00
 //
 //
 // What do a programmer do?:
 // Game:
-// - finsh missles
+// - dual wield pistol
 // - ammo pickup
 //	ammo: restore some amount of ammor for a gun (full for deagle, half for m4, 3 for sniper)
 // - jump pads
+// - TAP model
+// - TAP sounds & explosion sounds
 // - actually make a real map
 // - scoreboard
 // - player sounds, running jumping, maybe taking damage?
@@ -64,8 +66,8 @@ f32 PLAYER_EYES_OFFSET = 0.8;
 f32 PLAYER_DEATH_COOLDOWN = 3;
 f32 PLAYER_MOVE_ACCELERATION = 4;
 f32 PLAYER_JUMP_ACCELERATION = 25;
-f32 PLAYER_MAX_SPEED = 20;
-f32 PLAYER_DRAG = 0.25;
+f32 PLAYER_DRAG_FACTOR = 0.2;
+f32 PLAYER_MAX_DRAG = 6;
 f32 GRAVITY = 2.1;
 
 v3 WEAPON_DISPLAY_OFFSET = v3{1, -0.6, 0.98};
@@ -80,7 +82,10 @@ f32 CROSSHAIR_LENGTH = 12;
 f32 CROSSHAIR_THICKNESS = 3;
 v4 CROSSHAIR_COLOUR = RED;
 
-f32 MISSLE_SPEED = 25;
+f32 MISSLE_SPEED = 35;
+f32 EXPLOSION_RADIUS = 12;
+f32 EXPLOSION_FORCE = 100;
+f32 EXPLOSION_DAMAGE = 200;
 
 enum MeshHandle : u32 {
     MH_NONE,
@@ -122,6 +127,7 @@ struct Weapon {
     MeshHandle mesh; 
     SoundHandle firing_sound;
     v3 recoil_offset;
+    f32 speed_factor;
 };
 
 Weapon g_weapons[_WH_COUNT] = {
@@ -135,7 +141,8 @@ Weapon g_weapons[_WH_COUNT] = {
         .firing_cooldown = 0.8,
         .mesh = MH_DEAGLE,
         .firing_sound = SH_FIRE_DEAGLE,
-        .recoil_offset = v3{0, -0.08, -0.4}
+        .recoil_offset = v3{0, -0.08, -0.4},
+        .speed_factor = 1,
     },
     Weapon {
         .display_name = "M4",
@@ -147,7 +154,8 @@ Weapon g_weapons[_WH_COUNT] = {
         .firing_cooldown = 0.10,
         .mesh = MH_M4,
         .firing_sound = SH_FIRE_SILENCED_GUN_HIGH,
-        .recoil_offset = v3{0, -0.01, -0.15}
+        .recoil_offset = v3{0, -0.01, -0.15},
+        .speed_factor = 0.75,
     },
     Weapon {
         .display_name = "Thoughts & Prayers",
@@ -159,7 +167,8 @@ Weapon g_weapons[_WH_COUNT] = {
         .firing_cooldown = 1,
         .mesh = MH_DEAGLE,
         .firing_sound = SH_FIRE_DEAGLE,
-        .recoil_offset = v3{0, -0.08, -0.4}
+        .recoil_offset = v3{0, -0.08, -0.4},
+        .speed_factor = 0.6,
     }
 };
 
@@ -807,15 +816,13 @@ void game_server_physics(State *state, f32 delta_time) {
                 // player is a special case so here we cap velocity,
                 // apply drag and then apply gravity - 20/08/25
 
-                if (length(h_velocity) > PLAYER_MAX_SPEED) {
-                    v3 max_h_velocity = norm(h_velocity) * PLAYER_MAX_SPEED;
-        
-                    entity.velocity.x = max_h_velocity.x;
-                    entity.velocity.z = max_h_velocity.z;
-                }
-        
                 if (h_speed > 0) {
-                    v3 drag = -h_velocity * PLAYER_DRAG;
+                    v3 drag = -h_velocity * PLAYER_DRAG_FACTOR;
+
+                    if (length(drag) > PLAYER_MAX_DRAG) {
+                        drag = norm(drag) * PLAYER_MAX_DRAG;
+                    }
+
                     entity.velocity += drag;
                 }
     
@@ -887,7 +894,38 @@ void game_server_physics(State *state, f32 delta_time) {
 
 void game_server_on_trigger_collision(State *state, Entity *trigger, Entity *other) {
     Assertf(BitSet(trigger->flags, EF_MISSLE), "Just assuming missles for now");
-    SetBit(trigger->flags, EF_DELETE);
+
+    { // explode missles
+        Entity *missle = trigger;
+
+        for (Entity &other : state->entities) {
+            if (other.id == missle->id) {
+                continue;
+            }
+
+            if (!BitSet(other.flags, EF_PLAYER)) {
+                continue; 
+            }
+      
+            // vector from the missle to the other
+            v3 direction = other.position - missle->position;
+            f32 distance = length(direction);
+
+            if (distance > EXPLOSION_RADIUS) {
+                continue;
+            }
+
+            f32 distance_factor = 1 - (distance / EXPLOSION_RADIUS);
+            f32 vfloor = 0.3f; // what do you call this thing?
+
+            // add a little upward direction and clamp distance factor
+            other.velocity += norm(direction + v3{0, 1, 0}) * EXPLOSION_FORCE * (distance_factor < vfloor ? vfloor : distance_factor);
+            other.health -= EXPLOSION_DAMAGE * distance_factor;
+        }
+
+        SetBit(missle->flags, EF_DELETE);
+    }
+
 }
 
 void game_client_update(State *state, f32 delta_time) {
@@ -988,6 +1026,8 @@ void game_client_update(State *state, f32 delta_time) {
             movement += right * keyboard_input.x;
             movement += up * keyboard_input.y;
             movement += forward * keyboard_input.z;
+
+            movement *= get_player_weapon(state)->speed_factor;
                  
             NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_MOVE_PLAYER, .move_player = movement};
             client_send_to_server(NET(), bytes_from_ptr(&message));
@@ -1141,6 +1181,21 @@ void game_client_draw(State *state) {
             }
 
             draw_mesh(REN(), mesh, pickup_position, pickup_size, pickup_rotation, pickup_colour);
+        }
+
+        if (BitSet(entity.flags, EF_MISSLE)) {
+            i64 trail_count = 6;
+            f32 trail_gap = 7;
+            f32 trail_radius = 1.3;
+
+            for (i64 i = 0; i < trail_count; i++) {
+                f32 t = f32(i) / f32(trail_count);
+                v3 trail_direction = -norm(entity.velocity);
+                v3 trail_offset = trail_direction * trail_gap * t;
+                v4 trail_colour = mix(RED, SUN_YELLOW, t);
+
+                draw_sphere(REN(), entity.position + trail_offset, trail_radius * (1.0f - t), trail_colour);
+            }
         }
 
         if (ED()->selected_entity && ED()->selected_entity->id == entity.id) {
@@ -1438,8 +1493,8 @@ void editor_draw_ui(State *state) {
             ImGui::SeparatorText("Movement");
             ImGui::InputFloat("Move acceleration", &PLAYER_MOVE_ACCELERATION);
             ImGui::InputFloat("Jump acceleration", &PLAYER_JUMP_ACCELERATION);
-            ImGui::InputFloat("Max speed", &PLAYER_MAX_SPEED);
-            ImGui::InputFloat("Drag", &PLAYER_DRAG);
+            ImGui::InputFloat("Drag factor", &PLAYER_DRAG_FACTOR);
+            ImGui::InputFloat("Max drag ", &PLAYER_MAX_DRAG);
             ImGui::InputFloat("Gravity", &GRAVITY);
 
             ImGui::SeparatorText("Character");
@@ -1638,9 +1693,10 @@ void on_server_receive(State *state, NetworkMessage *message) {
                 return;
             }
 
+            // movement vector is not for sure normalised, the client shrinks it based
+            // on the speed factor of the weapon they currently have
             player->velocity.x += message->move_player.x * PLAYER_MOVE_ACCELERATION;
             player->velocity.z += message->move_player.z * PLAYER_MOVE_ACCELERATION;
-
             player->velocity.y += message->move_player.y * PLAYER_JUMP_ACCELERATION;
         } break;
         case NM_PLAYER_HIT: {
