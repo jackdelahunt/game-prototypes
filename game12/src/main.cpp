@@ -15,13 +15,12 @@
 #include <queue>
 #include <atomic>
 
-// Total: 63:00
+// Total: 64:30
 // Started: 20:00
 //
 //
 // What do a programmer do?:
 // Game:
-// - dual wield pistol
 // - ammo pickup
 //	ammo: restore some amount of ammor for a gun (full for deagle, half for m4, 3 for sniper)
 // - jump pads
@@ -64,7 +63,7 @@ f32 PLAYER_WIDTH = 0.65;
 f32 PLAYER_EYES_OFFSET = 0.8;
 
 f32 PLAYER_DEATH_COOLDOWN = 3;
-f32 PLAYER_MOVE_ACCELERATION = 4;
+f32 PLAYER_MOVE_ACCELERATION = 5.5;
 f32 PLAYER_JUMP_ACCELERATION = 25;
 f32 PLAYER_DRAG_FACTOR = 0.2;
 f32 PLAYER_MAX_DRAG = 6;
@@ -73,9 +72,8 @@ f32 GRAVITY = 2.1;
 v3 WEAPON_DISPLAY_OFFSET = v3{1, -0.6, 0.98};
 f32 WEAPON_SWITCH_COOLDOWN = 1.5;
 
-f32 M4_PICKUP_COOLDOWN = 10;
-f32 TAP_PICKUP_COOLDOWN = 10;
-f32 HEALTH_PICKUP_COOLDOWN = 7;
+f32 WEAPON_PICKUP_COOLDOWN = 9;
+f32 HEALTH_PICKUP_COOLDOWN = 6;
 
 f32 CROSSHAIR_GAP = 10;
 f32 CROSSHAIR_LENGTH = 12;
@@ -86,6 +84,8 @@ f32 MISSLE_SPEED = 35;
 f32 EXPLOSION_RADIUS = 12;
 f32 EXPLOSION_FORCE = 100;
 f32 EXPLOSION_DAMAGE = 200;
+
+bool g_dual_wield_recoil_switch = true;
 
 enum MeshHandle : u32 {
     MH_NONE,
@@ -113,10 +113,12 @@ enum WeaponHandle : u32 {
     WH_DEAGLE,
     WH_M4,
     WH_TAP,
+    WH_PAL,
     _WH_COUNT
 };
 
 struct Weapon {
+    WeaponHandle handle;
     string display_name;
     v4 colour;
     f32 damage;
@@ -132,6 +134,7 @@ struct Weapon {
 
 Weapon g_weapons[_WH_COUNT] = {
     Weapon {
+        .handle = WH_DEAGLE,
         .display_name = "Deagle",
         .colour = brightness(WHITE, 0.6),
         .damage = 25,
@@ -142,9 +145,10 @@ Weapon g_weapons[_WH_COUNT] = {
         .mesh = MH_DEAGLE,
         .firing_sound = SH_FIRE_DEAGLE,
         .recoil_offset = v3{0, -0.08, -0.4},
-        .speed_factor = 1,
+        .speed_factor = 0.8,
     },
     Weapon {
+        .handle = WH_M4,
         .display_name = "M4",
         .colour = v4 {0.2, 0.2, 0.2, 1},
         .damage = 8,
@@ -155,9 +159,10 @@ Weapon g_weapons[_WH_COUNT] = {
         .mesh = MH_M4,
         .firing_sound = SH_FIRE_SILENCED_GUN_HIGH,
         .recoil_offset = v3{0, -0.01, -0.15},
-        .speed_factor = 0.75,
+        .speed_factor = 0.7,
     },
     Weapon {
+        .handle = WH_TAP,
         .display_name = "Thoughts & Prayers",
         .colour = v4 {0.05, 0.5, 0.05, 1},
         .damage = 100,
@@ -168,7 +173,21 @@ Weapon g_weapons[_WH_COUNT] = {
         .mesh = MH_DEAGLE,
         .firing_sound = SH_FIRE_DEAGLE,
         .recoil_offset = v3{0, -0.08, -0.4},
-        .speed_factor = 0.6,
+        .speed_factor = 0.5,
+    },
+    Weapon {
+        .handle = WH_PAL,
+        .display_name = "Peace & Love",
+        .colour = ORANGE,
+        .damage = 10,
+        .headshot_damage = 20,
+        .ammo_count = 30,
+        .automatic = false,
+        .firing_cooldown = 0.2,
+        .mesh = MH_DEAGLE,
+        .firing_sound = SH_FIRE_DEAGLE,
+        .recoil_offset = v3{0, -0.08, -0.4},
+        .speed_factor = 1,
     }
 };
 
@@ -176,7 +195,8 @@ enum PickupType : u32 {
     PT_NONE,
     PT_M4,
     PT_TAP,
-    PT_HEALTH
+    PT_HEALTH,
+    PT_PAL,
 };
 
 // @entity
@@ -407,6 +427,7 @@ void deserialise_level(State *state);
 YAML::Emitter &operator<<(YAML::Emitter &out, v3 value);
 YAML::Emitter &operator<<(YAML::Emitter &out, v4 value);
 
+void draw_player_weapon(State *state, Weapon *weapon, v3 display_offset, bool show_recoil);
 Weapon *get_player_weapon(State *state);
 void set_player_weapon(State *state, WeaponHandle weapon, f32 cooldown);
 void play_weapon_fire_sound(SoundHandle sound);
@@ -760,12 +781,12 @@ void game_server_update(State *state, f32 delta_time) {
 
                     switch (entity.pickup_type) {
                         case PT_M4: {
-                            entity.pickup_cooldown = M4_PICKUP_COOLDOWN;
+                            entity.pickup_cooldown = WEAPON_PICKUP_COOLDOWN;
                             NetworkMessage message = NetworkMessage{.type = NM_SET_WEAPON, .set_weapon = WH_M4};
                             server_send_to_client(NET(), bytes_from_ptr(&message), other.owner);
                         } break;
                         case PT_TAP: {
-                            entity.pickup_cooldown = TAP_PICKUP_COOLDOWN;
+                            entity.pickup_cooldown = WEAPON_PICKUP_COOLDOWN;
                             NetworkMessage message = NetworkMessage{.type = NM_SET_WEAPON, .set_weapon = WH_TAP};
                             server_send_to_client(NET(), bytes_from_ptr(&message), other.owner);
                         } break;
@@ -773,7 +794,12 @@ void game_server_update(State *state, f32 delta_time) {
                             entity.pickup_cooldown = HEALTH_PICKUP_COOLDOWN;
                             other.health = other.max_health;
                         } break;
-                        default: Assert(0);
+                        case PT_PAL: {
+                            entity.pickup_cooldown = WEAPON_PICKUP_COOLDOWN;
+                            NetworkMessage message = NetworkMessage{.type = NM_SET_WEAPON, .set_weapon = WH_PAL};
+                            server_send_to_client(NET(), bytes_from_ptr(&message), other.owner);
+                        } break;
+                        default: Assertf(false, "Did you add a new pickup?");
                     }
                 }
             }
@@ -974,6 +1000,8 @@ void game_client_update(State *state, f32 delta_time) {
                     state->player_ammo -= 1; 
                     state->player_firing_cooldown = player_weapon->firing_cooldown;
 
+                    g_dual_wield_recoil_switch = !g_dual_wield_recoil_switch;
+
                     play_weapon_fire_sound(player_weapon->firing_sound);
 
                     switch (state->player_weapon) {
@@ -1043,38 +1071,18 @@ void game_client_draw(State *state) {
 
         // client's player
         if (BitSet(entity.flags, EF_PLAYER) && entity.owner == state->instance_id) {
-            v3 forward = get_forward_direction(&GC()->camera);
-            v3 up = get_up_direction(&GC()->camera);
-            v3 right = get_right_direction(&GC()->camera);
-
             Weapon *player_weapon = get_player_weapon(state);
 
             { // draw weapon
-                v3 weapon_position = v3{};
-                weapon_position += WEAPON_DISPLAY_OFFSET.x * right;
-                weapon_position += WEAPON_DISPLAY_OFFSET.y * up;
-                weapon_position += WEAPON_DISPLAY_OFFSET.z * forward;
+                if (player_weapon->handle == WH_PAL) {
+                    static bool side = false;
 
-                // apply recoil if there is cooldown
-                if (state->player_firing_cooldown > 0) { 
-                    f32 cooldown_scale = state->player_firing_cooldown / player_weapon->firing_cooldown;
-
-                    v3 wro = player_weapon->recoil_offset;
-
-                    v3 recoil_offset = v3{};
-                    recoil_offset += wro.x * right;
-                    recoil_offset += wro.y * up;
-                    recoil_offset += wro.z * forward;
-                    recoil_offset *= cooldown_scale;
-
-                    weapon_position += recoil_offset;
+                    draw_player_weapon(state, player_weapon, WEAPON_DISPLAY_OFFSET, g_dual_wield_recoil_switch);
+                    draw_player_weapon(state, player_weapon, WEAPON_DISPLAY_OFFSET * v3{-1, 1, 1}, !g_dual_wield_recoil_switch);
                 }
-
-                weapon_position += GC()->camera.position;
-
-                v3 weapon_rotation = v3{GC()->camera.rotation.x, -GC()->camera.rotation.y, 0};
-
-                draw_mesh(REN(), g_meshes[player_weapon->mesh], weapon_position, {1, 1, 1}, weapon_rotation, player_weapon->colour);
+                else {
+                    draw_player_weapon(state, player_weapon, WEAPON_DISPLAY_OFFSET, true);
+                }
             }
 
             // @hud
@@ -1177,7 +1185,12 @@ void game_client_draw(State *state) {
                     pickup_colour = entity.pickup_cooldown > 0 ? brightness(RED, 0.5) : brightness({0.2, 1, 0.2, 1}, 0.8);
                     pickup_size = v3{0.3, 0.3, 0.3};
                 } break;
-                default: Assert(0);
+                case PT_PAL: { 
+                    mesh = g_meshes[g_weapons[WH_PAL].mesh];
+                    pickup_colour = entity.pickup_cooldown > 0 ? brightness(RED, 0.5) : g_weapons[WH_PAL].colour;
+                    pickup_size = v3{1, 1, 1};
+                } break;
+                default: Assertf(false, "Did you add a new pickup type?");
             }
 
             draw_mesh(REN(), mesh, pickup_position, pickup_size, pickup_rotation, pickup_colour);
@@ -1562,12 +1575,16 @@ void editor_draw_ui(State *state) {
             ED()->selected_entity = local_spawn_pickup(state, PT_M4);
         }
 
-        if (ImGui::Button("New tap pickup")) {
+        if (ImGui::Button("New T&P pickup")) {
             ED()->selected_entity = local_spawn_pickup(state, PT_TAP);
         }
 
         if (ImGui::Button("New health pickup")) {
             ED()->selected_entity = local_spawn_pickup(state, PT_HEALTH);
+        }
+
+        if (ImGui::Button("New P&L pickup")) {
+            ED()->selected_entity = local_spawn_pickup(state, PT_PAL);
         }
 
         if (ED()->selected_entity) {
@@ -2379,6 +2396,36 @@ struct YAML::convert<v4> {
         return true;
     }
 };
+
+void draw_player_weapon(State *state, Weapon *weapon, v3 display_offset, bool show_recoil) {
+    v3 forward = get_forward_direction(&GC()->camera);
+    v3 up = get_up_direction(&GC()->camera);
+    v3 right = get_right_direction(&GC()->camera);
+
+    v3 weapon_position = v3{};
+    weapon_position += display_offset.x * right;
+    weapon_position += display_offset.y * up;
+    weapon_position += display_offset.z * forward;
+
+    // apply recoil if there is cooldown
+    if (show_recoil && state->player_firing_cooldown > 0) { 
+        f32 cooldown_scale = state->player_firing_cooldown / weapon->firing_cooldown;
+        v3 wro = weapon->recoil_offset;
+        v3 recoil_offset = v3{};
+
+        recoil_offset += wro.x * right;
+        recoil_offset += wro.y * up;
+        recoil_offset += wro.z * forward;
+        recoil_offset *= cooldown_scale;
+
+        weapon_position += recoil_offset;
+    }
+
+    weapon_position += GC()->camera.position;
+    v3 weapon_rotation = v3{GC()->camera.rotation.x, -GC()->camera.rotation.y, 0};
+
+    draw_mesh(REN(), g_meshes[weapon->mesh], weapon_position, {1, 1, 1}, weapon_rotation, weapon->colour);
+}
 
 Weapon *get_player_weapon(State *state) {
     Assert(state->player_weapon >= 0 && state->player_weapon < _WH_COUNT);
