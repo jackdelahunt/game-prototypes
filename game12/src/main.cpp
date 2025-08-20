@@ -15,8 +15,8 @@
 #include <queue>
 #include <atomic>
 
-// Total: 58:00
-// Started: 20:30
+// Total: 58:30
+// Started: 11:30
 //
 //
 // What do a programmer do?:
@@ -33,14 +33,29 @@
 // - combine vs and fs in the one file
 // - fond out why camera yaw (Y) is flipped
 // - switch to quaternions for rotation 
-// - define assets in editor and get handles in game
 // - sky box
+// - define assets in editor and get handles in game
+// - load game as dll
+//
+// Structre thoughts:
+//  - ack:
+//      - asserts: enable/disable, assert with message, differnt actions to do on an assert
+//      - basic type, include math types?
+//      - strings, arrays, arenas
+//      - formating
+//      - Timers and profiling markers
+//  - meta:
+//      - get fields of type
+//      - get all enum members and their values
+//
 
 #define MAX_ENTITIES 500
 #define LEVEL_INSTANCE_ID 0
 #define SERVER_INSTANCE_ID 1
 #define GAME_SERVER_MS_PER_TICK 16
 #define GAME_CLIENT_MS_PER_TICK 16
+
+#define RUN_TESTS 0
 
 f32 PLAYER_HEIGHT = 2;
 f32 PLAYER_WIDTH = 0.65;
@@ -64,6 +79,8 @@ f32 CROSSHAIR_GAP = 10;
 f32 CROSSHAIR_LENGTH = 12;
 f32 CROSSHAIR_THICKNESS = 3;
 v4 CROSSHAIR_COLOUR = RED;
+
+f32 MISSLE_SPEED = 25;
 
 enum MeshHandle : u32 {
     MH_NONE,
@@ -95,7 +112,7 @@ enum WeaponHandle : u32 {
 };
 
 struct Weapon {
-    str display_name;
+    string display_name;
     v4 colour;
     f32 damage;
     f32 headshot_damage;
@@ -161,6 +178,8 @@ enum EntityFlag : u32 {
     EF_STATIC_HITBOX    = 1 << 3,
     EF_DEAD             = 1 << 4,
     EF_PICKUP           = 1 << 5,
+    EF_TRIGGER_HITBOX   = 1 << 6,
+    EF_MISSLE           = 1 << 7,
     EF_DELETE           = 1 << 16,
 };
 
@@ -349,6 +368,7 @@ Entity *local_spawn_player(State *state);
 Entity *local_spawn_spawn_point(State *state);
 Entity *local_spawn_static_box(State *state);
 Entity *local_spawn_pickup(State *state, PickupType type);
+Entity *local_spawn_missle(State *state);
 
 void game_client_host();
 void game_client_connect();
@@ -382,18 +402,22 @@ void play_weapon_fire_sound(SoundHandle sound);
 void fire_raycast_weapon(State *state, WeaponHandle weapon);
 void fire_tap(State *state);
 
+void run_tests();
+
 // @main
 int main(i32 argc, const char **argv) { 
-    log_set_thread_options(LogOptions {
-        .thread_name = "CLIENT",
-        .thread_colour = GREEN_ASCII_CODE,
-    });
+    log_set_thread_name("client");
 
     srand((u32) time(NULL));
 
+#if RUN_TESTS
+    run_tests();
+    return 0;
+#endif
+
     bool ok = network_layer_init();
     if (!ok) {
-        log("CRASH: failed to strart networking");
+        Log("CRASH: failed to strart networking");
         return 1;
     }
 
@@ -408,23 +432,23 @@ int main(i32 argc, const char **argv) {
 }
 
 GameServer *GS() {
-    ASSERT(g_game_server);
+    Assert(g_game_server);
     return g_game_server;
 }
 
 GameClient *GC() {
-    ASSERT(g_game_client);
+    Assert(g_game_client);
     return g_game_client;
 }
 
 Editor *ED() {
-    ASSERT(g_editor);
+    Assert(g_editor);
     return g_editor;
 }
 
 // @startserver
 void game_server_start() {
-    ASSERT(g_game_server == NULL);
+    Assert(g_game_server == NULL);
 
     // my strategy for this is init everything in the instance
     // besides the state object before starting the new thread
@@ -439,10 +463,7 @@ void game_server_start() {
 
 // @entrygs @gs
 void game_server_entry() {
-    log_set_thread_options(LogOptions {
-        .thread_name = "SERVER",
-        .thread_colour = YELLOW_ASCII_CODE,
-    });
+    log_set_thread_name("server");
 
     GS()->state = State {
         .instance_type = IT_SERVER,
@@ -454,8 +475,7 @@ void game_server_entry() {
 
     Timer tick_timer = timer_create_ms(GAME_SERVER_MS_PER_TICK);
 
-    logf("Started game server [thread={}]", get_current_thread_id());
-    logf("Server running at {}t/s", i64(1000.0f / f32(GAME_SERVER_MS_PER_TICK)));
+    Infof("Started game server @ {}tps [thread={}]", i64(1000.0f / f32(GAME_SERVER_MS_PER_TICK)), get_current_thread_id());
 
     deserialise_level(&GS()->state);
 
@@ -483,7 +503,7 @@ void game_server_entry() {
         arena_reset(&GS()->state.arena);
     }
 
-    log("Game server was given shutdown signal.. stopping");
+    Log("Game server was given shutdown signal.. stopping");
 }
 
 // @entrygc @gc
@@ -492,55 +512,55 @@ void game_client_entry() {
         bool ok = false;
 
         ok = window_init("Game12", 1280, 720);
-        ASSERT(ok);
+        Assert(ok);
 
         if (!ok) {
-            log("Failed when trying to init the window");
+            Log("Failed when trying to init the window");
             return;
         }
 
         ok = renderer_init(WIN(), v4{0.3, 0.45, 0.72, 1}, v3{0.38, 0.38, 0.38}, v3{0.61, 0.61, 0.61}, v3{50, 100, -100}, v3{0, 0, 0});
-        ASSERT(ok);
+        Assert(ok);
 
         if (!ok) {
-            log("Failed when trying to init the renderer");
+            Log("Failed when trying to init the renderer");
             return;
         }
 
         g_meshes[MH_DEAGLE] = mesh_create_from_file(REN(), "resources/models/deagle/deagle.obj");
-        ASSERT(g_meshes[MH_DEAGLE]);
+        Assert(g_meshes[MH_DEAGLE]);
 
         g_meshes[MH_M4] = mesh_create_from_file(REN(), "resources/models/m4/m4.obj");
-        ASSERT(g_meshes[MH_M4]);
+        Assert(g_meshes[MH_M4]);
 
         g_meshes[MH_CROSS] = mesh_create_from_file(REN(), "resources/models/cross/cross.obj");
-        ASSERT(g_meshes[MH_CROSS]);
+        Assert(g_meshes[MH_CROSS]);
 
         ok = sound_engine_init();
-        ASSERT(ok);
+        Assert(ok);
 
         if (!ok) {
-            log("Failed when trying to init the sound engine");
+            Log("Failed when trying to init the sound engine");
             return;
         }
 
         g_sounds[SH_FIRE_DEAGLE] = sound_engine_load(SE(), "resources/sounds/deagle_fire.wav");
-        ASSERT(g_sounds[SH_FIRE_DEAGLE]);
+        Assert(g_sounds[SH_FIRE_DEAGLE]);
 
         g_sounds[SH_FIRE_SILENCED_GUN_HIGH] = sound_engine_load(SE(), "resources/sounds/silenced_gun_high.wav");
-        ASSERT(g_sounds[SH_FIRE_SILENCED_GUN_HIGH]);
+        Assert(g_sounds[SH_FIRE_SILENCED_GUN_HIGH]);
 
         g_sounds[SH_FIRE_SILENCED_GUN_MID] = sound_engine_load(SE(), "resources/sounds/silenced_gun_mid.wav");
-        ASSERT(g_sounds[SH_FIRE_SILENCED_GUN_MID]);
+        Assert(g_sounds[SH_FIRE_SILENCED_GUN_MID]);
 
         g_sounds[SH_FIRE_SILENCED_GUN_LOW] = sound_engine_load(SE(), "resources/sounds/silenced_gun_low.wav");
-        ASSERT(g_sounds[SH_FIRE_SILENCED_GUN_LOW]);
+        Assert(g_sounds[SH_FIRE_SILENCED_GUN_LOW]);
 
         g_sounds[SH_TARGET_HIT] = sound_engine_load(SE(), "resources/sounds/short_target_hit.wav");
-        ASSERT(g_sounds[SH_TARGET_HIT]);
+        Assert(g_sounds[SH_TARGET_HIT]);
 
         g_sounds[SH_HEADSHOT_HIT] = sound_engine_load(SE(), "resources/sounds/short_headshot_hit.wav");
-        ASSERT(g_sounds[SH_HEADSHOT_HIT]);
+        Assert(g_sounds[SH_HEADSHOT_HIT]);
     }
 
     g_game_client = new GameClient {
@@ -573,21 +593,20 @@ void game_client_entry() {
     { // init editor and client frame buffer
         bool ok = frame_buffer_init(&g_game_client->game_view);
         if (!ok) {
-            log("failed to init game view frame buffer");
+            Log("failed to init game view frame buffer");
             return;
         }
 
         ok = frame_buffer_init(&g_editor->editor_view);
         if (!ok) {
-            log("failed to init editor view frame buffer");
+            Log("failed to init editor view frame buffer");
             return;
         }
     }
 
     Timer tick_timer = timer_create_ms(GAME_CLIENT_MS_PER_TICK);
 
-    logf("Started game client [thread={}]", get_current_thread_id());
-    logf("Client running at {}t/s", i64(1000.0f / f32(GAME_SERVER_MS_PER_TICK)));
+    Infof("Started game client @ {}tps [thread={}]", i64(1000.0f / f32(GAME_SERVER_MS_PER_TICK)), get_current_thread_id());
 
     deserialise_level(&GC()->state);
 
@@ -648,7 +667,7 @@ void game_server_stop() {
 }
 
 void poll_user_input(State *state) {
-    ASSERT(is_client(state)); // what is the server doing here?
+    Assert(is_client(state)); // what is the server doing here?
 
 }
 
@@ -656,7 +675,7 @@ void process_network(State *state) {
     if (is_client(state)) {
         sampler_append(&state->network_in_sampler, f32(network_queue_size(&NET()->client_in_queue)));
 
-        Slice<u8> bytes;
+        slice<u8> bytes;
         while (network_queue_pop(&NET()->client_in_queue, &bytes)) {
             NetworkMessage *message = (NetworkMessage *) bytes.ptr;
             on_client_receive(state, message);
@@ -667,7 +686,7 @@ void process_network(State *state) {
     if (is_server(state)) {
         sampler_append(&state->network_in_sampler, f32(network_queue_size(&NET()->server_in_queue)));
 
-        Slice<u8> bytes;
+        slice<u8> bytes;
         while (network_queue_pop(&NET()->server_in_queue, &bytes)) {
             NetworkMessage *message = (NetworkMessage *) bytes.ptr;
             on_server_receive(state, message);
@@ -677,7 +696,7 @@ void process_network(State *state) {
 }
 
 void sync_clients(State *state) {
-    ASSERT(is_server(state));
+    Assert(is_server(state));
 
     i64 index = 0;
     while (index < state->entities.len) {
@@ -690,7 +709,7 @@ void sync_clients(State *state) {
             continue;
         }
 
-        if (BIT_SET(state->entities[index].flags, EF_DELETE)) {
+        if (BitSet(state->entities[index].flags, EF_DELETE)) {
             NetworkMessage message = NetworkMessage{.type = NM_DELETE_ENTITY, .delete_entity = entity.id};
             server_send_to_all_clients(NET(), bytes_from_ptr(&message));
 
@@ -706,11 +725,11 @@ void sync_clients(State *state) {
 }
 
 void game_server_update(State *state, f32 delta_time) {
-    ASSERT(is_server(state));
+    Assert(is_server(state));
 
     for (Entity &entity : state->entities) {
 
-        if (BIT_SET(entity.flags, EF_PICKUP)) {
+        if (BitSet(entity.flags, EF_PICKUP)) {
             entity.pickup_cooldown -= delta_time;
             if (entity.pickup_cooldown <= 0) {
                 entity.pickup_cooldown = 0;
@@ -718,7 +737,7 @@ void game_server_update(State *state, f32 delta_time) {
 
             if (entity.pickup_cooldown == 0) {
                 for (Entity &other : state->entities) {
-                    if (!BIT_SET(other.flags, EF_PLAYER)) {
+                    if (!BitSet(other.flags, EF_PLAYER)) {
                         continue;
                     }
     
@@ -742,41 +761,41 @@ void game_server_update(State *state, f32 delta_time) {
                             entity.pickup_cooldown = HEALTH_PICKUP_COOLDOWN;
                             other.health = other.max_health;
                         } break;
-                        default: ASSERT(0);
+                        default: Assert(0);
                     }
                 }
             }
         }
 
-        if (BIT_SET(entity.flags, EF_DEAD)) {
+        if (BitSet(entity.flags, EF_DEAD)) {
             entity.death_cooldown -= delta_time;
 
             if (entity.death_cooldown < 0) {
                 entity.health = entity.max_health;
 
-                UNSET_BIT(entity.flags, EF_DEAD);
+                UnsetBit(entity.flags, EF_DEAD);
                 entity.death_cooldown = 0;
                 move_to_random_spawn_point(state, &entity);
             }
         }
 
-        if (BIT_SET(entity.flags, EF_PLAYER)) {
+        if (BitSet(entity.flags, EF_PLAYER)) {
             if (entity.health <= 0 && entity.death_cooldown == 0) {
                 entity.death_cooldown = PLAYER_DEATH_COOLDOWN;
-                SET_BIT(entity.flags, EF_DEAD);
+                SetBit(entity.flags, EF_DEAD);
             }
         }
     }
 }
 
 void game_server_physics(State *state, f32 delta_time) {
-    ASSERT(is_server(state));
+    Assert(is_server(state));
 
     for (Entity &entity : state->entities) {
         v3 h_velocity = v3{entity.velocity.x, 0, entity.velocity.z};
         f32 h_speed = length(h_velocity);
 
-        if (BIT_SET(entity.flags, EF_PLAYER)) {
+        if (BitSet(entity.flags, EF_PLAYER)) {
             //  cap velocity
             if (length(h_velocity) > PLAYER_MAX_SPEED) {
                 v3 max_h_velocity = norm(h_velocity) * PLAYER_MAX_SPEED;
@@ -797,12 +816,24 @@ void game_server_physics(State *state, f32 delta_time) {
 
         entity.position += entity.velocity * delta_time;
 
+        // dont do collision check if:
+        // 1. have no hitbox
+        // 2. have a static hitbox
+        if (BitSet(entity.flags, EF_STATIC_HITBOX)) {
+            continue;
+        }
+
+        if (!BitSet(entity.flags, EF_SOLID_HITBOX) && !BitSet(entity.flags, EF_TRIGGER_HITBOX)) {
+            continue;
+        }
+        
+        // detect and resolve collisions
         for (Entity &other : state->entities) {
             if (&entity == &other) {
                 continue;
             }
 
-            if (!BIT_SET(other.flags, EF_STATIC_HITBOX)) {
+            if (!BitSet(other.flags, EF_STATIC_HITBOX)) {
                 continue;
             }
 
@@ -834,7 +865,7 @@ void game_client_update(State *state, f32 delta_time) {
     }
 
     { // weapon reaload and switching to default
-        ASSERT(state->player_ammo >= 0);
+        Assert(state->player_ammo >= 0);
 
         if (state->player_ammo == 0) {
             set_player_weapon(state, WH_DEAGLE, WEAPON_SWITCH_COOLDOWN);
@@ -933,13 +964,13 @@ void game_client_update(State *state, f32 delta_time) {
 }
 
 void game_client_draw(State *state) {
-    ASSERT(is_client(state));
+    Assert(is_client(state));
 
     for (Entity &entity : state->entities) {
         v4 draw_colour = entity.colour;
 
         // client's player
-        if (BIT_SET(entity.flags, EF_PLAYER) && entity.owner == state->instance_id) {
+        if (BitSet(entity.flags, EF_PLAYER) && entity.owner == state->instance_id) {
             v3 forward = get_forward_direction(&GC()->camera);
             v3 up = get_up_direction(&GC()->camera);
             v3 right = get_right_direction(&GC()->camera);
@@ -1013,7 +1044,7 @@ void game_client_draw(State *state) {
             }
 
             // blood overlay when dead 
-            if (BIT_SET(entity.flags, EF_DEAD)) {
+            if (BitSet(entity.flags, EF_DEAD)) {
                 v3 top_right = relative_to_screen_position(GC()->viewport, {1, 1});
                 v3 centre = top_right * 0.5;
                 v2 size = top_right.xy;
@@ -1027,11 +1058,11 @@ void game_client_draw(State *state) {
         }
 
         // every player
-        if (BIT_SET(entity.flags, EF_PLAYER)) {
+        if (BitSet(entity.flags, EF_PLAYER)) {
             v4 head_colour = BEIGE;
 
             // shade red when dead
-            if (BIT_SET(entity.flags, EF_DEAD)) {
+            if (BitSet(entity.flags, EF_DEAD)) {
                 draw_colour = mix(draw_colour, RED, 0.65);
                 head_colour = mix(draw_colour, RED, 0.65);
             }
@@ -1049,7 +1080,7 @@ void game_client_draw(State *state) {
         }
 
         // pickups 
-        if (BIT_SET(entity.flags, EF_PICKUP)) {
+        if (BitSet(entity.flags, EF_PICKUP)) {
             f32 t = sin(state->time * 0.5f);
             v3 pickup_position = entity.position + v3{0, 1.5f + t, 0};
             v3 pickup_rotation = v3{0, t * 360, 0};
@@ -1074,7 +1105,7 @@ void game_client_draw(State *state) {
                     pickup_colour = entity.pickup_cooldown > 0 ? brightness(RED, 0.5) : brightness({0.2, 1, 0.2, 1}, 0.8);
                     pickup_size = v3{0.3, 0.3, 0.3};
                 } break;
-                default: ASSERT(0);
+                default: Assert(0);
             }
 
             draw_mesh(REN(), mesh, pickup_position, pickup_size, pickup_rotation, pickup_colour);
@@ -1089,7 +1120,7 @@ void game_client_draw(State *state) {
 }
 
 void editor_update(State *state) {
-    ASSERT(is_client(state));
+    Assert(is_client(state));
 
     Camera *camera = &ED()->camera;
 
@@ -1455,7 +1486,7 @@ void editor_draw_ui(State *state) {
             ImGui::SeparatorText("Selected Entity");
 
             if (ImGui::Button("Delete")) {
-                ASSERT(local_delete_entity(state, ED()->selected_entity->id));
+                Assert(local_delete_entity(state, ED()->selected_entity->id));
                 ED()->selected_entity = NULL;
             }
 
@@ -1524,17 +1555,17 @@ void on_server_receive(State *state, NetworkMessage *message) {
             // 3. The player entity is spawn on all clients and is owned by the new client
             // - 09/08/25
             ConnectionId connection_id = message->client_connected;
-            logf("Processing new client connection: connection_id={}", connection_id);
+            Logf("Processing new client connection: connection_id={}", connection_id);
             
             { // assign client id
-                logf( "Assigning new client: id={}", connection_id);
+                Logf( "Assigning new client: id={}", connection_id);
 
                 NetworkMessage message = NetworkMessage{.type = NM_ASSIGN_CLIENT_ID, .assign_client_id = connection_id};
                 server_send_to_client(NET(), bytes_from_ptr(&message), connection_id);
             }
 
             { // spawn any entities on new client
-                logf( "Spawning {} existing entities on new client", state->entities.len);
+                Logf( "Spawning {} existing entities on new client", state->entities.len);
 
                 for (Entity &entity : state->entities) {
                     NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = entity};
@@ -1549,7 +1580,7 @@ void on_server_receive(State *state, NetworkMessage *message) {
 
                 move_to_random_spawn_point(state, new_player);
 
-                logf("Spawning new player entity: entity_id={}, owner={} position={}", new_player->id, new_player->owner, new_player->position);
+                Logf("Spawning new player entity: entity_id={}, owner={} position={}", new_player->id, new_player->owner, new_player->position);
 
                 NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = *new_player};
                 server_send_to_all_clients(NET(), bytes_from_ptr(&message));
@@ -1559,7 +1590,7 @@ void on_server_receive(State *state, NetworkMessage *message) {
             Entity entity = message->spawn_entity;
             entity.id = new_entity_id();
 
-            logf("Server spawning entity: id={}, owner={}", entity.id, entity.owner);
+            Logf("Server spawning entity: id={}, owner={}", entity.id, entity.owner);
             local_spawn_entity(state, entity);
             NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = entity};
             server_send_to_all_clients(NET(), bytes_from_ptr(&message));
@@ -1581,7 +1612,7 @@ void on_server_receive(State *state, NetworkMessage *message) {
         } break;
         case NM_PLAYER_HIT: {
             Entity *entity = get_entity_with_id(state, message->player_hit.target_id);
-            if (entity == NULL || !BIT_SET(entity->flags, EF_PLAYER)) {
+            if (entity == NULL || !BitSet(entity->flags, EF_PLAYER)) {
                 return;
             }
 
@@ -1596,22 +1627,22 @@ void on_server_receive(State *state, NetworkMessage *message) {
             dummy->position = message->spawn_dummy;
             dummy->owner = SERVER_INSTANCE_ID;
 
-            logf("Spawning new dummy entity: entity_id={}, owner={} position={}", dummy->id, dummy->owner, dummy->position);
+            Logf("Spawning new dummy entity: entity_id={}, owner={} position={}", dummy->id, dummy->owner, dummy->position);
 
             NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = *dummy};
             server_send_to_all_clients(NET(), bytes_from_ptr(&message));
         } break;
         case NM_SPAWN_MISSLE: {
-            Entity *missle = local_spawn_empty(state);
-            missle->position = message->spawn_missle.origin;
-            missle->velocity = message->spawn_missle.direction * 15;
+            Entity *missle = local_spawn_missle(state);
             missle->owner = SERVER_INSTANCE_ID;
+            missle->position = message->spawn_missle.origin;
+            missle->velocity = message->spawn_missle.direction * MISSLE_SPEED;
 
             NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = *missle};
             server_send_to_all_clients(NET(), bytes_from_ptr(&message));
         } break;
         default: {
-            log("WARNING unknown message sent");
+            Log("WARNING unknown message sent");
         } break;
     }
 }
@@ -1620,10 +1651,10 @@ void on_client_receive(State *state, NetworkMessage *message) {
     switch (message->type) {
         case NM_ASSIGN_CLIENT_ID: {
             state->instance_id = message->assign_client_id;
-            logf( "Client assigned id={}", state->instance_id);
+            Logf( "Client assigned id={}", state->instance_id);
         } break;
         case NM_SPAWN_ENTITY: {
-            logf( "Client spawning entity: id={}, owner={}", message->spawn_entity.id, message->spawn_entity.owner);
+            Logf( "Client spawning entity: id={}, owner={}", message->spawn_entity.id, message->spawn_entity.owner);
             local_spawn_entity(state, message->spawn_entity);
         } break;
         case NM_SYNC_ENTITY: {
@@ -1633,7 +1664,7 @@ void on_client_receive(State *state, NetworkMessage *message) {
             }
         } break;
         case NM_DELETE_ENTITY: {
-            logf("Client deleting entity: id={}", message->delete_entity);
+            Logf("Client deleting entity: id={}", message->delete_entity);
 
             for (i64 i = 0; i < state->entities.len; i++) {
                 Entity *entity = &state->entities[i];
@@ -1645,11 +1676,11 @@ void on_client_receive(State *state, NetworkMessage *message) {
             }
         } break;
         case NM_SET_WEAPON: {
-            logf("Client was told to use a new weapon: {}", (u32) message->set_weapon);
+            Logf("Client was told to use a new weapon: {}", (u32) message->set_weapon);
             set_player_weapon(state, message->set_weapon, 0);
         } break;
         default: {
-            log("WARNING unknown message sent");
+            Log("WARNING unknown message sent");
         } break;
     }
 }
@@ -1685,7 +1716,7 @@ bool local_delete_entity(State *state, u32 id) {
 
 Entity *get_client_player(State *state, u32 client_id) {
     for (Entity &entity : state->entities) {
-        if (BIT_SET(entity.flags, EF_PLAYER) && entity.owner == client_id) {
+        if (BitSet(entity.flags, EF_PLAYER) && entity.owner == client_id) {
             return &entity;
         }
     }
@@ -1705,7 +1736,7 @@ Entity *get_entity_with_id(State *state, u32 id) {
 
 Entity *get_entity_with_flag(State *state, EntityFlag flag) {
     for (Entity &entity : state->entities) {
-        if (BIT_SET(entity.flags, flag)) {
+        if (BitSet(entity.flags, flag)) {
             return &entity;
         }
     }
@@ -1740,7 +1771,7 @@ void move_to_random_spawn_point(State *state, Entity *entity) {
     i64 current_spawn_point_number = 0;
 
     for (Entity &other : state->entities) {
-        if (BIT_SET(other.flags, EF_SPAWN_POINT)) {
+        if (BitSet(other.flags, EF_SPAWN_POINT)) {
             if (spawn_point_number == current_spawn_point_number) {
                 entity->position = other.position + v3{0, PLAYER_HEIGHT * 1.5f, 0};
                 break;
@@ -1813,8 +1844,20 @@ Entity *local_spawn_pickup(State *state, PickupType type) {
     return local_spawn_entity(state, entity);
 }
 
+Entity *local_spawn_missle(State *state) {
+    Entity entity = Entity {
+        .flags = EF_MISSLE | EF_TRIGGER_HITBOX,
+        .id = new_entity_id(),
+        .owner = SERVER_INSTANCE_ID,
+        .size = v3{0.5, 0.5, 0.5},
+        .colour = brightness(WHITE, 0.2),
+    };
+
+    return local_spawn_entity(state, entity);
+}
+
 void game_client_host() {
-    log("starting hosted game");
+    Info("starting hosted game");
 
     GC()->mode = GC_HOSTED;
 
@@ -1824,7 +1867,7 @@ void game_client_host() {
 }
 
 void game_client_connect() {
-    log("starting and connecting to local-hosted game");
+    Info("starting and connecting to local-hosted game");
 
     GC()->mode = GC_CLIENT;
 
@@ -1853,7 +1896,7 @@ bool is_client(State *state) {
 }
 
 void server_on_new_connection(NetworkLayer *net, Server *server, ConnectionId id) {
-    logf("New connection received, sending server new connection message [thread={}]", get_current_thread_id());
+    Logf("New connection received, sending server new connection message [thread={}]", get_current_thread_id());
 
     NetworkMessage message = NetworkMessage {.type = NM_CLIENT_CONNECTED, .client_connected = id};
     network_queue_push(&net->server_in_queue, bytes_from_ptr(&message));
@@ -2095,21 +2138,21 @@ void serialise_level(State *state) {
 
     bool ok = create_file(&file);
     if (!ok) {
-        log("Failed to create file for saving level");
+        Log("Failed to create file for saving level");
         return;
     }
 
-    Slice<u8> bytes = slice_create((u8 *) out.c_str(), out.size());
+    slice<u8> bytes = slice_create((u8 *) out.c_str(), out.size());
 
     ok = write_file(&file, bytes);
     if (!ok) {
-        log("Failed to write data to file when saving level");
+        Log("Failed to write data to file when saving level");
         return;
     }
 
     close_file(&file);
 
-    log("Level was saved");
+    Log("Level was saved");
 }
 
 void serialise_entity(YAML::Emitter &out, Entity *entity) {
@@ -2133,7 +2176,7 @@ void deserialise_level(State *state) {
 
     YAML::Node entities = root["entities"];
     if (!entities) {
-        log("No entities field in level file");
+        Err("No entities field in level file");
         return;
     }
 
@@ -2155,7 +2198,7 @@ void deserialise_level(State *state) {
         e.health =                      entity["health"].as<f32>();
         e.pickup_type = (PickupType)    entity["pickup_type"].as<u32>();
 
-        if (BIT_SET(e.flags, EF_SPAWN_POINT)) {
+        if (BitSet(e.flags, EF_SPAWN_POINT)) {
             state->spawn_point_count += 1;
         }
 
@@ -2164,7 +2207,7 @@ void deserialise_level(State *state) {
 
     set_player_weapon(state, WH_DEAGLE, 0);
 
-    logf("Level was loaded with {} entities and {} spawn points", state->entities.len, state->spawn_point_count);
+    Infof("Level was loaded with {} entities and {} spawn points", state->entities.len, state->spawn_point_count);
 }
 
 YAML::Emitter &operator<<(YAML::Emitter &out, v3 vector) {
@@ -2211,7 +2254,7 @@ struct YAML::convert<v4> {
 };
 
 Weapon *get_player_weapon(State *state) {
-    ASSERT(state->player_weapon >= 0 && state->player_weapon < _WH_COUNT);
+    Assert(state->player_weapon >= 0 && state->player_weapon < _WH_COUNT);
 
     return &g_weapons[state->player_weapon];
 }
@@ -2263,7 +2306,7 @@ void fire_raycast_weapon(State *state, WeaponHandle weapon) {
             break;
         }
 
-        if (!BIT_SET(result.entity->flags, EF_PLAYER)) {
+        if (!BitSet(result.entity->flags, EF_PLAYER)) {
             break;
         }
 
@@ -2271,7 +2314,7 @@ void fire_raycast_weapon(State *state, WeaponHandle weapon) {
             continue;
         }
 
-        if (BIT_SET(result.entity->flags, EF_DEAD)) {
+        if (BitSet(result.entity->flags, EF_DEAD)) {
             break;
         }
 
@@ -2320,42 +2363,69 @@ void fire_tap(State *state) {
     client_send_to_server(NET(), bytes_from_ptr(&message));
 }
 
+void run_tests() {
+#if 0
+    Assert(1 >= 1000);
+    Assertf(1 >= 1000, "this shouldnt of happened");
+    Unreachable("Shouldn't have got here lil bro");
+#endif
+
+    log_set_thread_name("client");
+
+    Log("Hello logger");
+    Logf("Hello logger {}", "How are you doing?");
+
+    Info("Hello info");
+    Infof("Hello info {}", "How are you doing?");
+
+    Warn("Hello warning");
+    Warnf("Hello warning {}", "How are you doing?");
+
+    Err("Hello error");
+    Errf("Hello error {}", "How are you doing?");
+
+    Fatal("Hello fatal");
+    Fatalf("Hello fatal {}", "How are you doing?");
+
+    std::this_thread::sleep_for(std::chrono::seconds(20));
+}
+
 template<>
 void fmt_value(DynamicArray<u8> *bytes, v2i value) {
-    append_many(bytes, Slice<u8>("v2i {"));
+    append_many(bytes, slice<u8>("v2i {"));
     fmt_value(bytes, value.x);
-    append_many(bytes, Slice<u8>(", "));
+    append_many(bytes, slice<u8>(", "));
     fmt_value(bytes, value.y);
-    append_many(bytes, Slice<u8>("}"));
+    append_many(bytes, slice<u8>("}"));
 }
 
 template<>
 void fmt_value(DynamicArray<u8> *bytes, v2 value) {
-    append_many(bytes, Slice<u8>("v2 {"));
+    append_many(bytes, slice<u8>("v2 {"));
     fmt_value(bytes, value.x);
-    append_many(bytes, Slice<u8>(", "));
+    append_many(bytes, slice<u8>(", "));
     fmt_value(bytes, value.y);
-    append_many(bytes, Slice<u8>("}"));
+    append_many(bytes, slice<u8>("}"));
 }
 
 template<>
 void fmt_value(DynamicArray<u8> *bytes, v3i value) {
-    append_many(bytes, Slice<u8>("v3i {"));
+    append_many(bytes, slice<u8>("v3i {"));
     fmt_value(bytes, value.x);
-    append_many(bytes, Slice<u8>(", "));
+    append_many(bytes, slice<u8>(", "));
     fmt_value(bytes, value.y);
-    append_many(bytes, Slice<u8>(", "));
+    append_many(bytes, slice<u8>(", "));
     fmt_value(bytes, value.z);
-    append_many(bytes, Slice<u8>("}"));
+    append_many(bytes, slice<u8>("}"));
 }
 
 template<>
 void fmt_value(DynamicArray<u8> *bytes, v3 value) {
-    append_many(bytes, Slice<u8>("v3 {"));
+    append_many(bytes, slice<u8>("v3 {"));
     fmt_value(bytes, value.x);
-    append_many(bytes, Slice<u8>(", "));
+    append_many(bytes, slice<u8>(", "));
     fmt_value(bytes, value.y);
-    append_many(bytes, Slice<u8>(", "));
+    append_many(bytes, slice<u8>(", "));
     fmt_value(bytes, value.z);
-    append_many(bytes, Slice<u8>("}"));
+    append_many(bytes, slice<u8>("}"));
 }

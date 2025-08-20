@@ -22,7 +22,7 @@ typedef void (*NewConnectionCallback)(NetworkLayer *, Server *, ConnectionId);
 
 struct NetworkQueue {
     std::mutex mutex;
-    std::queue<Slice<u8>> messages;
+    std::queue<slice<u8>> messages;
 };
 
 struct NetworkConfig {
@@ -98,18 +98,18 @@ void client_on_connection_changed(NetworkLayer *net, Client *client, SteamNetCon
 void server_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info);
 void client_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info);
 
-void network_queue_push(NetworkQueue *network_queue, Slice<u8> message);
-bool network_queue_pop(NetworkQueue *network_queue, Slice<u8> *out_message);
+void network_queue_push(NetworkQueue *network_queue, slice<u8> message);
+bool network_queue_pop(NetworkQueue *network_queue, slice<u8> *out_message);
 i64 network_queue_size(NetworkQueue *network_queue);
 
-void server_send_to_client(NetworkLayer *net, Slice<u8> message, ConnectionId id);
-void server_send_to_all_clients(NetworkLayer *net, Slice<u8> message, ConnectionId exclude = 0);
-void client_send_to_server(NetworkLayer *net, Slice<u8> message);
+void server_send_to_client(NetworkLayer *net, slice<u8> message, ConnectionId id);
+void server_send_to_all_clients(NetworkLayer *net, slice<u8> message, ConnectionId exclude = 0);
+void client_send_to_server(NetworkLayer *net, slice<u8> message);
 
 void networking_debug_callback(ESteamNetworkingSocketsDebugOutputType type, const char *message);
 
 NetworkLayer *NET() {
-    ASSERT(g_network_layer != NULL);
+    Assert(g_network_layer != NULL);
     return g_network_layer;
 }
 
@@ -119,7 +119,7 @@ bool network_layer_init() {
 
     SteamDatagramErrMsg error_message;
     if (!GameNetworkingSockets_Init(nullptr, error_message)) {
-        logf("GameNetworkingSockets_Init failed: {}", error_message);
+        Logf("GameNetworkingSockets_Init failed: {}", error_message);
         return false;
     }
 
@@ -127,22 +127,18 @@ bool network_layer_init() {
     
     SteamNetworkingUtils()->SetDebugOutputFunction(k_ESteamNetworkingSocketsDebugOutputType_Msg, networking_debug_callback);
 
-    log("Initialised network layer");
+    Log("Initialised network layer");
     return true;
 }
 
 void network_layer_start() {
     NetworkLayer *net = NET();
-    ASSERT(net->running == false);
+    Assert(net->running == false);
 
 net->thread = std::thread([net] () {
-    log_set_thread_options(LogOptions {
-        .thread_name = "NETWORK",
-        .thread_colour = CYAN_ASCII_CODE,
-    });
+    log_set_thread_name("network");
 
-    logf("Started networking thread [thread={}]", get_current_thread_id());
-    logf("Polling network {}/s", i64(1000.0f / f32(NETWORK_DELAY_MS)));
+    Infof("Started networking thread @ {}tps [thread={}]", i64(1000.0f / f32(NETWORK_DELAY_MS)), get_current_thread_id());
 
     net->running = true;
 
@@ -171,28 +167,28 @@ void network_layer_stop() {
 }
 
 void network_layer_start_client(NetworkLayer *net, const char *server_address) {
-    ASSERT(net && net->running);
-    ASSERT(net->client.client_state == NOT_RUNNING);
+    Assert(net && net->running);
+    Assert(net->client.client_state == NOT_RUNNING);
 
     net->client.client_state = START;
     net->client.server_address = server_address;
 }
 
 void network_layer_stop_client(NetworkLayer *net) {
-    ASSERT(net && net->running);
+    Assert(net && net->running);
 
     net->client.client_state = STOP;
 }
 
 void network_layer_start_server(NetworkLayer *net) {
-    ASSERT(net && net->running);
-    ASSERT(net->server.server_state == NOT_RUNNING);
+    Assert(net && net->running);
+    Assert(net->server.server_state == NOT_RUNNING);
 
     net->server.server_state = START;
 }
 
 void network_layer_stop_server(NetworkLayer *net) {
-    ASSERT(net && net->running);
+    Assert(net && net->running);
 
     net->server.server_state = STOP;
 }
@@ -201,7 +197,7 @@ void network_layer_update_client(NetworkLayer *net) {
     if (net->client.client_state == START) {
 
         // set when changing state to start from main thread 
-        ASSERT(net->client.server_address);
+        Assert(net->client.server_address);
 
         // set to not running, if we return early then this is how
         // the game client knows, if this all works then set to running
@@ -216,7 +212,7 @@ void network_layer_update_client(NetworkLayer *net) {
         
             bool ok = address.ParseString(net->client.server_address);
             if (!ok) {
-                logf("Could not parse server address supplied: {}", net->client.server_address);
+                Logf("Could not parse server address supplied: {}", net->client.server_address);
                 return;
             }
     
@@ -229,7 +225,7 @@ void network_layer_update_client(NetworkLayer *net) {
             
             connection = net->interface->ConnectByIPAddress(address, 1, &connect_options);
             if (connection == k_HSteamNetConnection_Invalid ) {
-                log("Problem when creating network client, invalid connection to server");
+                Log("Problem when creating network client, invalid connection to server");
                 return;
             }
         }
@@ -238,7 +234,7 @@ void network_layer_update_client(NetworkLayer *net) {
     }
 
     if (net->client.client_state == STOP) {
-        log("Shutting down network client");
+        Log("Shutting down network client");
 
         net->interface->CloseConnection(net->client.connection, 0, nullptr, false);
         net->client.connection = k_HSteamNetConnection_Invalid;
@@ -255,10 +251,10 @@ void network_layer_update_client(NetworkLayer *net) {
                 break;
             }
  
-            ASSERT(message_count == 1 && incoming_message != NULL);
+            Assert(message_count == 1 && incoming_message != NULL);
  
             { // copy message contents to byte slice and add to network queue
-                Slice<u8> bytes = slice_create_malloc<u8>(incoming_message->m_cbSize);
+                slice<u8> bytes = slice_create_malloc<u8>(incoming_message->m_cbSize);
                 slice_copy_raw_ptr(bytes, incoming_message->m_pData);
                 network_queue_push(&net->client_in_queue, bytes);
             }
@@ -280,7 +276,7 @@ void network_layer_update_server(NetworkLayer *net) {
 
         { // parse ip address
             address.Clear();
-            ASSERT(address.ParseString("::1"));
+            Assert(address.ParseString("::1"));
             address.m_port = DEFAULT_PORT;
         }
 
@@ -290,24 +286,24 @@ void network_layer_update_server(NetworkLayer *net) {
             
             net->server.socket = net->interface->CreateListenSocketIP(address, 1, &connect_options);
             if (net->server.socket == k_HSteamListenSocket_Invalid) {
-                logf("Error creating server socket, failed to listen on port {}", DEFAULT_PORT);
+                Logf("Error creating server socket, failed to listen on port {}", DEFAULT_PORT);
                 return;
             }
 
             net->server.poll_group = net->interface->CreatePollGroup();
             if (net->server.poll_group == k_HSteamNetPollGroup_Invalid) {
-                log("Error creating poll group for network server");
+                Log("Error creating poll group for network server");
                 return;
             }
 
-            logf("Started server and listening on port {}", DEFAULT_PORT);
+            Logf("Started server and listening on port {}", DEFAULT_PORT);
         }
     
         net->server.server_state = RUNNING;
     }
 
     if (net->server.server_state == STOP) {
-        log("Shutting down server gracefully");
+        Log("Shutting down server gracefully");
     
         for (HSteamNetConnection connection : net->server.connections) {
             net->interface->CloseConnection(connection, 0, "Server shutdown", true);
@@ -333,10 +329,10 @@ void network_layer_update_server(NetworkLayer *net) {
                 break;
             }
     
-            ASSERT(message_count == 1 && incoming_message != NULL);
+            Assert(message_count == 1 && incoming_message != NULL);
     
             { // copy message contents to byte slice and add to network queue
-                Slice<u8> bytes = slice_create_malloc<u8>(incoming_message->m_cbSize);
+                slice<u8> bytes = slice_create_malloc<u8>(incoming_message->m_cbSize);
                 slice_copy_raw_ptr(bytes, incoming_message->m_pData);
                 network_queue_push(&net->server_in_queue, bytes);
             }
@@ -353,20 +349,20 @@ void server_on_connection_changed(NetworkLayer *net, Server *server, SteamNetCon
         case k_ESteamNetworkingConnectionState_ProblemDetectedLocally:  break;
         case k_ESteamNetworkingConnectionState_Connected:               break;
         case k_ESteamNetworkingConnectionState_Connecting: {
-            logf("Server received connection request from {}", info->m_info.m_szConnectionDescription);
+            Infof("Server received connection request from {}", info->m_info.m_szConnectionDescription);
     
             if (net->interface->AcceptConnection(info->m_hConn) != k_EResultOK) {
                 // This could fail.  If the remote host tried to connect, but then
                 // disconnected, the connection may already be half closed.  Just
                 // destroy whatever we have on our side.
                 net->interface->CloseConnection(info->m_hConn, 0, nullptr, false);
-                log("Server could not accept connection");
+                Err("Server could not accept connection");
                 break;
             }
     
             if (!net->interface->SetConnectionPollGroup(info->m_hConn, server->poll_group)) {
                 net->interface->CloseConnection(info->m_hConn, 0, nullptr, false );
-                log("Server failed to set poll group for connection");
+                Err("Server failed to set poll group for connection");
                 break;
             }
     
@@ -378,17 +374,17 @@ void server_on_connection_changed(NetworkLayer *net, Server *server, SteamNetCon
 }
 
 void client_on_connection_changed(NetworkLayer *net, Client *client, SteamNetConnectionStatusChangedCallback_t *info) {
-    ASSERT(info->m_hConn == client->connection || client->connection == k_HSteamNetConnection_Invalid);
+    Assert(info->m_hConn == client->connection || client->connection == k_HSteamNetConnection_Invalid);
 
     switch (info->m_info.m_eState) {
         case k_ESteamNetworkingConnectionState_None: {
-            logf("Client connection is in a none state: {}", info->m_info.m_szEndDebug);
+            Warnf("Client connection is in a none state: {}", info->m_info.m_szEndDebug);
         } break;
         case k_ESteamNetworkingConnectionState_ClosedByPeer: {
-            logf("Client connection closed by peer: {}", info->m_info.m_szEndDebug);
+            Errf("Client connection closed by peer: {}", info->m_info.m_szEndDebug);
         } break;
         case k_ESteamNetworkingConnectionState_Connecting: {
-            log("Client is trying to connect");
+            Infof("Client is trying to connect");
         } break;
         case k_ESteamNetworkingConnectionState_ProblemDetectedLocally: {
             // TODO: maybe its fine to set it to stop and print what happened
@@ -396,13 +392,13 @@ void client_on_connection_changed(NetworkLayer *net, Client *client, SteamNetCon
             client->client_state = NOT_RUNNING;
     
             if (info->m_eOldState == k_ESteamNetworkingConnectionState_Connecting ) {
-                logf("Client tried to connect but failed: {}", info->m_info.m_szEndDebug);
+                Errf("Client tried to connect but failed: {}", info->m_info.m_szEndDebug);
             }
             else if (info->m_info.m_eState == k_ESteamNetworkingConnectionState_ProblemDetectedLocally) {
-                logf("Client lost contact with the host: {}", info->m_info.m_szEndDebug);
+                Errf("Client lost contact with the host: {}", info->m_info.m_szEndDebug);
             }
             else {
-                logf("Client disconnected from server: {}", info->m_info.m_szEndDebug);
+                Infof("Client disconnected from server: {}", info->m_info.m_szEndDebug);
             }
     
             // Clean up the connection.  This is important!
@@ -415,34 +411,34 @@ void client_on_connection_changed(NetworkLayer *net, Client *client, SteamNetCon
             client->connection = k_HSteamNetConnection_Invalid;
         } break;
         case k_ESteamNetworkingConnectionState_Connected: {
-            log("Client connected to server");
+            Info("Client connected to server");
         } break;
         default: break;
     }
 }
 
 void server_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info) {
-    ASSERT(g_network_layer != NULL);
+    Assert(g_network_layer != NULL);
 
     server_on_connection_changed(g_network_layer, &g_network_layer->server, info);
 }
 
 void client_network_connection_status_changed_callback(SteamNetConnectionStatusChangedCallback_t *info) {
-    ASSERT(g_network_layer != NULL);
+    Assert(g_network_layer != NULL);
 
     client_on_connection_changed(g_network_layer, &g_network_layer->client, info);
 }
 
-void network_queue_push(NetworkQueue *network_queue, Slice<u8> message) {
+void network_queue_push(NetworkQueue *network_queue, slice<u8> message) {
     std::scoped_lock lock(network_queue->mutex);
 
-    Slice<u8> message_copy = slice_create_malloc<u8>(message.len);
+    slice<u8> message_copy = slice_create_malloc<u8>(message.len);
     slice_copy(message_copy, message);
 
     network_queue->messages.push(message_copy);
 }
 
-bool network_queue_pop(NetworkQueue *network_queue, Slice<u8> *out_message) {
+bool network_queue_pop(NetworkQueue *network_queue, slice<u8> *out_message) {
     std::scoped_lock lock(network_queue->mutex);
 
     if (network_queue->messages.empty()) {
@@ -459,11 +455,11 @@ i64 network_queue_size(NetworkQueue *network_queue) {
     return network_queue->messages.size();
 }
 
-void server_send_to_client(NetworkLayer *net, Slice<u8> message, ConnectionId id) {
+void server_send_to_client(NetworkLayer *net, slice<u8> message, ConnectionId id) {
     net->interface->SendMessageToConnection(id, message.ptr, message.len, k_nSteamNetworkingSend_Reliable, NULL);
 }
 
-void server_send_to_all_clients(NetworkLayer *net, Slice<u8> message, ConnectionId exclude) {
+void server_send_to_all_clients(NetworkLayer *net, slice<u8> message, ConnectionId exclude) {
     for (ConnectionId id : net->server.connections) {
         if (exclude != 0 && id == exclude) {
             continue;
@@ -473,19 +469,13 @@ void server_send_to_all_clients(NetworkLayer *net, Slice<u8> message, Connection
     }
 }
 
-void client_send_to_server(NetworkLayer *net, Slice<u8> message) {
+void client_send_to_server(NetworkLayer *net, slice<u8> message) {
     net->interface->SendMessageToConnection(net->client.connection, message.ptr, message.len, k_nSteamNetworkingSend_Reliable, NULL);
 }
 
 void networking_debug_callback(ESteamNetworkingSocketsDebugOutputType type, const char *message) {
-    log_mutex.lock();
-    printf("[NETWORK DEBUG]: %s\n", message);
-
-    if (type == k_ESteamNetworkingSocketsDebugOutputType_Bug) {
-        printf("[NETWORK]: fatal error\n");
-        BREAKPOINT;
-    }
-    log_mutex.unlock();
+    Logf("[NETWORK DEBUG]: {}", message);
+    Assert(type != k_ESteamNetworkingSocketsDebugOutputType_Bug);
 }
 
 #endif

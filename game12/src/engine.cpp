@@ -79,9 +79,9 @@
 #define GL_CALL(x) \
     clear_gl_errors(); \
     x;\
-    ASSERT(check_gl_errors());
+    Assert(check_gl_errors());
 
-#define GL_VERIFY() ASSERT(check_gl_errors());
+#define GL_VERIFY() Assert(check_gl_errors());
 
 /////////////////////////////////////////////////////////////////////////////
 //////////////////////////////// @window ////////////////////////////////////
@@ -89,7 +89,7 @@
 struct Window {
     GLFWwindow *glfw_window;
 
-    str title;
+    string title;
     v2i logical_size;
     v2i frame_buffer_size;
     bool vsync;
@@ -114,13 +114,13 @@ struct {
 } MOUSE;
 
 Window *WIN() {
-    ASSERT(g_window != NULL);
+    Assert(g_window != NULL);
     return g_window;
 }
 
-bool window_init(str title, i32 width, i32 height);
+bool window_init(string title, i32 width, i32 height);
 void set_mouse_captured(Window *window, bool captured);
-void set_window_title(Window *window, str title);
+void set_window_title(Window *window, string title);
 void poll_inputs();
 void swap_buffers(Window *window);
 void toggle_vsync(Window *window);
@@ -129,9 +129,9 @@ void glfw_mouse_move_callback(GLFWwindow* window, f64 x, f64 y);
 void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 mods);
 void glfw_error_callback(int error_code, const char* description);
 
-bool window_init(str title, i32 width, i32 height) {
+bool window_init(string title, i32 width, i32 height) {
     if (glfwInit() == 0) {
-        log("Failed to init glfw");
+        Log("Failed to init glfw");
         return false;
     }
 
@@ -155,7 +155,7 @@ bool window_init(str title, i32 width, i32 height) {
 
     g_window->glfw_window = glfwCreateWindow(g_window->logical_size.x, g_window->logical_size.y, g_window->title.c(), NULL, NULL);
     if (g_window->glfw_window == NULL) {
-        log("Failed to create window");
+        Log("Failed to create window");
         return false;
     }
 
@@ -182,15 +182,15 @@ void set_mouse_captured(Window *window, bool captured) {
 
     if (captured) {
         glfwSetInputMode(window->glfw_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-        SET_BIT(io.ConfigFlags, ImGuiConfigFlags_NoMouse);
+        SetBit(io.ConfigFlags, ImGuiConfigFlags_NoMouse);
     } 
     else {
         glfwSetInputMode(window->glfw_window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-        UNSET_BIT(io.ConfigFlags, ImGuiConfigFlags_NoMouse);
+        UnsetBit(io.ConfigFlags, ImGuiConfigFlags_NoMouse);
     }
 }
 
-void set_window_title(Window *window, str title) {
+void set_window_title(Window *window, string title) {
     glfwSetWindowTitle(window->glfw_window, title.c());
 }
 
@@ -405,7 +405,7 @@ struct Texture {
     u8 *data;
 
     f32 animation_length;
-    Slice<Texture> sub_textures;
+    slice<Texture> sub_textures;
 };
 
 struct RenderTexture {
@@ -442,13 +442,13 @@ struct FrameBuffer {
 };
 
 struct Shader {
-    str debug_name;
+    string debug_name;
     u32 id;
 };
 
 struct Mesh {
-    Slice<MeshVertex> vertices;
-    Slice<u32> indices;
+    slice<MeshVertex> vertices;
+    slice<u32> indices;
 
     u32 vertex_array_id;
     u32 vertex_buffer_id;
@@ -550,23 +550,23 @@ v3 get_right_direction(v3 rotation);
 v3 get_up_direction(v3 rotation);
 
 // Shader API
-bool init_shader(Shader *shader, str debug_name, str vertex_shader_path, str fragment_shader_path);
-void assign_texture_slot(Shader *shader, str texture_name, i32 slot);
+bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, string fragment_shader_path);
+void assign_texture_slot(Shader *shader, string texture_name, i32 slot);
 void use_shader(Shader shader);
-void set_uniform_i32(Shader shader, str name, i32 value);
-void set_uniform_f32(Shader shader, str name, f32 value);
-void set_uniform_m4(Shader shader, str name, m4 *matrix);
-void set_uniform_v2(Shader shader, str name, v2 vector);
-void set_uniform_v3(Shader shader, str name, v3 vector);
-void set_uniform_v4(Shader shader, str name, v4 vector);
+void set_uniform_i32(Shader shader, string name, i32 value);
+void set_uniform_f32(Shader shader, string name, f32 value);
+void set_uniform_m4(Shader shader, string name, m4 *matrix);
+void set_uniform_v2(Shader shader, string name, v2 vector);
+void set_uniform_v3(Shader shader, string name, v3 vector);
+void set_uniform_v4(Shader shader, string name, v4 vector);
 
 // Mesh API
-Mesh *mesh_create(Renderer *renderer, Slice<MeshVertex> vertices, Slice<u32> indices);
-Mesh *mesh_create_from_file(Renderer *renderer, str mesh_path);
+Mesh *mesh_create(Renderer *renderer, slice<MeshVertex> vertices, slice<u32> indices);
+Mesh *mesh_create_from_file(Renderer *renderer, string mesh_path);
 void upload_mesh(Mesh *mesh);
 
 // Render Texture API
-RenderTexture load_render_texture(Renderer *renderer, str path);
+RenderTexture load_render_texture(Renderer *renderer, string path);
 void upload_texture_to_gpu(Renderer *renderer, RenderTexture *texture);
 
 // Renderer init API
@@ -575,12 +575,12 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
 
 bool load_shaders(Renderer *renderer);
 void delete_shaders(Renderer *renderer);
-Texture *load_texture(Renderer *renderer, str path);
-Texture *load_animated_texture(Renderer *renderer, str path, i64 cell_count, f32 animation_length);
+Texture *load_texture(Renderer *renderer, string path);
+Texture *load_animated_texture(Renderer *renderer, string path, i64 cell_count, f32 animation_length);
 bool build_atlas(Renderer *renderer);
 u32 upload_texture_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
 u32 upload_font_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data);
-bool load_font(Renderer *renderer, str path, i64 width, i64 height, f32 pixel_height);
+bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel_height);
 
 // Renderer frame API
 void renderer_clear_frame(v4 colour);
@@ -606,7 +606,7 @@ void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position, v3 scale, v3 rotatio
 void draw_quad_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour, v2 uvs[4], DrawType type);
 void draw_rectangle_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour);
 void draw_circle_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour);
-void draw_text_ui(Renderer *renderer, str text, v3 position, f32 font_size, v4 color);
+void draw_text_ui(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
 
 void toggle_wireframe(Renderer *renderer);
 f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
@@ -707,21 +707,21 @@ v3 get_up_direction(v3 rotation) {
     return {0, 1, 0};
 }
 
-bool init_shader(Shader *shader, str debug_name, str vertex_shader_path, str fragment_shader_path) {
+bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, string fragment_shader_path) {
     const i64 buffer_size = 640;
     i32 compile_status = 0;
     i32 link_status = 0;
     char error_buffer[buffer_size];
     
-    str vertex_shader_source = read_entire_file(vertex_shader_path);
+    string vertex_shader_source = read_entire_file(vertex_shader_path);
     if (vertex_shader_source.len == 0) {
-        logf("{}: failed to load vertex shader file", debug_name.c());
+        Logf("{}: failed to load vertex shader file", debug_name.c());
         return false;
     }
 
-    str fragment_shader_source = read_entire_file(fragment_shader_path);
+    string fragment_shader_source = read_entire_file(fragment_shader_path);
     if (fragment_shader_source.len == 0) {
-        logf("{}: failed to load default fragment shader file", debug_name.c());
+        Logf("{}: failed to load default fragment shader file", debug_name.c());
         return false;
     }
 
@@ -733,7 +733,7 @@ bool init_shader(Shader *shader, str debug_name, str vertex_shader_path, str fra
     glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &compile_status);
     if (compile_status == 0) {
         glGetShaderInfoLog(vertex_shader, buffer_size, nullptr, &error_buffer[0]);
-        logf("{}: failed to compile vertex shader: {}", debug_name.c(), error_buffer);
+        Logf("{}: failed to compile vertex shader: {}", debug_name.c(), error_buffer);
         return false;
     }
 
@@ -745,7 +745,7 @@ bool init_shader(Shader *shader, str debug_name, str vertex_shader_path, str fra
     glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &compile_status);
     if (compile_status == 0) {
         glGetShaderInfoLog(fragment_shader, buffer_size, nullptr, &error_buffer[0]);
-        logf("{}: failed to compile fragment shader: {}", debug_name.c(), error_buffer);
+        Logf("{}: failed to compile fragment shader: {}", debug_name.c(), error_buffer);
         return false;
     }
 
@@ -759,19 +759,19 @@ bool init_shader(Shader *shader, str debug_name, str vertex_shader_path, str fra
 
     if (link_status == 0) {
         glGetProgramInfoLog(shader_program, buffer_size, nullptr, &error_buffer[0]);
-        logf("{}: failed to link shader program: {}", debug_name.c(), error_buffer);
+        Logf("{}: failed to link shader program: {}", debug_name.c(), error_buffer);
         return false;
     }
  
     shader->id = shader_program; 
     shader->debug_name = debug_name;
 
-    logf("Compiled and linked {}", debug_name.c());
+    Logf("Compiled and linked {}", debug_name.c());
 
     return true;
 }
 
-void assign_texture_slot(Shader *shader, str texture_name, i32 slot) {
+void assign_texture_slot(Shader *shader, string texture_name, i32 slot) {
     glUseProgram(shader->id);
     glUniform1i(glGetUniformLocation(shader->id, texture_name.c()), slot);
     glUseProgram(0);
@@ -781,15 +781,15 @@ void use_shader(Shader shader) {
     glUseProgram(shader.id);
 }
 
-void set_uniform_i32(Shader shader, str name, i32 value) {
+void set_uniform_i32(Shader shader, string name, i32 value) {
     glUniform1i(glGetUniformLocation(shader.id, name.c()), value);
 }
 
-void set_uniform_f32(Shader shader, str name, f32 value) {
+void set_uniform_f32(Shader shader, string name, f32 value) {
     glUniform1f(glGetUniformLocation(shader.id, name.c()), value);
 }
 
-void set_uniform_m4(Shader shader, str name, m4 *matrix) {
+void set_uniform_m4(Shader shader, string name, m4 *matrix) {
     glUniformMatrix4fv(
         glGetUniformLocation(shader.id, name.c()),
         1,
@@ -798,28 +798,28 @@ void set_uniform_m4(Shader shader, str name, m4 *matrix) {
     );
 }
 
-void set_uniform_v2(Shader shader, str name, v2 vector) {
+void set_uniform_v2(Shader shader, string name, v2 vector) {
     glUniform2f(
         glGetUniformLocation(shader.id, name.c()),
         vector.x, vector.y
     );
 }
 
-void set_uniform_v3(Shader shader, str name, v3 vector) {
+void set_uniform_v3(Shader shader, string name, v3 vector) {
     glUniform3f(
         glGetUniformLocation(shader.id, name.c()),
         vector.x, vector.y, vector.z 
     );
 }
 
-void set_uniform_v4(Shader shader, str name, v4 vector) {
+void set_uniform_v4(Shader shader, string name, v4 vector) {
     glUniform4f(
         glGetUniformLocation(shader.id, name.c()),
         vector.x, vector.y, vector.z, vector.w
     );
 }
 
-Mesh *mesh_create(Renderer *renderer, Slice<MeshVertex> vertices, Slice<u32> indices) {
+Mesh *mesh_create(Renderer *renderer, slice<MeshVertex> vertices, slice<u32> indices) {
     Mesh* mesh = push(&renderer->meshes);
 
     *mesh = Mesh {
@@ -870,25 +870,25 @@ Mesh *mesh_create(Renderer *renderer, Slice<MeshVertex> vertices, Slice<u32> ind
     return mesh;
 }
 
-Mesh *mesh_create_from_file(Renderer *renderer, str mesh_path) {
+Mesh *mesh_create_from_file(Renderer *renderer, string mesh_path) {
     // Create an instance of the Importer class
     Assimp::Importer importer;
     
     const aiScene *scene = importer.ReadFile(mesh_path.c(), aiProcess_Triangulate | aiProcess_MakeLeftHanded | aiProcess_GenSmoothNormals);	
     if(scene == NULL || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-        logf("assimp error: {}", importer.GetErrorString());
+        Logf("assimp error: {}", importer.GetErrorString());
         return NULL;
     }
 
     // only assuming one child and one mesh for now
-    ASSERT(scene->mRootNode->mNumChildren == 1);
+    Assert(scene->mRootNode->mNumChildren == 1);
     aiNode *node = scene->mRootNode->mChildren[0];
 
-    ASSERT(node->mNumMeshes == 1);
+    Assert(node->mNumMeshes == 1);
     aiMesh *loaded_mesh = scene->mMeshes[node->mMeshes[0]];
 
-    Slice<MeshVertex> vertices = slice_create_malloc<MeshVertex>(loaded_mesh->mNumVertices);
-    Slice<u32> indices = slice_create_malloc<u32>(loaded_mesh->mNumFaces * 3);
+    slice<MeshVertex> vertices = slice_create_malloc<MeshVertex>(loaded_mesh->mNumVertices);
+    slice<u32> indices = slice_create_malloc<u32>(loaded_mesh->mNumFaces * 3);
 
     for(i64 v = 0; v < loaded_mesh->mNumVertices; v++) {
         MeshVertex vertex = {};
@@ -916,7 +916,7 @@ Mesh *mesh_create_from_file(Renderer *renderer, str mesh_path) {
         }
     }
 
-    logf("Loaded model with path \"{}\"", mesh_path.c());
+    Logf("Loaded model with path \"{}\"", mesh_path.c());
 
     return mesh_create(renderer, vertices, indices);
 }
@@ -926,7 +926,7 @@ void upload_mesh(Mesh *mesh) {
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(MeshVertex) * mesh->vertices.len, &mesh->vertices[0]);
 }
 
-RenderTexture load_render_texture(Renderer *renderer, str path) {
+RenderTexture load_render_texture(Renderer *renderer, string path) {
     i32 width       = 0;
     i32 height      = 0;
     i32 channels    = 0;
@@ -940,7 +940,7 @@ RenderTexture load_render_texture(Renderer *renderer, str path) {
         return {};
     }
 
-    logf("loaded texture with path \"{}\" [{}x{}] {} bytes", path.c(), width, height, width * height * channels);
+    Logf("loaded texture with path \"{}\" [{}x{}] {} bytes", path.c(), width, height, width * height * channels);
 
     return RenderTexture {
         .id = 0,
@@ -966,7 +966,7 @@ void upload_texture_to_gpu(Renderer *renderer, RenderTexture *texture) {
 }
 
 Renderer *REN() {
-    ASSERT(g_renderer != NULL);
+    Assert(g_renderer != NULL);
     return g_renderer;
 }
 
@@ -1018,7 +1018,7 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
 
     bool ok = load_shaders(renderer);
     if (!ok) {
-        log("Error when loading and compiling shaders");
+        Log("Error when loading and compiling shaders");
         return false;
     }
 
@@ -1048,7 +1048,7 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
     { // load default normal texture
         Texture *texture = load_texture(renderer, "resources/textures/defaults/normal.png");
         if (texture == NULL) {
-            log("failed to load default texture");
+            Log("failed to load default texture");
             return false;
         }
 
@@ -1058,20 +1058,20 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
     { // load default font
         bool ok = load_font(renderer, "resources/fonts/OpenSans-Bold.ttf", 1000, 1000, 160);
         if (!ok) {
-            log("failed to load default font");
+            Log("failed to load default font");
             return false;
         }
     }
 
     { // load primitive models 
         renderer->cube_primitive = mesh_create_from_file(REN(), "resources/models/primitives/cube.obj");
-        ASSERT(renderer->cube_primitive);
+        Assert(renderer->cube_primitive);
 
         renderer->sphere_primitive = mesh_create_from_file(REN(), "resources/models/primitives/sphere.obj");
-        ASSERT(renderer->sphere_primitive);
+        Assert(renderer->sphere_primitive);
 
-        Slice<MeshVertex> verts = slice_create_malloc<MeshVertex>(4);
-        Slice<u32> indices = slice_create_malloc<u32>(6);
+        slice<MeshVertex> verts = slice_create_malloc<MeshVertex>(4);
+        slice<u32> indices = slice_create_malloc<u32>(6);
 
         verts[0] = MeshVertex {.position = {-0.5,  0.5, 0}, .normal = {0, 0, -1}, .uv = {0, 1}};
         verts[1] = MeshVertex {.position = { 0.5,  0.5, 0}, .normal = {0, 0, -1}, .uv = {1, 1}};
@@ -1086,7 +1086,7 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         indices[5] = 2;
 
         renderer->quad_primitive = mesh_create(REN(), verts, indices);
-        ASSERT(renderer->quad_primitive);
+        Assert(renderer->quad_primitive);
     }
 
     { // create ui quad buffer
@@ -1106,7 +1106,7 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
 bool load_shaders(Renderer *renderer) {
     bool ok = init_shader(&renderer->default_shader, "Default shader", "resources/shaders/default_vertex.shader", "resources/shaders/default_fragment.shader");
     if (!ok) {
-        log("Error when creating default shader program");
+        Log("Error when creating default shader program");
         return false;
     }
 
@@ -1115,7 +1115,7 @@ bool load_shaders(Renderer *renderer) {
 
     ok = init_shader(&renderer->lighting_shader, "Lighting shader", "resources/shaders/lighting_vertex.shader", "resources/shaders/lighting_fragment.shader");
     if (!ok) {
-        log("Error when creating lighting shader program");
+        Log("Error when creating lighting shader program");
         return false;
     }
 
@@ -1128,7 +1128,7 @@ bool load_shaders(Renderer *renderer) {
 
     ok = init_shader(&renderer->mesh_shader, "Mesh shader", "resources/shaders/mesh_vertex.shader", "resources/shaders/mesh_fragment.shader");
     if (!ok) {
-        log("Error when creating mesh shader program");
+        Log("Error when creating mesh shader program");
         return false;
     }
 
@@ -1141,7 +1141,7 @@ void delete_shaders(Renderer *renderer) {
     glDeleteProgram(renderer->mesh_shader.id);
 }
 
-Texture *load_texture(Renderer *renderer, str path) {
+Texture *load_texture(Renderer *renderer, string path) {
     i32 width       = 0;
     i32 height      = 0;
     i32 channels    = 0;
@@ -1155,7 +1155,7 @@ Texture *load_texture(Renderer *renderer, str path) {
         return NULL;
     }
 
-    logf("Loaded texture with path \"{}\" [{}x{}] {} bytes", path.c(), width, height, width * height * channels);
+    Logf("Loaded texture with path \"{}\" [{}x{}] {} bytes", path.c(), width, height, width * height * channels);
 
     i64 id = renderer->textures.len;
 
@@ -1171,7 +1171,7 @@ Texture *load_texture(Renderer *renderer, str path) {
     return texture;
 }
 
-Texture *load_animated_texture(Renderer *renderer, str path, i64 cell_count, f32 animation_length) {
+Texture *load_animated_texture(Renderer *renderer, string path, i64 cell_count, f32 animation_length) {
     Texture *texture = load_texture(renderer, path);
     if(texture == NULL) {
         return NULL;
@@ -1361,7 +1361,7 @@ u32 upload_font_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data) {
     return texture_id;
 }
 
-bool load_font(Renderer *renderer, str path, i64 width, i64 height, f32 pixel_height) {
+bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel_height) {
     Font font = Font{
         .width = width,
         .height = height,
@@ -1369,7 +1369,7 @@ bool load_font(Renderer *renderer, str path, i64 width, i64 height, f32 pixel_he
         .bitmap_data = (u8 *) malloc(width * height),
     };
 
-    str font_data = read_entire_file(path);
+    string font_data = read_entire_file(path);
     if (font_data.len == 0) {
         printf("failed to load font \"%s\"\n", path.c());
         return false;
@@ -1617,7 +1617,7 @@ void draw_circle_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 co
     draw_quad_ui(renderer, position, size, rotation, colour, QUAD_UVS, DrawType::CIRCLE);
 }
 
-void draw_text_ui(Renderer *renderer, str text, v3 position, f32 font_size, v4 color) {
+void draw_text_ui(Renderer *renderer, string text, v3 position, f32 font_size, v4 color) {
     if (text.len == 0) {
         return;
     }
@@ -1628,7 +1628,7 @@ void draw_text_ui(Renderer *renderer, str text, v3 position, f32 font_size, v4 c
         v2 uvs[4];
     };
 
-    Slice<Glyph> glyphs = slice_create_malloc<Glyph>(text.len);
+    slice<Glyph> glyphs = slice_create_malloc<Glyph>(text.len);
 
     f32 total_text_width = 0;
     f32 text_height = 0;
@@ -1964,7 +1964,7 @@ QuadBuffer quad_buffer_create(i64 size) {
 
     { // index buffer
         const i64 index_buffer_length = size * 6;
-        Slice<u32> indices = slice_create_malloc<u32>(index_buffer_length);
+        slice<u32> indices = slice_create_malloc<u32>(index_buffer_length);
 
         i64 i = 0;
         while (i < index_buffer_length) {
@@ -2198,16 +2198,16 @@ SoundEngine *g_sound_engine = NULL;
 
 SoundEngine *SE();
 bool sound_engine_init();
-Sound *sound_engine_load(SoundEngine *sound_engine, str path);
+Sound *sound_engine_load(SoundEngine *sound_engine, string path);
 void sound_engine_play(Sound *sound);
 
 SoundEngine *SE() {
-    ASSERT(g_sound_engine != NULL);
+    Assert(g_sound_engine != NULL);
     return g_sound_engine;
 }
 
 bool sound_engine_init() {
-    ASSERT(g_sound_engine == NULL);
+    Assert(g_sound_engine == NULL);
 
     g_sound_engine = new SoundEngine {
         .sounds = stack_array_create<ma_sound, MAX_SOUNDS>() 
@@ -2215,23 +2215,23 @@ bool sound_engine_init() {
 
     ma_result result = ma_engine_init(NULL, &g_sound_engine->engine);
     if (result != MA_SUCCESS) {
-        log("failed to init sound engine");
+        Log("failed to init sound engine");
         return false;
     }
 
     return true;
 }
 
-Sound *sound_engine_load(SoundEngine *sound_engine, str path) {
+Sound *sound_engine_load(SoundEngine *sound_engine, string path) {
     Sound *sound = push(&sound_engine->sounds);
 
     ma_result result = ma_sound_init_from_file(&sound_engine->engine, path.c(), 0, NULL, NULL, sound);
     if (result != MA_SUCCESS) {
-        logf("failed to load sound with path: \"{}\"", path.c());
+        Logf("failed to load sound with path: \"{}\"", path.c());
         return NULL;
     }
 
-    logf("Loaded sound with path \"{}\"", path.c());
+    Logf("Loaded sound with path \"{}\"", path.c());
 
     return sound; 
 }

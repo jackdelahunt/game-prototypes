@@ -9,38 +9,64 @@
 #include <string.h>
 #include <chrono>
 
-#define BREAKPOINT __debugbreak()
-#define ASSERT(x) if (!(x)) __debugbreak();
-#define BIT_SET(a, b) ((a & b) != 0)
-#define SET_BIT(a, b) (a) |= (b)
-#define UNSET_BIT(a, b) (a) &= ~(b) 
-#define SCOPE }switch(0){default:
+#ifndef WINDOWS
+    #error only can build for windows right now sorry!
+#endif
+
+#define __FILENAME__ (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : __FILE__)
+
+#define Log(s)          _log (ResetAsciiCode,     "Log:",   __FILENAME__, __LINE__, s)
+#define Logf(f, ...)    _logf(ResetAsciiCode,     "Log:",   __FILENAME__, __LINE__, f, __VA_ARGS__)
+#define Info(s)         _log (GreenAsciiCode,     "Info:",  __FILENAME__, __LINE__, s)
+#define Infof(f, ...)   _logf(GreenAsciiCode,     "Info:",  __FILENAME__, __LINE__, f, __VA_ARGS__)
+#define Warn(s)         _log (YellowAsciiCode,    "Warn:",  __FILENAME__, __LINE__, s)
+#define Warnf(f, ...)   _logf(YellowAsciiCode,    "Warn:",  __FILENAME__, __LINE__, f, __VA_ARGS__)
+#define Err(s)          _log (BrightRedAsciiCode, "Error:", __FILENAME__, __LINE__, s)
+#define Errf(f, ...)    _logf(BrightRedAsciiCode, "Error:", __FILENAME__, __LINE__, f, __VA_ARGS__)
+#define Fatal(s)        _log (RedAsciiCode,       "Fatal:", __FILENAME__, __LINE__, s)
+#define Fatalf(f, ...)  _logf(RedAsciiCode,       "Fatal:", __FILENAME__, __LINE__, f, __VA_ARGS__)
+
+#ifdef ENABLE_ASSERTS
+    #define Breakpoint            __debugbreak()
+    #define Unreachable(s)        Fatalf("Unreachable: {}", (s)); Breakpoint
+    #define Assert(condition)     if (!(condition)) { Fatalf("Triggered Assert({})", #condition);          Breakpoint; }
+    #define Assertf(condition, s) if (!(condition)) { Fatalf("Triggered Assert({}): {}", #condition, (s)); Breakpoint; }
+#else
+    #define Breakpoint
+    #define Unreachable(s)
+    #define Assert(condition)
+    #define Assertf(condition, s)
+#endif
+
+#define BitSet(a, b) ((a & b) != 0)
+#define SetBit(a, b) (a) |= (b)
+#define UnsetBit(a, b) (a) &= ~(b) 
+
+#define Scope }switch(0){default:
 
 #define KB(x) ((x) * 1024)
 #define MB(x) ((x) * 1024 * 1024)
 #define GB(x) ((x) * 1024 * 1024 * 1024)
 
-#define RESET_ASCII_CODE         "\033[0m"
+#define ResetAsciiCode         "\033[0m"
 
-// Regular colors
-#define BLACK_ASCII_CODE         "\033[30m"
-#define RED_ASCII_CODE           "\033[31m"
-#define GREEN_ASCII_CODE         "\033[32m"
-#define YELLOW_ASCII_CODE        "\033[33m"
-#define BLUE_ASCII_CODE          "\033[34m"
-#define MAGENTA_ASCII_CODE       "\033[35m"
-#define CYAN_ASCII_CODE          "\033[36m"
-#define WHITE_ASCII_CODE         "\033[37m"
+#define BlackAsciiCode         "\033[30m"
+#define RedAsciiCode           "\033[31m"
+#define GreenAsciiCode         "\033[32m"
+#define YellowAsciiCode        "\033[33m"
+#define BlueAsciiCode          "\033[34m"
+#define MagentaAsciiCode       "\033[35m"
+#define CyanAsciiCode          "\033[36m"
+#define WhiteAsciiCode         "\033[37m"
 
-// Bright colors
-#define BRIGHT_BLACK_ASCII_CODE  "\033[90m"
-#define BRIGHT_RED_ASCII_CODE    "\033[91m"
-#define BRIGHT_GREEN_ASCII_CODE  "\033[92m"
-#define BRIGHT_YELLOW_ASCII_CODE "\033[93m"
-#define BRIGHT_BLUE_ASCII_CODE   "\033[94m"
-#define BRIGHT_MAGENTA_ASCII_CODE "\033[95m"
-#define BRIGHT_CYAN_ASCII_CODE   "\033[96m"
-#define BRIGHT_WHITE_ASCII_CODE  "\033[97m"
+#define BrightBlackAsciiCode   "\033[90m"
+#define BrightRedAsciiCode     "\033[91m"
+#define BrightGreenAsciiCode   "\033[92m"
+#define BrightYellowAsciiCode  "\033[93m"
+#define BrightBlueAsciiCode    "\033[94m"
+#define BrightMagentaAsciiCode "\033[95m"
+#define BrightCyanAsciiCode    "\033[96m"
+#define BrightWhiteAsciiCode   "\033[97m"
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -60,73 +86,38 @@ using TimePoint = std::chrono::steady_clock::time_point;
 
 // @slice
 template <typename T>
-struct Slice { // TODO: do safety checks in slices
+struct slice { 
     T *ptr;
     i64 len;
 
-    Slice() {
-        this->ptr = NULL;
-        this->len = 0;
-    }
+    slice();
+    slice(T *data, i64 len);
+    slice(const char *c_string);
 
-    Slice(T *data, i64 len) { // C++ sucks
-        this->ptr = data;
-        this->len = len;
-    }
+    T& operator[](i64 index);
+    T* begin();
+    T* end();
 
-    Slice(const char *c_string) {
-        this->ptr = (T *) c_string;
-        this->len = strlen(c_string);
-    }
-
-    T& operator[](i64 index) {
-        ASSERT(index < this->len);
-
-        return this->ptr[index];
-    }
-
-    // slice from a range
-    Slice<T> slice(i64 start, i64 end) {
-        return Slice<T>(this->ptr + start, end - start);
-    }
-
-    // slice from a starting point until the end
-    Slice<T> slice_from(i64 start) {
-        return Slice<T>(this->ptr + start, this->len - start);
-    }
-
-    T* begin() {
-        return ptr;
-    }
-
-    T* end() {
-        return ptr + len;
-    }
-
-    const char *c() {
-        return (const char *) this->ptr;
-    }
+    const char *c();
 };
 
-typedef Slice<u8> str;
+typedef slice<u8> string;
+
+// @arena
+struct Arena {
+    i64 end;
+    slice<u8> bytes;
+};
 
 // @fixedarray
 template <typename T>
 struct FixedArray {
-    Slice<T> slice;
+    slice<T> slice;
     i64 len;
 
-    T& operator[](i64 index) {
-        return this->slice[index];
-    }
-
-    T* begin() {
-        return &slice[0];
-    }
-
-    T* end() {
-        return &slice[len];
-    }
+    T& operator[](i64 index);
+    T* begin();
+    T* end();
 };
 
 // @stackarray
@@ -136,49 +127,22 @@ struct StackArray {
     i64 size = N;
     i64 len;
 
-    T& operator[](i64 index) {
-        return this->data[index];
-    }
-
-    T* begin() {
-        return data;
-    }
-
-    T* end() {
-        return data + len;
-    }
-};
-
-// @arena
-struct Arena {
-    i64 end;
-    Slice<u8> bytes;
+    T& operator[](i64 index);
+    T* begin();
+    T* end();
 };
 
 // @dynamicarray
 template <typename T>
 struct DynamicArray {
     Arena *arena;
-    Slice<T> slice;
+    slice<T> slice;
     i64 len;
     i64 capacity;
 
-    T& operator[](i64 index) {
-        return this->slice[index];
-    }
-
-    T* begin() {
-        return &slice[0];
-    }
-
-    T* end() {
-        return &slice[len];
-    }
-};
-
-struct LogOptions {
-    const char *thread_name;
-    const char *thread_colour;
+    T& operator[](i64 index);
+    T* begin();
+    T* end();
 };
 
 // @timer
@@ -204,90 +168,155 @@ struct AtomicSnapshot {
 
 // @file
 struct File {
-    str path;
+    string path;
     FILE *handle;
 };
 
-template <typename T>   Slice<T> slice_create(T *data, i64 len);
-template <typename T>   Slice<T> slice_create_malloc(i64 len);
-template <typename T>   void slice_free(Slice<T> slice);
-template <typename T>   Slice<u8> slice_to_bytes(Slice<T> slice);
-template <typename T>   Slice<T> slice_from_bytes(Slice<u8> slice);
-template <typename T>   T *bytes_to_ptr(Slice<u8> slice);
-template <typename T>   Slice<u8> bytes_from_ptr(T *ptr);
-template <typename T>   void slice_copy(Slice<T> dst, Slice<T> src);
-template <typename T>   void slice_copy_raw_ptr(Slice<T> slice, void *ptr);
+// @slice
+template <typename T>   slice<T> slice_create(T *data, i64 len);
+template <typename T>   slice<T> slice_range(slice<T> *s, i64 start, i64 end);
+template <typename T>   slice<T> slice_from(slice<T> *s, i64 start);
+template <typename T>   slice<T> slice_create_malloc(i64 len);
+template <typename T>   void slice_free(slice<T> slice);
+template <typename T>   slice<u8> slice_to_bytes(slice<T> slice);
+template <typename T>   slice<T> slice_from_bytes(slice<u8> slice);
+template <typename T>   T *bytes_to_ptr(slice<u8> slice);
+template <typename T>   slice<u8> bytes_from_ptr(T *ptr);
+template <typename T>   void slice_copy(slice<T> dst, slice<T> src);
+template <typename T>   void slice_copy_raw_ptr(slice<T> slice, void *ptr);
 
+// @arena
+Arena arena_create(i64 size);
+void arena_destroy(Arena *arena);
+void arena_reset(Arena *arena);
+template <typename T>   T *arena_alloc(Arena *arena);
+template <typename T>   slice<T> arena_alloc_many(Arena *arena, i64 size);
+template <typename T>   slice<T> arena_realloc(Arena *arena, slice<T> old_slice, i64 new_size);
+
+// @fixedarray
 template <typename T>   FixedArray<T> fixed_array_create(i64 size);
 template <typename T>   void append(FixedArray<T> *array, T value);
 template <typename T>   T* push(FixedArray<T> *array);
 template <typename T>   void reset(FixedArray<T> *array);
 template <typename T>   void swap_remove(FixedArray<T> *array, i64 index);
 
+// @stackarray
 template <typename T, i64 N>    StackArray<T, N> stack_array_create();
 template <typename T, i64 N>    void append(StackArray<T, N> *array, T value);
 template <typename T, i64 N>    T* push(StackArray<T, N> *array);
 template <typename T, i64 N>    void reset(StackArray<T, N> *array);
 template <typename T, i64 N>    void swap_remove(StackArray<T, N> *array, i64 index);
 
-Arena arena_create(i64 size);
-void arena_destroy(Arena *arena);
-void arena_reset(Arena *arena);
-template <typename T>   T *arena_alloc(Arena *arena);
-template <typename T>   Slice<T> arena_alloc_many(Arena *arena, i64 size);
-template <typename T>   Slice<T> arena_realloc(Arena *arena, Slice<T> old_slice, i64 new_size);
+// @dynamicarray
 template <typename T>   DynamicArray<T> dynamic_array_create(Arena *arena, i64 capacity); 
 template <typename T>   void dynamic_array_maybe_grow(DynamicArray<T> *array, i64 required_slots); 
 template <typename T>   void append(DynamicArray<T> *array, T value); 
-template <typename T>   void append_many(DynamicArray<T> *array, Slice<T> values); 
-template <typename T>   Slice<T> push_many(DynamicArray<T> *array, i64 count); 
+template <typename T>   void append_many(DynamicArray<T> *array, slice<T> values); 
+template <typename T>   slice<T> push_many(DynamicArray<T> *array, i64 count); 
 
-template<typename... Args>  str fmt(Arena *arena, str format, Args... args);
-template<typename T>        void fmt_arg(DynamicArray<u8> *bytes, str format, i64 &index, T arg); 
-template<typename T>        void fmt_value(DynamicArray<u8> *bytes, T value);
-template<>                  void fmt_value(DynamicArray<u8> *bytes, bool value);
-template<>                  void fmt_value(DynamicArray<u8> *bytes, str value);
-
-void log(str s);
-void log_set_thread_options(LogOptions options);
-void log_thread_name();
-template<typename... Args>  void logf(str format, Args... args);
-
+// @timer
 Timer timer_create_ms(i64 milliseconds); 
 bool timer_is_complete_reset(Timer *timer); 
 bool timer_is_complete(Timer *timer, f32 *delta_time); 
 
+// @sampler
 Sampler sampler_create(); 
 void sampler_append(Sampler *sampler, f32 sample); 
 f32 sampler_average(Sampler *sampler); 
 f32 sampler_seconds_per_sample(Sampler *sampler); 
 f32 sampler_samples_per_second(Sampler *sampler); 
 
+// @atomicsnapshot
 template <typename T>   void atomic_snapshot_init(AtomicSnapshot<T> *snapshot); 
 template <typename T>   T *atomic_snapshot_write(AtomicSnapshot<T> *snapshot); 
 template <typename T>   T *atomic_snapshot_read(AtomicSnapshot<T> *snapshot); 
 template <typename T>   void atomic_snapshot_swap(AtomicSnapshot<T> *snapshot);
 
+// @file
+string read_entire_file(string path);
+File new_file(string path); 
+bool create_file(File *file); 
+slice<u8> read_entire_file(File *file); 
+bool write_file(File *file, slice<u8> bytes); 
+void close_file(File *file); 
+string read_entire_file(string path); 
+
+// @fmt
+template<typename... Args>  string fmt(Arena *arena, string format, Args... args);
+template<typename T>        void fmt_arg(DynamicArray<u8> *bytes, string format, i64 &index, T arg); 
+template<typename T>        void fmt_value(DynamicArray<u8> *bytes, T value);
+template<>                  void fmt_value(DynamicArray<u8> *bytes, bool value);
+template<>                  void fmt_value(DynamicArray<u8> *bytes, string value);
+
+// @log
+template<typename... Args>
+void _logf(const char *colour, const char *label, const char *file, i32 line, string format, Args... args);
+void _log(const char *colour, const char *label, const char *file, i32 line, string s);
+void log_set_thread_name(const char *name);
+
+// @rand
 f32 rand_f32();
 f32 rand_f32_negative();
 i64 rand_i64();
 i64 rand_i64(i64 min, i64 max);
 
-str read_entire_file(str path);
-File new_file(str path); 
-bool create_file(File *file); 
-Slice<u8> read_entire_file(File *file); 
-bool write_file(File *file, Slice<u8> bytes); 
-void close_file(File *file); 
-str read_entire_file(str path); 
-
 template <typename T>
-Slice<T> slice_create(T *data, i64 len) {
-    return Slice<T>(data, len);
+slice<T>::slice() {
+    this->ptr = NULL;
+    this->len = 0;
 }
 
 template <typename T>
-Slice<T> slice_create_malloc(i64 len) {
+slice<T>::slice(T *data, i64 len) { // C++ sucks
+    this->ptr = data;
+    this->len = len;
+}
+
+template <typename T>
+slice<T>::slice(const char *c_string) {
+    this->ptr = (T *) c_string;
+    this->len = strlen(c_string);
+}
+
+template <typename T>
+T& slice<T>::operator[](i64 index) {
+    Assert(index < this->len);
+
+    return this->ptr[index];
+}
+
+template <typename T>
+T* slice<T>::begin() {
+    return ptr;
+}
+
+template <typename T>
+T* slice<T>::end() {
+    return ptr + len;
+}
+
+template <typename T>
+const char * slice<T>::c() {
+    return (const char *) this->ptr;
+}
+
+template <typename T>
+slice<T> slice_create(T *data, i64 len) {
+    return slice<T>(data, len);
+}
+
+template <typename T>
+slice<T> slice_range(slice<T> *s, i64 start, i64 end) {
+    return slice<T>(s->ptr + start, end - start);
+}
+
+template <typename T>
+slice<T> slice_from(slice<T> *s, i64 start) {
+    return slice<T>(s->ptr + start, s->len - start);
+}
+
+template <typename T>
+slice<T> slice_create_malloc(i64 len) {
     i64 bytes = len * sizeof(T);
 
     T *ptr = (T *) malloc(bytes);
@@ -297,36 +326,36 @@ Slice<T> slice_create_malloc(i64 len) {
 }
 
 template <typename T>
-void slice_free(Slice<T> slice) {
+void slice_free(slice<T> slice) {
     free(slice.ptr);
 }
 
 template <typename T>
-Slice<u8> slice_to_bytes(Slice<T> slice) {
+slice<u8> slice_to_bytes(slice<T> slice) {
     return slice_create((u8 *) slice.ptr, sizeof(T) * slice.len);
 }
 
 template <typename T>
-Slice<T> slice_from_bytes(Slice<u8> slice) {
+slice<T> slice_from_bytes(slice<u8> slice) {
     return slice_create((T *) slice.ptr, slice.len / sizeof(T));
 }
 
 template <typename T>
-T *bytes_to_ptr(Slice<u8> slice) {
-    ASSERT(slice.len == sizeof(T));
+T *bytes_to_ptr(slice<u8> slice) {
+    Assert(slice.len == sizeof(T));
 
     return (T *) slice.ptr;
 }
 
 template <typename T>
-Slice<u8> bytes_from_ptr(T *ptr) {
+slice<u8> bytes_from_ptr(T *ptr) {
     return slice_create((u8 *) ptr, sizeof(T));
 }
 
 template <typename T>
-void slice_copy(Slice<T> dst, Slice<T> src) {
-    ASSERT(dst.ptr && src.ptr);
-    ASSERT(src.len <= dst.len);
+void slice_copy(slice<T> dst, slice<T> src) {
+    Assert(dst.ptr && src.ptr);
+    Assert(src.len <= dst.len);
 
     for (i64 i = 0; i < src.len; i++) {
         dst[i] = src[i];
@@ -338,94 +367,12 @@ void slice_copy(Slice<T> dst, Slice<T> src) {
 // for the length of the slice and the slice has
 // valid memory to copy to
 template <typename T>
-void slice_copy_raw_ptr(Slice<T> slice, void *ptr) {
-    ASSERT(slice.ptr && ptr);
+void slice_copy_raw_ptr(slice<T> slice, void *ptr) {
+    Assert(slice.ptr && ptr);
 
     for (i64 i = 0; i < slice.len; i++) {
         slice.ptr[i] = ((T *) ptr)[i];
     }
-}
-
-template <typename T>
-FixedArray<T> fixed_array_create(i64 size) {
-    return FixedArray<T> {
-        .slice = slice_create_malloc<T>(size),
-        .len = 0
-    };
-}
-
-template <typename T>
-void append(FixedArray<T> *array, T value) {
-    ASSERT(array->len < array->slice.len);
-
-    array->slice[array->len] = value;
-    array->len += 1;
-}
-
-template <typename T>
-T* push(FixedArray<T> *array) {
-    ASSERT(array->len < array->slice.len);
-
-    T *ptr = &array->slice[array->len];
-    array->len++;
-    return ptr;
-}
-
-template <typename T>
-void reset(FixedArray<T> *array) {
-    array->len = 0;
-}
-
-template <typename T>
-void swap_remove(FixedArray<T> *array, i64 index) {
-    ASSERT(index < array->len);
-
-    array->slice[index] = array->slice[array->len - 1];
-    array->len -= 1;
-}
-
-template <typename T, i64 N>
-StackArray<T, N> stack_array_create() {
-    auto sa = StackArray<T, N> {
-        .data = {},
-        .size = N,
-        .len = 0
-    };
-
-    // all zeros
-    memset(sa.data, 0, N);
-
-    return sa;
-}
-
-template <typename T, i64 N>
-void append(StackArray<T, N> *array, T value) {
-    ASSERT(array->len < N);
-
-    array->data[array->len] = value;
-    array->len += 1;
-}
-
-template <typename T, i64 N>
-T* push(StackArray<T, N> *array) {
-    ASSERT(array->len < N);
-
-    T *ptr = &array->data[array->len];
-    array->len++;
-    return ptr;
-}
-
-template <typename T, i64 N>
-void reset(StackArray<T, N> *array) {
-    array->len = 0;
-}
-
-template <typename T, i64 N>
-void swap_remove(StackArray<T, N> *array, i64 index) {
-    ASSERT(index < array->len);
-
-    array->data[index] = array->data[array->len - 1];
-    array->len -= 1;
 }
 
 Arena arena_create(i64 size) {
@@ -448,7 +395,7 @@ template <typename T>
 T *arena_alloc(Arena *arena) {
     const i64 SIZE = sizeof(T);
 
-    ASSERT(arena->end + SIZE <= arena->bytes.len);
+    Assert(arena->end + SIZE <= arena->bytes.len);
 
     T *ptr = (T *) &arena->bytes[arena->end];
     arena->end += SIZE;
@@ -457,25 +404,153 @@ T *arena_alloc(Arena *arena) {
 }
 
 template <typename T>
-Slice<T> arena_alloc_many(Arena *arena, i64 size) {
+slice<T> arena_alloc_many(Arena *arena, i64 size) {
     i64 byte_count = sizeof(T) * size;
 
-    ASSERT(arena->end + byte_count <= arena->bytes.len);
+    Assert(arena->end + byte_count <= arena->bytes.len);
 
-    Slice<u8> bytes = arena->bytes.slice(arena->end, arena->end + byte_count);
+    slice<u8> bytes = slice_range(&arena->bytes, arena->end, arena->end + byte_count);
     arena->end += byte_count;
 
     return slice_create((T *) bytes.ptr, size);
 }
 
 template <typename T>
-Slice<T> arena_realloc(Arena *arena, Slice<T> old_slice, i64 new_size) {
+slice<T> arena_realloc(Arena *arena, slice<T> old_slice, i64 new_size) {
     // right now I just always reallocate, could check if this was the
     // last allocation and just extend the length of the slice - 08/08/25
 
-    Slice<T> new_slice = arena_alloc_many<T>(arena, new_size);
+    slice<T> new_slice = arena_alloc_many<T>(arena, new_size);
     slice_copy(new_slice, old_slice);
     return new_slice;
+}
+
+template <typename T>
+T& FixedArray<T>::operator[](i64 index) {
+    return this->slice[index];
+}
+
+template <typename T>
+T* FixedArray<T>::begin() {
+    return &slice[0];
+}
+
+template <typename T>
+T* FixedArray<T>::end() {
+    return &slice[len];
+}
+
+template <typename T>
+FixedArray<T> fixed_array_create(i64 size) {
+    return FixedArray<T> {
+        .slice = slice_create_malloc<T>(size),
+        .len = 0
+    };
+}
+
+template <typename T>
+void append(FixedArray<T> *array, T value) {
+    Assert(array->len < array->slice.len);
+
+    array->slice[array->len] = value;
+    array->len += 1;
+}
+
+template <typename T>
+T* push(FixedArray<T> *array) {
+    Assert(array->len < array->slice.len);
+
+    T *ptr = &array->slice[array->len];
+    array->len++;
+    return ptr;
+}
+
+template <typename T>
+void reset(FixedArray<T> *array) {
+    array->len = 0;
+}
+
+template <typename T>
+void swap_remove(FixedArray<T> *array, i64 index) {
+    Assert(index < array->len);
+
+    array->slice[index] = array->slice[array->len - 1];
+    array->len -= 1;
+}
+
+
+template <typename T, i64 N>
+T& StackArray<T, N>::operator[](i64 index) {
+    return this->data[index];
+}
+
+template <typename T, i64 N>
+T* StackArray<T, N>::begin() {
+    return data;
+}
+
+template <typename T, i64 N>
+T* StackArray<T, N>::end() {
+    return data + len;
+}
+
+template <typename T, i64 N>
+StackArray<T, N> stack_array_create() {
+    auto sa = StackArray<T, N> {
+        .data = {},
+        .size = N,
+        .len = 0
+    };
+
+    // all zeros
+    memset(sa.data, 0, N);
+
+    return sa;
+}
+
+template <typename T, i64 N>
+void append(StackArray<T, N> *array, T value) {
+    Assert(array->len < N);
+
+    array->data[array->len] = value;
+    array->len += 1;
+}
+
+template <typename T, i64 N>
+T* push(StackArray<T, N> *array) {
+    Assert(array->len < N);
+
+    T *ptr = &array->data[array->len];
+    array->len++;
+    return ptr;
+}
+
+template <typename T, i64 N>
+void reset(StackArray<T, N> *array) {
+    array->len = 0;
+}
+
+template <typename T, i64 N>
+void swap_remove(StackArray<T, N> *array, i64 index) {
+    Assert(index < array->len);
+
+    array->data[index] = array->data[array->len - 1];
+    array->len -= 1;
+}
+
+template <typename T>
+T& DynamicArray<T>::operator[](i64 index) {
+    return this->slice[index];
+}
+
+template <typename T>
+T* DynamicArray<T>::begin() {
+    return &slice[0];
+}
+
+template <typename T>
+T* DynamicArray<T>::end() {
+    return &slice[len];
 }
 
 template <typename T>
@@ -508,12 +583,12 @@ void append(DynamicArray<T> *array, T value) {
 }
 
 template <typename T>
-void append_many(DynamicArray<T> *array, Slice<T> values) {
+void append_many(DynamicArray<T> *array, slice<T> values) {
     if (values.len <= 0) {
         return;
     }
 
-    Slice<T> sub_slice = push_many(array, values.len);
+    slice<T> sub_slice = push_many(array, values.len);
     slice_copy(sub_slice, values);
 }
 
@@ -521,148 +596,13 @@ void append_many(DynamicArray<T> *array, Slice<T> values) {
 // to the new items from the end of the array. The slice returned is 'count'
 // number to items long
 template <typename T>
-Slice<T> push_many(DynamicArray<T> *array, i64 count) {
+slice<T> push_many(DynamicArray<T> *array, i64 count) {
     dynamic_array_maybe_grow(array, count);
 
-    Slice<T> s = array->slice.slice(array->len, array->len + count);
+    slice<T> s = slice_range(&array->slice, array->len, array->len + count);
     array->len += count;
 
     return s;
-}
-
-// @format
-// get bytes required to format the value, +1 when reserving space
-// because snprintf needs that for the null terminator even thoug                           
-// it doesn't report it the return value, nice one C! 
-// 
-// This is the same for all basic type that are supported in printf
-// it was rude of me not to use a macro to generate a template here
-// - 08/08/25
-#define FMT_VALUE_IMPL_PRIMITIVE(TYPE, FORMAT)                                                  \
-template<>                                                                                      \
-void fmt_value(DynamicArray<u8> *bytes, TYPE value) {                                           \
-    i64 required_bytes = snprintf(NULL, 0, FORMAT, value);                                      \
-    Slice<u8> reserved_space = push_many(bytes, required_bytes + 1);                            \
-    i64 written = snprintf((char *) reserved_space.ptr, reserved_space.len, FORMAT, value);     \
-    ASSERT(written == required_bytes);                                                          \
-}
-
-FMT_VALUE_IMPL_PRIMITIVE(void *, "%p")
-FMT_VALUE_IMPL_PRIMITIVE(const char *, "%s")
-FMT_VALUE_IMPL_PRIMITIVE(char *, "%s")
-
-FMT_VALUE_IMPL_PRIMITIVE(i64, "%lld")
-FMT_VALUE_IMPL_PRIMITIVE(i32, "%d")
-FMT_VALUE_IMPL_PRIMITIVE(i16, "%hd")
-FMT_VALUE_IMPL_PRIMITIVE(i8, "%hhd")
-
-FMT_VALUE_IMPL_PRIMITIVE(u64, "%llu")
-FMT_VALUE_IMPL_PRIMITIVE(u32, "%u")
-FMT_VALUE_IMPL_PRIMITIVE(u16, "%hu")
-FMT_VALUE_IMPL_PRIMITIVE(u8, "%hhu")
-
-FMT_VALUE_IMPL_PRIMITIVE(f32, "%f")
-FMT_VALUE_IMPL_PRIMITIVE(f64, "%f")
-
-template<typename... Args>
-str fmt(Arena *arena, str format, Args... args) {
-    i64 index = 0;
-    DynamicArray<u8> bytes = dynamic_array_create<u8>(arena, format.len * 2);
-
-    // unfolds as seperate statements for each arg 
-    (fmt_arg(&bytes, format, index, args), ...);
-
-    // write remaining bytes to buffer as there are no more args
-    // to search for a {} pair in the format string
-    if (index < format.len) {
-        while(index < format.len) {
-            append(&bytes, format[index]);
-            index++;
-        }
-    }
-
-    return bytes.slice.slice(0, bytes.len);
-}
-
-template<typename T>
-void fmt_arg(DynamicArray<u8> *bytes, str format, i64 &index, T arg) {
-    while(index < format.len) {
-        u8 byte = format[index];
-
-        if (byte == '{' && index + 1 < format.len && format[index + 1] == '}') {
-            fmt_value(bytes, arg);
-            index += 2;
-            break;
-        }
-        else {
-            append(bytes, byte);
-            index++;
-        }
-    }
-}
-
-template<>
-void fmt_value(DynamicArray<u8> *bytes, bool value) {
-    if (value) {
-        append_many<u8>(bytes, "true");
-    }
-    else {
-        append_many<u8>(bytes, "false");
-    }
-}
-
-template<> 
-void fmt_value(DynamicArray<u8> *bytes, str value) {
-    append_many(bytes, value);
-}
-
-// @log
-thread_local LogOptions tl_options = LogOptions {
-    .thread_name = NULL,
-    .thread_colour = NULL,
-};
-
-std::mutex log_mutex;
-
-void log(str s) {
-    log_mutex.lock();
-
-    if (tl_options.thread_colour != NULL) {
-        printf("%s", tl_options.thread_colour);
-    }
-
-    log_thread_name();
-
-    printf(RESET_ASCII_CODE);
-
-    fwrite(s.ptr, 1, s.len, stdout);
-    fwrite("\n", 1, 1, stdout);
-
-    log_mutex.unlock();
-}
-
-void log_set_thread_options(LogOptions options) {
-    tl_options = options;
-}
-
-void log_thread_name() {
-    const char *name = "?";
-
-    if (tl_options.thread_name != NULL) {
-        name = tl_options.thread_name;
-    }
-
-    printf("[%s] ", name); 
-}
-
-template<typename... Args>
-void logf(str format, Args... args) {
-    Arena scratch = arena_create(KB(1));
-
-    str s = fmt(&scratch, format, args...);
-    log(s);
-
-    arena_destroy(&scratch);
 }
 
 Timer timer_create_ms(i64 milliseconds) {
@@ -782,7 +722,7 @@ i64 rand_i64(i64 min, i64 max) {
     return min + (i64)(rand() % (max - min));
 }
 
-File new_file(str path) {
+File new_file(string path) {
     return File {
         .path = path,
         .handle = NULL,
@@ -798,7 +738,7 @@ bool create_file(File *file) {
     return true;
 }
 
-Slice<u8> read_entire_file(File *file) {
+slice<u8> read_entire_file(File *file) {
     file->handle = fopen(file->path.c(), "rb");
     if (file->handle == NULL) {
         return {};
@@ -809,7 +749,7 @@ Slice<u8> read_entire_file(File *file) {
     fseek(file->handle, 0, SEEK_SET);
 
     
-    Slice<u8> bytes = slice_create_malloc<u8>(file_size);
+    slice<u8> bytes = slice_create_malloc<u8>(file_size);
     fread(bytes.ptr, file_size, 1, file->handle);
     fclose(file->handle);
 
@@ -818,8 +758,8 @@ Slice<u8> read_entire_file(File *file) {
     return bytes;
 }
 
-bool write_file(File *file, Slice<u8> bytes) {
-    ASSERT(file->handle != NULL);
+bool write_file(File *file, slice<u8> bytes) {
+    Assert(file->handle != NULL);
 
     i64 written = fwrite(bytes.ptr, 1, bytes.len, file->handle);
 
@@ -831,13 +771,13 @@ bool write_file(File *file, Slice<u8> bytes) {
 }
 
 void close_file(File *file) {
-    ASSERT(file->handle != NULL);
+    Assert(file->handle != NULL);
 
     fclose(file->handle);
     file->handle = NULL;
 }
 
-str read_entire_file(str path) {
+string read_entire_file(string path) {
     FILE *file = fopen(path.c(), "rb");
     if (file == nullptr) {
         return {};
@@ -854,6 +794,129 @@ str read_entire_file(str path) {
     data[file_size] = 0; // null terminate
 
     return slice_create(data, file_size);
+}
+
+// @fmt
+// get bytes required to format the value, +1 when reserving space
+// because snprintf needs that for the null terminator even thoug                           
+// it doesn't report it the return value, nice one C! 
+// 
+// This is the same for all basic type that are supported in printf
+// it was rude of me not to use a macro to generate a template here
+// - 08/08/25
+#define FMT_VALUE_IMPL_PRIMITIVE(TYPE, FORMAT)                                                  \
+template<>                                                                                      \
+void fmt_value(DynamicArray<u8> *bytes, TYPE value) {                                           \
+    i64 required_bytes = snprintf(NULL, 0, FORMAT, value);                                      \
+    slice<u8> reserved_space = push_many(bytes, required_bytes + 1);                            \
+    i64 written = snprintf((char *) reserved_space.ptr, reserved_space.len, FORMAT, value);     \
+    Assert(written == required_bytes);                                                          \
+}
+
+FMT_VALUE_IMPL_PRIMITIVE(void *, "%p")
+FMT_VALUE_IMPL_PRIMITIVE(const char *, "%s")
+FMT_VALUE_IMPL_PRIMITIVE(char *, "%s")
+
+FMT_VALUE_IMPL_PRIMITIVE(i64, "%lld")
+FMT_VALUE_IMPL_PRIMITIVE(i32, "%d")
+FMT_VALUE_IMPL_PRIMITIVE(i16, "%hd")
+FMT_VALUE_IMPL_PRIMITIVE(i8, "%hhd")
+
+FMT_VALUE_IMPL_PRIMITIVE(u64, "%llu")
+FMT_VALUE_IMPL_PRIMITIVE(u32, "%u")
+FMT_VALUE_IMPL_PRIMITIVE(u16, "%hu")
+FMT_VALUE_IMPL_PRIMITIVE(u8, "%hhu")
+
+FMT_VALUE_IMPL_PRIMITIVE(f32, "%f")
+FMT_VALUE_IMPL_PRIMITIVE(f64, "%f")
+
+template<typename... Args>
+string fmt(Arena *arena, string format, Args... args) {
+    i64 index = 0;
+    DynamicArray<u8> bytes = dynamic_array_create<u8>(arena, format.len * 2);
+
+    // unfolds as seperate statements for each arg 
+    (fmt_arg(&bytes, format, index, args), ...);
+
+    // write remaining bytes to buffer as there are no more args
+    // to search for a {} pair in the format string
+    if (index < format.len) {
+        while(index < format.len) {
+            append(&bytes, format[index]);
+            index++;
+        }
+    }
+
+    return slice_range(&bytes.slice, 0, bytes.len);
+}
+
+template<typename T>
+void fmt_arg(DynamicArray<u8> *bytes, string format, i64 &index, T arg) {
+    while(index < format.len) {
+        u8 byte = format[index];
+
+        if (byte == '{' && index + 1 < format.len && format[index + 1] == '}') {
+            fmt_value(bytes, arg);
+            index += 2;
+            break;
+        }
+        else {
+            append(bytes, byte);
+            index++;
+        }
+    }
+}
+
+template<>
+void fmt_value(DynamicArray<u8> *bytes, bool value) {
+    if (value) {
+        append_many<u8>(bytes, "true");
+    }
+    else {
+        append_many<u8>(bytes, "false");
+    }
+}
+
+template<> 
+void fmt_value(DynamicArray<u8> *bytes, string value) {
+    append_many(bytes, value);
+}
+
+// @log
+std::mutex g_log_mutex;
+thread_local const char *tl_thread_name = NULL;
+
+template<typename... Args>
+void _logf(const char *colour, const char *label, const char *file, i32 line, string format, Args... args) {
+    Arena scratch = arena_create(KB(1));
+
+    string s = fmt(&scratch, format, args...);
+    _log(colour, label, file, line, s);
+
+    arena_destroy(&scratch);
+}
+
+void _log(const char *colour, const char *label, const char *file, i32 line, string s) {
+    g_log_mutex.lock();
+
+    // log decoration and colour
+    printf("%s%-6s ", colour, label);
+
+    const char *name = tl_thread_name != NULL ? tl_thread_name : "?";
+    printf("[%s:%s:%d] ", name, file, line);
+
+    // actual message
+    fwrite(s.ptr, 1, s.len, stdout);
+    fwrite("\n", 1, 1, stdout);
+
+    // reset colour
+    printf("%s", ResetAsciiCode);
+
+    g_log_mutex.unlock();
+}
+
+void log_set_thread_name(const char *name) {
+    tl_thread_name = name;
 }
 
 #endif

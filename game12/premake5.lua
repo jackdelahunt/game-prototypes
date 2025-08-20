@@ -12,6 +12,8 @@ workspace "Engine"
     warnings "Off"
     flags { "MultiProcessorCompile" }
 
+    defines { "WINDOWS", "ENABLE_ASSERTS" }
+
     filter "configurations:Debug"
         defines { "DEBUG" }
         symbols "On"
