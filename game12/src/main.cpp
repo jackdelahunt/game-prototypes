@@ -87,7 +87,9 @@ f32 EXPLOSION_DAMAGE = 200;
 
 bool g_dual_wield_recoil_switch = true;
 
-enum MeshHandle : u32 {
+#define meta
+
+meta enum MeshHandle : u32 {
     MH_NONE,
     MH_DEAGLE,
     MH_M4,
@@ -97,9 +99,10 @@ enum MeshHandle : u32 {
 
 Mesh *g_meshes[_MH_COUNT] = {};
 
-enum SoundHandle : u32 {
+// keep silenced sounds in order
+meta enum SoundHandle : u32 {
     SH_FIRE_DEAGLE,
-    SH_FIRE_SILENCED_GUN_HIGH, // keep silenced sounds in order
+    SH_FIRE_SILENCED_GUN_HIGH,
     SH_FIRE_SILENCED_GUN_MID,
     SH_FIRE_SILENCED_GUN_LOW,
     SH_TARGET_HIT,
@@ -109,7 +112,7 @@ enum SoundHandle : u32 {
 
 Sound *g_sounds[_SH_COUNT] = {};
 
-enum WeaponHandle : u32 {
+meta enum WeaponHandle : u32 {
     WH_DEAGLE,
     WH_M4,
     WH_TAP,
@@ -191,7 +194,7 @@ Weapon g_weapons[_WH_COUNT] = {
     }
 };
 
-enum PickupType : u32 {
+meta enum PickupType : u32 {
     PT_NONE,
     PT_M4,
     PT_TAP,
@@ -199,8 +202,9 @@ enum PickupType : u32 {
     PT_PAL,
 };
 
+
 // @entity
-enum EntityFlag : u32 {
+meta enum EntityFlag : u32 {
     EF_PLAYER           = 1 << 0,
     EF_SPAWN_POINT      = 1 << 1,
     EF_SOLID_HITBOX     = 1 << 2,
@@ -210,11 +214,6 @@ enum EntityFlag : u32 {
     EF_TRIGGER_HITBOX   = 1 << 6,
     EF_MISSLE           = 1 << 7,
     EF_DELETE           = 1 << 16,
-};
-
-template <>
-struct magic_enum::customize::enum_range<EntityFlag> {
-    static constexpr bool is_flags = true;
 };
 
 struct Entity {

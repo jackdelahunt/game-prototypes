@@ -85,9 +85,6 @@ project "game12"
 
     filter "configurations:Profile"
         targetdir "build/bin/profile"
-        profile "On"
-        symbols "On"
-        optimize "On"
         links {
             "src/libs/yaml-cpp/lib/release/yaml-cpp.lib",
             "src/libs/GameNetworkingSockets/lib/release/GameNetworkingSockets.lib",
@@ -97,3 +94,35 @@ project "game12"
             "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/release/*.dll] %[build/bin/profile]",
             "{COPYFILE} %[src/libs/assimp/bin/x64/*.dll] %[build/bin/debug]",
         }
+
+project "meta"
+    kind "ConsoleApp"
+    location "build/%{prj.name}"
+
+    files {
+        "meta/meta.cpp",
+        "src/libs/tree-sitter/lib/src/lib.c",
+        "src/libs/tree-sitter-cpp/src/parser.c",
+        "src/libs/tree-sitter-cpp/src/scanner.c",
+    }
+
+    includedirs {
+        "src",
+        "src/meta",
+        "src/libs",
+        "src/libs/tree-sitter/lib/src",
+        "src/libs/tree-sitter/lib/include",
+    }
+
+    links {
+        "user32",
+        "gdi32",
+        "shell32",
+    }
+
+    filter "configurations:Debug"
+        targetdir "build/bin/debug"
+    filter "configurations:Release"
+        targetdir "build/bin/release"
+    filter "configurations:Profile"
+        targetdir "build/bin/profile"

@@ -174,8 +174,8 @@ struct File {
 
 // @slice
 template <typename T>   slice<T> slice_create(T *data, i64 len);
-template <typename T>   slice<T> slice_range(slice<T> *s, i64 start, i64 end);
-template <typename T>   slice<T> slice_from(slice<T> *s, i64 start);
+template <typename T>   slice<T> slice_range(slice<T> s, i64 start, i64 end);
+template <typename T>   slice<T> slice_from(slice<T> s, i64 start);
 template <typename T>   slice<T> slice_create_malloc(i64 len);
 template <typename T>   void slice_free(slice<T> slice);
 template <typename T>   slice<u8> slice_to_bytes(slice<T> slice);
@@ -212,7 +212,8 @@ template <typename T>   DynamicArray<T> dynamic_array_create(Arena *arena, i64 c
 template <typename T>   void dynamic_array_maybe_grow(DynamicArray<T> *array, i64 required_slots); 
 template <typename T>   void append(DynamicArray<T> *array, T value); 
 template <typename T>   void append_many(DynamicArray<T> *array, slice<T> values); 
-template <typename T>   slice<T> push_many(DynamicArray<T> *array, i64 count); 
+template <typename T>   slice<T> push_many(DynamicArray<T> *array, i64 count);
+template <typename T>   slice<T> to_slice(DynamicArray<T> *array); 
 
 // @timer
 Timer timer_create_ms(i64 milliseconds); 
@@ -252,6 +253,7 @@ template<>                  void fmt_value(DynamicArray<u8> *bytes, string value
 template<typename... Args>
 void _logf(const char *colour, const char *label, const char *file, i32 line, string format, Args... args);
 void _log(const char *colour, const char *label, const char *file, i32 line, string s);
+void log_set_options(bool print_label, bool print_location);
 void log_set_thread_name(const char *name);
 
 // @rand
@@ -306,13 +308,20 @@ slice<T> slice_create(T *data, i64 len) {
 }
 
 template <typename T>
-slice<T> slice_range(slice<T> *s, i64 start, i64 end) {
-    return slice<T>(s->ptr + start, end - start);
+slice<T> slice_range(slice<T> s, i64 start, i64 end) {
+    Assert(start >= 0 && start < s.len);
+    Assert(end >= 0 && end <= s.len);
+
+    if (start >= end) {
+        return slice<T>(NULL, 0);
+    }
+
+    return slice<T>(s.ptr + start, end - start);
 }
 
 template <typename T>
-slice<T> slice_from(slice<T> *s, i64 start) {
-    return slice<T>(s->ptr + start, s->len - start);
+slice<T> slice_from(slice<T> s, i64 start) {
+    return slice<T>(s.ptr + start, s.len - start);
 }
 
 template <typename T>
@@ -409,7 +418,7 @@ slice<T> arena_alloc_many(Arena *arena, i64 size) {
 
     Assert(arena->end + byte_count <= arena->bytes.len);
 
-    slice<u8> bytes = slice_range(&arena->bytes, arena->end, arena->end + byte_count);
+    slice<u8> bytes = slice_range(arena->bytes, arena->end, arena->end + byte_count);
     arena->end += byte_count;
 
     return slice_create((T *) bytes.ptr, size);
@@ -599,10 +608,15 @@ template <typename T>
 slice<T> push_many(DynamicArray<T> *array, i64 count) {
     dynamic_array_maybe_grow(array, count);
 
-    slice<T> s = slice_range(&array->slice, array->len, array->len + count);
+    slice<T> s = slice_range(array->slice, array->len, array->len + count);
     array->len += count;
 
     return s;
+}
+
+template <typename T>
+slice<T> to_slice(DynamicArray<T> *array) {
+    return slice_range(array->slice, 0, array->len);
 }
 
 Timer timer_create_ms(i64 milliseconds) {
@@ -847,7 +861,7 @@ string fmt(Arena *arena, string format, Args... args) {
         }
     }
 
-    return slice_range(&bytes.slice, 0, bytes.len);
+    return slice_range(bytes.slice, 0, bytes.len);
 }
 
 template<typename T>
@@ -885,6 +899,8 @@ void fmt_value(DynamicArray<u8> *bytes, string value) {
 // @log
 std::mutex g_log_mutex;
 thread_local const char *tl_thread_name = NULL;
+bool g_log_print_label = true;
+bool g_log_print_location = true;
 
 template<typename... Args>
 void _logf(const char *colour, const char *label, const char *file, i32 line, string format, Args... args) {
@@ -899,11 +915,16 @@ void _logf(const char *colour, const char *label, const char *file, i32 line, st
 void _log(const char *colour, const char *label, const char *file, i32 line, string s) {
     g_log_mutex.lock();
 
-    // log decoration and colour
-    printf("%s%-6s ", colour, label);
+    printf("%s", colour);
 
-    const char *name = tl_thread_name != NULL ? tl_thread_name : "?";
-    printf("[%s:%s:%d] ", name, file, line);
+    if (g_log_print_label) {
+        printf("%-6s ", label);
+    }
+
+    if (g_log_print_location) {
+        const char *name = tl_thread_name != NULL ? tl_thread_name : "?";
+        printf("[%s:%s:%d] ", name, file, line);
+    }
 
     // actual message
     fwrite(s.ptr, 1, s.len, stdout);
@@ -913,6 +934,11 @@ void _log(const char *colour, const char *label, const char *file, i32 line, str
     printf("%s", ResetAsciiCode);
 
     g_log_mutex.unlock();
+}
+
+void log_set_options(bool print_label, bool print_location) {
+    g_log_print_label = print_label;
+    g_log_print_location = print_location;
 }
 
 void log_set_thread_name(const char *name) {
