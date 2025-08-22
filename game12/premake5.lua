@@ -126,3 +126,33 @@ project "meta"
         targetdir "build/bin/release"
     filter "configurations:Profile"
         targetdir "build/bin/profile"
+
+project "metaexample"
+    kind "ConsoleApp"
+    location "build/%{prj.name}"
+
+    files {
+        "meta/example/main.cpp",
+        "meta/example/foo.cpp",
+        "meta/example/meta.h",
+        "meta/example/foo.h",
+        "meta/example/meta_foo.h",
+    }
+
+    includedirs {
+        "src",
+        "src/meta",
+    }
+
+    links {
+        "user32",
+        "gdi32",
+        "shell32",
+    }
+
+    filter "configurations:Debug"
+        targetdir "build/bin/debug"
+    filter "configurations:Release"
+        targetdir "build/bin/release"
+    filter "configurations:Profile"
+        targetdir "build/bin/profile"

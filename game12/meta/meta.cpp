@@ -30,18 +30,17 @@ void node_print_ast(TSNode node, i32 indent);
 
 i32 main() {
     log_set_options(false, false);
-    log_set_thread_name("main");
 
     Arena arena = arena_create(MB(10));
 
-    string source = read_entire_file("src/main.cpp");
+    string source = read_entire_file("meta/example/foo.h");
 
     TSTree *tree = parse_source(source);
     TSNode root_node = ts_tree_root_node(tree);
 
     Info("Root node:");
-    // node_print_lisp(root_node);
-    // node_print_ast(root_node, 0);
+    node_print_lisp(root_node);
+    node_print_ast(root_node, 0);
 
     if (false) {
         run_repl(&arena, tree, source);
@@ -100,46 +99,56 @@ string meta_generate_enum(Arena *arena, TSNode enum_node, string source) {
     // i.e. append_string, append_stringln, auto indentation
     DynamicArray<u8> builder = dynamic_array_create<u8>(arena, BUILDER_START_CAPACITY);
 
-    TSNode name_node = node_child_field(enum_node, "name");
-    TSNode body_node = node_child_field(enum_node, "body");
+    TSNode type_node = node_child_field(enum_node, "name");
+    string type_string = node_to_string(type_node, source);
 
-    string name_string = node_to_string(name_node, source);
+    TSNode body_node = node_child_field(enum_node, "body");
     u32 member_count = ts_node_named_child_count(body_node);
 
-
-    { // generate names
-        append_many(&builder, fmt(arena, "static string {}Names[{}] = {\n", name_string, member_count));
-
-        for (u32 i = 0; i < member_count; i++) {
-            TSNode member_node = node_expect_child(body_node, NODE_ENUM_TYPE, i); // breaks if there is a comment luulull
-            TSNode member_name_node = node_child_field(member_node, "name");
-
-            append_many(&builder, fmt(arena, "    \"{}\",\n", node_to_string(member_name_node, source)));
-        }
-
-        append_many(&builder, string("};\n\n"));
-    }
+    append_many(&builder, string("template<>\n"));
+    append_many(&builder, fmt(arena, "struct MetaEnum<{}> {\n", type_string));
+    append_many(&builder, fmt(arena, "const static int count = {};\n\n", member_count));
 
     { // generate values
-        append_many(&builder, fmt(arena, "static u32 {}Values[{}] = {\n", name_string, member_count));
+        append_many(&builder, string("inline static EnumValue values[count] = {\n"));
 
         for (u32 i = 0; i < member_count; i++) {
-            TSNode member_node = node_expect_child(body_node, NODE_ENUM_TYPE, i);
-            TSNode member_value_node = node_child_field(member_node, "value");
+            TSNode value_node = node_expect_child(body_node, NODE_ENUM_TYPE, i); // breaks if there is a comment luulull
+            TSNode value_name_node = node_child_field(value_node, "name");
+            string value_name_string = node_to_string(value_name_node, source);
 
-            append_many(&builder, fmt(arena, "    ({}),\n", node_to_string(member_value_node, source)));
+            append_many(&builder, fmt(arena, "    {.name = \"{}\", .value = int({})},\n", value_name_string, value_name_string));
         }
 
         append_many(&builder, string("};\n\n"));
     }
 
-    { // generate meta info object
-        append_many(&builder, fmt(arena, "MetaEnumInfo Meta{} = MetaEnumInfo {\n", name_string));
-        append_many(&builder, fmt(arena, "    .count  = {},\n", member_count));
-        append_many(&builder, fmt(arena, "    .names  = {}Names,\n", name_string));
-        append_many(&builder, fmt(arena, "    .values = {}Values,\n", name_string));
-        append_many(&builder, string("};\n"));
+    { // generate name()
+        append_many(&builder, fmt(arena, "static std::string name({} value) {\n", type_string));
+
+        append_many(&builder, fmt(arena, "    switch (value) {\n", type_string));
+        for (u32 i = 0; i < member_count; i++) {
+            TSNode value_node = node_expect_child(body_node, NODE_ENUM_TYPE, i); // breaks if there is a comment luulull
+            TSNode value_name_node = node_child_field(value_node, "name");
+            string value_name_string = node_to_string(value_name_node, source);
+
+            append_many(&builder, fmt(arena, "        case {}: return values[{}].name;\n", value_name_string, value_name_string));
+        }
+        append_many(&builder, string("    }\n"));
+
+        append_many(&builder, string("}\n\n"));
     }
+
+    { // generate value()
+        append_many(&builder, fmt(arena, "static {} value(std::string name) {\n", type_string));
+        append_many(&builder,     string("    for (int i = 0; i < count; i++) {\n"));
+        append_many(&builder, fmt(arena, "        if (values[i].name == name) return ({}) values[i].value;\n", type_string));
+        append_many(&builder,     string("    }\n"));
+        append_many(&builder, fmt(arena, "    return ({}) 0;\n", type_string));
+        append_many(&builder,     string("}\n\n"));
+    }
+
+    append_many(&builder, string("};\n"));
 
     return to_slice(&builder);
 }
@@ -259,7 +268,7 @@ string node_to_string(TSNode node, string source) {
 }
 
 void node_print_lisp(TSNode node) {
-    Logf("{}", ts_node_string(node));
+    Log(ts_node_string(node));
 }
 
 void node_print_ast(TSNode node, i32 indent) {
@@ -272,7 +281,7 @@ void node_print_ast(TSNode node, i32 indent) {
         }
     }
 
-    Logf("{}", ts_node_type(node));
+    Log(ts_node_type(node));
 
     u32 count = ts_node_child_count(node);
     for (u32 i = 0; i < count; i++) {

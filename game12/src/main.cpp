@@ -204,7 +204,7 @@ meta enum PickupType : u32 {
 
 
 // @entity
-meta enum EntityFlag : u32 {
+enum EntityFlag : u32 {
     EF_PLAYER           = 1 << 0,
     EF_SPAWN_POINT      = 1 << 1,
     EF_SOLID_HITBOX     = 1 << 2,
