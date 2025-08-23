@@ -512,10 +512,6 @@ struct Renderer {
     Mesh *sphere_primitive;
     Mesh *quad_primitive;
 
-    m4 view_matrix;
-    m4 projection_matrix;
-    m4 projection_matrix_ortho;
-
     Texture *default_normal;
 
     Font font;
@@ -628,7 +624,7 @@ bool frame_buffer_maybe_resize(FrameBuffer *frame_buffer, v2i new_size);
 bool frame_buffer_rebuild(FrameBuffer *frame_buffer);
 void frame_buffer_copy_to(FrameBuffer *source_buffer, FrameBuffer *dest_buffer);
 
-v3 screen_position_to_world_position(Renderer *renderer, Viewport viewport, v3 screen_position);
+v3 screen_position_to_world_position(Camera *camera, Viewport viewport, v3 screen_position);
 v3 screen_position_to_ndc(Viewport viewport, v3 screen_position);
 v3 relative_to_screen_position(Viewport viewport, v2 relative_position);
 
@@ -638,7 +634,7 @@ m4 get_projection_matrix(Camera *camera, f32 aspect);
 m4 get_projection_matrix_ortho(Camera *camera, f32 aspect);
 
 Ray ray_create(v3 origin, v3 direction);
-Ray ray_from_screen_position(Viewport viewport, v3 screen_position);
+Ray ray_from_screen_position(Camera *camera, Viewport viewport, v3 screen_position);
 
 QuadBuffer quad_buffer_create(i64 size);
 void quad_buffer_bind_and_update(QuadBuffer *buffer);
@@ -1428,9 +1424,8 @@ void renderer_start_frame(Renderer *renderer) {
 }
 
 void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target, bool draw_ui) {
-    renderer->view_matrix = get_view_matrix(camera);
-    renderer->projection_matrix = get_projection_matrix(camera, f32(viewport.size.x) / f32(viewport.size.y));
-    renderer->projection_matrix_ortho = get_projection_matrix_ortho(camera,  f32(viewport.size.x) / f32(viewport.size.y));
+    m4 view_matrix = get_view_matrix(camera);
+    m4 projection_matrix = get_projection_matrix(camera, f32(viewport.size.x) / f32(viewport.size.y));
 
     { // geometry pass
         frame_buffer_maybe_resize(&renderer->g_buffer, viewport.size);
@@ -1446,8 +1441,8 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
                 use_shader(renderer->mesh_shader);
          
                 set_uniform_m4(renderer->mesh_shader, "model", &model_matrix);
-                set_uniform_m4(renderer->mesh_shader, "view", &renderer->view_matrix);
-                set_uniform_m4(renderer->mesh_shader, "projection", &renderer->projection_matrix);
+                set_uniform_m4(renderer->mesh_shader, "view", &view_matrix);
+                set_uniform_m4(renderer->mesh_shader, "projection", &projection_matrix);
                 set_uniform_v4(renderer->mesh_shader, "colour", model_cmd->colour);
             
                 GLCall(glBindVertexArray(model_cmd->mesh->vertex_array_id));
@@ -1843,7 +1838,7 @@ void frame_buffer_copy_to(FrameBuffer *source_buffer, FrameBuffer *dest_buffer) 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-v3 screen_position_to_world_position(Renderer *renderer, Viewport viewport, v3 screen_position) {
+v3 screen_position_to_world_position(Camera *camera, Viewport viewport, v3 screen_position) {
     // while screen coords are just x and y, the z coord of screen
     // position determines the depth of the position in the view frustum
     // z=-1 -> near plane
@@ -1852,7 +1847,9 @@ v3 screen_position_to_world_position(Renderer *renderer, Viewport viewport, v3 s
     
     v3 ndc = screen_position_to_ndc(viewport, screen_position);
 
-    m4 inverse_vp = HMM_InvGeneralM4(renderer->projection_matrix * renderer->view_matrix);
+    m4 view_matrix = get_view_matrix(camera);
+    m4 projection_matrix = get_projection_matrix(camera, f32(viewport.size.x) / f32(viewport.size.y));
+    m4 inverse_vp = HMM_InvGeneralM4(projection_matrix * view_matrix);
 
     v4 world_position = inverse_vp * v4{ndc.x, ndc.y, ndc.z, 1};
     world_position /= world_position.w;
@@ -1937,15 +1934,15 @@ Ray ray_create(v3 origin, v3 direction) {
     return Ray {.origin = origin, .direction = direction};
 }
 
-Ray ray_from_screen_position(Viewport viewport, v3 screen_position) {
+Ray ray_from_screen_position(Camera *camera, Viewport viewport, v3 screen_position) {
     // this sticks with my convention of having screen positions
     // all be v3, but with this case you probably always want the origin
     // to be on the near plane so I ignore the z of the give screen position
     // this is just to stop any annoying bugs by making an assumption 
     // - 13/08/25
 
-    v3 start = screen_position_to_world_position(REN(), viewport, v3{screen_position.x, screen_position.y, -1});
-    v3 end = screen_position_to_world_position(REN(), viewport, v3{screen_position.x, screen_position.y, 1});
+    v3 start = screen_position_to_world_position(camera, viewport, v3{screen_position.x, screen_position.y, -1});
+    v3 end = screen_position_to_world_position(camera, viewport, v3{screen_position.x, screen_position.y, 1});
 
     return ray_create(start, norm(end - start));
 }

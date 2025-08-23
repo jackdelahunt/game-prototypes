@@ -17,7 +17,7 @@
 #include <atomic>
 
 // Total: 78:30
-// Started: 16:30
+// Started: 21:00
 //
 //
 // What do a programmer do?:
@@ -408,10 +408,11 @@ RaycastIterator raycast_iterator_create(Ray ray, f32 distance);
 RaycastIteratorResult next(RaycastIterator *it, State *state);
 
 CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size);
+bool point_collision(v3 point, v3 collider_position, v3 collider_size);
 
 void imgui_entity(Entity *entity);
 Viewport imgui_viewport(const char *label, u32 texture_id, bool force_focus);
-void imgui_v3_control(const char *label, v3 *vector);
+void imgui_v3_control(const char *label, v3 *vector, f32 step = 1);
 
 void clear_level(State *state);
 void serialise_level(State *state);
@@ -1228,7 +1229,7 @@ void editor_update(State *state) {
     // mouse picking
     if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::DOWN) {
         // TODO: there is still a problem with this not being exact...
-        Ray ray = ray_from_screen_position(ED()->viewport, {ED()->viewport.mouse.x, ED()->viewport.mouse.y, -1});
+        Ray ray = ray_from_screen_position(camera, ED()->viewport, {ED()->viewport.mouse.x, ED()->viewport.mouse.y, -1});
         RaycastIterator it = raycast_iterator_create(ray, camera->far_plane - camera->near_plane);
 
         auto [entity, _] = next(&it, state);
@@ -1389,13 +1390,15 @@ void editor_draw_ui(State *state) {
 
         { // game camera
             ImGui::SeparatorText("Game camera");
-            imgui_v3_control("position", &GC()->camera.position);
-            imgui_v3_control("rotation", &GC()->camera.rotation);
 
+            v3 position = GC()->camera.position;
+            v3 rotation = GC()->camera.rotation;
             v3 forward = get_forward_direction(&GC()->camera);
             v3 right = get_right_direction(&GC()->camera);
             v3 up = get_up_direction(&GC()->camera);
 
+            ImGui::Text("Position: [%.3f, %.3f, %.3f]", position.x, position.y, position.z);
+            ImGui::Text("Rotation: [%.3f, %.3f, %.3f]", rotation.x, rotation.y, rotation.z);
             ImGui::Text("Forward: [%.3f, %.3f, %.3f]", forward.x, forward.y, forward.z);
             ImGui::Text("Right: [%.3f, %.3f, %.3f]", right.x, right.y, right.z);
             ImGui::Text("Up: [%.3f, %.3f, %.3f]", up.x, up.y, up.z);
@@ -1403,48 +1406,20 @@ void editor_draw_ui(State *state) {
 
         { // editor camera
             ImGui::SeparatorText("Editor camera");
-            imgui_v3_control("position", &ED()->camera.position);
-            imgui_v3_control("rotation", &ED()->camera.rotation);
 
+            v3 position = ED()->camera.position;
+            v3 rotation = ED()->camera.rotation;
             v3 forward = get_forward_direction(&ED()->camera);
             v3 right = get_right_direction(&ED()->camera);
             v3 up = get_up_direction(&ED()->camera);
 
+            ImGui::Text("Position: [%.3f, %.3f, %.3f]", position.x, position.y, position.z);
+            ImGui::Text("Rotation: [%.3f, %.3f, %.3f]", rotation.x, rotation.y, rotation.z);
             ImGui::Text("Forward: [%.3f, %.3f, %.3f]", forward.x, forward.y, forward.z);
             ImGui::Text("Right: [%.3f, %.3f, %.3f]", right.x, right.y, right.z);
             ImGui::Text("Up: [%.3f, %.3f, %.3f]", up.x, up.y, up.z);
         }
 
-        ImGui::End();
-    }
-
-    { // network
-        ImGui::Begin("Network");
-    
-        if (ImGui::Button("Host")) {
-            ED()->selected_entity = NULL;
-            clear_level(state);
-            game_client_host();
-        }
-
-        ImGui::SameLine();
-    
-        if (ImGui::Button("Connect")) {
-            ED()->selected_entity = NULL;
-            clear_level(state);
-            game_client_connect();
-        }
-
-        if (GC()->mode != GC_EDITOR) {
-            ImGui::SameLine();
-        
-            if (ImGui::Button("Stop game")) {
-                game_client_stop_game();
-                clear_level(state);
-                deserialise_level(state);
-            }
-        }
-    
         ImGui::SeparatorText("Network messages");
 
         f32 message_in_MB = f32(sizeof(NetworkMessage)) / (8.0f * 1024.0f);
@@ -1535,8 +1510,34 @@ void editor_draw_ui(State *state) {
 
     { // level
         ImGui::Begin("Level & Entities");
-    
+
         ImGui::SeparatorText("Level");
+
+        if (ImGui::Button("Host")) {
+            ED()->selected_entity = NULL;
+            clear_level(state);
+            game_client_host();
+        }
+
+        ImGui::SameLine();
+    
+        if (ImGui::Button("Connect")) {
+            ED()->selected_entity = NULL;
+            clear_level(state);
+            game_client_connect();
+        }
+
+        if (GC()->mode != GC_EDITOR) {
+            ImGui::SameLine();
+        
+            if (ImGui::Button("Stop game")) {
+                game_client_stop_game();
+                clear_level(state);
+                deserialise_level(state);
+            }
+        }
+
+        ImGui::SameLine();
     
         if (ImGui::Button("New")) {
             ED()->selected_entity = NULL;
@@ -1625,25 +1626,25 @@ void editor_draw_ui(State *state) {
         ImGui::End();
     }
 
-    // inspector
-    if (ED()->selected_entity) {
-        ImGui::Begin("Inspector", NULL, ImGuiWindowFlags_NoFocusOnAppearing);
-
-        if (ImGui::Button("Deselect")) {
-            ED()->selected_entity = NULL;
-        }
-
-        ImGui::SameLine();
-
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7, 0.1, 0.1, 1));
-        if (ImGui::Button("Delete")) {
-            Assert(local_delete_entity(state, ED()->selected_entity->id));
-            ED()->selected_entity = NULL;
-        }
-        ImGui::PopStyleColor();
-
+    { // inspector
+        ImGui::Begin("Inspector");
         if (ED()->selected_entity) {
-            imgui_entity(ED()->selected_entity);
+            if (ImGui::Button("Deselect")) {
+                ED()->selected_entity = NULL;
+            }
+    
+            ImGui::SameLine();
+    
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7, 0.1, 0.1, 1));
+            if (ImGui::Button("Delete")) {
+                Assert(local_delete_entity(state, ED()->selected_entity->id));
+                ED()->selected_entity = NULL;
+            }
+            ImGui::PopStyleColor();
+    
+            if (ED()->selected_entity) {
+                imgui_entity(ED()->selected_entity);
+            }
         }
 
         ImGui::End();
@@ -1653,18 +1654,6 @@ void editor_draw_ui(State *state) {
     ED()->viewport = imgui_viewport("Editor", ED()->editor_view.albedo_attachment, false);
 
     draw_imgui_frame();
-}
-
-// AABB detection for a point against a box where the position is centred on the box
-bool point_collision(v3 point, v3 collider_position, v3 collider_size) {
-    v3 delta_position = point - collider_position;
-    v3 bounding_box = collider_size * 0.5;
-
-    return (
-        delta_position.x >= -bounding_box.x && delta_position.x <= bounding_box.x &&
-        delta_position.y >= -bounding_box.y && delta_position.y <= bounding_box.y &&
-        delta_position.z >= -bounding_box.z && delta_position.z <= bounding_box.z
-    );
 }
 
 void on_server_receive(State *state, NetworkMessage *message) {
@@ -2105,6 +2094,18 @@ CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size)
     };
 }
 
+// AABB detection for a point against a box where the position is centred on the box
+bool point_collision(v3 point, v3 collider_position, v3 collider_size) {
+    v3 delta_position = point - collider_position;
+    v3 bounding_box = collider_size * 0.5;
+
+    return (
+        delta_position.x >= -bounding_box.x && delta_position.x <= bounding_box.x &&
+        delta_position.y >= -bounding_box.y && delta_position.y <= bounding_box.y &&
+        delta_position.z >= -bounding_box.z && delta_position.z <= bounding_box.z
+    );
+}
+
 void imgui_entity(Entity *entity) {
     // flags check box list
     if (ImGui::CollapsingHeader("flags")) {
@@ -2217,7 +2218,7 @@ Viewport imgui_viewport(const char *label, u32 texture_id, bool force_focus) {
     return viewport;
 }
 
-void imgui_v3_control(const char *label, v3 *vector) {
+void imgui_v3_control(const char *label, v3 *vector, f32 step) {
     ImVec4 x_button_colour = ImVec4(0.7, 0.1, 0.1, 1);
     ImVec4 y_button_colour = ImVec4(0.1, 0.7, 0.1, 1);
     ImVec4 z_button_colour = ImVec4(0.1, 0.1, 0.7, 1);
@@ -2241,7 +2242,7 @@ void imgui_v3_control(const char *label, v3 *vector) {
             }
         
             ImGui::SameLine();
-            ImGui::DragFloat("##X", &(*vector)[0]);
+            ImGui::DragFloat("##X", &(*vector)[0], step);
             ImGui::PopItemWidth();
         }
 
@@ -2254,7 +2255,7 @@ void imgui_v3_control(const char *label, v3 *vector) {
             }
         
             ImGui::SameLine();
-            ImGui::DragFloat("##Y", &(*vector)[1]);
+            ImGui::DragFloat("##Y", &(*vector)[1], step);
             ImGui::PopItemWidth();
         }
 
@@ -2267,7 +2268,7 @@ void imgui_v3_control(const char *label, v3 *vector) {
             }
         
             ImGui::SameLine();
-            ImGui::DragFloat("##Z", &(*vector)[2]);
+            ImGui::DragFloat("##Z", &(*vector)[2], step);
             ImGui::PopItemWidth();
         }
     }
