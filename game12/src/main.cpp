@@ -1,4 +1,3 @@
-#include "imgui.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -17,7 +16,7 @@
 #include <queue>
 #include <atomic>
 
-// Total: 75:30
+// Total: 78:30
 // Started: 16:30
 //
 //
@@ -199,7 +198,7 @@ meta enum PickupType : u32 {
 
 
 // @entity
-enum EntityFlag : u32 {
+meta enum EntityFlag : u32 {
     EF_PLAYER           = 1 << 0,
     EF_SPAWN_POINT      = 1 << 1,
     EF_SOLID_HITBOX     = 1 << 2,
@@ -413,7 +412,6 @@ CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size)
 void imgui_entity(Entity *entity);
 Viewport imgui_viewport(const char *label, u32 texture_id, bool force_focus);
 void imgui_v3_control(const char *label, v3 *vector);
-void imgui_v4_control(const char *label, v4 *vector);
 
 void clear_level(State *state);
 void serialise_level(State *state);
@@ -1319,7 +1317,7 @@ void editor_draw_ui(State *state) {
     // https://github.com/ocornut/imgui/blob/master/imgui_demo.cpp
     // ImGui::ShowDemoWindow();
     
-    {
+    { // render output
         f32 image_downscale = 4;
         ImVec2 size = ImVec2(GC()->viewport.size.x / image_downscale, GC()->viewport.size.y / image_downscale);
 
@@ -1352,7 +1350,7 @@ void editor_draw_ui(State *state) {
         ImGui::End();
     }
     
-    {
+    { // debug info
         ImGui::Begin("Debug info");
 
         { // main display info
@@ -1420,7 +1418,7 @@ void editor_draw_ui(State *state) {
         ImGui::End();
     }
 
-    {
+    { // network
         ImGui::Begin("Network");
     
         if (ImGui::Button("Host")) {
@@ -1482,7 +1480,7 @@ void editor_draw_ui(State *state) {
         ImGui::End();
     }
 
-    {
+    { // settings
         ImGui::Begin("Setttings");
 
         if (ImGui::CollapsingHeader("Renderer")) {
@@ -1535,7 +1533,7 @@ void editor_draw_ui(State *state) {
         ImGui::End();
     }
 
-    {
+    { // level
         ImGui::Begin("Level & Entities");
     
         ImGui::SeparatorText("Level");
@@ -1560,70 +1558,61 @@ void editor_draw_ui(State *state) {
  
         ImGui::SeparatorText("Spawn Entities");
 
-        if (ImGui::Button("New empty")) {
+        if (ImGui::Button("Empty")) {
             ED()->selected_entity = local_spawn_empty(state);
         }
 
         ImGui::SameLine();
 
-        if (ImGui::Button("New spawn point")) {
+        if (ImGui::Button("Spawn point")) {
             ED()->selected_entity = local_spawn_spawn_point(state);
         }
 
-        if (ImGui::Button("New static box")) {
+        ImGui::SameLine();
+
+        if (ImGui::Button("Static box")) {
             ED()->selected_entity = local_spawn_static_box(state);
         }
 
-        if (ImGui::Button("New m4 pickup")) {
+        ImGui::SameLine();
+
+        if (ImGui::Button("M4 pickup")) {
             ED()->selected_entity = local_spawn_pickup(state, PT_M4);
         }
 
-        if (ImGui::Button("New T&P pickup")) {
+        if (ImGui::Button("T&P pickup")) {
             ED()->selected_entity = local_spawn_pickup(state, PT_TAP);
         }
 
-        if (ImGui::Button("New health pickup")) {
+        ImGui::SameLine();
+
+        if (ImGui::Button("Health pickup")) {
             ED()->selected_entity = local_spawn_pickup(state, PT_HEALTH);
         }
 
-        if (ImGui::Button("New P&L pickup")) {
+        ImGui::SameLine();
+
+        if (ImGui::Button("P&L pickup")) {
             ED()->selected_entity = local_spawn_pickup(state, PT_PAL);
         }
 
-        if (ED()->selected_entity) {
-            ImGui::SeparatorText("Selected Entity");
-
-            if (ImGui::Button("Delete")) {
-                Assert(local_delete_entity(state, ED()->selected_entity->id));
-                ED()->selected_entity = NULL;
-            }
-
-            ImGui::SameLine();
-
-            if (ImGui::Button("Deselect")) {
-                ED()->selected_entity = NULL;
-            }
-        }
-
-        if (ED()->selected_entity) {
-            imgui_entity(ED()->selected_entity);
-        }
-
         ImGui::SeparatorText("Entities in level");
-    
+ 
         for (i64 i = 0; i < state->entities.len; i++) {
             Entity *entity = &state->entities[i];
     
             ImGui::PushID(i);
-    
-            bool is_selected = ED()->selected_entity == entity;
-            const char *format = is_selected ? "-> {}" : "{}";
-            const char *label = fmt(&state->arena, format, entity->id).c();
-    
-            if (ImGui::Button(label, ImVec2(200, 20))) {
+
+            static const int buffer_size = 96;
+            static char label_buffer[buffer_size] = {};
+   
+            MemZero(label_buffer, buffer_size);
+            snprintf(label_buffer, buffer_size, "id: %u", entity->id);
+
+            if (ImGui::Button(label_buffer, ImVec2(200, 20))) {
                 ED()->selected_entity = entity;
             }
-    
+
             ImGui::SameLine();
 
             if (ImGui::Button("Goto")) {
@@ -1633,6 +1622,30 @@ void editor_draw_ui(State *state) {
             ImGui::PopID();
         }
         
+        ImGui::End();
+    }
+
+    // inspector
+    if (ED()->selected_entity) {
+        ImGui::Begin("Inspector", NULL, ImGuiWindowFlags_NoFocusOnAppearing);
+
+        if (ImGui::Button("Deselect")) {
+            ED()->selected_entity = NULL;
+        }
+
+        ImGui::SameLine();
+
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7, 0.1, 0.1, 1));
+        if (ImGui::Button("Delete")) {
+            Assert(local_delete_entity(state, ED()->selected_entity->id));
+            ED()->selected_entity = NULL;
+        }
+        ImGui::PopStyleColor();
+
+        if (ED()->selected_entity) {
+            imgui_entity(ED()->selected_entity);
+        }
+
         ImGui::End();
     }
 
@@ -2093,7 +2106,24 @@ CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size)
 }
 
 void imgui_entity(Entity *entity) {
-    ImGui::Text("flags: %u", entity->flags);
+    // flags check box list
+    if (ImGui::CollapsingHeader("flags")) {
+        EnumValue<EntityFlag> *values = meta_values<EntityFlag>();
+        int members_count = meta_count<EntityFlag>();
+
+        for (i32 i = 0; i < members_count; i++) {
+            bool has_flag = BitSet(entity->flags, values[i].value);
+            ImGui::Checkbox(values[i].name.c(), &has_flag);
+
+            if (has_flag) {
+                SetBit(entity->flags, values[i].value);
+            }
+            else {
+                UnsetBit(entity->flags, values[i].value);
+            }
+        }
+    }
+
     ImGui::Text("id: %u", entity->id);
     ImGui::Text("owner: %u", entity->owner);
     imgui_v3_control("position", &entity->position);
@@ -2107,11 +2137,12 @@ void imgui_entity(Entity *entity) {
 
     { // pickup type enum combo box
         EnumValue<PickupType> *values = meta_values<PickupType>();
+        int members_count = meta_count<PickupType>();
         i32 selected_index = meta_index(entity->pickup_type);
         string selected_name = values[selected_index].name;
     
         if (ImGui::BeginCombo("pickup type", selected_name.c())) {
-            for (i32 i = 0; i < meta_count<PickupType>(); i++) {
+            for (i32 i = 0; i < members_count; i++) {
                 bool is_selected = selected_index == i;
     
                 if (ImGui::Selectable(values[i].name.c(), is_selected))  {
@@ -2187,102 +2218,63 @@ Viewport imgui_viewport(const char *label, u32 texture_id, bool force_focus) {
 }
 
 void imgui_v3_control(const char *label, v3 *vector) {
-    const f32 reset_value = 0;
+    ImVec4 x_button_colour = ImVec4(0.7, 0.1, 0.1, 1);
+    ImVec4 y_button_colour = ImVec4(0.1, 0.7, 0.1, 1);
+    ImVec4 z_button_colour = ImVec4(0.1, 0.1, 0.7, 1);
 
     ImGui::PushID(label);
-	ImGui::Columns(2);
+    ImGui::Columns(2);
 
-	ImGui::SetColumnWidth(0, 100);
-
-    ImGui::Text(label);
-
-	ImGui::NextColumn();
-
-    ImGui::PushMultiItemsWidths(3, ImGui::CalcItemWidth());
-
-    if (ImGui::Button("X")) {
-        vector->x = reset_value;        
+    { // label column
+        ImGui::SetColumnWidth(0, 80);
+        ImGui::Text(label);
+        ImGui::NextColumn();
     }
 
-    ImGui::SameLine();
-    ImGui::DragFloat("##X", &(*vector)[0]);
-	ImGui::PopItemWidth();
-    ImGui::SameLine();
+    { // controls column
+        ImGui::PushMultiItemsWidths(3, ImGui::CalcItemWidth());
+   
+        { // X
+            ImGui::PushStyleColor(ImGuiCol_Button, x_button_colour);
+            if (ImGui::Button("X")) {
+                vector->x = 0;        
+            }
+        
+            ImGui::SameLine();
+            ImGui::DragFloat("##X", &(*vector)[0]);
+            ImGui::PopItemWidth();
+        }
 
-    if (ImGui::Button("Y")) {
-        vector->y = reset_value;        
+        { // Y
+            ImGui::SameLine();
+
+            ImGui::PushStyleColor(ImGuiCol_Button, y_button_colour);
+            if (ImGui::Button("Y")) {
+                vector->y = 0;        
+            }
+        
+            ImGui::SameLine();
+            ImGui::DragFloat("##Y", &(*vector)[1]);
+            ImGui::PopItemWidth();
+        }
+
+        { // Z
+            ImGui::SameLine();
+
+            ImGui::PushStyleColor(ImGuiCol_Button, z_button_colour);
+            if (ImGui::Button("Z")) {
+                vector->z = 0;        
+            }
+        
+            ImGui::SameLine();
+            ImGui::DragFloat("##Z", &(*vector)[2]);
+            ImGui::PopItemWidth();
+        }
     }
-
-    ImGui::SameLine();
-    ImGui::DragFloat("##Y", &(*vector)[1]);
-	ImGui::PopItemWidth();
-    ImGui::SameLine();
-
-    if (ImGui::Button("Z")) {
-        vector->z = reset_value;        
-    }
-
-    ImGui::SameLine();
-    ImGui::DragFloat("##Z", &(*vector)[2]);
-	ImGui::PopItemWidth();
-    ImGui::SameLine();
-		
+    
+    ImGui::PopStyleColor(3);
     ImGui::Columns(1);
-	ImGui::PopID();
-}
-
-void imgui_v4_control(const char *label, v4 *vector) {
-    const f32 reset_value = 0;
-
-    ImGui::PushID(label);
-	ImGui::Columns(2);
-
-	ImGui::SetColumnWidth(0, 100);
-
-    ImGui::Text(label);
-
-	ImGui::NextColumn();
-
-    ImGui::PushMultiItemsWidths(4, ImGui::CalcItemWidth());
-
-    if (ImGui::Button("R")) {
-        vector->x = reset_value;        
-    }
-
-    ImGui::SameLine();
-    ImGui::DragFloat("##R", &(*vector)[0]);
-	ImGui::PopItemWidth();
-    ImGui::SameLine();
-
-    if (ImGui::Button("G")) {
-        vector->y = reset_value;        
-    }
-
-    ImGui::SameLine();
-    ImGui::DragFloat("##G", &(*vector)[1]);
-	ImGui::PopItemWidth();
-    ImGui::SameLine();
-
-    if (ImGui::Button("B")) {
-        vector->z = reset_value;        
-    }
-
-    ImGui::SameLine();
-    ImGui::DragFloat("##B", &(*vector)[2]);
-	ImGui::PopItemWidth();
-    ImGui::SameLine();
-
-    if (ImGui::Button("A")) {
-        vector->z = reset_value;        
-    }
-
-    ImGui::SameLine();
-    ImGui::DragFloat("##A", &(*vector)[3]);
-	ImGui::PopItemWidth();
-    ImGui::SameLine();
-		
-    ImGui::Columns(1);
-	ImGui::PopID();
+    ImGui::PopID();
 }
 
 void clear_level(State *state) {
