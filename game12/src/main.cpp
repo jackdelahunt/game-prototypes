@@ -15,10 +15,10 @@
 #include <chrono>
 #include <queue>
 #include <atomic>
+#include <iostream>
 
-// Total: 78:30
+// Total: 80:30
 // Started: 21:00
-//
 //
 // What do a programmer do?:
 // Game:
@@ -38,6 +38,10 @@
 // - sky box
 // - define assets in editor and get handles in game
 // - load game as dll
+//
+// Meta program:
+// - reduce the templating in the code gen
+// - meta_name<EntityFlag>(flag) -> MetaEntityFlag::name(flag)
 //
 //  ack long term:
 //      - asserts: enable/disable, assert with message, differnt actions to do on an assert
@@ -192,8 +196,8 @@ meta enum PickupType : u32 {
     PT_NONE,
     PT_M4,
     PT_TAP,
-    PT_HEALTH,
     PT_PAL,
+    PT_HEALTH,
 };
 
 
@@ -203,9 +207,9 @@ meta enum EntityFlag : u32 {
     EF_SPAWN_POINT      = 1 << 1,
     EF_SOLID_HITBOX     = 1 << 2,
     EF_STATIC_HITBOX    = 1 << 3,
-    EF_DEAD             = 1 << 4,
-    EF_PICKUP           = 1 << 5,
-    EF_TRIGGER_HITBOX   = 1 << 6,
+    EF_TRIGGER_HITBOX   = 1 << 4,
+    EF_DEAD             = 1 << 5,
+    EF_PICKUP           = 1 << 6,
     EF_MISSLE           = 1 << 7,
     EF_DELETE           = 1 << 16,
 };
@@ -419,6 +423,7 @@ void serialise_level(State *state);
 void serialise_entity(YAML::Emitter &out, Entity *entity);
 void deserialise_level(State *state);
 
+YAML::Emitter &operator<<(YAML::Emitter &out, string value);
 YAML::Emitter &operator<<(YAML::Emitter &out, v3 value);
 YAML::Emitter &operator<<(YAML::Emitter &out, v4 value);
 
@@ -785,14 +790,14 @@ void game_server_update(State *state, f32 delta_time) {
                             NetworkMessage message = NetworkMessage{.type = NM_SET_WEAPON, .set_weapon = WH_TAP};
                             server_send_to_client(NET(), bytes_from_ptr(&message), other.owner);
                         } break;
-                        case PT_HEALTH: {
-                            entity.pickup_cooldown = HEALTH_PICKUP_COOLDOWN;
-                            other.health = other.max_health;
-                        } break;
                         case PT_PAL: {
                             entity.pickup_cooldown = WEAPON_PICKUP_COOLDOWN;
                             NetworkMessage message = NetworkMessage{.type = NM_SET_WEAPON, .set_weapon = WH_PAL};
                             server_send_to_client(NET(), bytes_from_ptr(&message), other.owner);
+                        } break;
+                        case PT_HEALTH: {
+                            entity.pickup_cooldown = HEALTH_PICKUP_COOLDOWN;
+                            other.health = other.max_health;
                         } break;
                         case PT_NONE: {
                             Warnf("Entity with id {} is marked as a pickup but has PT_NONE assigned", other.id);
@@ -1178,15 +1183,15 @@ void game_client_draw(State *state) {
                     pickup_colour = entity.pickup_cooldown > 0 ? brightness(RED, 0.5) : g_weapons[WH_TAP].colour;
                     pickup_size = v3{1, 1, 1};
                 } break;
-                case PT_HEALTH: {
-                    mesh = g_meshes[MH_CROSS];
-                    pickup_colour = entity.pickup_cooldown > 0 ? brightness(RED, 0.5) : brightness({0.2, 1, 0.2, 1}, 0.8);
-                    pickup_size = v3{0.3, 0.3, 0.3};
-                } break;
                 case PT_PAL: { 
                     mesh = g_meshes[g_weapons[WH_PAL].mesh];
                     pickup_colour = entity.pickup_cooldown > 0 ? brightness(RED, 0.5) : g_weapons[WH_PAL].colour;
                     pickup_size = v3{1, 1, 1};
+                } break;
+                case PT_HEALTH: {
+                    mesh = g_meshes[MH_CROSS];
+                    pickup_colour = entity.pickup_cooldown > 0 ? brightness(RED, 0.5) : brightness({0.2, 1, 0.2, 1}, 0.8);
+                    pickup_size = v3{0.3, 0.3, 0.3};
                 } break;
                 case PT_NONE: { 
                     Warnf("Entity with id {} is marked as a pickup but has PT_NONE assigned", entity.id);
@@ -1587,14 +1592,14 @@ void editor_draw_ui(State *state) {
 
         ImGui::SameLine();
 
-        if (ImGui::Button("Health pickup")) {
-            ED()->selected_entity = local_spawn_pickup(state, PT_HEALTH);
+        if (ImGui::Button("P&L pickup")) {
+            ED()->selected_entity = local_spawn_pickup(state, PT_PAL);
         }
 
         ImGui::SameLine();
 
-        if (ImGui::Button("P&L pickup")) {
-            ED()->selected_entity = local_spawn_pickup(state, PT_PAL);
+        if (ImGui::Button("Health pickup")) {
+            ED()->selected_entity = local_spawn_pickup(state, PT_HEALTH);
         }
 
         ImGui::SeparatorText("Entities in level");
@@ -2319,7 +2324,20 @@ void serialise_level(State *state) {
 
 void serialise_entity(YAML::Emitter &out, Entity *entity) {
     out << YAML::BeginMap;
-    out << YAML::Key << "flags"         << YAML::Value << entity->flags;
+
+    out << YAML::Key << "flags"         << YAML::BeginSeq;
+    { // entity flag sequence
+        EnumValue<EntityFlag> *values = meta_values<EntityFlag>();
+        int members_count = meta_count<EntityFlag>();
+
+        for (i32 i = 0; i < members_count; i++) {
+            if (BitSet(entity->flags, values[i].value)) {
+                out << values[i].name;
+            }
+        }
+    }
+    out << YAML::EndSeq;
+
     out << YAML::Key << "id"            << YAML::Value << entity->id;
     out << YAML::Key << "owner"         << YAML::Value << entity->owner;
     out << YAML::Key << "position"      << YAML::Value << entity->position;
@@ -2329,7 +2347,7 @@ void serialise_entity(YAML::Emitter &out, Entity *entity) {
     out << YAML::Key << "colour"        << YAML::Value << entity->colour;
     out << YAML::Key << "max_health"    << YAML::Value << entity->max_health;
     out << YAML::Key << "health"        << YAML::Value << entity->health;
-    out << YAML::Key << "pickup_type"   << YAML::Value << entity->pickup_type;
+    out << YAML::Key << "pickup_type"   << YAML::Value << meta_name(entity->pickup_type);
     out << YAML::EndMap;
 }
 
@@ -2345,31 +2363,69 @@ void deserialise_level(State *state) {
     state->spawn_point_count = 0;
     reset(&state->entities);
 
-    for (auto entity : entities) {
-        Entity e = Entity {};
+    for (auto node : entities) {
+        Entity entity = Entity {};
 
-        e.flags =                       entity["flags"].as<u32>();
-        e.id =                          entity["id"].as<u32>();
-        e.owner =                       entity["owner"].as<u32>();
-        e.position =                    entity["position"].as<v3>();
-        e.size =                        entity["size"].as<v3>();
-        e.rotation =                    entity["rotation"].as<v3>();
-        e.velocity =                    entity["velocity"].as<v3>();
-        e.colour =                      entity["colour"].as<v4>();
-        e.max_health =                  entity["max_health"].as<f32>();
-        e.health =                      entity["health"].as<f32>();
-        e.pickup_type = (PickupType)    entity["pickup_type"].as<u32>();
+        { // decode flags from string array
+            for (auto flag_node : node["flags"]) {
+                // convert value in yaml to string
+                std::string s = flag_node.as<std::string>();
+                string flag_name = slice_create((u8 *) s.c_str(), s.size());
 
-        if (BitSet(e.flags, EF_SPAWN_POINT)) {
+                // check if saved name is valid
+                EnumValue<EntityFlag> *flag = meta_value<EntityFlag>(flag_name);
+                if (!flag) {
+                    Warnf("No Entity flag was found with name \"{}\", okay if deleted but could be a bug!!", flag_name);
+                    Breakpoint;
+                }
+
+                SetBit(entity.flags, (u32) flag->value);
+            }
+        }
+
+        entity.id =                          node["id"].as<u32>();
+        entity.owner =                       node["owner"].as<u32>();
+        entity.position =                    node["position"].as<v3>();
+        entity.size =                        node["size"].as<v3>();
+        entity.rotation =                    node["rotation"].as<v3>();
+        entity.velocity =                    node["velocity"].as<v3>();
+        entity.colour =                      node["colour"].as<v4>();
+        entity.max_health =                  node["max_health"].as<f32>();
+        entity.health =                      node["health"].as<f32>();
+
+        { // decode pickup type from string
+            std::string s = node["pickup_type"].as<std::string>();
+            string flag_name = slice_create((u8 *) s.c_str(), s.size());
+
+            // check if saved name is valid
+            EnumValue<PickupType> *pickup_type = meta_value<PickupType>(flag_name);
+            if (!pickup_type) {
+                Warnf("No pickup type was found with name \"{}\", okay if deleted but could be a bug!!", flag_name);
+                Breakpoint;
+            }
+
+            entity.pickup_type = pickup_type->value;
+        }
+
+        if (BitSet(entity.flags, EF_SPAWN_POINT)) {
             state->spawn_point_count += 1;
         }
 
-        append(&state->entities, e);
+        append(&state->entities, entity);
     }
 
     set_player_weapon(state, WH_DEAGLE, 0);
 
     Infof("Level was loaded with {} entities and {} spawn points", state->entities.len, state->spawn_point_count);
+}
+
+YAML::Emitter &operator<<(YAML::Emitter &out, string value) {
+    // this may look like it is just writing a c string but
+    // actually you forgot something... this is c++. So the
+    // creator of this library does something behind your back.
+    // this creates a std::string and then does the write, YAY
+    out << value.c();
+    return out;
 }
 
 YAML::Emitter &operator<<(YAML::Emitter &out, v3 vector) {

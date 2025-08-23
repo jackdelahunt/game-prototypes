@@ -26,7 +26,7 @@ string meta_name(T value) {
 }
 
 template<typename T>
-T meta_value(string name) {
+EnumValue<T> *meta_value(string name) {
 	static_assert(std::is_enum_v<T>, "Using meta_value requires type 'T' to be an enum and tagged with the meta keyword");
 
 	return MetaEnum<T>::value(name);

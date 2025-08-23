@@ -1,6 +1,7 @@
 name: <empty>
 entities:
-  - flags: 8
+  - flags:
+      - EF_STATIC_HITBOX
     id: 499
     owner: 0
     position: [0, 0, 0]
@@ -10,8 +11,9 @@ entities:
     colour: [1, 1, 1, 1]
     max_health: 0
     health: 0
-    pickup_type: 0
-  - flags: 2
+    pickup_type: PT_NONE
+  - flags:
+      - EF_SPAWN_POINT
     id: 25094
     owner: 0
     position: [-8, 5, 8]
@@ -21,8 +23,9 @@ entities:
     colour: [1, 0, 0.800000012, 1]
     max_health: 0
     health: 0
-    pickup_type: 0
-  - flags: 2
+    pickup_type: PT_NONE
+  - flags:
+      - EF_SPAWN_POINT
     id: 2192
     owner: 0
     position: [12, 5, -5]
@@ -32,8 +35,9 @@ entities:
     colour: [1, 0, 0.800000012, 1]
     max_health: 0
     health: 0
-    pickup_type: 0
-  - flags: 32
+    pickup_type: PT_NONE
+  - flags:
+      - EF_PICKUP
     id: 11702
     owner: 1
     position: [0, 0.5, 10]
@@ -43,8 +47,9 @@ entities:
     colour: [0.5, 0.5, 0.5, 1]
     max_health: 0
     health: 0
-    pickup_type: 2
-  - flags: 32
+    pickup_type: PT_TAP
+  - flags:
+      - EF_PICKUP
     id: 12004
     owner: 1
     position: [-11, 0.5, -11]
@@ -54,8 +59,9 @@ entities:
     colour: [0.5, 0.5, 0.5, 1]
     max_health: 0
     health: 0
-    pickup_type: 1
-  - flags: 32
+    pickup_type: PT_M4
+  - flags:
+      - EF_PICKUP
     id: 26236
     owner: 1
     position: [11, 0.5, -12]
@@ -65,8 +71,9 @@ entities:
     colour: [0.5, 0.5, 0.5, 1]
     max_health: 0
     health: 0
-    pickup_type: 3
-  - flags: 32
+    pickup_type: PT_HEALTH
+  - flags:
+      - EF_PICKUP
     id: 3546
     owner: 1
     position: [-15, 0.5, 5]
@@ -76,8 +83,9 @@ entities:
     colour: [0.5, 0.5, 0.5, 1]
     max_health: 0
     health: 0
-    pickup_type: 4
-  - flags: 2
+    pickup_type: PT_PAL
+  - flags:
+      - EF_SPAWN_POINT
     id: 26991
     owner: 0
     position: [0, 5, -21]
@@ -87,4 +95,4 @@ entities:
     colour: [1, 0, 0.800000012, 1]
     max_health: 0
     health: 0
-    pickup_type: 0
+    pickup_type: PT_NONE

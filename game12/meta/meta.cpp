@@ -139,7 +139,7 @@ void meta_generate_enum(Arena *arena, DynamicArray<u8> *builder, TSNode enum_nod
             TSNode value_name_node = node_child_field(value_node, "name");
             string value_name_string = node_to_string(value_name_node, source);
 
-            append_many(builder, fmt(arena, "        case {}: return values[{}].name;\n", value_name_string, value_name_string));
+            append_many(builder, fmt(arena, "        case {}: return values[{}].name;\n", value_name_string, i));
         }
         append_many(builder, string("    }\n"));
 
@@ -147,11 +147,11 @@ void meta_generate_enum(Arena *arena, DynamicArray<u8> *builder, TSNode enum_nod
     }
 
     { // generate value()
-        append_many(builder, fmt(arena, "static {} value(string name) {\n", type_string));
+        append_many(builder, fmt(arena, "static EnumValue<{}> *value(string name) {\n", type_string));
         append_many(builder,     string("    for (int i = 0; i < count; i++) {\n"));
-        append_many(builder,     string("        if (slice_memcmp(values[i].name, name)) return values[i].value;\n"));
+        append_many(builder,     string("        if (slice_memcmp(values[i].name, name)) return &values[i];\n"));
         append_many(builder,     string("    }\n"));
-        append_many(builder, fmt(arena, "    return ({}) 0;\n", type_string));
+        append_many(builder, fmt(arena, "    return nullptr;\n", type_string));
         append_many(builder,     string("}\n\n"));
     }
 
