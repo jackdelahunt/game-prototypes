@@ -186,6 +186,7 @@ template <typename T>   T *bytes_to_ptr(slice<u8> slice);
 template <typename T>   slice<u8> bytes_from_ptr(T *ptr);
 template <typename T>   void slice_copy(slice<T> dst, slice<T> src);
 template <typename T>   void slice_copy_raw_ptr(slice<T> slice, void *ptr);
+template <typename T>   bool slice_memcmp(slice<T> a, slice<T> b);
 
 // @arena
 Arena arena_create(i64 size);
@@ -397,6 +398,15 @@ void slice_copy_raw_ptr(slice<T> slice, void *ptr) {
     for (i64 i = 0; i < slice.len; i++) {
         slice.ptr[i] = ((T *) ptr)[i];
     }
+}
+
+template <typename T>
+bool slice_memcmp(slice<T> a, slice<T> b) {
+    if (a.len != b.len) {
+        return false;
+    }
+
+    return memcmp(a.ptr, b.ptr, a.len) == 0;
 }
 
 Arena arena_create(i64 size) {

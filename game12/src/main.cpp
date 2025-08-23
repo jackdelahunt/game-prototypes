@@ -1,3 +1,4 @@
+#include "imgui.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -437,9 +438,6 @@ int main(i32 argc, const char **argv) {
 
     srand((u32) time(NULL));
 
-    PickupType pt = meta_value<PickupType>("PT_M4");
-    Logf("PT_M4 value: {}", (u32)pt);
-
 #if RUN_TESTS
     run_tests();
     return 0;
@@ -796,6 +794,9 @@ void game_server_update(State *state, f32 delta_time) {
                             entity.pickup_cooldown = WEAPON_PICKUP_COOLDOWN;
                             NetworkMessage message = NetworkMessage{.type = NM_SET_WEAPON, .set_weapon = WH_PAL};
                             server_send_to_client(NET(), bytes_from_ptr(&message), other.owner);
+                        } break;
+                        case PT_NONE: {
+                            Warnf("Entity with id {} is marked as a pickup but has PT_NONE assigned", other.id);
                         } break;
                         default: Assertf(false, "Did you add a new pickup?");
                     }
@@ -1187,6 +1188,10 @@ void game_client_draw(State *state) {
                     mesh = g_meshes[g_weapons[WH_PAL].mesh];
                     pickup_colour = entity.pickup_cooldown > 0 ? brightness(RED, 0.5) : g_weapons[WH_PAL].colour;
                     pickup_size = v3{1, 1, 1};
+                } break;
+                case PT_NONE: { 
+                    Warnf("Entity with id {} is marked as a pickup but has PT_NONE assigned", entity.id);
+                    continue;
                 } break;
                 default: Assertf(false, "Did you add a new pickup type?");
             }
@@ -2099,7 +2104,29 @@ void imgui_entity(Entity *entity) {
     ImGui::InputFloat("max health", &entity->max_health);
     ImGui::InputFloat("health", &entity->health);
     ImGui::InputFloat("death cooldown", &entity->death_cooldown);
-    ImGui::Text("pickup type: %u", entity->pickup_type);
+
+    { // pickup type enum combo box
+        EnumValue<PickupType> *values = meta_values<PickupType>();
+        i32 selected_index = meta_index(entity->pickup_type);
+        string selected_name = values[selected_index].name;
+    
+        if (ImGui::BeginCombo("pickup type", selected_name.c())) {
+            for (i32 i = 0; i < meta_count<PickupType>(); i++) {
+                bool is_selected = selected_index == i;
+    
+                if (ImGui::Selectable(values[i].name.c(), is_selected))  {
+                    entity->pickup_type = values[i].value;
+                }
+    
+                // set the initial focus when opening the combo
+                if (is_selected)
+                    ImGui::SetItemDefaultFocus();
+            }
+    
+            ImGui::EndCombo();
+        }
+    }
+
     ImGui::InputFloat("pickup cooldown", &entity->pickup_cooldown);
 }
 

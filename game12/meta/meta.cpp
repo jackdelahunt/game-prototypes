@@ -117,21 +117,21 @@ void meta_generate_enum(Arena *arena, DynamicArray<u8> *builder, TSNode enum_nod
     append_many(builder, fmt(arena, "const static int count = {};\n\n", member_count));
 
     { // generate values
-        append_many(builder, string("inline static EnumValue values[count] = {\n"));
+        append_many(builder, fmt(arena, "inline static EnumValue<{}> values[count] = {\n", type_string));
 
         for (u32 i = 0; i < member_count; i++) {
             TSNode value_node = node_expect_child(body_node, NODE_ENUM_TYPE, i); // breaks if there is a comment luulull
             TSNode value_name_node = node_child_field(value_node, "name");
             string value_name_string = node_to_string(value_name_node, source);
 
-            append_many(builder, fmt(arena, "    {.name = \"{}\", .value = int({})},\n", value_name_string, value_name_string));
+            append_many(builder, fmt(arena, "    EnumValue<{}>(string(\"{}\"), {}),\n", type_string, value_name_string, value_name_string));
         }
 
         append_many(builder, string("};\n\n"));
     }
 
     { // generate name()
-        append_many(builder, fmt(arena, "static std::string name({} value) {\n", type_string));
+        append_many(builder, fmt(arena, "static string name({} value) {\n", type_string));
 
         append_many(builder, fmt(arena, "    switch (value) {\n", type_string));
         for (u32 i = 0; i < member_count; i++) {
@@ -147,11 +147,20 @@ void meta_generate_enum(Arena *arena, DynamicArray<u8> *builder, TSNode enum_nod
     }
 
     { // generate value()
-        append_many(builder, fmt(arena, "static {} value(std::string name) {\n", type_string));
+        append_many(builder, fmt(arena, "static {} value(string name) {\n", type_string));
         append_many(builder,     string("    for (int i = 0; i < count; i++) {\n"));
-        append_many(builder, fmt(arena, "        if (values[i].name == name) return ({}) values[i].value;\n", type_string));
+        append_many(builder,     string("        if (slice_memcmp(values[i].name, name)) return values[i].value;\n"));
         append_many(builder,     string("    }\n"));
         append_many(builder, fmt(arena, "    return ({}) 0;\n", type_string));
+        append_many(builder,     string("}\n\n"));
+    }
+
+    { // generate index()
+        append_many(builder, fmt(arena, "static int index({} value) {\n", type_string));
+        append_many(builder,     string("    for (int i = 0; i < count; i++) {\n"));
+        append_many(builder,     string("        if (values[i].value == value) return i;\n"));
+        append_many(builder,     string("    }\n"));
+        append_many(builder,     string("    return -1;\n"));
         append_many(builder,     string("}\n\n"));
     }
 

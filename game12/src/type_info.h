@@ -10,15 +10,15 @@ template<>
 struct MetaEnum<PickupType> {
 const static int count = 5;
 
-inline static EnumValue values[count] = {
-    {.name = "PT_NONE", .value = int(PT_NONE)},
-    {.name = "PT_M4", .value = int(PT_M4)},
-    {.name = "PT_TAP", .value = int(PT_TAP)},
-    {.name = "PT_HEALTH", .value = int(PT_HEALTH)},
-    {.name = "PT_PAL", .value = int(PT_PAL)},
+inline static EnumValue<PickupType> values[count] = {
+    EnumValue<PickupType>(string("PT_NONE"), PT_NONE),
+    EnumValue<PickupType>(string("PT_M4"), PT_M4),
+    EnumValue<PickupType>(string("PT_TAP"), PT_TAP),
+    EnumValue<PickupType>(string("PT_HEALTH"), PT_HEALTH),
+    EnumValue<PickupType>(string("PT_PAL"), PT_PAL),
 };
 
-static std::string name(PickupType value) {
+static string name(PickupType value) {
     switch (value) {
         case PT_NONE: return values[PT_NONE].name;
         case PT_M4: return values[PT_M4].name;
@@ -28,11 +28,18 @@ static std::string name(PickupType value) {
     }
 }
 
-static PickupType value(std::string name) {
+static PickupType value(string name) {
     for (int i = 0; i < count; i++) {
-        if (values[i].name == name) return (PickupType) values[i].value;
+        if (slice_memcmp(values[i].name, name)) return values[i].value;
     }
     return (PickupType) 0;
+}
+
+static int index(PickupType value) {
+    for (int i = 0; i < count; i++) {
+        if (values[i].value == value) return i;
+    }
+    return -1;
 }
 
 };

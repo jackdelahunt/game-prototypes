@@ -1,39 +1,49 @@
 #pragma once
 
-#include <string>
-
 #define meta
 
+#include <type_traits>
+
+template<typename T>
 struct EnumValue {
-	std::string name;
-	int value;
+	string name;
+	T value;
+
+	EnumValue(string n, T v) : name(n), value(v) {}
 };
 
 template<typename T>
 struct MetaEnum {
-	std::string name(T value);
-	T value(std::string name);
+	string name(T value);
+	T value(string name);
 };
 
 template<typename T>
-std::string meta_name(T value) {
+string meta_name(T value) {
 	static_assert(std::is_enum_v<T>, "Using meta_name requires type 'T' to be an enum and tagged with the meta keyword");
 
 	return MetaEnum<T>::name(value);
 }
 
 template<typename T>
-T meta_value(std::string name) {
+T meta_value(string name) {
 	static_assert(std::is_enum_v<T>, "Using meta_value requires type 'T' to be an enum and tagged with the meta keyword");
 
 	return MetaEnum<T>::value(name);
 }
 
 template<typename T>
-EnumValue *meta_values() {
+EnumValue<T> *meta_values() {
 	static_assert(std::is_enum_v<T>, "Using meta_values requires type 'T' to be an enum and tagged with the meta keyword");
 
 	return MetaEnum<T>::values;
+}
+
+template<typename T>
+int meta_index(T value) {
+	static_assert(std::is_enum_v<T>, "Using meta_index requires type 'T' to be an enum and tagged with the meta keyword");
+
+	return MetaEnum<T>::index(value);
 }
 
 template<typename T>
