@@ -34,6 +34,8 @@ project "game12"
 
     files {
         "src/main.cpp",
+        "src/meta.h",
+        "src/type_info.h",
         "src/win_platform.cpp",
         "src/libs/imgui/imgui*.cpp",
         "src/libs/miniaudio/miniaudio.c"
@@ -107,41 +109,8 @@ project "meta"
     }
 
     includedirs {
-        "src",
-        "src/meta",
-        "src/libs",
         "src/libs/tree-sitter/lib/src",
         "src/libs/tree-sitter/lib/include",
-    }
-
-    links {
-        "user32",
-        "gdi32",
-        "shell32",
-    }
-
-    filter "configurations:Debug"
-        targetdir "build/bin/debug"
-    filter "configurations:Release"
-        targetdir "build/bin/release"
-    filter "configurations:Profile"
-        targetdir "build/bin/profile"
-
-project "metaexample"
-    kind "ConsoleApp"
-    location "build/%{prj.name}"
-
-    files {
-        "meta/example/main.cpp",
-        "meta/example/foo.cpp",
-        "meta/example/meta.h",
-        "meta/example/foo.h",
-        "meta/example/meta_foo.h",
-    }
-
-    includedirs {
-        "src",
-        "src/meta",
     }
 
     links {

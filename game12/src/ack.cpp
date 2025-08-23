@@ -40,7 +40,9 @@
 
 #define BitSet(a, b) ((a & b) != 0)
 #define SetBit(a, b) (a) |= (b)
-#define UnsetBit(a, b) (a) &= ~(b) 
+#define UnsetBit(a, b) (a) &= ~(b)
+
+#define MemZero(buffer, size) memset((buffer), 0, (size))
 
 #define Scope }switch(0){default:
 
@@ -246,8 +248,21 @@ string read_entire_file(string path);
 template<typename... Args>  string fmt(Arena *arena, string format, Args... args);
 template<typename T>        void fmt_arg(DynamicArray<u8> *bytes, string format, i64 &index, T arg); 
 template<typename T>        void fmt_value(DynamicArray<u8> *bytes, T value);
+template<>                  void fmt_value(DynamicArray<u8> *bytes, i64 value);
+template<>                  void fmt_value(DynamicArray<u8> *bytes, i32 value);
+template<>                  void fmt_value(DynamicArray<u8> *bytes, i16 value);
+template<>                  void fmt_value(DynamicArray<u8> *bytes, i8 value);
+template<>                  void fmt_value(DynamicArray<u8> *bytes, u64 value);
+template<>                  void fmt_value(DynamicArray<u8> *bytes, u32 value);
+template<>                  void fmt_value(DynamicArray<u8> *bytes, u16 value);
+template<>                  void fmt_value(DynamicArray<u8> *bytes, u8 value);
+template<>                  void fmt_value(DynamicArray<u8> *bytes, f64 value);
+template<>                  void fmt_value(DynamicArray<u8> *bytes, f32 value);
 template<>                  void fmt_value(DynamicArray<u8> *bytes, bool value);
 template<>                  void fmt_value(DynamicArray<u8> *bytes, string value);
+template<>                  void fmt_value(DynamicArray<u8> *bytes, void *value);
+template<>                  void fmt_value(DynamicArray<u8> *bytes, const char *value);
+template<>                  void fmt_value(DynamicArray<u8> *bytes, char *value);
 
 // @log
 template<typename... Args>
@@ -416,7 +431,7 @@ template <typename T>
 slice<T> arena_alloc_many(Arena *arena, i64 size) {
     i64 byte_count = sizeof(T) * size;
 
-    Assert(arena->end + byte_count <= arena->bytes.len);
+    Assertf(arena->end + byte_count <= arena->bytes.len, "Arena ran out of memory");
 
     slice<u8> bytes = slice_range(arena->bytes, arena->end, arena->end + byte_count);
     arena->end += byte_count;
@@ -811,38 +826,13 @@ string read_entire_file(string path) {
 }
 
 // @fmt
-// get bytes required to format the value, +1 when reserving space
-// because snprintf needs that for the null terminator even thoug                           
-// it doesn't report it the return value, nice one C! 
-// 
-// This is the same for all basic type that are supported in printf
-// it was rude of me not to use a macro to generate a template here
-// - 08/08/25
-#define FMT_VALUE_IMPL_PRIMITIVE(TYPE, FORMAT)                                                  \
-template<>                                                                                      \
-void fmt_value(DynamicArray<u8> *bytes, TYPE value) {                                           \
-    i64 required_bytes = snprintf(NULL, 0, FORMAT, value);                                      \
-    slice<u8> reserved_space = push_many(bytes, required_bytes + 1);                            \
-    i64 written = snprintf((char *) reserved_space.ptr, reserved_space.len, FORMAT, value);     \
-    Assert(written == required_bytes);                                                          \
-}
-
-FMT_VALUE_IMPL_PRIMITIVE(void *, "%p")
-FMT_VALUE_IMPL_PRIMITIVE(const char *, "%s")
-FMT_VALUE_IMPL_PRIMITIVE(char *, "%s")
-
-FMT_VALUE_IMPL_PRIMITIVE(i64, "%lld")
-FMT_VALUE_IMPL_PRIMITIVE(i32, "%d")
-FMT_VALUE_IMPL_PRIMITIVE(i16, "%hd")
-FMT_VALUE_IMPL_PRIMITIVE(i8, "%hhd")
-
-FMT_VALUE_IMPL_PRIMITIVE(u64, "%llu")
-FMT_VALUE_IMPL_PRIMITIVE(u32, "%u")
-FMT_VALUE_IMPL_PRIMITIVE(u16, "%hu")
-FMT_VALUE_IMPL_PRIMITIVE(u8, "%hhu")
-
-FMT_VALUE_IMPL_PRIMITIVE(f32, "%f")
-FMT_VALUE_IMPL_PRIMITIVE(f64, "%f")
+// All primitive types i.e. i32, u16... are first formatted into a fixed buffer using
+// snprintf and that is then copied into the string. This is because libc is annoying
+// and it requires writing a \0 after snprint. This is just annoying as you need to have
+// space for it to write it but also dont want to actually reserve because then you
+// just have a random \0 in the middle of your string - 23/08/25
+#define FMT_PRIMITIVE_BUFFER_SIZE 512
+char g_fmt_primitive_buffer[FMT_PRIMITIVE_BUFFER_SIZE] = {};
 
 template<typename... Args>
 string fmt(Arena *arena, string format, Args... args) {
@@ -881,6 +871,77 @@ void fmt_arg(DynamicArray<u8> *bytes, string format, i64 &index, T arg) {
     }
 }
 
+template<>                                                                                      
+void fmt_value(DynamicArray<u8> *bytes, i64 value) {
+    i64 written = snprintf((char *) g_fmt_primitive_buffer, FMT_PRIMITIVE_BUFFER_SIZE, "%lld", value);
+    append_many(bytes, slice_create((u8 *) g_fmt_primitive_buffer, written));
+    MemZero(g_fmt_primitive_buffer, FMT_PRIMITIVE_BUFFER_SIZE);
+}
+
+template<>                                                                                      
+void fmt_value(DynamicArray<u8> *bytes, i32 value) {
+    i64 written = snprintf((char *) g_fmt_primitive_buffer, FMT_PRIMITIVE_BUFFER_SIZE, "%d", value);
+    append_many(bytes, slice_create((u8 *) g_fmt_primitive_buffer, written));
+    MemZero(g_fmt_primitive_buffer, FMT_PRIMITIVE_BUFFER_SIZE);
+}
+
+template<>                                                                                      
+void fmt_value(DynamicArray<u8> *bytes, i16 value) {
+    i64 written = snprintf((char *) g_fmt_primitive_buffer, FMT_PRIMITIVE_BUFFER_SIZE, "%hd", value);
+    append_many(bytes, slice_create((u8 *) g_fmt_primitive_buffer, written));
+    MemZero(g_fmt_primitive_buffer, FMT_PRIMITIVE_BUFFER_SIZE);
+}
+
+template<>                                                                                      
+void fmt_value(DynamicArray<u8> *bytes, i8 value) {
+    i64 written = snprintf((char *) g_fmt_primitive_buffer, FMT_PRIMITIVE_BUFFER_SIZE, "%hhd", value);
+    append_many(bytes, slice_create((u8 *) g_fmt_primitive_buffer, written));
+    MemZero(g_fmt_primitive_buffer, FMT_PRIMITIVE_BUFFER_SIZE);
+}
+
+template<>                                                                                      
+void fmt_value(DynamicArray<u8> *bytes, u64 value) {
+    i64 written = snprintf((char *) g_fmt_primitive_buffer, FMT_PRIMITIVE_BUFFER_SIZE, "%llu", value);
+    append_many(bytes, slice_create((u8 *) g_fmt_primitive_buffer, written));
+    MemZero(g_fmt_primitive_buffer, FMT_PRIMITIVE_BUFFER_SIZE);
+}
+
+template<>                                                                                      
+void fmt_value(DynamicArray<u8> *bytes, u32 value) {
+    i64 written = snprintf((char *) g_fmt_primitive_buffer, FMT_PRIMITIVE_BUFFER_SIZE, "%u", value);
+    append_many(bytes, slice_create((u8 *) g_fmt_primitive_buffer, written));
+    MemZero(g_fmt_primitive_buffer, FMT_PRIMITIVE_BUFFER_SIZE);
+}
+
+
+template<>                                                                                      
+void fmt_value(DynamicArray<u8> *bytes, u16 value) {
+    i64 written = snprintf((char *) g_fmt_primitive_buffer, FMT_PRIMITIVE_BUFFER_SIZE, "%hu", value);
+    append_many(bytes, slice_create((u8 *) g_fmt_primitive_buffer, written));
+    MemZero(g_fmt_primitive_buffer, FMT_PRIMITIVE_BUFFER_SIZE);
+}
+
+template<>
+void fmt_value(DynamicArray<u8> *bytes, u8 value) {
+    i64 written = snprintf((char *) g_fmt_primitive_buffer, FMT_PRIMITIVE_BUFFER_SIZE, "%hhu", value);
+    append_many(bytes, slice_create((u8 *) g_fmt_primitive_buffer, written));
+    MemZero(g_fmt_primitive_buffer, FMT_PRIMITIVE_BUFFER_SIZE);
+}
+
+template<>
+void fmt_value(DynamicArray<u8> *bytes, f64 value) {
+    i64 written = snprintf((char *) g_fmt_primitive_buffer, FMT_PRIMITIVE_BUFFER_SIZE, "%f", value);
+    append_many(bytes, slice_create((u8 *) g_fmt_primitive_buffer, written));
+    MemZero(g_fmt_primitive_buffer, FMT_PRIMITIVE_BUFFER_SIZE);
+}
+
+template<>
+void fmt_value(DynamicArray<u8> *bytes, f32 value) {
+    i64 written = snprintf((char *) g_fmt_primitive_buffer, FMT_PRIMITIVE_BUFFER_SIZE, "%f", value);
+    append_many(bytes, slice_create((u8 *) g_fmt_primitive_buffer, written));
+    MemZero(g_fmt_primitive_buffer, FMT_PRIMITIVE_BUFFER_SIZE);
+}
+
 template<>
 void fmt_value(DynamicArray<u8> *bytes, bool value) {
     if (value) {
@@ -894,6 +955,21 @@ void fmt_value(DynamicArray<u8> *bytes, bool value) {
 template<> 
 void fmt_value(DynamicArray<u8> *bytes, string value) {
     append_many(bytes, value);
+}
+
+template<>                  
+void fmt_value(DynamicArray<u8> *bytes, void *value) {
+    fmt_value(bytes, (u64) value);
+}
+
+template<>                  
+void fmt_value(DynamicArray<u8> *bytes, const char *value) {
+    fmt_value(bytes, string(value));
+}
+
+template<>  
+void fmt_value(DynamicArray<u8> *bytes, char *value) {
+    append_many(bytes, string(value));
 }
 
 // @log

@@ -4,6 +4,7 @@
 #include "net.cpp"
 #include "engine.cpp"
 #include "platform.h"
+#include "meta.h"
 
 #include <atomic>
 #include <stdio.h>
@@ -15,8 +16,8 @@
 #include <queue>
 #include <atomic>
 
-// Total: 64:30
-// Started: 20:00
+// Total: 75:30
+// Started: 16:30
 //
 //
 // What do a programmer do?:
@@ -38,17 +39,12 @@
 // - define assets in editor and get handles in game
 // - load game as dll
 //
-// Structre thoughts:
-//  - ack:
+//  ack long term:
 //      - asserts: enable/disable, assert with message, differnt actions to do on an assert
 //      - basic type, include math types?
 //      - strings, arrays, arenas
 //      - formating
 //      - Timers and profiling markers
-//  - meta:
-//      - get fields of type
-//      - get all enum members and their values
-//
 
 #define MAX_ENTITIES 500
 #define LEVEL_INSTANCE_ID 0
@@ -87,9 +83,7 @@ f32 EXPLOSION_DAMAGE = 200;
 
 bool g_dual_wield_recoil_switch = true;
 
-#define meta
-
-meta enum MeshHandle : u32 {
+enum MeshHandle : u32 {
     MH_NONE,
     MH_DEAGLE,
     MH_M4,
@@ -100,7 +94,7 @@ meta enum MeshHandle : u32 {
 Mesh *g_meshes[_MH_COUNT] = {};
 
 // keep silenced sounds in order
-meta enum SoundHandle : u32 {
+enum SoundHandle : u32 {
     SH_FIRE_DEAGLE,
     SH_FIRE_SILENCED_GUN_HIGH,
     SH_FIRE_SILENCED_GUN_MID,
@@ -112,7 +106,7 @@ meta enum SoundHandle : u32 {
 
 Sound *g_sounds[_SH_COUNT] = {};
 
-meta enum WeaponHandle : u32 {
+enum WeaponHandle : u32 {
     WH_DEAGLE,
     WH_M4,
     WH_TAP,
@@ -349,6 +343,8 @@ struct GameClient {
     State state;
 };
 
+#include "type_info.h"
+
 GameServer *g_game_server = NULL;
 GameClient *g_game_client = NULL;
 Editor     *g_editor      = NULL;
@@ -440,6 +436,9 @@ int main(i32 argc, const char **argv) {
     log_set_thread_name("client");
 
     srand((u32) time(NULL));
+
+    PickupType pt = meta_value<PickupType>("PT_M4");
+    Logf("PT_M4 value: {}", (u32)pt);
 
 #if RUN_TESTS
     run_tests();

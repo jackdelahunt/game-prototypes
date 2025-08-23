@@ -1,5 +1,6 @@
 #include "../src/ack.cpp"
 
+#include <cstring>
 #include <tree_sitter/api.h>
 
 #include <iostream>
@@ -14,8 +15,8 @@
 
 extern "C" const TSLanguage* tree_sitter_cpp(void);
 
-void run_meta_program(Arena *arena, TSTree *tree, string source);
-string meta_generate_enum(Arena *arena, TSNode enum_node, string source);
+void run_meta_program(string source_file, string output_file);
+void meta_generate_enum(Arena *arena, DynamicArray<u8> *builder, TSNode enum_node, string source);
 
 void run_repl(Arena *arena, TSTree *tree, string source);
 TSTree *parse_source(string source);
@@ -28,129 +29,133 @@ string node_to_string(TSNode node, string source);
 void node_print_lisp(TSNode node);
 void node_print_ast(TSNode node, i32 indent);
 
-i32 main() {
+void print_usage();
+
+i32 main(i32 argc, char **argv) {
     log_set_options(false, false);
 
-    Arena arena = arena_create(MB(10));
-
-    string source = read_entire_file("meta/example/foo.h");
-
-    TSTree *tree = parse_source(source);
-    TSNode root_node = ts_tree_root_node(tree);
-
-    Info("Root node:");
-    node_print_lisp(root_node);
-    node_print_ast(root_node, 0);
-
-    if (false) {
-        run_repl(&arena, tree, source);
+    if (argc != 3) {
+        print_usage();
+        return 1;
     }
-    else {
-        run_meta_program(&arena, tree, source);
-    }
+
+    string source_file      = slice_create((u8 *) argv[1], strlen(argv[1]));
+    string output_file      = slice_create((u8 *) argv[2], strlen(argv[2]));
+
+    run_meta_program(source_file, output_file);
 
 #if 0
     std::cin.get();
 #endif
 }
 
-void run_meta_program(Arena *arena, TSTree *tree, string source) {
-    slice<TSNode> meta_nodes = tree_query(arena, tree, "(meta_specifier) @meta");
+void run_meta_program(string source_file, string output_file) {
+    Arena arena = arena_create(MB(10));
+
+    string source = read_entire_file(source_file);
+    if (source.len == 0) {
+        Fatalf("Could not read file \"{}\"", source_file);
+        return;
+    }
+
+    TSTree *tree = parse_source(source);
+
+    slice<TSNode> meta_nodes = tree_query(&arena, tree, "(meta_specifier) @meta");
+
+    // TODO: create a string builder wrapper to clean up generation code
+    // i.e. append_string, append_stringln, auto indentation
+    DynamicArray<u8> builder = dynamic_array_create<u8>(&arena, BUILDER_START_CAPACITY);
+
+    append_many(&builder, string("#pragma once\n\n"));
+
+    append_many(&builder, string("/////////////////////////////////////////////////////////////////////////////////\n"));
+    append_many(&builder, string("// WARNING: auto generated file from meta.exe, manual edits will be replaced!! //\n"));
+    append_many(&builder, string("/////////////////////////////////////////////////////////////////////////////////\n\n"));
+
+    append_many(&builder, string("#include \"meta.h\"\n\n"));
 
     for (TSNode &meta_node : meta_nodes) {
         TSNode type_node = ts_node_named_child(meta_node, 0);
         
         if (node_is_type(type_node, NODE_ENUM_DECL_TYPE)) {
-            string generated = meta_generate_enum(arena, type_node, source);
-            Log(generated);
-        }
-        else {
-            Warnf("Not supported meta type yet: {}", ts_node_type(type_node));
+            meta_generate_enum(&arena, &builder, type_node, source);
         }
     }
+
+#if 0
+    Log(to_slice(&builder));
+#endif
+
+    File out = new_file(output_file);
+
+    bool ok = create_file(&out);
+    if (!ok) {
+        Fatalf("Could not create output file \"{}\"", output_file);
+        return;
+    }
+
+    ok = write_file(&out, to_slice(&builder));
+    if (!ok) {
+        Fatalf("Could not data to output file \"{}\"", output_file);
+        return;
+    }
+
+    Infof("Generated code was written to \"{}\" successfully [:", output_file);
+
+    close_file(&out);
 }
 
-/*
-enum Foo : u32 {
-    Bar = 1 << 0,
-    Baz = 1 << 1
-};
-
-struct MetaEnumInfo {
-    string base_type;
-    i64 count;
-    string *names;
-    u32 *values;
-};
-
-static string FooNames[2] = {"Hello", "World"};
-static u32 FooValues[2] = {(1 << 0), (1 << 1)};
-
-MetaInfo MetaFoo = MetaInfo {
-    .base_type = "u32",
-    .count = 2,
-    .names = FooNames,
-    .names = FooValues,
-};
-*/
-
-string meta_generate_enum(Arena *arena, TSNode enum_node, string source) {
-    // TODO: create a string builder wrapper to clean up generation code
-    // i.e. append_string, append_stringln, auto indentation
-    DynamicArray<u8> builder = dynamic_array_create<u8>(arena, BUILDER_START_CAPACITY);
-
+void meta_generate_enum(Arena *arena, DynamicArray<u8> *builder, TSNode enum_node, string source) {
     TSNode type_node = node_child_field(enum_node, "name");
     string type_string = node_to_string(type_node, source);
 
     TSNode body_node = node_child_field(enum_node, "body");
     u32 member_count = ts_node_named_child_count(body_node);
 
-    append_many(&builder, string("template<>\n"));
-    append_many(&builder, fmt(arena, "struct MetaEnum<{}> {\n", type_string));
-    append_many(&builder, fmt(arena, "const static int count = {};\n\n", member_count));
+    append_many(builder, string("template<>\n"));
+    append_many(builder, fmt(arena, "struct MetaEnum<{}> {\n", type_string));
+    append_many(builder, fmt(arena, "const static int count = {};\n\n", member_count));
 
     { // generate values
-        append_many(&builder, string("inline static EnumValue values[count] = {\n"));
+        append_many(builder, string("inline static EnumValue values[count] = {\n"));
 
         for (u32 i = 0; i < member_count; i++) {
             TSNode value_node = node_expect_child(body_node, NODE_ENUM_TYPE, i); // breaks if there is a comment luulull
             TSNode value_name_node = node_child_field(value_node, "name");
             string value_name_string = node_to_string(value_name_node, source);
 
-            append_many(&builder, fmt(arena, "    {.name = \"{}\", .value = int({})},\n", value_name_string, value_name_string));
+            append_many(builder, fmt(arena, "    {.name = \"{}\", .value = int({})},\n", value_name_string, value_name_string));
         }
 
-        append_many(&builder, string("};\n\n"));
+        append_many(builder, string("};\n\n"));
     }
 
     { // generate name()
-        append_many(&builder, fmt(arena, "static std::string name({} value) {\n", type_string));
+        append_many(builder, fmt(arena, "static std::string name({} value) {\n", type_string));
 
-        append_many(&builder, fmt(arena, "    switch (value) {\n", type_string));
+        append_many(builder, fmt(arena, "    switch (value) {\n", type_string));
         for (u32 i = 0; i < member_count; i++) {
             TSNode value_node = node_expect_child(body_node, NODE_ENUM_TYPE, i); // breaks if there is a comment luulull
             TSNode value_name_node = node_child_field(value_node, "name");
             string value_name_string = node_to_string(value_name_node, source);
 
-            append_many(&builder, fmt(arena, "        case {}: return values[{}].name;\n", value_name_string, value_name_string));
+            append_many(builder, fmt(arena, "        case {}: return values[{}].name;\n", value_name_string, value_name_string));
         }
-        append_many(&builder, string("    }\n"));
+        append_many(builder, string("    }\n"));
 
-        append_many(&builder, string("}\n\n"));
+        append_many(builder, string("}\n\n"));
     }
 
     { // generate value()
-        append_many(&builder, fmt(arena, "static {} value(std::string name) {\n", type_string));
-        append_many(&builder,     string("    for (int i = 0; i < count; i++) {\n"));
-        append_many(&builder, fmt(arena, "        if (values[i].name == name) return ({}) values[i].value;\n", type_string));
-        append_many(&builder,     string("    }\n"));
-        append_many(&builder, fmt(arena, "    return ({}) 0;\n", type_string));
-        append_many(&builder,     string("}\n\n"));
+        append_many(builder, fmt(arena, "static {} value(std::string name) {\n", type_string));
+        append_many(builder,     string("    for (int i = 0; i < count; i++) {\n"));
+        append_many(builder, fmt(arena, "        if (values[i].name == name) return ({}) values[i].value;\n", type_string));
+        append_many(builder,     string("    }\n"));
+        append_many(builder, fmt(arena, "    return ({}) 0;\n", type_string));
+        append_many(builder,     string("}\n\n"));
     }
 
-    append_many(&builder, string("};\n"));
-
-    return to_slice(&builder);
+    append_many(builder, string("};\n\n"));
 }
 
 void run_repl(Arena *arena, TSTree *tree, string source) {
@@ -165,10 +170,6 @@ void run_repl(Arena *arena, TSTree *tree, string source) {
         }
 
         string query_source = slice_create((u8 *) input.c_str(), input.length());
-
-#if 0
-        query_source = "(meta_specifier) @meta";
-#endif
 
         slice<TSNode> nodes = tree_query(arena, tree, query_source);
 
@@ -290,4 +291,14 @@ void node_print_ast(TSNode node, i32 indent) {
             node_print_ast(child, indent + 1);
         }
     }
+}
+
+void print_usage() {
+    const char *usage = R"(usage: meta [<args>]
+
+Generate meta info from a C++ file:
+    meta <source> <output>: generate code from a source file, and pass the include path to source file from the generated file.
+    )";
+
+    Log(usage);
 }
