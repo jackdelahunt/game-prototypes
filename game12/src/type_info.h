@@ -84,10 +84,11 @@ static int index(PickupType value) {
 
 template<>
 struct MetaEnum<EntityFlag> {
-const static int count = 10;
+const static int count = 11;
 
 inline static EnumValue<EntityFlag> values[count] = {
     EnumValue<EntityFlag>(string("EF_PLAYER"), EF_PLAYER),
+    EnumValue<EntityFlag>(string("EF_DUMMY"), EF_DUMMY),
     EnumValue<EntityFlag>(string("EF_SPAWN_POINT"), EF_SPAWN_POINT),
     EnumValue<EntityFlag>(string("EF_SOLID_HITBOX"), EF_SOLID_HITBOX),
     EnumValue<EntityFlag>(string("EF_STATIC_HITBOX"), EF_STATIC_HITBOX),
@@ -102,15 +103,16 @@ inline static EnumValue<EntityFlag> values[count] = {
 static string name(EntityFlag value) {
     switch (value) {
         case EF_PLAYER: return values[0].name;
-        case EF_SPAWN_POINT: return values[1].name;
-        case EF_SOLID_HITBOX: return values[2].name;
-        case EF_STATIC_HITBOX: return values[3].name;
-        case EF_TRIGGER_HITBOX: return values[4].name;
-        case EF_DEAD: return values[5].name;
-        case EF_PICKUP: return values[6].name;
-        case EF_MISSLE: return values[7].name;
-        case EF_JUMP_PAD: return values[8].name;
-        case EF_DELETE: return values[9].name;
+        case EF_DUMMY: return values[1].name;
+        case EF_SPAWN_POINT: return values[2].name;
+        case EF_SOLID_HITBOX: return values[3].name;
+        case EF_STATIC_HITBOX: return values[4].name;
+        case EF_TRIGGER_HITBOX: return values[5].name;
+        case EF_DEAD: return values[6].name;
+        case EF_PICKUP: return values[7].name;
+        case EF_MISSLE: return values[8].name;
+        case EF_JUMP_PAD: return values[9].name;
+        case EF_DELETE: return values[10].name;
     }
 }
 

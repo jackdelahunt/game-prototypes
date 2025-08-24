@@ -18,12 +18,14 @@
 #include <atomic>
 #include <iostream>
 
-// Total: 82:30
-// Started: 12:30
+// Total: 87:30
+// Started: 15:00
 //
 // What do a programmer do?:
 // Game:
-// - get movement feeling really good 
+// - get movement feeling really good
+//      - jump: longer press higher jump 
+//      - sound: running, jumping, landing
 // - ammo pickup
 //	ammo: restore some amount of ammor for a gun (full for deagle, half for m4, 3 for sniper)
 // - actually make a real map
@@ -67,11 +69,11 @@ f32 PLAYER_WIDTH                = 0.65;
 f32 PLAYER_EYES_OFFSET          = 0.8;
 
 f32 PLAYER_DEATH_COOLDOWN       = 3;
-f32 PLAYER_MOVE_ACCELERATION    = 5.5;
-f32 PLAYER_JUMP_ACCELERATION    = 25;
-f32 PLAYER_DRAG_FACTOR          = 0.2;
-f32 PLAYER_MAX_DRAG             = 6;
-f32 GRAVITY                     = 2.1;
+f32 PLAYER_GROUND_ACCELERATION  = 4;
+f32 PLAYER_JUMP_ACCELERATION    = 20;
+f32 PLAYER_GROUND_DRAG          = 10;
+f32 PLAYER_AIR_CONTROL          = 4;
+f32 GRAVITY                     = 70;
 
 v3 WEAPON_DISPLAY_OFFSET    = v3{1, -0.6, 0.98};
 f32 WEAPON_SWITCH_COOLDOWN  = 1.5;
@@ -86,15 +88,16 @@ v4 CROSSHAIR_COLOUR         = RED;
 
 f32 MISSLE_SPEED        = 35;
 f32 EXPLOSION_RADIUS    = 12;
-f32 EXPLOSION_FORCE     = 100;
+f32 EXPLOSION_FORCE     = 60;
 f32 EXPLOSION_DAMAGE    = 200;
 
 f32 JUMP_PAD_COOLDOWN = 1;
-f32 JUMP_PAD_ACCELERATION = 75;
+f32 JUMP_PAD_ACCELERATION = 55;
 
 bool DEBUG_DRAW_OWNER       = false;
 
-bool CHEAT_INFINITE_AMMO    = false;
+bool CHEAT_WEAPON_BINDS     = true;
+bool CHEAT_INFINITE_AMMO    = true;
 bool CHEAT_NO_DAMAGE        = false;
 
 bool g_dual_wield_recoil_switch = true;
@@ -216,14 +219,15 @@ meta enum PickupType : u32 {
 // @entity
 meta enum EntityFlag : u32 {
     EF_PLAYER           = 1 << 0,
-    EF_SPAWN_POINT      = 1 << 1,
-    EF_SOLID_HITBOX     = 1 << 2,
-    EF_STATIC_HITBOX    = 1 << 3,
-    EF_TRIGGER_HITBOX   = 1 << 4,
-    EF_DEAD             = 1 << 5,
-    EF_PICKUP           = 1 << 6,
-    EF_MISSLE           = 1 << 7,
-    EF_JUMP_PAD         = 1 << 8,
+    EF_DUMMY            = 1 << 1,
+    EF_SPAWN_POINT      = 1 << 2,
+    EF_SOLID_HITBOX     = 1 << 3,
+    EF_STATIC_HITBOX    = 1 << 4,
+    EF_TRIGGER_HITBOX   = 1 << 5,
+    EF_DEAD             = 1 << 6,
+    EF_PICKUP           = 1 << 7,
+    EF_MISSLE           = 1 << 8,
+    EF_JUMP_PAD         = 1 << 9,
     EF_DELETE           = 1 << 16,
 };
 
@@ -265,7 +269,6 @@ enum NetworkMessageType {
     NM_DELETE_ENTITY,
     NM_MOVE_PLAYER,
     NM_PLAYER_HIT,
-    NM_SPAWN_DUMMY,
     NM_SET_WEAPON,
     NM_SPAWN_MISSLE,
 }; 
@@ -280,7 +283,11 @@ struct NetworkMessage {
         Entity spawn_entity;
         Entity sync_entity;
         u32 delete_entity;
-        v3 move_player;
+        struct {
+            f32 speed_factor;
+            f32 jump;
+            v2 input_direction;
+        } move_player;
         struct {
             u32 target_id;
             f32 damage;
@@ -382,7 +389,7 @@ void game_client_entry();
 void game_server_stop();
 
 void poll_user_input(State *state);
-void process_network(State *state);
+void process_network(State *state, f32 delta_time);
 void sync_clients(State *state);
 
 void game_server_update(State *state, f32 delta_time);
@@ -395,7 +402,7 @@ void game_client_draw(State *state);
 void editor_update(State *state);
 void editor_draw_ui(State *state);
 
-void on_server_receive(State *state, NetworkMessage *message);
+void on_server_receive(State *state, NetworkMessage *message, f32 delta_time);
 void on_client_receive(State *state, NetworkMessage *message);
 
 u32 new_entity_id();
@@ -407,10 +414,13 @@ Entity *get_entity_with_id(State *state, u32 id);
 Entity *get_entity_with_flag(State *state, EntityFlag flag);
 bool entities_overlap(Entity *a, Entity *b);
 void move_to_random_spawn_point(State *state, Entity *entity);
+bool player_is_grounded(State *state, Entity *entity);
 void log_entity_flags(Entity *entity);
 
+Entity *local_duplicate_entity(State *state, Entity *entity);
 Entity *local_spawn_empty(State *state);
 Entity *local_spawn_player(State *state);
+Entity *local_spawn_dummy(State *state);
 Entity *local_spawn_spawn_point(State *state);
 Entity *local_spawn_static_box(State *state);
 Entity *local_spawn_pickup(State *state, PickupType type);
@@ -538,7 +548,7 @@ void game_server_entry() {
 
         GS()->state.time += delta_time;
 
-        process_network(&GS()->state);
+        process_network(&GS()->state, delta_time);
         game_server_update(&GS()->state, delta_time);
         game_server_physics(&GS()->state, delta_time);
         sync_clients(&GS()->state);
@@ -679,7 +689,7 @@ void game_client_entry() {
             }
         
             if (GC()->mode == GC_HOSTED || GC()->mode == GC_CLIENT) {
-                process_network(&GC()->state);
+                process_network(&GC()->state, delta_time);
                 game_client_update(&GC()->state, delta_time);
             }
         }
@@ -720,7 +730,7 @@ void poll_user_input(State *state) {
 
 }
 
-void process_network(State *state) {
+void process_network(State *state, f32 delta_time) {
     if (is_client(state)) {
         sampler_append(&state->network_in_sampler, f32(network_queue_size(&NET()->client_in_queue)));
 
@@ -738,7 +748,7 @@ void process_network(State *state) {
         slice<u8> bytes;
         while (network_queue_pop(&NET()->server_in_queue, &bytes)) {
             NetworkMessage *message = (NetworkMessage *) bytes.ptr;
-            on_server_receive(state, message);
+            on_server_receive(state, message, delta_time);
             slice_free(bytes);
         }
     }
@@ -826,7 +836,6 @@ void game_server_update(State *state, f32 delta_time) {
         }
 
         if (BitSet(entity.flags, EF_JUMP_PAD)) {
-            log_entity_flags(&entity);
             entity.jump_pad_cooldown -= delta_time;
             if (entity.jump_pad_cooldown <= 0) {
                 entity.jump_pad_cooldown = 0;
@@ -864,7 +873,10 @@ void game_server_update(State *state, f32 delta_time) {
 
                 UnsetBit(entity.flags, EF_DEAD);
                 entity.death_cooldown = 0;
-                move_to_random_spawn_point(state, &entity);
+
+                if (!BitSet(entity.flags, EF_DUMMY)) {
+                    move_to_random_spawn_point(state, &entity);
+                }
             }
         }
 
@@ -885,37 +897,30 @@ void game_server_physics(State *state, f32 delta_time) {
     Assert(is_server(state));
 
     for (Entity &entity : state->entities) {
-        v3 starting_position = entity.position;
-
-        { // simulate physics 
-            v3 h_velocity = v3{entity.velocity.x, 0, entity.velocity.z};
-            f32 h_speed = length(h_velocity);
-    
-            if (BitSet(entity.flags, EF_PLAYER)) {
-                // player is a special case so here we cap velocity,
-                // apply drag and then apply gravity - 20/08/25
-
-                if (h_speed > 0) {
-                    v3 drag = -h_velocity * PLAYER_DRAG_FACTOR;
-
-                    if (length(drag) > PLAYER_MAX_DRAG) {
-                        drag = norm(drag) * PLAYER_MAX_DRAG;
-                    }
-
-                    entity.velocity += drag;
-                }
-    
-                entity.velocity += v3{0, -GRAVITY, 0};
-            }
-    
-            entity.position += entity.velocity * delta_time;
+        if (BitSet(entity.flags, EF_STATIC_HITBOX)) {
+            continue;
         }
 
-        { // detect and resolve collisions
-            if (BitSet(entity.flags, EF_STATIC_HITBOX)) {
-                continue;
+        if (!BitSet(entity.flags, EF_SOLID_HITBOX) && !BitSet(entity.flags, EF_TRIGGER_HITBOX)) {
+            continue;
+        }
+
+        if (BitSet(entity.flags, EF_PLAYER)) {
+            if (player_is_grounded(state, &entity)) {
+                v3 h_velocity = v3{entity.velocity.x, 0, entity.velocity.z};
+                v3 drag = -h_velocity * PLAYER_GROUND_DRAG;
+
+                entity.velocity.x += drag.x * delta_time;
+                entity.velocity.z += drag.z * delta_time;
             }
-    
+
+            entity.velocity.y -= GRAVITY * delta_time;
+        }
+
+        v3 starting_position = entity.position;
+        entity.position += entity.velocity * delta_time;
+
+        { // detect and resolve collisions
             if (BitSet(entity.flags, EF_SOLID_HITBOX)) {
                 for (Entity &other : state->entities) {
                     if (&entity == &other) {
@@ -1038,11 +1043,6 @@ void game_client_update(State *state, f32 delta_time) {
 
     // check player input
     if (GC()->viewport.focused) {
-        if (KEYS[GLFW_KEY_T] == InputState::DOWN) {
-            NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_SPAWN_DUMMY, .spawn_dummy = {0, 3, 0}};
-            client_send_to_server(NET(), bytes_from_ptr(&message));
-        }
-
         if (WIN()->mouse_captured) {
             f32 sensitivity = 0.09;
             v2 mouse_input = MOUSE.delta;
@@ -1078,6 +1078,29 @@ void game_client_update(State *state, f32 delta_time) {
                     }
                 }
             }
+
+            // cheats to give weapons 
+            if (CHEAT_WEAPON_BINDS && GC()->viewport.focused) {
+                if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
+                    KEYS[GLFW_KEY_1] == InputState::DOWN) {
+                    set_player_weapon(state, WH_DEAGLE, 0);
+                }
+
+                if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
+                    KEYS[GLFW_KEY_2] == InputState::DOWN) {
+                    set_player_weapon(state, WH_M4, 0);
+                }
+
+                if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
+                    KEYS[GLFW_KEY_3] == InputState::DOWN) {
+                    set_player_weapon(state, WH_TAP, 0);
+                }
+
+                if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
+                    KEYS[GLFW_KEY_4] == InputState::DOWN) {
+                    set_player_weapon(state, WH_PAL, 0);
+                }
+            }
         }
 
         v3 keyboard_input = {};
@@ -1104,23 +1127,27 @@ void game_client_update(State *state, f32 delta_time) {
 
         if (length(keyboard_input) > 0) {
             v3 forward = get_forward_direction(&GC()->camera);
-            v3 up = {0, 1, 0};
             v3 right = get_right_direction(&GC()->camera);
-    
-            forward.y = 0;
-            forward = norm(forward);
-    
-            right.y = 0;
-            right = norm(right);
+   
+            // remove y component and normalise to just get h input
+            v2 h_forward = norm(v2{forward.x, forward.z});
+            v2 h_right = norm(v2{right.x, right.z});
         
-            v3 movement = v3{};
-            movement += right * keyboard_input.x;
-            movement += up * keyboard_input.y;
-            movement += forward * keyboard_input.z;
+            v2 horizontal = v2{};
+            horizontal += h_right * keyboard_input.x;
+            horizontal += h_forward * keyboard_input.z;
 
-            movement *= get_player_weapon(state)->speed_factor;
+            // normalise again to stop diagonal movement being faster
+            if (length(horizontal) > 0) {
+                horizontal = norm(horizontal);
+            }
                  
-            NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_MOVE_PLAYER, .move_player = movement};
+            NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_MOVE_PLAYER, .move_player = {
+                .speed_factor = get_player_weapon(state)->speed_factor,
+                .jump = keyboard_input.y,
+                .input_direction = horizontal
+            }};
+
             client_send_to_server(NET(), bytes_from_ptr(&message));
         }
     }
@@ -1303,8 +1330,7 @@ void editor_update(State *state) {
 
     Camera *camera = &ED()->camera;
 
-    // editor mouse interaction
-    {
+    { // editor mouse interaction
         v2 mouse = ED()->viewport.mouse;
         v2 view_size = to_floats(ED()->viewport.size);
 
@@ -1327,7 +1353,7 @@ void editor_update(State *state) {
             }
         }
    
-        // right click
+        // panning 
         if (MOUSE.buttons[GLFW_MOUSE_BUTTON_2] == InputState::PRESSED) {
             f32 sensitivity = 0.15;
             v2 mouse_input = MOUSE.delta;
@@ -1355,6 +1381,23 @@ void editor_update(State *state) {
     if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
         KEYS[GLFW_KEY_O] == InputState::DOWN) {
         deserialise_level(state);
+    }
+
+    // ctrl-D: duplicate selected entity 
+    if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
+        KEYS[GLFW_KEY_D] == InputState::DOWN) {
+
+        if (ED()->selected_entity) {
+            ED()->selected_entity = local_duplicate_entity(state, ED()->selected_entity);
+        }
+    }
+
+    // delete: delete selected entity 
+    if (KEYS[GLFW_KEY_DELETE] == InputState::DOWN) {
+        if (ED()->selected_entity) {
+            local_delete_entity(state, ED()->selected_entity->id);
+            ED()->selected_entity = NULL;
+        }
     }
 
     { // camera movement
@@ -1546,6 +1589,7 @@ void editor_draw_ui(State *state) {
         ImGui::Begin("Settings");
 
         if (ImGui::CollapsingHeader("Cheats")) {
+            ImGui::Checkbox("Weapon binds", &CHEAT_WEAPON_BINDS);
             ImGui::Checkbox("Infinite ammo", &CHEAT_INFINITE_AMMO);
             ImGui::Checkbox("No damage", &CHEAT_NO_DAMAGE);
 
@@ -1572,10 +1616,10 @@ void editor_draw_ui(State *state) {
             }
 
             ImGui::SeparatorText("Movement");
-            ImGui::InputFloat("Move acceleration", &PLAYER_MOVE_ACCELERATION);
+            ImGui::InputFloat("Ground acceleration", &PLAYER_GROUND_ACCELERATION);
             ImGui::InputFloat("Jump acceleration", &PLAYER_JUMP_ACCELERATION);
-            ImGui::InputFloat("Drag factor", &PLAYER_DRAG_FACTOR);
-            ImGui::InputFloat("Max drag ", &PLAYER_MAX_DRAG);
+            ImGui::InputFloat("Ground drag", &PLAYER_GROUND_DRAG);
+            ImGui::InputFloat("Air control", &PLAYER_AIR_CONTROL);
             ImGui::InputFloat("Gravity", &GRAVITY);
 
             ImGui::SeparatorText("Character");
@@ -1698,6 +1742,12 @@ void editor_draw_ui(State *state) {
             ED()->selected_entity = local_spawn_jump_pad(state);
         }
 
+        ImGui::SameLine();
+
+        if (ImGui::Button("Dummy")) {
+            ED()->selected_entity = local_spawn_dummy(state);
+        }
+
         ImGui::SeparatorText("Entities in level");
  
         for (i64 i = 0; i < state->entities.len; i++) {
@@ -1757,7 +1807,7 @@ void editor_draw_ui(State *state) {
     draw_imgui_frame();
 }
 
-void on_server_receive(State *state, NetworkMessage *message) {
+void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
     switch (message->type) {
         case NM_CLIENT_CONNECTED: {
             // when client connects, the server generates this message and a few things are required to happen
@@ -1816,11 +1866,30 @@ void on_server_receive(State *state, NetworkMessage *message) {
                 return;
             }
 
-            // movement vector is not for sure normalised, the client shrinks it based
-            // on the speed factor of the weapon they currently have
-            player->velocity.x += message->move_player.x * PLAYER_MOVE_ACCELERATION;
-            player->velocity.z += message->move_player.z * PLAYER_MOVE_ACCELERATION;
-            player->velocity.y += message->move_player.y * PLAYER_JUMP_ACCELERATION;
+            bool grounded = player_is_grounded(state, player);
+
+            if (grounded) {
+                player->velocity.x += message->move_player.input_direction.x * message->move_player.speed_factor * PLAYER_GROUND_ACCELERATION;
+                player->velocity.y += message->move_player.jump                                                  * PLAYER_JUMP_ACCELERATION;
+                player->velocity.z += message->move_player.input_direction.y * message->move_player.speed_factor * PLAYER_GROUND_ACCELERATION;
+            }
+            else {
+                v2 wish_direction = message->move_player.input_direction;
+
+                v2 h_velocity = v2{player->velocity.x, player->velocity.z}; 
+                f32 h_speed = length(h_velocity); 
+
+                if (length(wish_direction) > 0 && h_speed > 0) {
+                    v2 h_direction = norm(h_velocity); 
+
+                    v2 new_h_direction = norm(HMM_LerpV2(h_direction, PLAYER_AIR_CONTROL * delta_time, wish_direction));
+
+                    player->velocity.x = new_h_direction.x * h_speed;
+                    player->velocity.z = new_h_direction.y * h_speed;
+                }
+
+                f32 allignment = HMM_DotV2(h_velocity, wish_direction);
+            }
         } break;
         case NM_PLAYER_HIT: {
             Entity *entity = get_entity_with_id(state, message->player_hit.target_id);
@@ -1833,16 +1902,6 @@ void on_server_receive(State *state, NetworkMessage *message) {
             }
 
             entity->health -= message->player_hit.damage;
-        } break;
-        case NM_SPAWN_DUMMY: {
-            Entity *dummy = local_spawn_player(state);
-            dummy->position = message->spawn_dummy;
-            dummy->owner = SERVER_INSTANCE_ID;
-
-            Logf("Spawning new dummy entity: entity_id={}, owner={} position={}", dummy->id, dummy->owner, dummy->position);
-
-            NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = *dummy};
-            server_send_to_all_clients(NET(), bytes_from_ptr(&message));
         } break;
         case NM_SPAWN_MISSLE: {
             Entity *missle = local_spawn_missle(state);
@@ -1928,6 +1987,10 @@ bool local_delete_entity(State *state, u32 id) {
 
 Entity *get_client_player(State *state, u32 client_id) {
     for (Entity &entity : state->entities) {
+        if (BitSet(entity.flags, EF_DUMMY)) {
+            continue;
+        }
+
         if (BitSet(entity.flags, EF_PLAYER) && entity.owner == client_id) {
             return &entity;
         }
@@ -1976,6 +2039,8 @@ bool entities_overlap(Entity *a, Entity *b) {
 }
 
 void move_to_random_spawn_point(State *state, Entity *entity) {
+    Assertf(state->spawn_point_count > 0, "No spawn points in the scene?");
+
     // get a random number from 0 -> spawn point count
     // skip that number of spawn points in the list and
     // pick the next in the list
@@ -1985,13 +2050,34 @@ void move_to_random_spawn_point(State *state, Entity *entity) {
     for (Entity &other : state->entities) {
         if (BitSet(other.flags, EF_SPAWN_POINT)) {
             if (spawn_point_number == current_spawn_point_number) {
-                entity->position = other.position + v3{0, PLAYER_HEIGHT * 1.5f, 0};
+                entity->position = other.position + v3{0, PLAYER_HEIGHT + 1, 0};
                 break;
             }
 
             current_spawn_point_number++;
         }
     }
+}
+
+bool player_is_grounded(State *state, Entity *entity) {
+    Assert(BitSet(entity->flags, EF_PLAYER));
+
+    v3 collider_size        = v3{PLAYER_WIDTH, 0.2, PLAYER_WIDTH};
+    f32 collider_y          = entity->position.y - (entity->size.y * 0.5) - (collider_size.y * 0.5);
+    v3 collider_position    = v3{entity->position.x, collider_y, entity->position.z};
+
+    for (Entity &other : state->entities) {
+        if (!BitSet(other.flags, EF_STATIC_HITBOX)) {
+            continue;
+        }
+
+        auto [collided, overlap, distance] = cube_collision(collider_position, collider_size, other.position, other.size);
+        if (collided) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void log_entity_flags(Entity *entity) {
@@ -2003,6 +2089,16 @@ void log_entity_flags(Entity *entity) {
             Log(flags[i].name);
         }
     }
+}
+
+Entity *local_duplicate_entity(State *state, Entity *entity) {
+    Entity new_entity = *entity;
+
+    new_entity.id = new_entity_id();
+    new_entity.position.x += new_entity.size.x * 0.5;
+    new_entity.position.z += new_entity.size.z * 0.5;
+
+    return local_spawn_entity(state, new_entity);
 }
 
 Entity *local_spawn_empty(State *state) {
@@ -2030,13 +2126,27 @@ Entity *local_spawn_player(State *state) {
     return local_spawn_entity(state, entity);
 }
 
+Entity *local_spawn_dummy(State *state) {
+    Entity entity = Entity {
+        .flags = EF_PLAYER | EF_DUMMY | EF_SOLID_HITBOX,
+        .id = new_entity_id(),
+        .owner = SERVER_INSTANCE_ID,
+        .size = v3{PLAYER_WIDTH, PLAYER_HEIGHT, PLAYER_WIDTH},
+        .colour = BLUE,
+        .max_health = 100,
+        .health = 100,
+    };
+
+    return local_spawn_entity(state, entity);
+}
+
 Entity *local_spawn_spawn_point(State *state) {
     Entity entity = Entity {
         .flags = EF_SPAWN_POINT,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
-        .size = v3{1, 1, 1} * 0.3,
-        .colour = HOT_PINK,
+        .size = v3{3, 0.2, 3},
+        .colour = GREEN,
     };
 
     return local_spawn_entity(state, entity);

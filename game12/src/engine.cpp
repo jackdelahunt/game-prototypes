@@ -242,7 +242,7 @@ void poll_inputs() {
     // max the mouse delta vector can be, stops huge spikes mouse input 
     // when mouse changes capture like at start of game
     // - 02/06/25
-    f32 max_delta = 75;
+    f32 max_delta = 200;
          
     if (length(MOUSE.delta) > max_delta) {
         MOUSE.delta = norm(MOUSE.delta) * max_delta;
