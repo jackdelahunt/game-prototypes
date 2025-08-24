@@ -96,3 +96,15 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
+  - flags:
+      - EF_JUMP_PAD
+    id: 3223
+    owner: 0
+    position: [14, 0.5, 14]
+    size: [3, 0.200000003, 3]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.75, 0.100000001, 0.899999976, 1]
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE

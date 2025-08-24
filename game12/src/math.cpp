@@ -1158,12 +1158,12 @@ static inline v4 HMM_LerpV4(v4 A, float Time, v4 B)
     return HMM_AddV4(HMM_MulV4F(A, 1.0f - Time), HMM_MulV4F(B, Time));
 }
 
-static inline v2 as_floats(v2i A) 
+static inline v2 to_floats(v2i A) 
 {
     return v2{(f32) A.x, (f32) A.y};
 }
 
-static inline v3 as_floats(v3i A) 
+static inline v3 to_floats(v3i A) 
 {
     return v3{(f32) A.x, (f32) A.y, (f32) A.z};
 }

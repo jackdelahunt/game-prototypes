@@ -1,3 +1,4 @@
+#include "imgui.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -17,19 +18,22 @@
 #include <atomic>
 #include <iostream>
 
-// Total: 80:30
-// Started: 21:00
+// Total: 82:30
+// Started: 12:30
 //
 // What do a programmer do?:
 // Game:
+// - get movement feeling really good 
 // - ammo pickup
 //	ammo: restore some amount of ammor for a gun (full for deagle, half for m4, 3 for sniper)
-// - jump pads
+// - actually make a real map
 // - TAP model
 // - TAP sounds & explosion sounds
-// - actually make a real map
 // - scoreboard
 // - player sounds, running jumping, maybe taking damage?
+//
+// Editor:
+// - setting to allow entity to be positioned so it is flush with the face of another 
 //
 // Engine:
 // - combine vs and fs in the one file
@@ -43,12 +47,12 @@
 // - reduce the templating in the code gen
 // - meta_name<EntityFlag>(flag) -> MetaEntityFlag::name(flag)
 //
-//  ack long term:
-//      - asserts: enable/disable, assert with message, differnt actions to do on an assert
-//      - basic type, include math types?
-//      - strings, arrays, arenas
-//      - formating
-//      - Timers and profiling markers
+// Ack:
+//  - asserts: enable/disable, assert with message, differnt actions to do on an assert
+//  - basic type, include math types?
+//  - strings, arrays, arenas
+//  - formating
+//  - Timers and profiling markers
 
 #define MAX_ENTITIES 500
 #define LEVEL_INSTANCE_ID 0
@@ -58,32 +62,40 @@
 
 #define RUN_TESTS 0
 
-f32 PLAYER_HEIGHT = 2;
-f32 PLAYER_WIDTH = 0.65;
-f32 PLAYER_EYES_OFFSET = 0.8;
+f32 PLAYER_HEIGHT               = 2;
+f32 PLAYER_WIDTH                = 0.65;
+f32 PLAYER_EYES_OFFSET          = 0.8;
 
-f32 PLAYER_DEATH_COOLDOWN = 3;
-f32 PLAYER_MOVE_ACCELERATION = 5.5;
-f32 PLAYER_JUMP_ACCELERATION = 25;
-f32 PLAYER_DRAG_FACTOR = 0.2;
-f32 PLAYER_MAX_DRAG = 6;
-f32 GRAVITY = 2.1;
+f32 PLAYER_DEATH_COOLDOWN       = 3;
+f32 PLAYER_MOVE_ACCELERATION    = 5.5;
+f32 PLAYER_JUMP_ACCELERATION    = 25;
+f32 PLAYER_DRAG_FACTOR          = 0.2;
+f32 PLAYER_MAX_DRAG             = 6;
+f32 GRAVITY                     = 2.1;
 
-v3 WEAPON_DISPLAY_OFFSET = v3{1, -0.6, 0.98};
-f32 WEAPON_SWITCH_COOLDOWN = 1.5;
+v3 WEAPON_DISPLAY_OFFSET    = v3{1, -0.6, 0.98};
+f32 WEAPON_SWITCH_COOLDOWN  = 1.5;
 
-f32 WEAPON_PICKUP_COOLDOWN = 9;
-f32 HEALTH_PICKUP_COOLDOWN = 6;
+f32 WEAPON_PICKUP_COOLDOWN  = 9;
+f32 HEALTH_PICKUP_COOLDOWN  = 6;
 
-f32 CROSSHAIR_GAP = 10;
-f32 CROSSHAIR_LENGTH = 12;
-f32 CROSSHAIR_THICKNESS = 3;
-v4 CROSSHAIR_COLOUR = RED;
+f32 CROSSHAIR_GAP           = 10;
+f32 CROSSHAIR_LENGTH        = 12;
+f32 CROSSHAIR_THICKNESS     = 3;
+v4 CROSSHAIR_COLOUR         = RED;
 
-f32 MISSLE_SPEED = 35;
-f32 EXPLOSION_RADIUS = 12;
-f32 EXPLOSION_FORCE = 100;
-f32 EXPLOSION_DAMAGE = 200;
+f32 MISSLE_SPEED        = 35;
+f32 EXPLOSION_RADIUS    = 12;
+f32 EXPLOSION_FORCE     = 100;
+f32 EXPLOSION_DAMAGE    = 200;
+
+f32 JUMP_PAD_COOLDOWN = 1;
+f32 JUMP_PAD_ACCELERATION = 75;
+
+bool DEBUG_DRAW_OWNER       = false;
+
+bool CHEAT_INFINITE_AMMO    = false;
+bool CHEAT_NO_DAMAGE        = false;
 
 bool g_dual_wield_recoil_switch = true;
 
@@ -110,7 +122,7 @@ enum SoundHandle : u32 {
 
 Sound *g_sounds[_SH_COUNT] = {};
 
-enum WeaponHandle : u32 {
+meta enum WeaponHandle : u32 {
     WH_DEAGLE,
     WH_M4,
     WH_TAP,
@@ -183,7 +195,7 @@ Weapon g_weapons[_WH_COUNT] = {
         .damage = 10,
         .headshot_damage = 20,
         .ammo_count = 30,
-        .automatic = false,
+        .automatic = true,
         .firing_cooldown = 0.2,
         .mesh = MH_DEAGLE,
         .firing_sound = SH_FIRE_DEAGLE,
@@ -211,6 +223,7 @@ meta enum EntityFlag : u32 {
     EF_DEAD             = 1 << 5,
     EF_PICKUP           = 1 << 6,
     EF_MISSLE           = 1 << 7,
+    EF_JUMP_PAD         = 1 << 8,
     EF_DELETE           = 1 << 16,
 };
 
@@ -239,6 +252,9 @@ struct Entity {
     // flag: pickup
     PickupType pickup_type;
     f32 pickup_cooldown; // not saved
+
+    // flag: jump pad
+    f32 jump_pad_cooldown; // not saved
 };
 
 enum NetworkMessageType {
@@ -399,6 +415,7 @@ Entity *local_spawn_spawn_point(State *state);
 Entity *local_spawn_static_box(State *state);
 Entity *local_spawn_pickup(State *state, PickupType type);
 Entity *local_spawn_missle(State *state);
+Entity *local_spawn_jump_pad(State *state);
 
 void game_client_host();
 void game_client_connect();
@@ -808,6 +825,35 @@ void game_server_update(State *state, f32 delta_time) {
             }
         }
 
+        if (BitSet(entity.flags, EF_JUMP_PAD)) {
+            log_entity_flags(&entity);
+            entity.jump_pad_cooldown -= delta_time;
+            if (entity.jump_pad_cooldown <= 0) {
+                entity.jump_pad_cooldown = 0;
+            }
+
+            if (entity.jump_pad_cooldown > 0) {
+                continue;
+            }
+
+            for (Entity &other : state->entities) {
+                if (!BitSet(other.flags, EF_PLAYER)) {
+                    continue;
+                }
+
+                auto [collided, overlap, distance] = cube_collision(entity.position, v3{entity.size.x, 2, entity.size.z}, other.position, other.size);
+                if (!collided) {
+                    continue;
+                }
+                
+                other.velocity.y = JUMP_PAD_ACCELERATION;
+                entity.jump_pad_cooldown += JUMP_PAD_COOLDOWN;
+
+                // means only one player per cooldown can be effected?
+                break;
+            }
+        }
+
         if (BitSet(entity.flags, EF_DEAD)) {
             Assert(BitSet(entity.flags, EF_PLAYER));
 
@@ -823,6 +869,10 @@ void game_server_update(State *state, f32 delta_time) {
         }
 
         if (BitSet(entity.flags, EF_PLAYER)) {
+            if (CHEAT_NO_DAMAGE) {
+                entity.health = entity.max_health;
+            }
+
             if (entity.health <= 0 && entity.death_cooldown == 0) {
                 entity.death_cooldown = PLAYER_DEATH_COOLDOWN;
                 SetBit(entity.flags, EF_DEAD);
@@ -906,6 +956,12 @@ void game_server_physics(State *state, f32 delta_time) {
                     // collision for each other entiity is checked twice for trigger
                     // hitboxes, trigger collision events are only when a new collision
                     // starts so if there was a collision last frame then dont do anything
+                    //
+                    // FIXME: this means only triggers that move will actually detect a collision
+                    // if it is static in the scene it sees that it would of collided with the other
+                    // entity before the physics sim. This may not be actually true as it could
+                    // of been the other entity that moved and caused the overlap not just this 
+                    // - 13:23
                     CubeCollision c_last = cube_collision(starting_position, entity.size, other.position, other.size);
                     if (c_last.collision) {
                         continue;
@@ -965,6 +1021,10 @@ void game_client_update(State *state, f32 delta_time) {
 
     { // weapon reaload and switching to default
         Assert(state->player_ammo >= 0);
+
+        if (CHEAT_INFINITE_AMMO) {
+            state->player_ammo = g_weapons[state->player_weapon].ammo_count;
+        }
 
         if (state->player_ammo == 0) {
             set_player_weapon(state, WH_DEAGLE, WEAPON_SWITCH_COOLDOWN);
@@ -1222,6 +1282,18 @@ void game_client_draw(State *state) {
             draw_colour = RED;
         }
 
+        if (DEBUG_DRAW_OWNER) {
+            if (entity.owner == LEVEL_INSTANCE_ID) {
+                draw_colour = GREEN;
+            }
+            else if (entity.owner == SERVER_INSTANCE_ID) {
+                draw_colour = ORANGE;
+            }
+            else {
+                draw_colour = RED;
+            }
+        }
+
         draw_cube(REN(), entity.position, entity.size, entity.rotation, draw_colour);
     }
 }
@@ -1231,15 +1303,39 @@ void editor_update(State *state) {
 
     Camera *camera = &ED()->camera;
 
-    // mouse picking
-    if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::DOWN) {
-        // TODO: there is still a problem with this not being exact...
-        Ray ray = ray_from_screen_position(camera, ED()->viewport, {ED()->viewport.mouse.x, ED()->viewport.mouse.y, -1});
-        RaycastIterator it = raycast_iterator_create(ray, camera->far_plane - camera->near_plane);
+    // editor mouse interaction
+    {
+        v2 mouse = ED()->viewport.mouse;
+        v2 view_size = to_floats(ED()->viewport.size);
 
-        auto [entity, _] = next(&it, state);
-        if (entity) {
-            ED()->selected_entity = entity; 
+        bool mouse_in_viewport = true;
+        if (mouse.x < 0 || mouse.x >= view_size.x) {
+            mouse_in_viewport = false;
+        }
+        else if (mouse.y < 0 || mouse.y >= view_size.y) {
+            mouse_in_viewport = false;
+        }
+
+        // mouse picking
+        if (mouse_in_viewport && MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::DOWN) {
+            Ray ray = ray_from_screen_position(camera, ED()->viewport, {mouse.x, mouse.y, -1});
+            RaycastIterator it = raycast_iterator_create(ray, camera->far_plane - camera->near_plane);
+    
+            auto [entity, _] = next(&it, state);
+            if (entity) {
+                ED()->selected_entity = entity; 
+            }
+        }
+   
+        // right click
+        if (MOUSE.buttons[GLFW_MOUSE_BUTTON_2] == InputState::PRESSED) {
+            f32 sensitivity = 0.15;
+            v2 mouse_input = MOUSE.delta;
+         
+            if (length(mouse_input) > 0) {
+                camera->rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
+                camera->rotation.x = clamp(-90, camera->rotation.x, 90);
+            }
         }
     }
 
@@ -1259,20 +1355,6 @@ void editor_update(State *state) {
     if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
         KEYS[GLFW_KEY_O] == InputState::DOWN) {
         deserialise_level(state);
-    }
-
-    { // camera look
-        bool free_look = WIN()->mouse_captured;
-        f32 sensitivity = free_look ? 0.07 : 0.15;
-
-        if (free_look || MOUSE.buttons[GLFW_MOUSE_BUTTON_2] == InputState::PRESSED) {
-            v2 mouse_input = MOUSE.delta;
-        
-            if (length(mouse_input) > 0) {
-                camera->rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
-                camera->rotation.x = clamp(-90, camera->rotation.x, 90);
-            }
-        }
     }
 
     { // camera movement
@@ -1461,21 +1543,26 @@ void editor_draw_ui(State *state) {
     }
 
     { // settings
-        ImGui::Begin("Setttings");
+        ImGui::Begin("Settings");
 
-        if (ImGui::CollapsingHeader("Renderer")) {
-            ImGui::ColorEdit4("Clear colour",   &REN()->clear_colour[0]);
-            ImGui::ColorEdit3("Ambient light",  &REN()->ambient_light[0]);
-            ImGui::ColorEdit3("Sun colour",     &REN()->sun_colour[0]);
-            ImGui::ColorEdit3("Shadow colour",  &REN()->shadow_colour[0]);
-            imgui_v3_control("Sun position", &REN()->sun_position);
-        }
+        if (ImGui::CollapsingHeader("Cheats")) {
+            ImGui::Checkbox("Infinite ammo", &CHEAT_INFINITE_AMMO);
+            ImGui::Checkbox("No damage", &CHEAT_NO_DAMAGE);
 
-        if (ImGui::CollapsingHeader("Crosshair")) {
-            ImGui::SliderFloat("Gap", &CROSSHAIR_GAP, 0, 20);
-            ImGui::SliderFloat("Length", &CROSSHAIR_LENGTH, 0, 20);
-            ImGui::SliderFloat("Thickness", &CROSSHAIR_THICKNESS, 0, 20);
-            ImGui::ColorEdit4("Colour", &CROSSHAIR_COLOUR[0]);
+            { // give weapon buttons
+                ImGui::SeparatorText("Give weapon");
+
+                EnumValue<WeaponHandle> *weapons = meta_values<WeaponHandle>();
+                for (i32 i = 0; i < meta_count<WeaponHandle>() - 1; i++) {
+                    if (i != 0) {
+                        ImGui::SameLine();
+                    }
+
+                    if (ImGui::Button(weapons[i].name.c())) {
+                        set_player_weapon(state, weapons[i].value, 0);
+                    }
+                }
+            }
         }
 
         if (ImGui::CollapsingHeader("Player")) {
@@ -1498,16 +1585,22 @@ void editor_draw_ui(State *state) {
             ImGui::SliderFloat("Fire Cooldown", &state->player_firing_cooldown, 0, g_weapons[state->player_weapon].firing_cooldown);
             ImGui::InputInt("Ammo", (i32 *) &state->player_ammo);
             ImGui::SliderFloat3("Weapon offset", &WEAPON_DISPLAY_OFFSET.x, -2, 2);
+        }
 
-            if (ImGui::Button("Give deagle")) {
-                set_player_weapon(state, WH_DEAGLE, 0);
-            }
+        if (ImGui::CollapsingHeader("Renderer")) {
+            ImGui::Checkbox("Draw network owner", &DEBUG_DRAW_OWNER);
+            ImGui::ColorEdit4("Clear colour",   &REN()->clear_colour[0]);
+            ImGui::ColorEdit3("Ambient light",  &REN()->ambient_light[0]);
+            ImGui::ColorEdit3("Sun colour",     &REN()->sun_colour[0]);
+            ImGui::ColorEdit3("Shadow colour",  &REN()->shadow_colour[0]);
+            imgui_v3_control("Sun position", &REN()->sun_position);
+        }
 
-            ImGui::SameLine();
-
-            if (ImGui::Button("Give m4")) {
-                set_player_weapon(state, WH_M4, 0);
-            }
+        if (ImGui::CollapsingHeader("Crosshair")) {
+            ImGui::SliderFloat("Gap", &CROSSHAIR_GAP, 0, 20);
+            ImGui::SliderFloat("Length", &CROSSHAIR_LENGTH, 0, 20);
+            ImGui::SliderFloat("Thickness", &CROSSHAIR_THICKNESS, 0, 20);
+            ImGui::ColorEdit4("Colour", &CROSSHAIR_COLOUR[0]);
         }
 
         ImGui::End();
@@ -1518,48 +1611,47 @@ void editor_draw_ui(State *state) {
 
         ImGui::SeparatorText("Level");
 
-        if (ImGui::Button("Host")) {
-            ED()->selected_entity = NULL;
-            clear_level(state);
-            game_client_host();
-        }
-
-        ImGui::SameLine();
+        if (GC()->mode == GC_EDITOR) {
+            if (ImGui::Button("Host")) {
+                ED()->selected_entity = NULL;
+                clear_level(state);
+                game_client_host();
+            }
     
-        if (ImGui::Button("Connect")) {
-            ED()->selected_entity = NULL;
-            clear_level(state);
-            game_client_connect();
-        }
-
-        if (GC()->mode != GC_EDITOR) {
             ImGui::SameLine();
         
+            if (ImGui::Button("Connect")) {
+                ED()->selected_entity = NULL;
+                clear_level(state);
+                game_client_connect();
+            }
+    
+            ImGui::SameLine();
+        
+            if (ImGui::Button("New")) {
+                ED()->selected_entity = NULL;
+                clear_level(state);
+            }
+        
+            ImGui::SameLine();
+        
+            if (ImGui::Button("Save")) {
+                serialise_level(state);
+            }
+        
+            ImGui::SameLine();
+        
+            if (ImGui::Button("Load")) {
+                ED()->selected_entity = NULL;
+                deserialise_level(state);
+            }
+        }
+        else {
             if (ImGui::Button("Stop game")) {
                 game_client_stop_game();
                 clear_level(state);
                 deserialise_level(state);
             }
-        }
-
-        ImGui::SameLine();
-    
-        if (ImGui::Button("New")) {
-            ED()->selected_entity = NULL;
-            clear_level(state);
-        }
-    
-        ImGui::SameLine();
-    
-        if (ImGui::Button("Save")) {
-            serialise_level(state);
-        }
-    
-        ImGui::SameLine();
-    
-        if (ImGui::Button("Load")) {
-            ED()->selected_entity = NULL;
-            deserialise_level(state);
         }
  
         ImGui::SeparatorText("Spawn Entities");
@@ -1600,6 +1692,10 @@ void editor_draw_ui(State *state) {
 
         if (ImGui::Button("Health pickup")) {
             ED()->selected_entity = local_spawn_pickup(state, PT_HEALTH);
+        }
+
+        if (ImGui::Button("Jump pad")) {
+            ED()->selected_entity = local_spawn_jump_pad(state);
         }
 
         ImGui::SeparatorText("Entities in level");
@@ -1899,40 +1995,13 @@ void move_to_random_spawn_point(State *state, Entity *entity) {
 }
 
 void log_entity_flags(Entity *entity) {
-    if (BitSet(entity->flags, EF_PLAYER)) {
-        Log("PLAYER");
-    }
+    Logf("List of entity flags set for entity id={}", entity->id);
 
-    if (BitSet(entity->flags, EF_SPAWN_POINT)) {
-        Log("SPAWN");
-    }
-
-    if (BitSet(entity->flags, EF_SOLID_HITBOX)) {
-        Log("SOLID");
-    }
-
-    if (BitSet(entity->flags, EF_STATIC_HITBOX)) {
-        Log("STATIC");
-    }
-
-    if (BitSet(entity->flags, EF_DEAD)) {
-        Log("DEAD");
-    }
-
-    if (BitSet(entity->flags, EF_PICKUP)) {
-        Log("PICKUP");
-    }
-
-    if (BitSet(entity->flags, EF_TRIGGER_HITBOX)) {
-        Log("trigger");
-    }
-
-    if (BitSet(entity->flags, EF_MISSLE)) {
-        Log("missle");
-    }
-
-    if (BitSet(entity->flags, EF_DELETE)) {
-        Log("delete");
+    EnumValue<EntityFlag> *flags = meta_values<EntityFlag>();
+    for (i64 i = 0; i < meta_count<EntityFlag>(); i++) {
+        if (BitSet(entity->flags, flags[i].value)) {
+            Log(flags[i].name);
+        }
     }
 }
 
@@ -2005,6 +2074,18 @@ Entity *local_spawn_missle(State *state) {
         .owner = SERVER_INSTANCE_ID,
         .size = v3{0.5, 0.5, 0.5},
         .colour = brightness(WHITE, 0.2),
+    };
+
+    return local_spawn_entity(state, entity);
+}
+
+Entity *local_spawn_jump_pad(State *state) {
+    Entity entity = Entity {
+        .flags = EF_JUMP_PAD,
+        .id = new_entity_id(),
+        .owner = LEVEL_INSTANCE_ID,
+        .size = v3{3, 0.2, 3},
+        .colour = PURPLE,
     };
 
     return local_spawn_entity(state, entity);
@@ -2165,6 +2246,7 @@ void imgui_entity(Entity *entity) {
     }
 
     ImGui::InputFloat("pickup cooldown", &entity->pickup_cooldown);
+    ImGui::InputFloat("jump pad cooldown", &entity->jump_pad_cooldown);
 }
 
 Viewport imgui_viewport(const char *label, u32 texture_id, bool force_focus) {

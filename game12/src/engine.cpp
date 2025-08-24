@@ -345,6 +345,7 @@ v4 SUN_YELLOW       = {0.9, 0.9, 0.3, 1};
 v4 HOT_PINK         = {1, 0, 0.8, 1};
 v4 TURQUOISE        = {0.090f, 0.78, 0.78, 1};
 v4 BEIGE            = {0.75, 0.58, 0.47, 1};
+v4 PURPLE           = {0.75, 0.1, 0.9, 1};
 
 struct MeshVertex {
     v3 position;

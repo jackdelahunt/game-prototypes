@@ -45,6 +45,7 @@
 #define MemZero(buffer, size) memset((buffer), 0, (size))
 
 #define Scope }switch(0){default:
+#define ScopeBreak break 
 
 #define KB(x) ((x) * 1024)
 #define MB(x) ((x) * 1024 * 1024)

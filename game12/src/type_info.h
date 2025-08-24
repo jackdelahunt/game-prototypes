@@ -7,6 +7,44 @@
 #include "meta.h"
 
 template<>
+struct MetaEnum<WeaponHandle> {
+const static int count = 5;
+
+inline static EnumValue<WeaponHandle> values[count] = {
+    EnumValue<WeaponHandle>(string("WH_DEAGLE"), WH_DEAGLE),
+    EnumValue<WeaponHandle>(string("WH_M4"), WH_M4),
+    EnumValue<WeaponHandle>(string("WH_TAP"), WH_TAP),
+    EnumValue<WeaponHandle>(string("WH_PAL"), WH_PAL),
+    EnumValue<WeaponHandle>(string("_WH_COUNT"), _WH_COUNT),
+};
+
+static string name(WeaponHandle value) {
+    switch (value) {
+        case WH_DEAGLE: return values[0].name;
+        case WH_M4: return values[1].name;
+        case WH_TAP: return values[2].name;
+        case WH_PAL: return values[3].name;
+        case _WH_COUNT: return values[4].name;
+    }
+}
+
+static EnumValue<WeaponHandle> *value(string name) {
+    for (int i = 0; i < count; i++) {
+        if (slice_memcmp(values[i].name, name)) return &values[i];
+    }
+    return nullptr;
+}
+
+static int index(WeaponHandle value) {
+    for (int i = 0; i < count; i++) {
+        if (values[i].value == value) return i;
+    }
+    return -1;
+}
+
+};
+
+template<>
 struct MetaEnum<PickupType> {
 const static int count = 5;
 
@@ -46,7 +84,7 @@ static int index(PickupType value) {
 
 template<>
 struct MetaEnum<EntityFlag> {
-const static int count = 9;
+const static int count = 10;
 
 inline static EnumValue<EntityFlag> values[count] = {
     EnumValue<EntityFlag>(string("EF_PLAYER"), EF_PLAYER),
@@ -57,6 +95,7 @@ inline static EnumValue<EntityFlag> values[count] = {
     EnumValue<EntityFlag>(string("EF_DEAD"), EF_DEAD),
     EnumValue<EntityFlag>(string("EF_PICKUP"), EF_PICKUP),
     EnumValue<EntityFlag>(string("EF_MISSLE"), EF_MISSLE),
+    EnumValue<EntityFlag>(string("EF_JUMP_PAD"), EF_JUMP_PAD),
     EnumValue<EntityFlag>(string("EF_DELETE"), EF_DELETE),
 };
 
@@ -70,7 +109,8 @@ static string name(EntityFlag value) {
         case EF_DEAD: return values[5].name;
         case EF_PICKUP: return values[6].name;
         case EF_MISSLE: return values[7].name;
-        case EF_DELETE: return values[8].name;
+        case EF_JUMP_PAD: return values[8].name;
+        case EF_DELETE: return values[9].name;
     }
 }
 
