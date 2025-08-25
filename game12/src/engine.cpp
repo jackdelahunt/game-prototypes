@@ -318,6 +318,17 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 #define MAX_SPRITES 256
 #define MAX_TEXTURES 256
 
+#define UI_LAYER_0 0.0f
+#define UI_LAYER_1 1.0f
+#define UI_LAYER_2 2.0f
+#define UI_LAYER_3 3.0f
+#define UI_LAYER_4 4.0f
+#define UI_LAYER_5 5.0f
+#define UI_LAYER_6 6.0f
+#define UI_LAYER_7 7.0f
+#define UI_LAYER_8 8.0f
+#define UI_LAYER_9 9.0f
+
 v3 QUAD_POSITIONS[4] = {
     {-0.5,  0.5, 0}, // top left
     { 0.5,  0.5, 0}, // top right
@@ -338,6 +349,10 @@ v4 BLACK            = {0, 0, 0, 1};
 v4 RED              = {1, 0, 0, 1};
 v4 GREEN            = {0, 1, 0, 1};
 v4 BLUE             = {0, 0, 1, 1};
+
+v4 LIGHT_GRAY       = {0.75, 0.75, 0.75, 1};
+v4 GRAY             = {0.50, 0.50, 0.50, 1};
+v4 DARK_GRAY        = {0.25, 0.25, 0.25, 1};
 
 v4 ORANGE           = {1, 0.64, 0.1, 1};
 v4 CORNFLOUR_BLUE   = {0.35, 0.80, 0.80, 1};
@@ -528,7 +543,7 @@ struct Renderer {
     u32 vertex_buffer_id;
     u32 index_buffer_id;
 
-    Shader default_shader;
+    Shader ui_shader;
     Shader lighting_shader;
     Shader mesh_shader;
 
@@ -613,7 +628,7 @@ void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position, v3 scale, v3 rotatio
 void draw_quad_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour, v2 uvs[4], DrawType type);
 void draw_rectangle_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour);
 void draw_circle_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour);
-void draw_text_ui(Renderer *renderer, string text, v3 position, f32 font_size, v4 color);
+void draw_text_ui(Renderer *renderer, string text, v3 position, f32 font_size, v4 color, bool centred);
 
 void toggle_wireframe(Renderer *renderer);
 f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
@@ -728,7 +743,7 @@ bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, s
 
     string fragment_shader_source = read_entire_file(fragment_shader_path);
     if (fragment_shader_source.len == 0) {
-        Logf("{}: failed to load default fragment shader file", debug_name.c());
+        Logf("{}: failed to load fragment shader file", debug_name.c());
         return false;
     }
 
@@ -1111,18 +1126,16 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
 }
 
 bool load_shaders(Renderer *renderer) {
-    bool ok = init_shader(&renderer->default_shader, "Default shader", "resources/shaders/default_vertex.shader", "resources/shaders/default_fragment.shader");
+    bool ok = init_shader(&renderer->ui_shader, "UI shader", "resources/shaders/ui_vertex.shader", "resources/shaders/ui_fragment.shader");
     if (!ok) {
-        Log("Error when creating default shader program");
         return false;
     }
 
-    assign_texture_slot(&renderer->default_shader, "atlas_texture", 0);
-    assign_texture_slot(&renderer->default_shader, "font_texture", 1);
+    assign_texture_slot(&renderer->ui_shader, "atlas_texture", 0);
+    assign_texture_slot(&renderer->ui_shader, "font_texture", 1);
 
     ok = init_shader(&renderer->lighting_shader, "Lighting shader", "resources/shaders/lighting_vertex.shader", "resources/shaders/lighting_fragment.shader");
     if (!ok) {
-        Log("Error when creating lighting shader program");
         return false;
     }
 
@@ -1135,7 +1148,6 @@ bool load_shaders(Renderer *renderer) {
 
     ok = init_shader(&renderer->mesh_shader, "Mesh shader", "resources/shaders/mesh_vertex.shader", "resources/shaders/mesh_fragment.shader");
     if (!ok) {
-        Log("Error when creating mesh shader program");
         return false;
     }
 
@@ -1143,7 +1155,7 @@ bool load_shaders(Renderer *renderer) {
 }
 
 void delete_shaders(Renderer *renderer) {
-    glDeleteProgram(renderer->default_shader.id);
+    glDeleteProgram(renderer->ui_shader.id);
     glDeleteProgram(renderer->lighting_shader.id);
     glDeleteProgram(renderer->mesh_shader.id);
 }
@@ -1489,14 +1501,14 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
     if (draw_ui) { // ui pass
         m4 model_matrix = HMM_M4D(1.0f);
         m4 view_matrix = HMM_M4D(1.0f);
-        m4 projection_matrix = HMM_Orthographic_LH_NO(0, viewport.size.x, 0, viewport.size.y,  -1, 1);
+        m4 projection_matrix = HMM_Orthographic_LH_NO(0, viewport.size.x, 0, viewport.size.y,  0, 10);
 
         // drawing on top of lighting buffer output
         frame_buffer_bind(&renderer->lighting_buffer);
     
         quad_buffer_bind_and_update(&renderer->ui_quads);
      
-        use_shader(renderer->default_shader);
+        use_shader(renderer->ui_shader);
     
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
@@ -1504,9 +1516,9 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, renderer->font_texture_id);
     
-        set_uniform_m4(renderer->default_shader, "model", &model_matrix);
-        set_uniform_m4(renderer->default_shader, "view", &view_matrix);
-        set_uniform_m4(renderer->default_shader, "projection", &projection_matrix);
+        set_uniform_m4(renderer->ui_shader, "model", &model_matrix);
+        set_uniform_m4(renderer->ui_shader, "view", &view_matrix);
+        set_uniform_m4(renderer->ui_shader, "projection", &projection_matrix);
     
         glDrawElements(GL_TRIANGLES, 6 * renderer->ui_quads.quads.len, GL_UNSIGNED_INT, 0);
     
@@ -1623,7 +1635,7 @@ void draw_circle_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 co
     draw_quad_ui(renderer, position, size, rotation, colour, QUAD_UVS, DrawType::CIRCLE);
 }
 
-void draw_text_ui(Renderer *renderer, string text, v3 position, f32 font_size, v4 color) {
+void draw_text_ui(Renderer *renderer, string text, v3 position, f32 font_size, v4 color, bool centred) {
     if (text.len == 0) {
         return;
     }
@@ -1693,6 +1705,12 @@ void draw_text_ui(Renderer *renderer, string text, v3 position, f32 font_size, v
         }
     }
 
+    if (centred) {
+        for (Glyph &glyph : glyphs) {
+            glyph.position -= v2{total_text_width, text_height} * 0.5f;
+        }
+    }
+
     v2 pivot_point_translation = {};
     f32 scale = font_size / text_height;
 
@@ -1708,7 +1726,7 @@ void draw_text_ui(Renderer *renderer, string text, v3 position, f32 font_size, v
         v3 centered_v3 = v3{quad_centered_position.x, quad_centered_position.y, position.z};
 
         draw_quad_ui(renderer, centered_v3, scaled_size, {}, color, glyph->uvs, DrawType::TEXT);
-   }
+    }
 
     slice_free(glyphs);
 }

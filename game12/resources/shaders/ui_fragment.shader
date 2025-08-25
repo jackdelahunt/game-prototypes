@@ -45,6 +45,11 @@ void main()
 
     // font
     if (draw_type == 3) {
-        g_position = texture(font_texture, uv).r * colour;
+        vec4 sample_colour = texture(font_texture, uv);
+        // if (sample_colour.r <= 0.01) {
+            // discard;
+        // }
+
+        g_position = sample_colour.r * colour;
     }
 } 

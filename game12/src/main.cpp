@@ -7,6 +7,7 @@
 #include "meta.h"
 
 #include <atomic>
+#include <cfloat>
 #include <stdio.h>
 #include <string.h>
 #include <thread>
@@ -17,8 +18,8 @@
 #include <atomic>
 #include <iostream>
 
-// Total: 87:30
-// Started: 15:00
+// Total: 89:00
+// Started: 10:30
 //
 // What do a programmer do?:
 // Game:
@@ -78,7 +79,7 @@ f32 PLAYER_WIDTH                = 0.65;
 f32 PLAYER_EYES_OFFSET          = 0.8;
 
 f32 PLAYER_DEATH_COOLDOWN       = 3;
-f32 PLAYER_GROUND_ACCELERATION  = 4;
+f32 PLAYER_GROUND_ACCELERATION  = 240;
 f32 PLAYER_JUMP_ACCELERATION    = 20;
 f32 PLAYER_GROUND_DRAG          = 10;
 f32 PLAYER_AIR_CONTROL          = 4;
@@ -90,24 +91,34 @@ f32 WEAPON_SWITCH_COOLDOWN  = 1.5;
 f32 WEAPON_PICKUP_COOLDOWN  = 9;
 f32 HEALTH_PICKUP_COOLDOWN  = 6;
 
+v4 UI_TEAM_COLOUR              = v4 {0.221118, 0.221119, 0.759494, 1.000000};
+v4 UI_OPPONENT_COLOUR          = v4 {0.780591, 0.207499, 0.207499, 1.000000};
+v4 UI_TIME_BACKGROUND_COLOUR   = v4 {0.053588, 0.082173, 0.147679, 0.67};
+v4 UI_SCORE_BACKGROUND_COLOUR  = v4 {0.911392, 0.911392, 0.911392, 0.50};
+f32 UI_SCORE_FONT_SIZE         = 22;
+f32 UI_SCORE_OFFSET            = 105;
+
 f32 CROSSHAIR_GAP           = 10;
 f32 CROSSHAIR_LENGTH        = 12;
 f32 CROSSHAIR_THICKNESS     = 3;
 v4 CROSSHAIR_COLOUR         = RED;
 
-f32 MISSLE_SPEED        = 35;
-f32 EXPLOSION_RADIUS    = 12;
-f32 EXPLOSION_FORCE     = 60;
-f32 EXPLOSION_DAMAGE    = 200;
+f32 MISSLE_SPEED            = 35;
+f32 EXPLOSION_RADIUS        = 12;
+f32 EXPLOSION_FORCE         = 60;
+f32 EXPLOSION_DAMAGE        = 200;
 
-f32 JUMP_PAD_COOLDOWN = 1;
-f32 JUMP_PAD_ACCELERATION = 55;
+f32 JUMP_PAD_COOLDOWN       = 1;
+f32 JUMP_PAD_ACCELERATION   = 55;
 
 bool DEBUG_DRAW_OWNER       = false;
 
 bool CHEAT_WEAPON_BINDS     = true;
 bool CHEAT_INFINITE_AMMO    = true;
 bool CHEAT_NO_DAMAGE        = false;
+
+// f32 g_game_length = Minute(5);
+f32 g_game_length = 10;
 
 bool g_dual_wield_recoil_switch = true;
 
@@ -280,6 +291,7 @@ enum NetworkMessageType {
     NM_PLAYER_HIT,
     NM_SET_WEAPON,
     NM_SPAWN_MISSLE,
+    NM_GAME_COMPLETE,
 }; 
 
 struct NetworkMessage {
@@ -304,6 +316,7 @@ struct NetworkMessage {
         v3 spawn_dummy;
         WeaponHandle set_weapon;
         Ray spawn_missle;
+        // game_complete
     };
 };
 
@@ -335,12 +348,17 @@ struct State {
     u32 instance_id;
     
     f32 time;
+    f32 delta_time;
+    bool game_complete;
     Arena arena;
+
     Sampler network_in_sampler;
+    Sampler fps_sampler;
 
     WeaponHandle player_weapon;
     i64 player_ammo;
     f32 player_firing_cooldown;
+
     i64 spawn_point_count;
     StackArray<Entity, MAX_ENTITIES> entities;
 };
@@ -398,14 +416,14 @@ void game_client_entry();
 void game_server_stop();
 
 void poll_user_input(State *state);
-void process_network(State *state, f32 delta_time);
+void process_network(State *state);
 void sync_clients(State *state);
 
-void game_server_update(State *state, f32 delta_time);
-void game_server_physics(State *state, f32 delta_time);
+void game_server_update(State *state);
+void game_server_physics(State *state);
 void game_server_on_trigger_collision(State *state, Entity *trigger, Entity *other);
 
-void game_client_update(State *state, f32 delta_time);
+void game_client_update(State *state);
 void game_client_draw(State *state);
 
 void editor_update(State *state);
@@ -453,6 +471,7 @@ bool point_collision(v3 point, v3 collider_position, v3 collider_size);
 void imgui_entity(Entity *entity);
 Viewport imgui_viewport(const char *label, u32 texture_id, bool force_focus);
 void imgui_v3_control(const char *label, v3 *vector, f32 step = 1);
+void imgui_colour_control(const char *label, v4 *colour);
 
 void clear_level(State *state);
 void serialise_level(State *state);
@@ -537,7 +556,6 @@ void game_server_entry() {
         .instance_type = IT_SERVER,
         .instance_id = SERVER_INSTANCE_ID,
         .arena = arena_create(10 * 1024 * 1024),
-        .network_in_sampler = {},
         .entities = stack_array_create<Entity, MAX_ENTITIES>(),
     };
 
@@ -548,18 +566,24 @@ void game_server_entry() {
     deserialise_level(&GS()->state);
 
     while (!GS()->shutdown_signal) {
-        f32 delta_time = 0;
-
-        if (!timer_is_complete(&tick_timer, &delta_time)) {
+        if (!timer_is_complete(&tick_timer, &GS()->state.delta_time)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
             continue;
         }
 
-        GS()->state.time += delta_time;
+        GS()->state.time += GS()->state.delta_time;
 
-        process_network(&GS()->state, delta_time);
-        game_server_update(&GS()->state, delta_time);
-        game_server_physics(&GS()->state, delta_time);
+        if (GS()->state.time >= g_game_length && !GS()->state.game_complete) {
+            GS()->state.game_complete = true;
+
+            Infof("Game time limit reached ({}s) game is ending", GS()->state.time);
+            NetworkMessage message = NetworkMessage{.type = NM_GAME_COMPLETE};
+            server_send_to_all_clients(NET(), bytes_from_ptr(&message));
+        }
+
+        process_network(&GS()->state);
+        game_server_update(&GS()->state);
+        game_server_physics(&GS()->state);
         sync_clients(&GS()->state);
 
         { // update event sampler snapshot
@@ -643,7 +667,6 @@ void game_client_entry() {
             .instance_type = IT_CLIENT,
             .instance_id = 0,
             .arena = arena_create(10 * 1024 * 1024),
-            .network_in_sampler = {},
             .entities = stack_array_create<Entity, MAX_ENTITIES>(),
         }
     };
@@ -679,9 +702,7 @@ void game_client_entry() {
     deserialise_level(&GC()->state);
 
     while (!glfwWindowShouldClose(WIN()->glfw_window)) {
-        f32 delta_time = 0;
-        if (timer_is_complete(&tick_timer, &delta_time)) {
-            GC()->state.time += delta_time;
+        if (timer_is_complete(&tick_timer, &GC()->state.delta_time)) {
 
             poll_inputs();
 
@@ -698,10 +719,14 @@ void game_client_entry() {
             }
         
             if (GC()->mode == GC_HOSTED || GC()->mode == GC_CLIENT) {
-                process_network(&GC()->state, delta_time);
-                game_client_update(&GC()->state, delta_time);
+                GC()->state.time += GC()->state.delta_time;
+                process_network(&GC()->state);
+                game_client_update(&GC()->state);
             }
         }
+
+        // using fps instead of dt due to less noise with lower float values
+        sampler_append(&GC()->state.fps_sampler, 1.0f / GC()->state.delta_time);
 
         // draw
         renderer_start_frame(REN());
@@ -739,7 +764,7 @@ void poll_user_input(State *state) {
 
 }
 
-void process_network(State *state, f32 delta_time) {
+void process_network(State *state) {
     if (is_client(state)) {
         sampler_append(&state->network_in_sampler, f32(network_queue_size(&NET()->client_in_queue)));
 
@@ -757,7 +782,7 @@ void process_network(State *state, f32 delta_time) {
         slice<u8> bytes;
         while (network_queue_pop(&NET()->server_in_queue, &bytes)) {
             NetworkMessage *message = (NetworkMessage *) bytes.ptr;
-            on_server_receive(state, message, delta_time);
+            on_server_receive(state, message, state->delta_time);
             slice_free(bytes);
         }
     }
@@ -793,13 +818,13 @@ void sync_clients(State *state) {
     }
 }
 
-void game_server_update(State *state, f32 delta_time) {
+void game_server_update(State *state) {
     Assert(is_server(state));
 
     for (Entity &entity : state->entities) {
 
         if (BitSet(entity.flags, EF_PICKUP)) {
-            entity.pickup_cooldown -= delta_time;
+            entity.pickup_cooldown -= state->delta_time;
             if (entity.pickup_cooldown <= 0) {
                 entity.pickup_cooldown = 0;
             }
@@ -845,7 +870,7 @@ void game_server_update(State *state, f32 delta_time) {
         }
 
         if (BitSet(entity.flags, EF_JUMP_PAD)) {
-            entity.jump_pad_cooldown -= delta_time;
+            entity.jump_pad_cooldown -= state->delta_time;
             if (entity.jump_pad_cooldown <= 0) {
                 entity.jump_pad_cooldown = 0;
             }
@@ -875,7 +900,7 @@ void game_server_update(State *state, f32 delta_time) {
         if (BitSet(entity.flags, EF_DEAD)) {
             Assert(BitSet(entity.flags, EF_PLAYER));
 
-            entity.death_cooldown -= delta_time;
+            entity.death_cooldown -= state->delta_time;
 
             if (entity.death_cooldown < 0) {
                 entity.health = entity.max_health;
@@ -902,7 +927,7 @@ void game_server_update(State *state, f32 delta_time) {
     }
 }
 
-void game_server_physics(State *state, f32 delta_time) {
+void game_server_physics(State *state) {
     Assert(is_server(state));
 
     for (Entity &entity : state->entities) {
@@ -919,15 +944,15 @@ void game_server_physics(State *state, f32 delta_time) {
                 v3 h_velocity = v3{entity.velocity.x, 0, entity.velocity.z};
                 v3 drag = -h_velocity * PLAYER_GROUND_DRAG;
 
-                entity.velocity.x += drag.x * delta_time;
-                entity.velocity.z += drag.z * delta_time;
+                entity.velocity.x += drag.x * state->delta_time;
+                entity.velocity.z += drag.z * state->delta_time;
             }
 
-            entity.velocity.y -= GRAVITY * delta_time;
+            entity.velocity.y -= GRAVITY * state->delta_time;
         }
 
         v3 starting_position = entity.position;
-        entity.position += entity.velocity * delta_time;
+        entity.position += entity.velocity * state->delta_time;
 
         { // detect and resolve collisions
             if (BitSet(entity.flags, EF_SOLID_HITBOX)) {
@@ -1027,8 +1052,8 @@ void game_server_on_trigger_collision(State *state, Entity *trigger, Entity *oth
 
 }
 
-void game_client_update(State *state, f32 delta_time) {
-    state->player_firing_cooldown -= delta_time;
+void game_client_update(State *state) {
+    state->player_firing_cooldown -= state->delta_time;
     if (state->player_firing_cooldown <= 0) {
         state->player_firing_cooldown = 0;
     }
@@ -1165,6 +1190,24 @@ void game_client_update(State *state, f32 delta_time) {
 void game_client_draw(State *state) {
     Assert(is_client(state));
 
+    { // top bar ui
+        f32 font_size   = 35;
+        v3 top_centre   = relative_to_screen_position(GC()->viewport, {0.5, 1});
+        v3 text_centre  = top_centre - v3{0, font_size * 0.6f, 0}; // 0.6 to give gap
+        v3 score_offset = v3{UI_SCORE_OFFSET, 0, 0};
+        
+        // scores
+        draw_rectangle_ui(REN(), v3{text_centre.x - score_offset.x, text_centre.y + score_offset.y, UI_LAYER_3}, {80, font_size + 10}, {}, UI_SCORE_BACKGROUND_COLOUR); // left
+        draw_text_ui(REN(), "77", v3{text_centre.x - score_offset.x, text_centre.y + score_offset.y, UI_LAYER_2}, UI_SCORE_FONT_SIZE, UI_TEAM_COLOUR, true);
+        
+        draw_rectangle_ui(REN(), v3{text_centre.x + score_offset.x, text_centre.y + score_offset.y, UI_LAYER_3}, {80, font_size + 10}, {}, UI_SCORE_BACKGROUND_COLOUR); // right
+        draw_text_ui(REN(), "66", v3{text_centre.x + score_offset.x, text_centre.y + score_offset.y, UI_LAYER_2}, UI_SCORE_FONT_SIZE, UI_OPPONENT_COLOUR, true);
+        
+        // time
+        draw_rectangle_ui(REN(), v3{text_centre.x, text_centre.y, UI_LAYER_1}, {130, font_size + 20}, {}, UI_TIME_BACKGROUND_COLOUR);
+        draw_text_ui(REN(), "0:00", v3{text_centre.x, text_centre.y, UI_LAYER_0}, font_size, WHITE, true);
+    }
+
     for (Entity &entity : state->entities) {
         v4 draw_colour = entity.colour;
 
@@ -1211,7 +1254,7 @@ void game_client_draw(State *state) {
                 draw_rectangle_ui(REN(), centre + v3{0, CROSSHAIR_GAP, 0}, {CROSSHAIR_THICKNESS, CROSSHAIR_LENGTH}, {}, CROSSHAIR_COLOUR);
             }
 
-            { // draw health
+            if (false) { // draw health
                 f32 max_width = 600;
                 f32 height = 30;
                 v3 centre = relative_to_screen_position(GC()->viewport, {0.5, 0.98});
@@ -1232,7 +1275,7 @@ void game_client_draw(State *state) {
             }
        
             { // draw ammo
-                draw_text_ui(REN(), fmt(&state->arena, "{}:  {}", player_weapon->display_name, state->player_ammo), {7, 10, 0}, 30, alpha(BLACK, 0.4));
+                draw_text_ui(REN(), fmt(&state->arena, "{}:  {}", player_weapon->display_name, state->player_ammo), {7, 10, 0}, 30, alpha(BLACK, 0.4), false);
             }
         }
 
@@ -1454,6 +1497,18 @@ void editor_draw_ui(State *state) {
 
     ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), 0);
 
+    if (false) {
+        ImGui::Begin("Scoreboard style");
+        ImGui::SliderFloat("Score x offset", &UI_SCORE_OFFSET, 0, 300);
+        ImGui::SliderFloat("Score font size", &UI_SCORE_FONT_SIZE, 0, 300);
+        imgui_colour_control("Team", &UI_TEAM_COLOUR);
+        imgui_colour_control("Opps", &UI_OPPONENT_COLOUR);
+        imgui_colour_control("Time", &UI_TIME_BACKGROUND_COLOUR);
+        imgui_colour_control("banner", &UI_SCORE_BACKGROUND_COLOUR);
+        ImGui::End();
+    }
+
+    // maybe cool? https://fellowimgui.dev/editor
     // https://github.com/ocornut/imgui/blob/master/imgui_demo.cpp
     // ImGui::ShowDemoWindow();
     
@@ -1492,6 +1547,53 @@ void editor_draw_ui(State *state) {
     
     { // debug info
         ImGui::Begin("Debug info");
+
+        ImGui::SeparatorText("Performance");
+
+        { // fps sampler info
+            static Sampler rolling_average_sampler = {};
+
+            f32 average = sampler_average(&state->fps_sampler);
+
+            // overkill? LoL
+            sampler_append(&rolling_average_sampler, average);
+            f32 average_rolling_average = sampler_average(&state->fps_sampler);
+
+            ImGui::Text("Avg: %f", average_rolling_average);
+            ImGui::PlotLines("FPS (rolling average)", rolling_average_sampler.samples, SAMPLER_SIZE, 0, NULL, 0.01, FLT_MAX, ImVec2(0, 60));
+        }
+
+        ImGui::SeparatorText("Network messages");
+
+        f32 message_in_MB = f32(sizeof(NetworkMessage)) / (8.0f * 1024.0f);
+     
+        { // client events sampler info
+            f32 average = sampler_average(&state->network_in_sampler);
+            f32 samples_per_second = sampler_samples_per_second(&state->network_in_sampler);
+            f32 messages_per_second = average * samples_per_second;
+            f32 MB_per_second = messages_per_second * message_in_MB;
+     
+            ImGui::Text("Avg: %f", average);
+            ImGui::Text("Samples/s: %f", samples_per_second);
+            ImGui::Text("Messages/s: %f", messages_per_second);
+            ImGui::Text("MB/s: %f", MB_per_second);
+            ImGui::PlotLines("Client", state->network_in_sampler.samples, SAMPLER_SIZE, 0, NULL, FLT_MAX, FLT_MAX, ImVec2(0, 60));
+        }
+     
+        if (g_game_server != NULL) { // server events sampler info
+            Sampler *sampler = atomic_snapshot_read(&server_messages_snapshot);
+
+            f32 average = sampler_average(sampler);
+            f32 samples_per_second = sampler_samples_per_second(sampler);
+            f32 messages_per_second = average * samples_per_second;
+            f32 MB_per_second = messages_per_second * message_in_MB;
+     
+            ImGui::Text("Avg: %f", average);
+            ImGui::Text("Samples/s: %f", samples_per_second);
+            ImGui::Text("Messages/s: %f", messages_per_second);
+            ImGui::Text("MB/s: %f", MB_per_second);
+            ImGui::PlotLines("Server", sampler->samples, SAMPLER_SIZE, 0, NULL, FLT_MAX, FLT_MAX, ImVec2(0, 60));
+        }
 
         { // main display info
             ImGui::SeparatorText("Display");
@@ -1557,38 +1659,6 @@ void editor_draw_ui(State *state) {
             ImGui::Text("Forward: [%.3f, %.3f, %.3f]", forward.x, forward.y, forward.z);
             ImGui::Text("Right: [%.3f, %.3f, %.3f]", right.x, right.y, right.z);
             ImGui::Text("Up: [%.3f, %.3f, %.3f]", up.x, up.y, up.z);
-        }
-
-        ImGui::SeparatorText("Network messages");
-
-        f32 message_in_MB = f32(sizeof(NetworkMessage)) / (8.0f * 1024.0f);
-     
-        { // client events sampler info
-            f32 average = sampler_average(&state->network_in_sampler);
-            f32 samples_per_second = sampler_samples_per_second(&state->network_in_sampler);
-            f32 messages_per_second = average * samples_per_second;
-            f32 MB_per_second = messages_per_second * message_in_MB;
-     
-            ImGui::Text("Avg: %f", average);
-            ImGui::Text("Samples/s: %f", samples_per_second);
-            ImGui::Text("Messages/s: %f", messages_per_second);
-            ImGui::Text("MB/s: %f", MB_per_second);
-            ImGui::PlotLines("Client", state->network_in_sampler.samples, SAMPLER_SIZE, 0, NULL, FLT_MAX, FLT_MAX, ImVec2(0, 60));
-        }
-     
-        if (g_game_server != NULL) { // server events sampler info
-            Sampler *sampler = atomic_snapshot_read(&server_messages_snapshot);
-
-            f32 average = sampler_average(sampler);
-            f32 samples_per_second = sampler_samples_per_second(sampler);
-            f32 messages_per_second = average * samples_per_second;
-            f32 MB_per_second = messages_per_second * message_in_MB;
-     
-            ImGui::Text("Avg: %f", average);
-            ImGui::Text("Samples/s: %f", samples_per_second);
-            ImGui::Text("Messages/s: %f", messages_per_second);
-            ImGui::Text("MB/s: %f", MB_per_second);
-            ImGui::PlotLines("Server", sampler->samples, SAMPLER_SIZE, 0, NULL, FLT_MAX, FLT_MAX, ImVec2(0, 60));
         }
 
         ImGui::End();
@@ -1817,6 +1887,10 @@ void editor_draw_ui(State *state) {
 }
 
 void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
+    if (state->game_complete) {
+        return;
+    }
+
     switch (message->type) {
         case NM_CLIENT_CONNECTED: {
             // when client connects, the server generates this message and a few things are required to happen
@@ -1878,9 +1952,9 @@ void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
             bool grounded = player_is_grounded(state, player);
 
             if (grounded) {
-                player->velocity.x += message->move_player.input_direction.x * message->move_player.speed_factor * PLAYER_GROUND_ACCELERATION;
+                player->velocity.x += message->move_player.input_direction.x * message->move_player.speed_factor * PLAYER_GROUND_ACCELERATION * delta_time;
                 player->velocity.y += message->move_player.jump                                                  * PLAYER_JUMP_ACCELERATION;
-                player->velocity.z += message->move_player.input_direction.y * message->move_player.speed_factor * PLAYER_GROUND_ACCELERATION;
+                player->velocity.z += message->move_player.input_direction.y * message->move_player.speed_factor * PLAYER_GROUND_ACCELERATION * delta_time;
             }
             else {
                 v2 wish_direction = message->move_player.input_direction;
@@ -1928,6 +2002,10 @@ void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
 }
 
 void on_client_receive(State *state, NetworkMessage *message) {
+    if (state->game_complete) {
+        return;
+    }
+
     switch (message->type) {
         case NM_ASSIGN_CLIENT_ID: {
             state->instance_id = message->assign_client_id;
@@ -1958,6 +2036,10 @@ void on_client_receive(State *state, NetworkMessage *message) {
         case NM_SET_WEAPON: {
             Logf("Client was told to use a new weapon: {}", (u32) message->set_weapon);
             set_player_weapon(state, message->set_weapon, 0);
+        } break;
+        case NM_GAME_COMPLETE: {
+            Info("The game has been completed");
+            state->game_complete = true;
         } break;
         default: {
             Log("WARNING unknown message sent");
@@ -2336,7 +2418,7 @@ void imgui_entity(Entity *entity) {
     imgui_v3_control("size", &entity->size);
     imgui_v3_control("rotation", &entity->rotation);
     imgui_v3_control("velocity", &entity->velocity);
-    ImGui::Text("colour: "); ImGui::SameLine(); ImGui::ColorEdit4("##colour", &entity->colour[0], ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
+    imgui_colour_control("colour", &entity->colour);
     ImGui::InputFloat("max health", &entity->max_health);
     ImGui::InputFloat("health", &entity->health);
     ImGui::InputFloat("death cooldown", &entity->death_cooldown);
@@ -2481,6 +2563,22 @@ void imgui_v3_control(const char *label, v3 *vector, f32 step) {
     
     ImGui::PopStyleColor(3);
     ImGui::Columns(1);
+    ImGui::PopID();
+}
+
+void imgui_colour_control(const char *label, v4 *colour) {
+    ImGui::PushID(label);
+
+    ImGui::Text(label);
+
+    ImGui::SameLine();
+    ImGui::ColorEdit4("##colour", &colour->r, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
+    ImGui::SameLine();
+
+    if (ImGui::Button("print")) {
+        Infof("{}", *colour);
+    }
+
     ImGui::PopID();
 }
 
@@ -2876,5 +2974,18 @@ void fmt_value(DynamicArray<u8> *bytes, v3 value) {
     fmt_value(bytes, value.y);
     append_many(bytes, slice<u8>(", "));
     fmt_value(bytes, value.z);
+    append_many(bytes, slice<u8>("}"));
+}
+
+template<>
+void fmt_value(DynamicArray<u8> *bytes, v4 value) {
+    append_many(bytes, slice<u8>("v4 {"));
+    fmt_value(bytes, value.x);
+    append_many(bytes, slice<u8>(", "));
+    fmt_value(bytes, value.y);
+    append_many(bytes, slice<u8>(", "));
+    fmt_value(bytes, value.z);
+    append_many(bytes, slice<u8>(", "));
+    fmt_value(bytes, value.w);
     append_many(bytes, slice<u8>("}"));
 }

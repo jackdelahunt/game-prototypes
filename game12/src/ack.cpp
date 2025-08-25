@@ -47,9 +47,16 @@
 #define Scope }switch(0){default:
 #define ScopeBreak break 
 
-#define KB(x) ((x) * 1024)
-#define MB(x) ((x) * 1024 * 1024)
-#define GB(x) ((x) * 1024 * 1024 * 1024)
+// in bytes
+#define KB(x) ((x)   * 1024)
+#define MB(x) (KB(x) * 1024)
+#define GB(x) (MB(x) * 1024)
+#define TB(x) (GB(x) * 1024)
+
+// in seconds
+#define Minute(x) ((x)       * 60)
+#define Hour(x)   (Minute(x) * 60)
+#define Day(x)    (Hour(x)   * 24)
 
 #define ResetAsciiCode         "\033[0m"
 
@@ -667,14 +674,13 @@ bool timer_is_complete(Timer *timer, f32 *delta_time) {
     auto now = std::chrono::steady_clock::now();
     auto duration = now - timer->start_time;
 
+    *delta_time = std::chrono::duration<f32>(duration).count();
 
     if (duration >= timer->time_limit) {
         timer->start_time = now;
-        *delta_time = std::chrono::duration<f32>(duration).count();
         return true; 
     }
 
-    *delta_time = 0;
     return false;
 }
 
@@ -1010,7 +1016,7 @@ void _log(const char *colour, const char *label, const char *file, i32 line, str
 
     if (g_log_print_location) {
         const char *name = tl_thread_name != NULL ? tl_thread_name : "?";
-        printf("[%s:%s:%d] ", name, file, line);
+        printf("[%s] [%s:%d] ", name, file, line);
     }
 
     // actual message
