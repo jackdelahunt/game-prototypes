@@ -4,7 +4,7 @@ layout(location = 0) out vec4 g_position;
 layout(location = 1) out vec4 g_normal;
 layout(location = 2) out vec4 g_albedo;
 
-in vec4 position;
+in vec3 position;
 in vec4 colour;
 in vec2 uv;
 flat in int draw_type;

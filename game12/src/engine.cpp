@@ -1818,11 +1818,13 @@ bool frame_buffer_rebuild(FrameBuffer *frame_buffer) {
     glDrawBuffers(3, draw_buffers);
 
     if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        printf("error when createing frame buffer, was not complete\n");
+        Err("error when createing frame buffer, was not complete");
         return false;
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    return true;
 }
 
 void frame_buffer_copy_to(FrameBuffer *source_buffer, FrameBuffer *dest_buffer) {

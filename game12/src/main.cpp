@@ -1,4 +1,3 @@
-#include "imgui.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -26,6 +25,7 @@
 // - get movement feeling really good
 //      - jump: longer press higher jump 
 //      - sound: running, jumping, landing
+// - pickup more then one gun
 // - ammo pickup
 //	ammo: restore some amount of ammor for a gun (full for deagle, half for m4, 3 for sniper)
 // - actually make a real map
@@ -35,9 +35,18 @@
 // - player sounds, running jumping, maybe taking damage?
 //
 // Editor:
-// - setting to allow entity to be positioned so it is flush with the face of another 
+// - setting to allow entity to be positioned so it is flush with the face of another
 //
+// Todo but not right now:
 // Engine:
+// - PBR
+//      - metalic
+//      - roughness
+//      - idea of a material
+// - real model loading
+//      - textures
+//      - more then one mesh
+//      - animations
 // - combine vs and fs in the one file
 // - fond out why camera yaw (Y) is flipped
 // - switch to quaternions for rotation 
@@ -49,7 +58,7 @@
 // - reduce the templating in the code gen
 // - meta_name<EntityFlag>(flag) -> MetaEntityFlag::name(flag)
 //
-// Ack:
+// Refine Ack structure:
 //  - asserts: enable/disable, assert with message, differnt actions to do on an assert
 //  - basic type, include math types?
 //  - strings, arrays, arenas
@@ -652,13 +661,13 @@ void game_client_entry() {
     { // init editor and client frame buffer
         bool ok = frame_buffer_init(&g_game_client->game_view);
         if (!ok) {
-            Log("failed to init game view frame buffer");
+            Fatal("failed to init game view frame buffer");
             return;
         }
 
         ok = frame_buffer_init(&g_editor->editor_view);
         if (!ok) {
-            Log("failed to init editor view frame buffer");
+            Fatal("failed to init editor view frame buffer");
             return;
         }
     }
