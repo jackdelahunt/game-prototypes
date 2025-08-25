@@ -1,3 +1,4 @@
+#include "imgui.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -7,7 +8,6 @@
 #include "meta.h"
 
 #include <atomic>
-#include <cfloat>
 #include <stdio.h>
 #include <string.h>
 #include <thread>
@@ -18,15 +18,16 @@
 #include <atomic>
 #include <iostream>
 
-// Total: 89:00
-// Started: 10:30
+// Total: 90:00
+// Started: 19:30
 //
 // What do a programmer do?:
 // Game:
+// - actual level loop
+// - pickup more then one gun
 // - get movement feeling really good
 //      - jump: longer press higher jump 
 //      - sound: running, jumping, landing
-// - pickup more then one gun
 // - ammo pickup
 //	ammo: restore some amount of ammor for a gun (full for deagle, half for m4, 3 for sniper)
 // - actually make a real map
@@ -91,8 +92,8 @@ f32 WEAPON_SWITCH_COOLDOWN  = 1.5;
 f32 WEAPON_PICKUP_COOLDOWN  = 9;
 f32 HEALTH_PICKUP_COOLDOWN  = 6;
 
-v4 UI_TEAM_COLOUR              = v4 {0.221118, 0.221119, 0.759494, 1.000000};
-v4 UI_OPPONENT_COLOUR          = v4 {0.780591, 0.207499, 0.207499, 1.000000};
+v4 UI_BLUE_TEAM_COLOUR              = v4 {0.221118, 0.221119, 0.759494, 1.000000};
+v4 UI_RED_TEAM_COLOUR          = v4 {0.780591, 0.207499, 0.207499, 1.000000};
 v4 UI_TIME_BACKGROUND_COLOUR   = v4 {0.053588, 0.082173, 0.147679, 0.67};
 v4 UI_SCORE_BACKGROUND_COLOUR  = v4 {0.911392, 0.911392, 0.911392, 0.50};
 f32 UI_SCORE_FONT_SIZE         = 22;
@@ -291,6 +292,7 @@ enum NetworkMessageType {
     NM_PLAYER_HIT,
     NM_SET_WEAPON,
     NM_SPAWN_MISSLE,
+    NM_UPDATE_SCORE,
     NM_GAME_COMPLETE,
 }; 
 
@@ -316,6 +318,10 @@ struct NetworkMessage {
         v3 spawn_dummy;
         WeaponHandle set_weapon;
         Ray spawn_missle;
+        struct {
+            i32 red;
+            i32 blue;
+        } update_score;
         // game_complete
     };
 };
@@ -351,6 +357,10 @@ struct State {
     f32 delta_time;
     bool game_complete;
     Arena arena;
+    Arena frame_arena;
+
+    i32 red_score;
+    i32 blue_score;
 
     Sampler network_in_sampler;
     Sampler fps_sampler;
@@ -553,10 +563,11 @@ void game_server_entry() {
     log_set_thread_name("server");
 
     GS()->state = State {
-        .instance_type = IT_SERVER,
-        .instance_id = SERVER_INSTANCE_ID,
-        .arena = arena_create(10 * 1024 * 1024),
-        .entities = stack_array_create<Entity, MAX_ENTITIES>(),
+        .instance_type      = IT_SERVER,
+        .instance_id        = SERVER_INSTANCE_ID,
+        .arena              = arena_create(MB(5)),
+        .frame_arena        = arena_create(MB(5)),
+        .entities           = stack_array_create<Entity, MAX_ENTITIES>(),
     };
 
     Timer tick_timer = timer_create_ms(GAME_SERVER_MS_PER_TICK);
@@ -592,7 +603,7 @@ void game_server_entry() {
             atomic_snapshot_swap(&server_messages_snapshot);
         }
 
-        arena_reset(&GS()->state.arena);
+        arena_reset(&GS()->state.frame_arena);
     }
 
     Log("Game server was given shutdown signal.. stopping");
@@ -666,7 +677,8 @@ void game_client_entry() {
         .state = State {
             .instance_type = IT_CLIENT,
             .instance_id = 0,
-            .arena = arena_create(10 * 1024 * 1024),
+            .arena = arena_create(MB(5)),
+            .frame_arena = arena_create(MB(5)),
             .entities = stack_array_create<Entity, MAX_ENTITIES>(),
         }
     };
@@ -725,9 +737,6 @@ void game_client_entry() {
             }
         }
 
-        // using fps instead of dt due to less noise with lower float values
-        sampler_append(&GC()->state.fps_sampler, 1.0f / GC()->state.delta_time);
-
         // draw
         renderer_start_frame(REN());
 
@@ -740,8 +749,11 @@ void game_client_entry() {
 
         editor_draw_ui(&GC()->state);
 
+        // using fps instead of dt due to less noise with lower float values
+        sampler_append(&GC()->state.fps_sampler, 1.0f / GC()->state.delta_time);
+
         swap_buffers(WIN());
-        arena_reset(&GC()->state.arena);
+        arena_reset(&GC()->state.frame_arena);
     }
 
     glfwTerminate();
@@ -790,6 +802,9 @@ void process_network(State *state) {
 
 void sync_clients(State *state) {
     Assert(is_server(state));
+
+    NetworkMessage message = NetworkMessage{.type = NM_UPDATE_SCORE, .update_score = {.red = state->red_score, .blue = state->blue_score}};
+    server_send_to_all_clients(NET(), bytes_from_ptr(&message));
 
     i64 index = 0;
     while (index < state->entities.len) {
@@ -1196,16 +1211,33 @@ void game_client_draw(State *state) {
         v3 text_centre  = top_centre - v3{0, font_size * 0.6f, 0}; // 0.6 to give gap
         v3 score_offset = v3{UI_SCORE_OFFSET, 0, 0};
         
-        // scores
-        draw_rectangle_ui(REN(), v3{text_centre.x - score_offset.x, text_centre.y + score_offset.y, UI_LAYER_3}, {80, font_size + 10}, {}, UI_SCORE_BACKGROUND_COLOUR); // left
-        draw_text_ui(REN(), "77", v3{text_centre.x - score_offset.x, text_centre.y + score_offset.y, UI_LAYER_2}, UI_SCORE_FONT_SIZE, UI_TEAM_COLOUR, true);
+        { // scores
+            string blue_score = fmt(&state->frame_arena, "{}", state->blue_score);
+            string red_score = fmt(&state->frame_arena, "{}", state->red_score);
+
+            draw_rectangle_ui(REN(), v3{text_centre.x - score_offset.x, text_centre.y + score_offset.y, UI_LAYER_3}, {80, font_size + 10}, {}, UI_SCORE_BACKGROUND_COLOUR); // left
+            draw_text_ui(REN(), blue_score, v3{text_centre.x - score_offset.x, text_centre.y + score_offset.y, UI_LAYER_2}, UI_SCORE_FONT_SIZE, UI_BLUE_TEAM_COLOUR, true);
+            
+            draw_rectangle_ui(REN(), v3{text_centre.x + score_offset.x, text_centre.y + score_offset.y, UI_LAYER_3}, {80, font_size + 10}, {}, UI_SCORE_BACKGROUND_COLOUR); // right
+            draw_text_ui(REN(), red_score, v3{text_centre.x + score_offset.x, text_centre.y + score_offset.y, UI_LAYER_2}, UI_SCORE_FONT_SIZE, UI_RED_TEAM_COLOUR, true);
+        }
         
-        draw_rectangle_ui(REN(), v3{text_centre.x + score_offset.x, text_centre.y + score_offset.y, UI_LAYER_3}, {80, font_size + 10}, {}, UI_SCORE_BACKGROUND_COLOUR); // right
-        draw_text_ui(REN(), "66", v3{text_centre.x + score_offset.x, text_centre.y + score_offset.y, UI_LAYER_2}, UI_SCORE_FONT_SIZE, UI_OPPONENT_COLOUR, true);
-        
-        // time
-        draw_rectangle_ui(REN(), v3{text_centre.x, text_centre.y, UI_LAYER_1}, {130, font_size + 20}, {}, UI_TIME_BACKGROUND_COLOUR);
-        draw_text_ui(REN(), "0:00", v3{text_centre.x, text_centre.y, UI_LAYER_0}, font_size, WHITE, true);
+        { // time
+            i32 target_seconds = g_game_length;
+            i32 total_seconds = state->time;
+            i32 remaining_seconds = target_seconds - total_seconds;
+
+            i32 minutes = remaining_seconds / 60;
+            i32 seconds = remaining_seconds % 60;
+
+            if (minutes < 0) minutes = 0;
+            if (seconds < 0) seconds = 0;
+
+            string time_string = fmt(&state->frame_arena, "{}:{}", minutes, seconds);
+
+            draw_rectangle_ui(REN(), v3{text_centre.x, text_centre.y, UI_LAYER_1}, {130, font_size + 20}, {}, UI_TIME_BACKGROUND_COLOUR);
+            draw_text_ui(REN(), time_string, v3{text_centre.x, text_centre.y, UI_LAYER_0}, font_size, WHITE, true);
+        }
     }
 
     for (Entity &entity : state->entities) {
@@ -1275,7 +1307,7 @@ void game_client_draw(State *state) {
             }
        
             { // draw ammo
-                draw_text_ui(REN(), fmt(&state->arena, "{}:  {}", player_weapon->display_name, state->player_ammo), {7, 10, 0}, 30, alpha(BLACK, 0.4), false);
+                draw_text_ui(REN(), fmt(&state->frame_arena, "{}:  {}", player_weapon->display_name, state->player_ammo), {7, 10, 0}, 30, alpha(BLACK, 0.4), false);
             }
         }
 
@@ -1501,14 +1533,13 @@ void editor_draw_ui(State *state) {
         ImGui::Begin("Scoreboard style");
         ImGui::SliderFloat("Score x offset", &UI_SCORE_OFFSET, 0, 300);
         ImGui::SliderFloat("Score font size", &UI_SCORE_FONT_SIZE, 0, 300);
-        imgui_colour_control("Team", &UI_TEAM_COLOUR);
-        imgui_colour_control("Opps", &UI_OPPONENT_COLOUR);
+        imgui_colour_control("Blue team colour", &UI_BLUE_TEAM_COLOUR);
+        imgui_colour_control("Red team colour", &UI_RED_TEAM_COLOUR);
         imgui_colour_control("Time", &UI_TIME_BACKGROUND_COLOUR);
         imgui_colour_control("banner", &UI_SCORE_BACKGROUND_COLOUR);
         ImGui::End();
     }
 
-    // maybe cool? https://fellowimgui.dev/editor
     // https://github.com/ocornut/imgui/blob/master/imgui_demo.cpp
     // ImGui::ShowDemoWindow();
     
@@ -1561,6 +1592,18 @@ void editor_draw_ui(State *state) {
 
             ImGui::Text("Avg: %f", average_rolling_average);
             ImGui::PlotLines("FPS (rolling average)", rolling_average_sampler.samples, SAMPLER_SIZE, 0, NULL, 0.01, FLT_MAX, ImVec2(0, 60));
+        }
+
+        { // client arena usage sampler info 
+            static f32 plot_data[2] = {};
+            f32 arena_usage = f32(state->arena.end) / f32(state->arena.bytes.len);
+            f32 frame_arena_usage = f32(state->frame_arena.end) / f32(state->frame_arena.bytes.len);
+
+            plot_data[0] = arena_usage * 100;
+            plot_data[1] = frame_arena_usage * 100;
+
+            ImGui::Text("Client arena usage (arena / frame arena)");
+            ImGui::PlotHistogram("##client_arena", plot_data, 2, 0, NULL, 0, 100, ImVec2(60, 100));
         }
 
         ImGui::SeparatorText("Network messages");
@@ -1887,10 +1930,6 @@ void editor_draw_ui(State *state) {
 }
 
 void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
-    if (state->game_complete) {
-        return;
-    }
-
     switch (message->type) {
         case NM_CLIENT_CONNECTED: {
             // when client connects, the server generates this message and a few things are required to happen
@@ -1917,7 +1956,7 @@ void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
                 }
             }
 
-            { // spawn new player entity on all clients
+            { // spawn new player entity on all cliens
                 Entity *new_player = local_spawn_player(state);
                 new_player->position = {};
                 new_player->owner = connection_id;
@@ -1940,6 +1979,10 @@ void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
             server_send_to_all_clients(NET(), bytes_from_ptr(&message));
         } break;
         case NM_MOVE_PLAYER: {
+            if (state->game_complete) {
+                return;
+            }
+
             Entity *player = get_client_player(state, message->client_id);
             if (!player) {
                 return;
@@ -2002,10 +2045,6 @@ void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
 }
 
 void on_client_receive(State *state, NetworkMessage *message) {
-    if (state->game_complete) {
-        return;
-    }
-
     switch (message->type) {
         case NM_ASSIGN_CLIENT_ID: {
             state->instance_id = message->assign_client_id;
@@ -2036,6 +2075,10 @@ void on_client_receive(State *state, NetworkMessage *message) {
         case NM_SET_WEAPON: {
             Logf("Client was told to use a new weapon: {}", (u32) message->set_weapon);
             set_player_weapon(state, message->set_weapon, 0);
+        } break;
+        case NM_UPDATE_SCORE: {
+            state->red_score = message->update_score.red;
+            state->blue_score = message->update_score.blue;
         } break;
         case NM_GAME_COMPLETE: {
             Info("The game has been completed");
@@ -2659,6 +2702,10 @@ void deserialise_level(State *state) {
         return;
     }
 
+    state->time = 0;
+    state->game_complete = false;
+    state->red_score = 0;
+    state->blue_score = 0;
     state->spawn_point_count = 0;
     reset(&state->entities);
 
