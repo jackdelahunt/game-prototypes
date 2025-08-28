@@ -118,8 +118,8 @@ bool CHEAT_WEAPON_BINDS     = true;
 bool CHEAT_INFINITE_AMMO    = true;
 bool CHEAT_NO_DAMAGE        = false;
 
-// f32 g_game_length = Minute(5);
-f32 g_game_length = 10;
+f32 g_game_length = Minute(5);
+// f32 g_game_length = 10;
 
 bool g_dual_wield_recoil_switch = true;
 
@@ -1286,10 +1286,10 @@ void game_client_draw(State *state) {
                 draw_rectangle_ui(REN(), centre + v3{0, CROSSHAIR_GAP, 0}, {CROSSHAIR_THICKNESS, CROSSHAIR_LENGTH}, {}, CROSSHAIR_COLOUR);
             }
 
-            if (false) { // draw health
+            { // draw health
                 f32 max_width = 600;
                 f32 height = 30;
-                v3 centre = relative_to_screen_position(GC()->viewport, {0.5, 0.98});
+                v3 centre = relative_to_screen_position(GC()->viewport, {0.5, 0.01});
 
                 f32 health_scale = entity.health / entity.max_health;
 
