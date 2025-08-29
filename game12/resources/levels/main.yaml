@@ -314,3 +314,15 @@ entities:
     max_health: 100
     health: 100
     pickup_type: PT_NONE
+  - flags:
+      - EF_PICKUP
+    id: 28453
+    owner: 1
+    position: [22, 8, 0]
+    size: [2, 0.100000001, 2]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.5, 0.5, 0.5, 1]
+    max_health: 0
+    health: 0
+    pickup_type: PT_HEALTH

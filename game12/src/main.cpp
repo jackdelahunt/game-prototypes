@@ -1,4 +1,3 @@
-#include "imgui.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -19,7 +18,7 @@
 #include <iostream>
 
 // Total: 90:00
-// Started: 19:30
+// Started: 17:30
 //
 // What do a programmer do?:
 // Game:
@@ -249,6 +248,8 @@ meta enum EntityFlag : u32 {
     EF_PICKUP           = 1 << 7,
     EF_MISSLE           = 1 << 8,
     EF_JUMP_PAD         = 1 << 9,
+    EF_RED_TEAM         = 1 << 10,
+    EF_BLUE_TEAM        = 1 << 11,
     EF_DELETE           = 1 << 16,
 };
 
@@ -920,6 +921,17 @@ void game_server_update(State *state) {
             if (entity.death_cooldown < 0) {
                 entity.health = entity.max_health;
 
+                // set score for other team
+                if (BitSet(entity.flags, EF_RED_TEAM)) {
+                    state->blue_score += 1;
+                }
+                else if (BitSet(entity.flags, EF_BLUE_TEAM)) {
+                    state->red_score += 1;
+                }
+                else  {
+                    Unreachable("Player entity has no team flag!");
+                }
+
                 UnsetBit(entity.flags, EF_DEAD);
                 entity.death_cooldown = 0;
 
@@ -1260,6 +1272,21 @@ void game_client_draw(State *state) {
             }
 
             // @hud
+
+            // draw team name 
+            {
+                bool red_team = BitSet(entity.flags, EF_RED_TEAM);
+                v3 anchor = relative_to_screen_position(GC()->viewport, {0.01, 1});
+                f32 font_size = 25;
+                v3 draw_position = {anchor.x, (anchor.y  - font_size) - 5, anchor.z};
+
+                if (red_team) {
+                    draw_text_ui(REN(), "Red team", draw_position, font_size, UI_RED_TEAM_COLOUR, false);
+                }
+                else {
+                    draw_text_ui(REN(), "Blue team", draw_position, font_size, UI_BLUE_TEAM_COLOUR, false);
+                }
+            }
 
             // draw fire cooldown when using non auto gun
             if (!player_weapon->automatic && state->player_firing_cooldown > 0) { 
@@ -1930,6 +1957,8 @@ void editor_draw_ui(State *state) {
 }
 
 void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
+    static i32 number_of_players = 0;
+
     switch (message->type) {
         case NM_CLIENT_CONNECTED: {
             // when client connects, the server generates this message and a few things are required to happen
@@ -1939,9 +1968,12 @@ void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
             // - 09/08/25
             ConnectionId connection_id = message->client_connected;
             Infof("Processing new client connection: connection_id={}", connection_id);
+
+            number_of_players += 1;
+            EntityFlag player_team = number_of_players == 1 ? EF_RED_TEAM : EF_BLUE_TEAM;
             
             { // assign client id
-                Logf("Assigning new client: id={}", connection_id);
+                Logf("Assigning new client: id={} team={}", connection_id, meta_name(player_team));
 
                 NetworkMessage message = NetworkMessage{.type = NM_ASSIGN_CLIENT_ID, .assign_client_id = connection_id};
                 server_send_to_client(NET(), bytes_from_ptr(&message), connection_id);
@@ -1960,6 +1992,7 @@ void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
                 Entity *new_player = local_spawn_player(state);
                 new_player->position = {};
                 new_player->owner = connection_id;
+                SetBit(new_player->flags, player_team);
 
                 move_to_random_spawn_point(state, new_player);
 
