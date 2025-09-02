@@ -1,4 +1,3 @@
-#include "imgui.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -15,16 +14,18 @@
 #include <chrono>
 #include <atomic>
 
-// Total: 90:30
-// Started: 11:00
+// Total: 96:30
+// Started: 14:30
 //
 // What do a programmer do?:
 // Game:
-// - actual level loop
+// - improve game feel:
+//      - longer press higher jump
+//      - health bars
+//      - better hitmarker feedback
+//      - fix "glitchy" movement
+// - game complete screen
 // - pickup more then one gun
-// - get movement feeling really good
-//      - jump: longer press higher jump 
-//      - sound: running, jumping, landing
 // - ammo pickup
 //	ammo: restore some amount of ammor for a gun (full for deagle, half for m4, 3 for sniper)
 // - actually make a real map
@@ -106,7 +107,7 @@ f32 UI_SCORE_BG_WIDTH = 80;
 f32 CROSSHAIR_GAP           = 10;
 f32 CROSSHAIR_LENGTH        = 12;
 f32 CROSSHAIR_THICKNESS     = 3;
-v4 CROSSHAIR_COLOUR         = RED;
+v4 CROSSHAIR_COLOUR         = GREEN;
 
 f32 MISSLE_SPEED            = 35;
 f32 EXPLOSION_RADIUS        = 12;
@@ -125,7 +126,9 @@ bool CHEAT_NO_DAMAGE        = false;
 f32 g_game_length = Minute(5);
 // f32 g_game_length = Second(10);
 
-bool g_dual_wield_recoil_switch = true;
+bool g_dual_wield_recoil_switch = true; // used for dual wield switching of recoil
+bool g_player_hit_target = false;       // used for hitmarker
+bool g_player_hit_headshot = false;     // used for hitmarker
 
 enum MeshHandle : u32 {
     MH_NONE,
@@ -145,6 +148,10 @@ enum SoundHandle : u32 {
     SH_FIRE_SILENCED_GUN_LOW,
     SH_TARGET_HIT,
     SH_HEADSHOT_HIT,
+    SH_JUMP,
+    SH_STEP_1,
+    SH_STEP_2,
+    SH_STEP_3,
     _SH_COUNT
 };
 
@@ -509,7 +516,7 @@ YAML::Emitter &operator<<(YAML::Emitter &out, v4 value);
 void draw_player_weapon(State *state, Weapon *weapon, v3 display_offset, bool show_recoil);
 Weapon *get_player_weapon(State *state);
 void set_player_weapon(State *state, WeaponHandle weapon, f32 cooldown);
-void play_weapon_fire_sound(SoundHandle sound);
+void play_weapon_fire_sound(Weapon *weapon);
 void fire_raycast_weapon(State *state, WeaponHandle weapon);
 void fire_tap(State *state);
 
@@ -673,11 +680,23 @@ void game_client_entry() {
         g_sounds[SH_FIRE_SILENCED_GUN_LOW] = sound_engine_load(SE(), "resources/sounds/silenced_gun_low.wav");
         Assert(g_sounds[SH_FIRE_SILENCED_GUN_LOW]);
 
-        g_sounds[SH_TARGET_HIT] = sound_engine_load(SE(), "resources/sounds/short_target_hit.wav");
+        g_sounds[SH_TARGET_HIT] = sound_engine_load(SE(), "resources/sounds/target_hit.wav");
         Assert(g_sounds[SH_TARGET_HIT]);
 
-        g_sounds[SH_HEADSHOT_HIT] = sound_engine_load(SE(), "resources/sounds/short_headshot_hit.wav");
+        g_sounds[SH_HEADSHOT_HIT] = sound_engine_load(SE(), "resources/sounds/headshot_hit.wav");
         Assert(g_sounds[SH_HEADSHOT_HIT]);
+
+        g_sounds[SH_JUMP] = sound_engine_load(SE(), "resources/sounds/jump.wav");
+        Assert(g_sounds[SH_JUMP]);
+
+        g_sounds[SH_STEP_1] = sound_engine_load(SE(), "resources/sounds/step_1.wav");
+        Assert(g_sounds[SH_STEP_1]);
+
+        g_sounds[SH_STEP_2] = sound_engine_load(SE(), "resources/sounds/step_2.wav", 5);
+        Assert(g_sounds[SH_STEP_2]);
+
+        g_sounds[SH_STEP_3] = sound_engine_load(SE(), "resources/sounds/step_3.wav");
+        Assert(g_sounds[SH_STEP_3]);
     }
 
     g_game_client = new GameClient {
@@ -1128,6 +1147,9 @@ void game_client_update(State *state) {
             Weapon *player_weapon = get_player_weapon(state);
             InputState state_needed = player_weapon->automatic ? InputState::PRESSED : InputState::DOWN;
 
+            g_player_hit_target = false;
+            g_player_hit_headshot = false;
+
             if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == state_needed) {
                 if (state->player_ammo > 0 && state->player_firing_cooldown <= 0) {
                     state->player_ammo -= 1; 
@@ -1135,7 +1157,7 @@ void game_client_update(State *state) {
 
                     g_dual_wield_recoil_switch = !g_dual_wield_recoil_switch;
 
-                    play_weapon_fire_sound(player_weapon->firing_sound);
+                    play_weapon_fire_sound(player_weapon);
 
                     switch (state->player_weapon) {
                         case WH_DEAGLE:
@@ -1220,6 +1242,49 @@ void game_client_update(State *state) {
 
             client_send_to_server(NET(), bytes_from_ptr(&message));
         }
+
+        static bool s_grounded_last_tick = true;
+        bool grounded_this_tick = entity_is_grounded(state, player);
+
+        if (grounded_this_tick) {
+            // jumping sounds
+            if (keyboard_input.y == 1) {
+                sound_engine_play(g_sounds[SH_JUMP]);
+            }
+
+            // landing sounds
+            if (!s_grounded_last_tick) {
+                sound_engine_play(g_sounds[SH_STEP_2]);
+            }
+
+            // footstep sounds
+            if (keyboard_input.x != 0 || keyboard_input.z != 0) {
+                constexpr f32 FOOTSTEP_SOUND_DELAY = 0.3;
+        
+                static array<SoundHandle, 2> s_step_sounds = {SH_STEP_1, SH_STEP_3};
+                static f32 s_footstep_sound_cooldown = 0;
+                static i64 s_next_sound = 0;
+        
+                s_footstep_sound_cooldown -= state->delta_time;
+                if (s_footstep_sound_cooldown < 0) {
+                    s_footstep_sound_cooldown = 0; 
+                }
+        
+                if (s_footstep_sound_cooldown == 0) {
+                    SoundHandle sound = s_step_sounds[s_next_sound];
+                    sound_engine_play(g_sounds[sound]);
+     
+                    s_footstep_sound_cooldown += FOOTSTEP_SOUND_DELAY;
+     
+                    s_next_sound += 1;
+                    if (s_next_sound >= s_step_sounds.len) {
+                        s_next_sound = 0;
+                    }
+                }
+            }
+        }
+
+        s_grounded_last_tick = grounded_this_tick;
     }
 }
 
@@ -1275,12 +1340,6 @@ void game_client_draw(State *state) {
         v2 size = top_right.xy;
 
         draw_rectangle_ui(REN(), centre, size, {}, alpha(BLUE, 0.6));
-
-        bool victory = false;
-        i64 score = 0;
-
-        Entity *player = get_client_player(state, state->instance_id);
-        Assertf(player, "should be able to find player entity to show game complete screen")
     }
 
     for (Entity &entity : state->entities) {
@@ -1327,6 +1386,19 @@ void game_client_draw(State *state) {
                 // vertical
                 draw_rectangle_ui(REN(), centre - v3{0, CROSSHAIR_GAP, 0}, {CROSSHAIR_THICKNESS, CROSSHAIR_LENGTH}, {}, CROSSHAIR_COLOUR);
                 draw_rectangle_ui(REN(), centre + v3{0, CROSSHAIR_GAP, 0}, {CROSSHAIR_THICKNESS, CROSSHAIR_LENGTH}, {}, CROSSHAIR_COLOUR);
+
+                // hitmarkers
+                if (g_player_hit_target || g_player_hit_headshot) {
+                    v2 dot_size = v2{CROSSHAIR_THICKNESS, CROSSHAIR_THICKNESS} * 2.0f;
+
+                    // bl and tr
+                    draw_circle_ui(REN(), centre - v3{CROSSHAIR_GAP, CROSSHAIR_GAP, 0}, dot_size, {}, RED);
+                    draw_rectangle_ui(REN(), centre + v3{CROSSHAIR_GAP, CROSSHAIR_GAP, 0}, dot_size, {}, RED);
+
+                    // tl and br
+                    draw_circle_ui(REN(), centre - v3{CROSSHAIR_GAP, -CROSSHAIR_GAP, 0}, dot_size, {}, RED);
+                    draw_rectangle_ui(REN(), centre + v3{CROSSHAIR_GAP, -CROSSHAIR_GAP, 0}, dot_size, {}, RED);
+                }
             }
 
             { // draw health
@@ -2990,22 +3062,27 @@ void set_player_weapon(State *state, WeaponHandle weapon, f32 cooldown) {
     state->player_firing_cooldown = cooldown;
 }
 
-void play_weapon_fire_sound(SoundHandle sound) {
-    if (sound == SH_FIRE_DEAGLE) {
-        sound_engine_play(g_sounds[sound]);
-    } 
-    else if (sound == SH_FIRE_SILENCED_GUN_HIGH) {
-        static i64 last_played = 0;
-
-        SoundHandle actual_sound = (SoundHandle) (SH_FIRE_SILENCED_GUN_HIGH + last_played);
-        sound_engine_play(g_sounds[actual_sound]);
-
-        i64 sound_variations = SH_FIRE_SILENCED_GUN_LOW - SH_FIRE_SILENCED_GUN_HIGH;
-        last_played += 1;
-
-        if (last_played > sound_variations) {
-            last_played = 0;
-        }
+void play_weapon_fire_sound(Weapon *weapon) {
+    switch (weapon->handle) {
+        case WH_TAP:
+        case WH_PAL:
+        case WH_DEAGLE: {
+            sound_engine_play(g_sounds[weapon->firing_sound]);
+        } break;
+        case WH_M4: {
+            static i64 last_played = 0;
+    
+            SoundHandle actual_sound = (SoundHandle) (SH_FIRE_SILENCED_GUN_HIGH + last_played);
+            sound_engine_play(g_sounds[actual_sound]);
+    
+            i64 sound_variations = SH_FIRE_SILENCED_GUN_LOW - SH_FIRE_SILENCED_GUN_HIGH;
+            last_played += 1;
+    
+            if (last_played > sound_variations) {
+                last_played = 0;
+            }
+        } break;
+        default: Unreachable("New weapon handle added?");
     }
 }
 
@@ -3044,17 +3121,26 @@ void fire_raycast_weapon(State *state, WeaponHandle weapon) {
         hit_entity = result.entity;
         hit_position = result.hit_position;
         break;
-    } 
+    }
 
     if (hit_entity) {
-        f32 damage = player_weapon->damage;
-        SoundHandle hit_sound = SH_TARGET_HIT;
         f32 hit_height_offset = hit_position.y - hit_entity->position.y;
         f32 half_head_size = (PLAYER_HEIGHT * 0.5)  - PLAYER_EYES_OFFSET;
 
+        f32 damage              = {};
+        SoundHandle hit_sound   = {};
+
+        // headshot
         if (hit_height_offset >= PLAYER_EYES_OFFSET - half_head_size) {
             damage = player_weapon->headshot_damage;
             hit_sound = SH_HEADSHOT_HIT;
+            g_player_hit_headshot = true;
+        }
+        // body shot
+        else {
+            damage = player_weapon->damage;
+            hit_sound = SH_TARGET_HIT;
+            g_player_hit_target = true;
         }
 
         sound_engine_play(g_sounds[hit_sound]);

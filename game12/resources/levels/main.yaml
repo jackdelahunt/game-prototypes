@@ -236,9 +236,9 @@ entities:
       - EF_SOLID_HITBOX
       - EF_DAMAGEABLE
       - EF_COMPLEX_PHYSICS
-    id: 26482
+    id: 5963
     owner: 1
-    position: [-25, 34, 20]
+    position: [-22.0249996, 10, 18.9750004]
     size: [0.649999976, 2, 0.649999976]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
@@ -266,21 +266,6 @@ entities:
       - EF_SOLID_HITBOX
       - EF_DAMAGEABLE
       - EF_COMPLEX_PHYSICS
-    id: 26230
-    owner: 1
-    position: [23, 22, -23]
-    size: [0.649999976, 2, 0.649999976]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0, 0, 1, 1]
-    max_health: 100
-    health: 100
-    pickup_type: PT_NONE
-  - flags:
-      - EF_DUMMY
-      - EF_SOLID_HITBOX
-      - EF_DAMAGEABLE
-      - EF_COMPLEX_PHYSICS
     id: 29641
     owner: 1
     position: [13.3249998, 22, -23.6749992]
@@ -292,44 +277,50 @@ entities:
     health: 100
     pickup_type: PT_NONE
   - flags:
-      - EF_DUMMY
-      - EF_SOLID_HITBOX
-      - EF_DAMAGEABLE
-      - EF_COMPLEX_PHYSICS
-    id: 22140
-    owner: 1
-    position: [18.6499996, 10, 19.6499996]
-    size: [0.649999976, 2, 0.649999976]
+      - EF_STATIC_HITBOX
+    id: 30607
+    owner: 0
+    position: [-14.5, 8.5, -25.5]
+    size: [1, 1, 1]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
-    colour: [0, 0, 1, 1]
-    max_health: 100
-    health: 100
-    pickup_type: PT_NONE
-  - flags:
-      - EF_DUMMY
-      - EF_SOLID_HITBOX
-      - EF_DAMAGEABLE
-      - EF_COMPLEX_PHYSICS
-    id: 5963
-    owner: 1
-    position: [-22.0249996, 10, 18.9750004]
-    size: [0.649999976, 2, 0.649999976]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0, 0, 1, 1]
-    max_health: 100
-    health: 100
-    pickup_type: PT_NONE
-  - flags:
-      - EF_PICKUP
-    id: 28453
-    owner: 1
-    position: [22, 8, 0]
-    size: [2, 0.100000001, 2]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.5, 0.5, 0.5, 1]
+    colour: [0.375527442, 0.375527442, 0.375527442, 1]
     max_health: 0
     health: 0
-    pickup_type: PT_HEALTH
+    pickup_type: PT_NONE
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 28578
+    owner: 0
+    position: [-13, 8.5, -25]
+    size: [2, 1, 4]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.375527442, 0.375527442, 0.375527442, 1]
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 7926
+    owner: 0
+    position: [-11.5, 8.5, -26]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.375527442, 0.375527442, 0.375527442, 1]
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 28029
+    owner: 0
+    position: [-13, 9.5, -26.5]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.375527442, 0.375527442, 0.375527442, 1]
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE

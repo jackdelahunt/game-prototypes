@@ -117,6 +117,7 @@ typedef slice<u8> string;
 template <typename T, i64 N>
 struct array {
     T items[N];
+    i64 len = N;
 
     T& operator[](i64 index);
     T* begin();

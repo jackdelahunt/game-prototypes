@@ -2236,7 +2236,7 @@ SoundEngine *g_sound_engine = NULL;
 
 SoundEngine *SE();
 bool sound_engine_init();
-Sound *sound_engine_load(SoundEngine *sound_engine, string path);
+Sound *sound_engine_load(SoundEngine *sound_engine, string path, f32 volume = 1.0f);
 void sound_engine_play(Sound *sound);
 
 SoundEngine *SE() {
@@ -2260,7 +2260,7 @@ bool sound_engine_init() {
     return true;
 }
 
-Sound *sound_engine_load(SoundEngine *sound_engine, string path) {
+Sound *sound_engine_load(SoundEngine *sound_engine, string path, f32 volume) {
     Sound *sound = push(&sound_engine->sounds);
 
     ma_result result = ma_sound_init_from_file(&sound_engine->engine, path.c(), 0, NULL, NULL, sound);
@@ -2269,12 +2269,20 @@ Sound *sound_engine_load(SoundEngine *sound_engine, string path) {
         return NULL;
     }
 
+    ma_sound_set_volume(sound, volume);
+
     Logf("Loaded sound with path \"{}\"", path.c());
 
     return sound; 
 }
 
 void sound_engine_play(Sound *sound) {
+    // if already playing, then stop it and reset the sound back to 0
+    if (ma_sound_is_playing(sound)) {
+        ma_sound_stop(sound);
+        ma_sound_seek_to_pcm_frame(sound, 0);
+    }
+
     ma_sound_start(sound);
 }
 
