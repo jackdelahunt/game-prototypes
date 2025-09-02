@@ -1,13 +1,12 @@
 #ifndef ACK_CPP
 #define ACK_CPP
 
-#include <cstring>
-#include <mutex>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <chrono>
+#include <mutex>
 
 #ifndef WINDOWS
     #error only can build for windows right now sorry!
@@ -15,16 +14,16 @@
 
 #define __FILENAME__ (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : __FILE__)
 
-#define Log(s)          _log (ResetAsciiCode,     "Log:",   __FILENAME__, __LINE__, s)
-#define Logf(f, ...)    _logf(ResetAsciiCode,     "Log:",   __FILENAME__, __LINE__, f, __VA_ARGS__)
-#define Info(s)         _log (GreenAsciiCode,     "Info:",  __FILENAME__, __LINE__, s)
-#define Infof(f, ...)   _logf(GreenAsciiCode,     "Info:",  __FILENAME__, __LINE__, f, __VA_ARGS__)
-#define Warn(s)         _log (YellowAsciiCode,    "Warn:",  __FILENAME__, __LINE__, s)
-#define Warnf(f, ...)   _logf(YellowAsciiCode,    "Warn:",  __FILENAME__, __LINE__, f, __VA_ARGS__)
-#define Err(s)          _log (BrightRedAsciiCode, "Error:", __FILENAME__, __LINE__, s)
-#define Errf(f, ...)    _logf(BrightRedAsciiCode, "Error:", __FILENAME__, __LINE__, f, __VA_ARGS__)
-#define Fatal(s)        _log (RedAsciiCode,       "Fatal:", __FILENAME__, __LINE__, s)
-#define Fatalf(f, ...)  _logf(RedAsciiCode,       "Fatal:", __FILENAME__, __LINE__, f, __VA_ARGS__)
+#define Log(s)          _log (BrightCyanAsciiCode,  "Log:",   __FILENAME__, __LINE__, s)
+#define Logf(f, ...)    _logf(BrightCyanAsciiCode,  "Log:",   __FILENAME__, __LINE__, f, __VA_ARGS__)
+#define Info(s)         _log (BrightGreenAsciiCode, "Info:",  __FILENAME__, __LINE__, s)
+#define Infof(f, ...)   _logf(BrightGreenAsciiCode, "Info:",  __FILENAME__, __LINE__, f, __VA_ARGS__)
+#define Warn(s)         _log (YellowAsciiCode,      "Warn:",  __FILENAME__, __LINE__, s)
+#define Warnf(f, ...)   _logf(YellowAsciiCode,      "Warn:",  __FILENAME__, __LINE__, f, __VA_ARGS__)
+#define Err(s)          _log (BrightRedAsciiCode,   "Error:", __FILENAME__, __LINE__, s)
+#define Errf(f, ...)    _logf(BrightRedAsciiCode,   "Error:", __FILENAME__, __LINE__, f, __VA_ARGS__)
+#define Fatal(s)        _log (RedAsciiCode,         "Fatal:", __FILENAME__, __LINE__, s)
+#define Fatalf(f, ...)  _logf(RedAsciiCode,         "Fatal:", __FILENAME__, __LINE__, f, __VA_ARGS__)
 
 #ifdef ENABLE_ASSERTS
     #define Breakpoint            __debugbreak()
@@ -47,13 +46,14 @@
 #define Scope }switch(0){default:
 #define ScopeBreak break 
 
-// in bytes
+// literal in bytes 
 #define KB(x) ((x)   * 1024)
 #define MB(x) (KB(x) * 1024)
 #define GB(x) (MB(x) * 1024)
 #define TB(x) (GB(x) * 1024)
 
-// in seconds
+// literal in seconds
+#define Second(x) (x)
 #define Minute(x) ((x)       * 60)
 #define Hour(x)   (Minute(x) * 60)
 #define Day(x)    (Hour(x)   * 24)
@@ -112,6 +112,16 @@ struct slice {
 };
 
 typedef slice<u8> string;
+
+// @array
+template <typename T, i64 N>
+struct array {
+    T items[N];
+
+    T& operator[](i64 index);
+    T* begin();
+    T* end();
+};
 
 // @arena
 struct Arena {
@@ -417,6 +427,23 @@ bool slice_memcmp(slice<T> a, slice<T> b) {
     return memcmp(a.ptr, b.ptr, a.len) == 0;
 }
 
+template <typename T, i64 N>
+T& array<T, N>::operator[](i64 index) {
+    Assert(index >= 0 && index < N);
+
+    return this->items[index];
+}
+
+template <typename T, i64 N>
+T* array<T, N>::begin() {
+    return this->items;
+}
+
+template <typename T, i64 N>
+T* array<T, N>::end() {
+    return this->items + N;
+}
+
 Arena arena_create(i64 size) {
     return Arena {
         .end = 0,
@@ -564,6 +591,7 @@ T* push(StackArray<T, N> *array) {
 
     T *ptr = &array->data[array->len];
     array->len++;
+
     return ptr;
 }
 

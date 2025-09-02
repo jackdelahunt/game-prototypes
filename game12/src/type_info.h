@@ -93,12 +93,12 @@ inline static EnumValue<EntityFlag> values[count] = {
     EnumValue<EntityFlag>(string("EF_SOLID_HITBOX"), EF_SOLID_HITBOX),
     EnumValue<EntityFlag>(string("EF_STATIC_HITBOX"), EF_STATIC_HITBOX),
     EnumValue<EntityFlag>(string("EF_TRIGGER_HITBOX"), EF_TRIGGER_HITBOX),
+    EnumValue<EntityFlag>(string("EF_DAMAGEABLE"), EF_DAMAGEABLE),
     EnumValue<EntityFlag>(string("EF_DEAD"), EF_DEAD),
     EnumValue<EntityFlag>(string("EF_PICKUP"), EF_PICKUP),
     EnumValue<EntityFlag>(string("EF_MISSLE"), EF_MISSLE),
     EnumValue<EntityFlag>(string("EF_JUMP_PAD"), EF_JUMP_PAD),
-    EnumValue<EntityFlag>(string("EF_RED_TEAM"), EF_RED_TEAM),
-    EnumValue<EntityFlag>(string("EF_BLUE_TEAM"), EF_BLUE_TEAM),
+    EnumValue<EntityFlag>(string("EF_COMPLEX_PHYSICS"), EF_COMPLEX_PHYSICS),
     EnumValue<EntityFlag>(string("EF_DELETE"), EF_DELETE),
 };
 
@@ -110,12 +110,12 @@ static string name(EntityFlag value) {
         case EF_SOLID_HITBOX: return values[3].name;
         case EF_STATIC_HITBOX: return values[4].name;
         case EF_TRIGGER_HITBOX: return values[5].name;
-        case EF_DEAD: return values[6].name;
-        case EF_PICKUP: return values[7].name;
-        case EF_MISSLE: return values[8].name;
-        case EF_JUMP_PAD: return values[9].name;
-        case EF_RED_TEAM: return values[10].name;
-        case EF_BLUE_TEAM: return values[11].name;
+        case EF_DAMAGEABLE: return values[6].name;
+        case EF_DEAD: return values[7].name;
+        case EF_PICKUP: return values[8].name;
+        case EF_MISSLE: return values[9].name;
+        case EF_JUMP_PAD: return values[10].name;
+        case EF_COMPLEX_PHYSICS: return values[11].name;
         case EF_DELETE: return values[12].name;
     }
 }

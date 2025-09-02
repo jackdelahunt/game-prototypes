@@ -1,8 +1,33 @@
-#pragma once
+#ifndef META_H
+#define META_H
+
+#include "ack.cpp"
+
+#include <type_traits>
 
 #define meta
 
-#include <type_traits>
+/*
+// idea of how the type info for each type will be structured in the future
+enum TypeInfoType {
+	TI_ENUM,
+};
+
+struct EnumTypeInfo {
+	i64 size;
+	slice<string> names;
+	slice<u64> values;
+};
+
+struct TypeInfo {
+	TypeInfoType type;
+	string name;
+
+	union {
+		EnumTypeInfo enum_type_info;		
+	};
+};
+*/
 
 template<typename T>
 struct EnumValue {
@@ -52,3 +77,5 @@ int meta_count() {
 
 	return MetaEnum<T>::count;
 }
+
+#endif

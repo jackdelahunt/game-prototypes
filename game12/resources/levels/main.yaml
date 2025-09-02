@@ -217,9 +217,10 @@ entities:
     health: 0
     pickup_type: PT_NONE
   - flags:
-      - EF_PLAYER
       - EF_DUMMY
       - EF_SOLID_HITBOX
+      - EF_DAMAGEABLE
+      - EF_COMPLEX_PHYSICS
     id: 6539
     owner: 1
     position: [-24, 14, -11]
@@ -231,9 +232,10 @@ entities:
     health: 100
     pickup_type: PT_NONE
   - flags:
-      - EF_PLAYER
       - EF_DUMMY
       - EF_SOLID_HITBOX
+      - EF_DAMAGEABLE
+      - EF_COMPLEX_PHYSICS
     id: 26482
     owner: 1
     position: [-25, 34, 20]
@@ -245,9 +247,10 @@ entities:
     health: 100
     pickup_type: PT_NONE
   - flags:
-      - EF_PLAYER
       - EF_DUMMY
       - EF_SOLID_HITBOX
+      - EF_DAMAGEABLE
+      - EF_COMPLEX_PHYSICS
     id: 6517
     owner: 1
     position: [-13.6750002, 34, 20.3250008]
@@ -259,9 +262,10 @@ entities:
     health: 100
     pickup_type: PT_NONE
   - flags:
-      - EF_PLAYER
       - EF_DUMMY
       - EF_SOLID_HITBOX
+      - EF_DAMAGEABLE
+      - EF_COMPLEX_PHYSICS
     id: 26230
     owner: 1
     position: [23, 22, -23]
@@ -273,9 +277,10 @@ entities:
     health: 100
     pickup_type: PT_NONE
   - flags:
-      - EF_PLAYER
       - EF_DUMMY
       - EF_SOLID_HITBOX
+      - EF_DAMAGEABLE
+      - EF_COMPLEX_PHYSICS
     id: 29641
     owner: 1
     position: [13.3249998, 22, -23.6749992]
@@ -287,9 +292,10 @@ entities:
     health: 100
     pickup_type: PT_NONE
   - flags:
-      - EF_PLAYER
       - EF_DUMMY
       - EF_SOLID_HITBOX
+      - EF_DAMAGEABLE
+      - EF_COMPLEX_PHYSICS
     id: 22140
     owner: 1
     position: [18.6499996, 10, 19.6499996]
@@ -301,9 +307,10 @@ entities:
     health: 100
     pickup_type: PT_NONE
   - flags:
-      - EF_PLAYER
       - EF_DUMMY
       - EF_SOLID_HITBOX
+      - EF_DAMAGEABLE
+      - EF_COMPLEX_PHYSICS
     id: 5963
     owner: 1
     position: [-22.0249996, 10, 18.9750004]

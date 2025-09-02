@@ -663,6 +663,7 @@ v4 rgba(i64 r, i64 g, i64 b, i64 a);
 v4 alpha(v4 base, f32 alpha);
 v4 brightness(v4 base, f32 brightness);
 v4 mix(v4 c1, v4 c2, f32 t);
+v4 random_colour();
 
 void set_imgui_theme();
 
@@ -2100,6 +2101,15 @@ v4 mix(v4 c1, v4 c2, f32 t) {
     result.b = (1.0f - t) * c1.b + t * c2.b;
     result.a = (1.0f - t) * c1.a + t * c2.a;
     return result;
+}
+
+v4 random_colour() {
+    return v4 {
+        rand_f32(),
+        rand_f32(),
+        rand_f32(),
+        1
+    };
 }
 
 void set_imgui_theme() {

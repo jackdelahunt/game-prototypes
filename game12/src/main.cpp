@@ -1,3 +1,4 @@
+#include "imgui.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -6,19 +7,16 @@
 #include "platform.h"
 #include "meta.h"
 
-#include <atomic>
 #include <stdio.h>
 #include <string.h>
 #include <thread>
 #include <time.h>
 #include <stdlib.h>
 #include <chrono>
-#include <queue>
 #include <atomic>
-#include <iostream>
 
-// Total: 90:00
-// Started: 17:30
+// Total: 90:30
+// Started: 11:00
 //
 // What do a programmer do?:
 // Game:
@@ -71,6 +69,7 @@
 #define SERVER_INSTANCE_ID 1
 #define GAME_SERVER_MS_PER_TICK 16
 #define GAME_CLIENT_MS_PER_TICK 16
+#define MAX_TEAMS 2
 
 #define RUN_TESTS 0
 
@@ -91,12 +90,18 @@ f32 WEAPON_SWITCH_COOLDOWN  = 1.5;
 f32 WEAPON_PICKUP_COOLDOWN  = 9;
 f32 HEALTH_PICKUP_COOLDOWN  = 6;
 
-v4 UI_BLUE_TEAM_COLOUR              = v4 {0.221118, 0.221119, 0.759494, 1.000000};
-v4 UI_RED_TEAM_COLOUR          = v4 {0.780591, 0.207499, 0.207499, 1.000000};
-v4 UI_TIME_BACKGROUND_COLOUR   = v4 {0.053588, 0.082173, 0.147679, 0.67};
+v4 UI_TIME_BACKGROUND_COLOUR    = v4 {0.053588, 0.082173, 0.147679, 0.67};
+f32 UI_TIME_FONT_SIZE           = 35;
+f32 UI_TIME_Y_PADDING           = 20;
+f32 UI_TIME_BG_WIDTH            = 130;
+
 v4 UI_SCORE_BACKGROUND_COLOUR  = v4 {0.911392, 0.911392, 0.911392, 0.50};
-f32 UI_SCORE_FONT_SIZE         = 22;
-f32 UI_SCORE_OFFSET            = 105;
+f32 UI_SCORE_FONT_SIZE         = 30;
+f32 UI_SCORE_Y_PADDING = 25;
+f32 UI_SCORE_START_X_OFFSET = 105;
+f32 UI_SCORE_START_Y_OFFSET = 10;
+f32 UI_SCORE_GAP = 5;
+f32 UI_SCORE_BG_WIDTH = 80;
 
 f32 CROSSHAIR_GAP           = 10;
 f32 CROSSHAIR_LENGTH        = 12;
@@ -118,7 +123,7 @@ bool CHEAT_INFINITE_AMMO    = true;
 bool CHEAT_NO_DAMAGE        = false;
 
 f32 g_game_length = Minute(5);
-// f32 g_game_length = 10;
+// f32 g_game_length = Second(10);
 
 bool g_dual_wield_recoil_switch = true;
 
@@ -244,12 +249,12 @@ meta enum EntityFlag : u32 {
     EF_SOLID_HITBOX     = 1 << 3,
     EF_STATIC_HITBOX    = 1 << 4,
     EF_TRIGGER_HITBOX   = 1 << 5,
-    EF_DEAD             = 1 << 6,
-    EF_PICKUP           = 1 << 7,
-    EF_MISSLE           = 1 << 8,
-    EF_JUMP_PAD         = 1 << 9,
-    EF_RED_TEAM         = 1 << 10,
-    EF_BLUE_TEAM        = 1 << 11,
+    EF_DAMAGEABLE       = 1 << 6,
+    EF_DEAD             = 1 << 7,
+    EF_PICKUP           = 1 << 8,
+    EF_MISSLE           = 1 << 9,
+    EF_JUMP_PAD         = 1 << 10,
+    EF_COMPLEX_PHYSICS  = 1 << 11,
     EF_DELETE           = 1 << 16,
 };
 
@@ -270,7 +275,7 @@ struct Entity {
     // rendering
     v4 colour;
 
-    // flag: player
+    // flag: damageable
     f32 max_health;
     f32 health;
     f32 death_cooldown; // not saved
@@ -283,6 +288,12 @@ struct Entity {
     f32 jump_pad_cooldown; // not saved
 };
 
+struct Team {
+    u32 client_id;
+    v4 colour;
+    i64 score;
+};
+
 enum NetworkMessageType {
     NM_ASSIGN_CLIENT_ID,
     NM_CLIENT_CONNECTED,
@@ -290,10 +301,11 @@ enum NetworkMessageType {
     NM_SYNC_ENTITY,
     NM_DELETE_ENTITY,
     NM_MOVE_PLAYER,
-    NM_PLAYER_HIT,
+    NM_DEALT_DAMAGE,
     NM_SET_WEAPON,
     NM_SPAWN_MISSLE,
-    NM_UPDATE_SCORE,
+    NM_NEW_TEAM,
+    NM_SYNC_TEAM,
     NM_GAME_COMPLETE,
 }; 
 
@@ -315,7 +327,7 @@ struct NetworkMessage {
         struct {
             u32 target_id;
             f32 damage;
-        } player_hit;
+        } dealt_damage;
         v3 spawn_dummy;
         WeaponHandle set_weapon;
         Ray spawn_missle;
@@ -323,6 +335,8 @@ struct NetworkMessage {
             i32 red;
             i32 blue;
         } update_score;
+        Team new_team;  // name is not synced
+        Team sync_team; // name is not synced
         // game_complete
     };
 };
@@ -360,8 +374,7 @@ struct State {
     Arena arena;
     Arena frame_arena;
 
-    i32 red_score;
-    i32 blue_score;
+    StackArray<Team, MAX_TEAMS> teams;
 
     Sampler network_in_sampler;
     Sampler fps_sampler;
@@ -452,7 +465,7 @@ Entity *get_entity_with_id(State *state, u32 id);
 Entity *get_entity_with_flag(State *state, EntityFlag flag);
 bool entities_overlap(Entity *a, Entity *b);
 void move_to_random_spawn_point(State *state, Entity *entity);
-bool player_is_grounded(State *state, Entity *entity);
+bool entity_is_grounded(State *state, Entity *entity);
 void log_entity_flags(Entity *entity);
 
 Entity *local_duplicate_entity(State *state, Entity *entity);
@@ -804,8 +817,10 @@ void process_network(State *state) {
 void sync_clients(State *state) {
     Assert(is_server(state));
 
-    NetworkMessage message = NetworkMessage{.type = NM_UPDATE_SCORE, .update_score = {.red = state->red_score, .blue = state->blue_score}};
-    server_send_to_all_clients(NET(), bytes_from_ptr(&message));
+    for (Team &team : state->teams) {
+        NetworkMessage message = NetworkMessage{.type = NM_SYNC_TEAM, .sync_team = team};
+        server_send_to_all_clients(NET(), bytes_from_ptr(&message));
+    }
 
     i64 index = 0;
     while (index < state->entities.len) {
@@ -914,40 +929,34 @@ void game_server_update(State *state) {
         }
 
         if (BitSet(entity.flags, EF_DEAD)) {
-            Assert(BitSet(entity.flags, EF_PLAYER));
+            Assert(BitSet(entity.flags, EF_DAMAGEABLE));
 
             entity.death_cooldown -= state->delta_time;
 
+            // cool down is over so now reset entity back to "non-dead" state
             if (entity.death_cooldown < 0) {
-                entity.health = entity.max_health;
-
-                // set score for other team
-                if (BitSet(entity.flags, EF_RED_TEAM)) {
-                    state->blue_score += 1;
-                }
-                else if (BitSet(entity.flags, EF_BLUE_TEAM)) {
-                    state->red_score += 1;
-                }
-                else  {
-                    Unreachable("Player entity has no team flag!");
-                }
-
                 UnsetBit(entity.flags, EF_DEAD);
                 entity.death_cooldown = 0;
 
-                if (!BitSet(entity.flags, EF_DUMMY)) {
+                entity.health = entity.max_health;
+                entity.velocity = {};
+
+                // probably best to move this respawn logic to where the player handles it but
+                // for now this is the only entity that needs it so its fine
+                if (BitSet(entity.flags, EF_PLAYER)) {
                     move_to_random_spawn_point(state, &entity);
                 }
             }
         }
 
-        if (BitSet(entity.flags, EF_PLAYER)) {
+        if (BitSet(entity.flags, EF_DAMAGEABLE)) {
             if (CHEAT_NO_DAMAGE) {
                 entity.health = entity.max_health;
             }
 
             if (entity.health <= 0 && entity.death_cooldown == 0) {
                 entity.death_cooldown = PLAYER_DEATH_COOLDOWN;
+                entity.health = 0;
                 SetBit(entity.flags, EF_DEAD);
             }
         }
@@ -966,8 +975,8 @@ void game_server_physics(State *state) {
             continue;
         }
 
-        if (BitSet(entity.flags, EF_PLAYER)) {
-            if (player_is_grounded(state, &entity)) {
+        if (BitSet(entity.flags, EF_COMPLEX_PHYSICS)) {
+            if (entity_is_grounded(state, &entity)) {
                 v3 h_velocity = v3{entity.velocity.x, 0, entity.velocity.z};
                 v3 drag = -h_velocity * PLAYER_GROUND_DRAG;
 
@@ -1054,7 +1063,7 @@ void game_server_on_trigger_collision(State *state, Entity *trigger, Entity *oth
                 continue;
             }
 
-            if (!BitSet(other.flags, EF_PLAYER)) {
+            if (!BitSet(other.flags, EF_DAMAGEABLE)) {
                 continue; 
             }
       
@@ -1218,21 +1227,8 @@ void game_client_draw(State *state) {
     Assert(is_client(state));
 
     { // top bar ui
-        f32 font_size   = 35;
-        v3 top_centre   = relative_to_screen_position(GC()->viewport, {0.5, 1});
-        v3 text_centre  = top_centre - v3{0, font_size * 0.6f, 0}; // 0.6 to give gap
-        v3 score_offset = v3{UI_SCORE_OFFSET, 0, 0};
-        
-        { // scores
-            string blue_score = fmt(&state->frame_arena, "{}", state->blue_score);
-            string red_score = fmt(&state->frame_arena, "{}", state->red_score);
-
-            draw_rectangle_ui(REN(), v3{text_centre.x - score_offset.x, text_centre.y + score_offset.y, UI_LAYER_3}, {80, font_size + 10}, {}, UI_SCORE_BACKGROUND_COLOUR); // left
-            draw_text_ui(REN(), blue_score, v3{text_centre.x - score_offset.x, text_centre.y + score_offset.y, UI_LAYER_2}, UI_SCORE_FONT_SIZE, UI_BLUE_TEAM_COLOUR, true);
-            
-            draw_rectangle_ui(REN(), v3{text_centre.x + score_offset.x, text_centre.y + score_offset.y, UI_LAYER_3}, {80, font_size + 10}, {}, UI_SCORE_BACKGROUND_COLOUR); // right
-            draw_text_ui(REN(), red_score, v3{text_centre.x + score_offset.x, text_centre.y + score_offset.y, UI_LAYER_2}, UI_SCORE_FONT_SIZE, UI_RED_TEAM_COLOUR, true);
-        }
+        v3 time_bg_size = v3{UI_TIME_BG_WIDTH, UI_TIME_FONT_SIZE + UI_TIME_Y_PADDING, 0};
+        v3 time_centre = v3{time_bg_size.x * 0.5f, GC()->viewport.size.y - (time_bg_size.y * 0.5f)};
         
         { // time
             i32 target_seconds = g_game_length;
@@ -1247,9 +1243,44 @@ void game_client_draw(State *state) {
 
             string time_string = fmt(&state->frame_arena, "{}:{}", minutes, seconds);
 
-            draw_rectangle_ui(REN(), v3{text_centre.x, text_centre.y, UI_LAYER_1}, {130, font_size + 20}, {}, UI_TIME_BACKGROUND_COLOUR);
-            draw_text_ui(REN(), time_string, v3{text_centre.x, text_centre.y, UI_LAYER_0}, font_size, WHITE, true);
+            draw_rectangle_ui(REN(), v3{time_centre.x, time_centre.y, UI_LAYER_1}, time_bg_size.xy, {}, UI_TIME_BACKGROUND_COLOUR);
+            draw_text_ui(REN(), time_string, v3{time_centre.x, time_centre.y, UI_LAYER_0}, UI_TIME_FONT_SIZE, WHITE, true);
         }
+
+        v3 score_bg_size = v3{UI_SCORE_BG_WIDTH, UI_SCORE_FONT_SIZE + UI_SCORE_Y_PADDING, 1};
+        v3 score_centre_begin = time_centre + v3{UI_SCORE_START_X_OFFSET, UI_SCORE_START_Y_OFFSET, 0};
+
+        for (i64 i = 0; i < state->teams.len; i++) {
+            Team *team = &state->teams[i];
+
+            v3 score_centre = score_centre_begin;
+            score_centre.x += (score_bg_size.x + UI_SCORE_GAP) * f32(i);
+
+            string score_text = fmt(&state->frame_arena, "{}", team->score);
+
+            draw_rectangle_ui(REN(), v3{score_centre.x, score_centre.y, UI_LAYER_1}, score_bg_size.xy, {}, UI_SCORE_BACKGROUND_COLOUR);
+            draw_text_ui(REN(), score_text, v3{score_centre.x, score_centre.y, UI_LAYER_0}, UI_SCORE_FONT_SIZE, team->colour, true);
+
+            if (team->client_id == state->instance_id) {
+                v3 indicator_centre = v3{score_centre.x, score_centre.y - ((score_bg_size.y * 0.5f) + 12), score_centre.z};
+                draw_circle_ui(REN(), indicator_centre, {8, 8}, {}, team->colour);
+            }
+        }
+    }
+
+    // game complete screen
+    if (state->game_complete) { 
+        v3 top_right = relative_to_screen_position(GC()->viewport, {1, 1});
+        v3 centre = top_right * 0.5;
+        v2 size = top_right.xy;
+
+        draw_rectangle_ui(REN(), centre, size, {}, alpha(BLUE, 0.6));
+
+        bool victory = false;
+        i64 score = 0;
+
+        Entity *player = get_client_player(state, state->instance_id);
+        Assertf(player, "should be able to find player entity to show game complete screen")
     }
 
     for (Entity &entity : state->entities) {
@@ -1272,21 +1303,6 @@ void game_client_draw(State *state) {
             }
 
             // @hud
-
-            // draw team name 
-            {
-                bool red_team = BitSet(entity.flags, EF_RED_TEAM);
-                v3 anchor = relative_to_screen_position(GC()->viewport, {0.01, 1});
-                f32 font_size = 25;
-                v3 draw_position = {anchor.x, (anchor.y  - font_size) - 5, anchor.z};
-
-                if (red_team) {
-                    draw_text_ui(REN(), "Red team", draw_position, font_size, UI_RED_TEAM_COLOUR, false);
-                }
-                else {
-                    draw_text_ui(REN(), "Blue team", draw_position, font_size, UI_BLUE_TEAM_COLOUR, false);
-                }
-            }
 
             // draw fire cooldown when using non auto gun
             if (!player_weapon->automatic && state->player_firing_cooldown > 0) { 
@@ -1342,12 +1358,6 @@ void game_client_draw(State *state) {
         if (BitSet(entity.flags, EF_PLAYER)) {
             v4 head_colour = BEIGE;
 
-            // shade red when dead
-            if (BitSet(entity.flags, EF_DEAD)) {
-                draw_colour = mix(draw_colour, RED, 0.65);
-                head_colour = mix(draw_colour, RED, 0.65);
-            }
-
             { // draw head
                 // want to draw a second cube where the head will be, centre of this cube is eye position
                 f32 eyes_to_top = (PLAYER_HEIGHT * 0.5)  - PLAYER_EYES_OFFSET;
@@ -1356,7 +1366,14 @@ void game_client_draw(State *state) {
                 // add a little extra to stop z fighting
                 head_size += v3{0.01, 0.01, 0.01};
     
-                draw_cube(REN(), entity.position + v3{0, PLAYER_EYES_OFFSET, 0}, head_size, entity.rotation, head_colour);
+                draw_cube(REN(), entity.position + v3{0, PLAYER_EYES_OFFSET, 0}, head_size, entity.rotation, BEIGE);
+            }
+        }
+
+        // damageable
+        if (BitSet(entity.flags, EF_DAMAGEABLE)) {
+            if (BitSet(entity.flags, EF_DEAD)) {
+                draw_colour = mix(draw_colour, RED, 0.65);
             }
         }
 
@@ -1556,20 +1573,38 @@ void editor_draw_ui(State *state) {
 
     ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), 0);
 
-    if (false) {
-        ImGui::Begin("Scoreboard style");
-        ImGui::SliderFloat("Score x offset", &UI_SCORE_OFFSET, 0, 300);
-        ImGui::SliderFloat("Score font size", &UI_SCORE_FONT_SIZE, 0, 300);
-        imgui_colour_control("Blue team colour", &UI_BLUE_TEAM_COLOUR);
-        imgui_colour_control("Red team colour", &UI_RED_TEAM_COLOUR);
-        imgui_colour_control("Time", &UI_TIME_BACKGROUND_COLOUR);
-        imgui_colour_control("banner", &UI_SCORE_BACKGROUND_COLOUR);
-        ImGui::End();
-    }
-
     // https://github.com/ocornut/imgui/blob/master/imgui_demo.cpp
     // ImGui::ShowDemoWindow();
-    
+
+    if (false) {
+        ImGui::Begin("Scoreboard style");
+
+        ImGui::PushID("timer_style");
+
+        ImGui::SeparatorText("Timer");
+        imgui_colour_control("Background", &UI_TIME_BACKGROUND_COLOUR);
+        ImGui::SliderFloat("Font size", &UI_TIME_FONT_SIZE, 1, 60);
+        ImGui::SliderFloat("Y padding", &UI_TIME_Y_PADDING, 1, 60);
+        ImGui::SliderFloat("Width", &UI_TIME_BG_WIDTH, 1, 200);
+
+        ImGui::PopID();
+
+        ImGui::PushID("score_style");
+
+        ImGui::SeparatorText("Score");
+        imgui_colour_control("Background", &UI_SCORE_BACKGROUND_COLOUR);
+        ImGui::SliderFloat("Font size", &UI_SCORE_FONT_SIZE, 1, 60);
+        ImGui::SliderFloat("Y padding", &UI_SCORE_Y_PADDING, 1, 60);
+        ImGui::SliderFloat("X offset", &UI_SCORE_START_X_OFFSET, 1, 150);
+        ImGui::SliderFloat("Y offset", &UI_SCORE_START_Y_OFFSET, -50, 50);
+        ImGui::SliderFloat("Gap", &UI_SCORE_GAP, 1, 100);
+        ImGui::SliderFloat("Width", &UI_SCORE_BG_WIDTH, 1, 200);
+
+        ImGui::PopID();
+
+        ImGui::End();
+    }
+ 
     { // render output
         f32 image_downscale = 4;
         ImVec2 size = ImVec2(GC()->viewport.size.x / image_downscale, GC()->viewport.size.y / image_downscale);
@@ -1897,6 +1932,23 @@ void editor_draw_ui(State *state) {
             ED()->selected_entity = local_spawn_dummy(state);
         }
 
+        ImGui::SeparatorText("Teams");
+
+        for (i64 i = 0; i < state->teams.len; i++) {
+            Team *team = &state->teams[i];
+
+            ImGui::PushID(team->client_id);
+
+            if (ImGui::CollapsingHeader("##team")) {
+                ImGui::Text("client id: %u", team->client_id);
+                ImGui::Text("name: <UNAMED>");
+                imgui_colour_control("colour", &team->colour);
+                ImGui::Text("score: %lld", team->score);
+            }
+
+            ImGui::PopID();
+        }
+
         ImGui::SeparatorText("Entities in level");
  
         for (i64 i = 0; i < state->entities.len; i++) {
@@ -1961,25 +2013,36 @@ void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
 
     switch (message->type) {
         case NM_CLIENT_CONNECTED: {
-            // when client connects, the server generates this message and a few things are required to happen
+            // when client connects, the server generates this message and a few things happen
             // 1. The client is assigned an id from the server
-            // 2. Any existing entities are sent to the new client to spawn
-            // 3. The player entity is spawn on all clients and is owned by the new client
-            // - 09/08/25
+            // 2. Any existing state is sent only to new client:
+            //      - All existing teams
+            //      - All existing entities
+            // 3. Any new state as a consequence from the new client is sent to all clients
+            //      - New team
+            //      - New player entity
+            // - 02/09/25
             ConnectionId connection_id = message->client_connected;
             Infof("Processing new client connection: connection_id={}", connection_id);
 
-            number_of_players += 1;
-            EntityFlag player_team = number_of_players == 1 ? EF_RED_TEAM : EF_BLUE_TEAM;
-            
             { // assign client id
-                Logf("Assigning new client: id={} team={}", connection_id, meta_name(player_team));
+                Logf("Assigning new client: id={}", connection_id);
 
                 NetworkMessage message = NetworkMessage{.type = NM_ASSIGN_CLIENT_ID, .assign_client_id = connection_id};
                 server_send_to_client(NET(), bytes_from_ptr(&message), connection_id);
             }
 
-            { // spawn any entities on new client
+            { // send new client all teams 
+                Log("Sending existing team info to new client");
+
+                for (Team &team : state->teams) {
+                    Logf("Sent team info to new client: client_id={}, colour={}", team.client_id, team.colour);
+                    NetworkMessage message = NetworkMessage{.type = NM_NEW_TEAM, .new_team = team};
+                    server_send_to_client(NET(), bytes_from_ptr(&message), connection_id);
+                }
+            }
+
+            { // send new client all entities 
                 Logf("Spawning {} existing entities on new client", state->entities.len);
 
                 for (Entity &entity : state->entities) {
@@ -1988,15 +2051,27 @@ void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
                 }
             }
 
+            { // create new team on all clients
+                Team new_team = Team {
+                    .client_id = connection_id,
+                    .colour = random_colour(),
+                    .score = 0,
+                };
+
+                append(&state->teams, new_team);
+
+                Logf("Creating new team and updating clients: client_id={}, colour={}", new_team.client_id, new_team.colour);
+
+                NetworkMessage message = NetworkMessage{.type = NM_NEW_TEAM, .new_team = new_team};
+                server_send_to_all_clients(NET(), bytes_from_ptr(&message));
+            }
+
             { // spawn new player entity on all cliens
                 Entity *new_player = local_spawn_player(state);
-                new_player->position = {};
                 new_player->owner = connection_id;
-                SetBit(new_player->flags, player_team);
-
                 move_to_random_spawn_point(state, new_player);
 
-                Infof("Spawning new player entity: entity_id={}, owner={} position={}", new_player->id, new_player->owner, new_player->position);
+                Logf("Spawned new player entity: entity_id={}, owner={} position={}", new_player->id, new_player->owner, new_player->position);
 
                 NetworkMessage message = NetworkMessage{.type = NM_SPAWN_ENTITY, .spawn_entity = *new_player};
                 server_send_to_all_clients(NET(), bytes_from_ptr(&message));
@@ -2025,7 +2100,7 @@ void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
                 return;
             }
 
-            bool grounded = player_is_grounded(state, player);
+            bool grounded = entity_is_grounded(state, player);
 
             if (grounded) {
                 player->velocity.x += message->move_player.input_direction.x * message->move_player.speed_factor * PLAYER_GROUND_ACCELERATION * delta_time;
@@ -2050,9 +2125,10 @@ void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
                 f32 allignment = HMM_DotV2(h_velocity, wish_direction);
             }
         } break;
-        case NM_PLAYER_HIT: {
-            Entity *entity = get_entity_with_id(state, message->player_hit.target_id);
-            if (entity == NULL || !BitSet(entity->flags, EF_PLAYER)) {
+        case NM_DEALT_DAMAGE: {
+            Entity *entity = get_entity_with_id(state, message->dealt_damage.target_id);
+            if (entity == NULL || !BitSet(entity->flags, EF_DAMAGEABLE)) {
+                Warn("Client sent message to deal damage to entity but it didn't exist or does not take damage");
                 return;
             }
 
@@ -2060,7 +2136,21 @@ void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
                 return;
             }
 
-            entity->health -= message->player_hit.damage;
+            entity->health -= message->dealt_damage.damage;
+
+            // if the target was a player and is now dead, add score to clients team
+            if (BitSet(entity->flags, EF_PLAYER) && entity->health <= 0) {
+                u32 damage_source = message->client_id;
+
+                for (Team &team : state->teams) {
+                    if (team.client_id == damage_source) {
+                        team.score += 1;
+                        return;
+                    }
+                }
+
+                Unreachable("Should of found team associated with message client id");
+            }
         } break;
         case NM_SPAWN_MISSLE: {
             Entity *missle = local_spawn_missle(state);
@@ -2109,16 +2199,26 @@ void on_client_receive(State *state, NetworkMessage *message) {
             Logf("Client was told to use a new weapon: {}", (u32) message->set_weapon);
             set_player_weapon(state, message->set_weapon, 0);
         } break;
-        case NM_UPDATE_SCORE: {
-            state->red_score = message->update_score.red;
-            state->blue_score = message->update_score.blue;
+        case NM_NEW_TEAM: {
+            Logf("Client received new team: client_id={}, colour={}", message->new_team.client_id, message->new_team.colour);
+            append(&state->teams, message->new_team);
+        } break;
+        case NM_SYNC_TEAM: {
+            for (Team &team : state->teams) {
+                if (team.client_id == message->sync_team.client_id) {
+                    team = message->sync_team;
+                    return;
+                }
+            }
+
+            Warnf("CLient was sent team sync message but team with client_id={} was not found", message->sync_team.client_id);
         } break;
         case NM_GAME_COMPLETE: {
             Info("The game has been completed");
             state->game_complete = true;
         } break;
         default: {
-            Log("WARNING unknown message sent");
+            Warn("Client received unknown message type");
         } break;
     }
 }
@@ -2226,9 +2326,7 @@ void move_to_random_spawn_point(State *state, Entity *entity) {
     }
 }
 
-bool player_is_grounded(State *state, Entity *entity) {
-    Assert(BitSet(entity->flags, EF_PLAYER));
-
+bool entity_is_grounded(State *state, Entity *entity) {
     v3 collider_size        = v3{PLAYER_WIDTH, 0.2, PLAYER_WIDTH};
     f32 collider_y          = entity->position.y - (entity->size.y * 0.5) - (collider_size.y * 0.5);
     v3 collider_position    = v3{entity->position.x, collider_y, entity->position.z};
@@ -2281,7 +2379,7 @@ Entity *local_spawn_empty(State *state) {
 
 Entity *local_spawn_player(State *state) {
     Entity entity = Entity {
-        .flags = EF_PLAYER | EF_SOLID_HITBOX,
+        .flags = EF_PLAYER | EF_DAMAGEABLE | EF_SOLID_HITBOX | EF_COMPLEX_PHYSICS,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{PLAYER_WIDTH, PLAYER_HEIGHT, PLAYER_WIDTH},
@@ -2295,7 +2393,7 @@ Entity *local_spawn_player(State *state) {
 
 Entity *local_spawn_dummy(State *state) {
     Entity entity = Entity {
-        .flags = EF_PLAYER | EF_DUMMY | EF_SOLID_HITBOX,
+        .flags = EF_DUMMY | EF_DAMAGEABLE | EF_SOLID_HITBOX | EF_COMPLEX_PHYSICS,
         .id = new_entity_id(),
         .owner = SERVER_INSTANCE_ID,
         .size = v3{PLAYER_WIDTH, PLAYER_HEIGHT, PLAYER_WIDTH},
@@ -2737,9 +2835,9 @@ void deserialise_level(State *state) {
 
     state->time = 0;
     state->game_complete = false;
-    state->red_score = 0;
-    state->blue_score = 0;
     state->spawn_point_count = 0;
+    set_player_weapon(state, WH_DEAGLE, 0);
+    reset(&state->teams);
     reset(&state->entities);
 
     for (auto node : entities) {
@@ -2792,8 +2890,6 @@ void deserialise_level(State *state) {
 
         append(&state->entities, entity);
     }
-
-    set_player_weapon(state, WH_DEAGLE, 0);
 
     Infof("Level was loaded with {} entities and {} spawn points", state->entities.len, state->spawn_point_count);
 }
@@ -2926,14 +3022,14 @@ void fire_raycast_weapon(State *state, WeaponHandle weapon) {
         RaycastIteratorResult result = next(&it, state);
         // ray cast failed if:
         // 1. didn't hit anything, stop
-        // 2. didn't hit the player, stop
+        // 2. didn't hit anything damageable, stop
         // 3. hit the clients player, try again
-        // 4. hit another player but they are danother player but they are dead 
+        // 4. the entity is already dead
         if (result.entity == NULL) {
             break;
         }
 
-        if (!BitSet(result.entity->flags, EF_PLAYER)) {
+        if (!BitSet(result.entity->flags, EF_DAMAGEABLE)) {
             break;
         }
 
@@ -2965,8 +3061,8 @@ void fire_raycast_weapon(State *state, WeaponHandle weapon) {
 
         NetworkMessage message = NetworkMessage {
             .client_id = state->instance_id, 
-            .type = NM_PLAYER_HIT, 
-            .player_hit = {
+            .type = NM_DEALT_DAMAGE, 
+            .dealt_damage = {
                 .target_id = hit_entity->id,
                 .damage = damage 
             } 
@@ -3014,7 +3110,12 @@ void run_tests() {
     Fatal("Hello fatal");
     Fatalf("Hello fatal {}", "How are you doing?");
 
-    std::this_thread::sleep_for(std::chrono::seconds(20));
+    array<i32, 3> a = {100, 200, 300};
+    Logf("{} {} {}", a[0], a[1], a[2]);
+
+    for (i32 n : a) {
+        Logf("{}", n);
+    }
 }
 
 template<>
