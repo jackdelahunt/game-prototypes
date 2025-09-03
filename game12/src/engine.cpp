@@ -567,10 +567,6 @@ v3 get_forward_direction(Camera *camera);
 v3 get_right_direction(Camera *camera);
 v3 get_up_direction(Camera *camera);
 
-v3 get_forward_direction(v3 rotation);
-v3 get_right_direction(v3 rotation);
-v3 get_up_direction(v3 rotation);
-
 // Shader API
 bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, string fragment_shader_path);
 void assign_texture_slot(Shader *shader, string texture_name, i32 slot);
@@ -707,27 +703,6 @@ v3 get_right_direction(Camera *camera) {
 
 v3 get_up_direction(Camera *camera) {
     return norm(HMM_Cross(get_forward_direction(camera), get_right_direction(camera)));
-}
-
-v3 get_forward_direction(v3 rotation) {
-    // pitch    - x
-    // yaw      - y
-    // roll     - z
-    v3 direction {
-        .x = sin(rotation.y * HMM_DegToRad) * cos(rotation.x * HMM_DegToRad),
-        .y = sin(rotation.x * HMM_DegToRad),
-        .z = cos(rotation.y * HMM_DegToRad) * cos(rotation.x * HMM_DegToRad)
-    };
-
-    return norm(direction);
-}
-
-v3 get_right_direction(v3 rotation) {
-    return HMM_Cross(get_up_direction(rotation), get_forward_direction(rotation));
-}
-
-v3 get_up_direction(v3 rotation) {
-    return {0, 1, 0};
 }
 
 bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, string fragment_shader_path) {
@@ -1927,7 +1902,6 @@ m4 get_view_matrix(Camera *camera) {
     v3 target = camera->position + get_forward_direction(camera);
     v3 up = get_up_direction(camera);
 
-    // FIXME: having the up always be y = 1 is probably wrong - 04/06/25
     m4 view_matrix = HMM_LookAt_LH(
         camera->position, 
         target, 

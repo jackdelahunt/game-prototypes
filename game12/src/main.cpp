@@ -14,8 +14,8 @@
 #include <chrono>
 #include <atomic>
 
-// Total: 96:30
-// Started: 14:30
+// Total: 98:30
+// Started: 10:00
 //
 // What do a programmer do?:
 // Game:
@@ -49,7 +49,7 @@
 //      - animations
 // - combine vs and fs in the one file
 // - fond out why camera yaw (Y) is flipped
-// - switch to quaternions for rotation 
+// - switch to quaternions for rotation, this allows camera roll which is broke
 // - sky box
 // - define assets in editor and get handles in game
 // - load game as dll
@@ -74,22 +74,22 @@
 
 #define RUN_TESTS 0
 
-f32 PLAYER_HEIGHT               = 2;
-f32 PLAYER_WIDTH                = 0.65;
-f32 PLAYER_EYES_OFFSET          = 0.8;
+f32 g_player_height               = 2;
+f32 g_player_width                = 0.65;
+f32 g_player_eyes_offset          = 0.8;
 
-f32 PLAYER_DEATH_COOLDOWN       = 3;
-f32 PLAYER_GROUND_ACCELERATION  = 240;
-f32 PLAYER_JUMP_ACCELERATION    = 20;
-f32 PLAYER_GROUND_DRAG          = 10;
-f32 PLAYER_AIR_CONTROL          = 4;
-f32 GRAVITY                     = 70;
+f32 g_player_death_cooldown       = 3;
+f32 g_player_ground_acceleration  = 240;
+f32 g_player_jump_acceleration    = 20;
+f32 g_player_ground_drag          = 10;
+f32 g_player_air_control          = 4;
+f32 g_gravity                     = 70;
 
-v3 WEAPON_DISPLAY_OFFSET    = v3{1, -0.6, 0.98};
-f32 WEAPON_SWITCH_COOLDOWN  = 1.5;
+v3  g_weapon_display_offset       = v3{1, -0.6, 0.98};
+f32 g_weapon_switch_cooldown      = 1.5;
 
-f32 WEAPON_PICKUP_COOLDOWN  = 9;
-f32 HEALTH_PICKUP_COOLDOWN  = 6;
+f32 g_pickup_weapon_cooldown  = 9;
+f32 g_pickup_health_cooldown  = 6;
 
 v4 UI_TIME_BACKGROUND_COLOUR    = v4 {0.053588, 0.082173, 0.147679, 0.67};
 f32 UI_TIME_FONT_SIZE           = 35;
@@ -104,10 +104,10 @@ f32 UI_SCORE_START_Y_OFFSET = 10;
 f32 UI_SCORE_GAP = 5;
 f32 UI_SCORE_BG_WIDTH = 80;
 
-f32 CROSSHAIR_GAP           = 10;
-f32 CROSSHAIR_LENGTH        = 12;
-f32 CROSSHAIR_THICKNESS     = 3;
-v4 CROSSHAIR_COLOUR         = GREEN;
+f32 g_crosshair_gap           = 10;
+f32 g_crosshair_length        = 12;
+f32 g_crosshair_thickness     = 3;
+v4  g_crosshair_colour        = GREEN;
 
 f32 MISSLE_SPEED            = 35;
 f32 EXPLOSION_RADIUS        = 12;
@@ -119,9 +119,9 @@ f32 JUMP_PAD_ACCELERATION   = 55;
 
 bool DEBUG_DRAW_OWNER       = false;
 
-bool CHEAT_WEAPON_BINDS     = true;
-bool CHEAT_INFINITE_AMMO    = true;
-bool CHEAT_NO_DAMAGE        = false;
+bool g_cheat_weapon_binds     = true;
+bool g_cheat_infinite_ammo    = true;
+bool g_cheat_no_damage        = false;
 
 f32 g_game_length = Minute(5);
 // f32 g_game_length = Second(10);
@@ -129,6 +129,9 @@ f32 g_game_length = Minute(5);
 bool g_dual_wield_recoil_switch = true; // used for dual wield switching of recoil
 bool g_player_hit_target = false;       // used for hitmarker
 bool g_player_hit_headshot = false;     // used for hitmarker
+
+f32 g_landing_camera_shake_duration = 0.15f;
+f32 g_landing_camera_shake_intensity = 0.3f;
 
 enum MeshHandle : u32 {
     MH_NONE,
@@ -365,6 +368,24 @@ struct CubeCollision {
     v3 distance;
 };
 
+// want to be able to apply game effects in relation to time
+// 1. over a given T: over T seconds apply this effect, the intensity is proportional to the time left
+// 2. once a given T: apply this effect immedietly but wai T seconds before applying it again
+// .. probably more
+//
+// could generalise these out more but for now doing the straight imlps to see what I need
+struct CameraShake {
+    f32 start_duration;
+    f32 remaining_duration;
+    f32 intensity;
+};
+
+struct CameraShakeResult {
+    f32 remaining;
+    f32 intensity;
+    bool active;
+};
+
 enum InstanceType {
     IT_CLIENT,
     IT_SERVER
@@ -409,15 +430,6 @@ enum GameClientMode {
     GC_CLIENT
 };
 
-// @editor
-struct Editor {
-    Camera camera;
-    Viewport viewport;
-    FrameBuffer editor_view;
-
-    Entity *selected_entity;
-};
-
 struct GameClient {
     GameClientMode mode;
 
@@ -425,7 +437,18 @@ struct GameClient {
     Viewport viewport;
     FrameBuffer game_view;
 
+    CameraShake camera_shake;
+
     State state;
+};
+
+// @editor
+struct Editor {
+    Camera camera;
+    Viewport viewport;
+    FrameBuffer editor_view;
+
+    Entity *selected_entity;
 };
 
 #include "type_info.h"
@@ -519,6 +542,10 @@ void set_player_weapon(State *state, WeaponHandle weapon, f32 cooldown);
 void play_weapon_fire_sound(Weapon *weapon);
 void fire_raycast_weapon(State *state, WeaponHandle weapon);
 void fire_tap(State *state);
+
+void camera_shake_start(CameraShake *camera_shake, f32 duration, f32 intensity);
+void camera_shake_tick(CameraShake *camera_shake, f32 delta_time);
+CameraShakeResult camera_shake_is_active(CameraShake *camera_shake);
 
 void run_tests();
 
@@ -892,22 +919,22 @@ void game_server_update(State *state) {
 
                     switch (entity.pickup_type) {
                         case PT_M4: {
-                            entity.pickup_cooldown = WEAPON_PICKUP_COOLDOWN;
+                            entity.pickup_cooldown = g_pickup_weapon_cooldown;
                             NetworkMessage message = NetworkMessage{.type = NM_SET_WEAPON, .set_weapon = WH_M4};
                             server_send_to_client(NET(), bytes_from_ptr(&message), other.owner);
                         } break;
                         case PT_TAP: {
-                            entity.pickup_cooldown = WEAPON_PICKUP_COOLDOWN;
+                            entity.pickup_cooldown = g_pickup_weapon_cooldown;
                             NetworkMessage message = NetworkMessage{.type = NM_SET_WEAPON, .set_weapon = WH_TAP};
                             server_send_to_client(NET(), bytes_from_ptr(&message), other.owner);
                         } break;
                         case PT_PAL: {
-                            entity.pickup_cooldown = WEAPON_PICKUP_COOLDOWN;
+                            entity.pickup_cooldown = g_pickup_weapon_cooldown;
                             NetworkMessage message = NetworkMessage{.type = NM_SET_WEAPON, .set_weapon = WH_PAL};
                             server_send_to_client(NET(), bytes_from_ptr(&message), other.owner);
                         } break;
                         case PT_HEALTH: {
-                            entity.pickup_cooldown = HEALTH_PICKUP_COOLDOWN;
+                            entity.pickup_cooldown = g_pickup_health_cooldown;
                             other.health = other.max_health;
                         } break;
                         case PT_NONE: {
@@ -969,12 +996,12 @@ void game_server_update(State *state) {
         }
 
         if (BitSet(entity.flags, EF_DAMAGEABLE)) {
-            if (CHEAT_NO_DAMAGE) {
+            if (g_cheat_no_damage) {
                 entity.health = entity.max_health;
             }
 
             if (entity.health <= 0 && entity.death_cooldown == 0) {
-                entity.death_cooldown = PLAYER_DEATH_COOLDOWN;
+                entity.death_cooldown = g_player_death_cooldown;
                 entity.health = 0;
                 SetBit(entity.flags, EF_DEAD);
             }
@@ -997,13 +1024,13 @@ void game_server_physics(State *state) {
         if (BitSet(entity.flags, EF_COMPLEX_PHYSICS)) {
             if (entity_is_grounded(state, &entity)) {
                 v3 h_velocity = v3{entity.velocity.x, 0, entity.velocity.z};
-                v3 drag = -h_velocity * PLAYER_GROUND_DRAG;
+                v3 drag = -h_velocity * g_player_ground_drag;
 
                 entity.velocity.x += drag.x * state->delta_time;
                 entity.velocity.z += drag.z * state->delta_time;
             }
 
-            entity.velocity.y -= GRAVITY * state->delta_time;
+            entity.velocity.y -= g_gravity * state->delta_time;
         }
 
         v3 starting_position = entity.position;
@@ -1108,6 +1135,8 @@ void game_server_on_trigger_collision(State *state, Entity *trigger, Entity *oth
 }
 
 void game_client_update(State *state) {
+    camera_shake_tick(&GC()->camera_shake, state->delta_time);
+
     state->player_firing_cooldown -= state->delta_time;
     if (state->player_firing_cooldown <= 0) {
         state->player_firing_cooldown = 0;
@@ -1116,18 +1145,47 @@ void game_client_update(State *state) {
     { // weapon reaload and switching to default
         Assert(state->player_ammo >= 0);
 
-        if (CHEAT_INFINITE_AMMO) {
+        if (g_cheat_infinite_ammo) {
             state->player_ammo = g_weapons[state->player_weapon].ammo_count;
         }
 
         if (state->player_ammo == 0) {
-            set_player_weapon(state, WH_DEAGLE, WEAPON_SWITCH_COOLDOWN);
+            set_player_weapon(state, WH_DEAGLE, g_weapon_switch_cooldown);
         }
     }
 
     Entity *player = get_client_player(state, state->instance_id);
     if (player != NULL) {
-        GC()->camera.position = player->position + v3{0, PLAYER_EYES_OFFSET, 0};
+        GC()->camera.position = player->position + v3{0, g_player_eyes_offset, 0};
+    }
+
+    { // camera shake
+        // camera shake works by offesting the camera on the y axis over time,
+        // the extent of the offset is the intensity in world units.
+        // The shake is split into two phases, for the first half of the duration
+        // the position is offset more and more until it has reached the peak offset
+        // then for the second half of the duration it is decreased over time and eventually
+        // is the same as the orignial camera positon therefore making the transition from
+        // "active" camera shake to normal, smooth
+        // - 03/09/25
+        auto [remaining, intensity, active] = camera_shake_is_active(&GC()->camera_shake);
+
+        if (active) {
+            f32 y_offset = 0;
+       
+            if (remaining >= 0.5f) {
+                // converting 1->0.5 to 1->0
+                f32 half_remaining = (remaining - 0.5f) * 2;
+                y_offset = intensity * (1 - half_remaining); // 1- to convert 1->0 to 0->1
+            }
+            else {
+                // converting 0.5->0 to 1->0
+                f32 half_remaining = remaining * 2;
+                y_offset = intensity * half_remaining;
+            }
+
+            GC()->camera.position.y -= y_offset;
+        }
     }
 
     // check player input
@@ -1138,7 +1196,6 @@ void game_client_update(State *state) {
    
             // camera control
             if (length(mouse_input) > 0) {
-    
                 GC()->camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
                 GC()->camera.rotation.x = clamp(-90, GC()->camera.rotation.x, 90);
             }
@@ -1172,7 +1229,7 @@ void game_client_update(State *state) {
             }
 
             // cheats to give weapons 
-            if (CHEAT_WEAPON_BINDS && GC()->viewport.focused) {
+            if (g_cheat_weapon_binds && GC()->viewport.focused) {
                 if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
                     KEYS[GLFW_KEY_1] == InputState::DOWN) {
                     set_player_weapon(state, WH_DEAGLE, 0);
@@ -1255,6 +1312,7 @@ void game_client_update(State *state) {
             // landing sounds
             if (!s_grounded_last_tick) {
                 sound_engine_play(g_sounds[SH_STEP_2]);
+                camera_shake_start(&GC()->camera_shake, g_landing_camera_shake_duration, g_landing_camera_shake_intensity);
             }
 
             // footstep sounds
@@ -1353,11 +1411,11 @@ void game_client_draw(State *state) {
                 if (player_weapon->handle == WH_PAL) {
                     static bool side = false;
 
-                    draw_player_weapon(state, player_weapon, WEAPON_DISPLAY_OFFSET, g_dual_wield_recoil_switch);
-                    draw_player_weapon(state, player_weapon, WEAPON_DISPLAY_OFFSET * v3{-1, 1, 1}, !g_dual_wield_recoil_switch);
+                    draw_player_weapon(state, player_weapon, g_weapon_display_offset, g_dual_wield_recoil_switch);
+                    draw_player_weapon(state, player_weapon, g_weapon_display_offset * v3{-1, 1, 1}, !g_dual_wield_recoil_switch);
                 }
                 else {
-                    draw_player_weapon(state, player_weapon, WEAPON_DISPLAY_OFFSET, true);
+                    draw_player_weapon(state, player_weapon, g_weapon_display_offset, true);
                 }
             }
 
@@ -1380,24 +1438,24 @@ void game_client_draw(State *state) {
                 v3 centre = relative_to_screen_position(GC()->viewport, {0.5, 0.5});
 
                 // horizontal
-                draw_rectangle_ui(REN(), centre - v3{CROSSHAIR_GAP, 0, 0}, {CROSSHAIR_LENGTH, CROSSHAIR_THICKNESS}, {}, CROSSHAIR_COLOUR);
-                draw_rectangle_ui(REN(), centre + v3{CROSSHAIR_GAP, 0, 0}, {CROSSHAIR_LENGTH, CROSSHAIR_THICKNESS}, {}, CROSSHAIR_COLOUR);
+                draw_rectangle_ui(REN(), centre - v3{g_crosshair_gap, 0, 0}, {g_crosshair_length, g_crosshair_thickness}, {}, g_crosshair_colour);
+                draw_rectangle_ui(REN(), centre + v3{g_crosshair_gap, 0, 0}, {g_crosshair_length, g_crosshair_thickness}, {}, g_crosshair_colour);
 
                 // vertical
-                draw_rectangle_ui(REN(), centre - v3{0, CROSSHAIR_GAP, 0}, {CROSSHAIR_THICKNESS, CROSSHAIR_LENGTH}, {}, CROSSHAIR_COLOUR);
-                draw_rectangle_ui(REN(), centre + v3{0, CROSSHAIR_GAP, 0}, {CROSSHAIR_THICKNESS, CROSSHAIR_LENGTH}, {}, CROSSHAIR_COLOUR);
+                draw_rectangle_ui(REN(), centre - v3{0, g_crosshair_gap, 0}, {g_crosshair_thickness, g_crosshair_length}, {}, g_crosshair_colour);
+                draw_rectangle_ui(REN(), centre + v3{0, g_crosshair_gap, 0}, {g_crosshair_thickness, g_crosshair_length}, {}, g_crosshair_colour);
 
                 // hitmarkers
                 if (g_player_hit_target || g_player_hit_headshot) {
-                    v2 dot_size = v2{CROSSHAIR_THICKNESS, CROSSHAIR_THICKNESS} * 2.0f;
+                    v2 dot_size = v2{g_crosshair_thickness, g_crosshair_thickness} * 2.0f;
 
                     // bl and tr
-                    draw_circle_ui(REN(), centre - v3{CROSSHAIR_GAP, CROSSHAIR_GAP, 0}, dot_size, {}, RED);
-                    draw_rectangle_ui(REN(), centre + v3{CROSSHAIR_GAP, CROSSHAIR_GAP, 0}, dot_size, {}, RED);
+                    draw_circle_ui(REN(), centre - v3{g_crosshair_gap, g_crosshair_gap, 0}, dot_size, {}, RED);
+                    draw_rectangle_ui(REN(), centre + v3{g_crosshair_gap, g_crosshair_gap, 0}, dot_size, {}, RED);
 
                     // tl and br
-                    draw_circle_ui(REN(), centre - v3{CROSSHAIR_GAP, -CROSSHAIR_GAP, 0}, dot_size, {}, RED);
-                    draw_rectangle_ui(REN(), centre + v3{CROSSHAIR_GAP, -CROSSHAIR_GAP, 0}, dot_size, {}, RED);
+                    draw_circle_ui(REN(), centre - v3{g_crosshair_gap, -g_crosshair_gap, 0}, dot_size, {}, RED);
+                    draw_rectangle_ui(REN(), centre + v3{g_crosshair_gap, -g_crosshair_gap, 0}, dot_size, {}, RED);
                 }
             }
 
@@ -1426,19 +1484,17 @@ void game_client_draw(State *state) {
             }
         }
 
-        // every player
-        if (BitSet(entity.flags, EF_PLAYER)) {
-            v4 head_colour = BEIGE;
-
+        // every other player
+        if (BitSet(entity.flags, EF_PLAYER) && entity.owner != state->instance_id) {
             { // draw head
                 // want to draw a second cube where the head will be, centre of this cube is eye position
-                f32 eyes_to_top = (PLAYER_HEIGHT * 0.5)  - PLAYER_EYES_OFFSET;
-                v3 head_size = v3{PLAYER_WIDTH, eyes_to_top * 2, PLAYER_WIDTH};
+                f32 eyes_to_top = (g_player_height * 0.5)  - g_player_eyes_offset;
+                v3 head_size = v3{g_player_width, eyes_to_top * 2, g_player_width};
     
                 // add a little extra to stop z fighting
                 head_size += v3{0.01, 0.01, 0.01};
     
-                draw_cube(REN(), entity.position + v3{0, PLAYER_EYES_OFFSET, 0}, head_size, entity.rotation, BEIGE);
+                draw_cube(REN(), entity.position + v3{0, g_player_eyes_offset, 0}, head_size, entity.rotation, BEIGE);
             }
         }
 
@@ -1676,40 +1732,7 @@ void editor_draw_ui(State *state) {
 
         ImGui::End();
     }
- 
-    { // render output
-        f32 image_downscale = 4;
-        ImVec2 size = ImVec2(GC()->viewport.size.x / image_downscale, GC()->viewport.size.y / image_downscale);
-
-        ImGui::Begin("Render output");
-
-        if (ImGui::CollapsingHeader("G buffer")) {
-            ImGui::Text("Position  //  Normals");
-            ImGui::Image(REN()->g_buffer.position_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
-            ImGui::SameLine();
-            ImGui::Image(REN()->g_buffer.normals_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
-
-            ImGui::Text("Albedo  //  Depth");
-            ImGui::Image(REN()->g_buffer.albedo_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
-            ImGui::SameLine();
-            ImGui::Image(REN()->g_buffer.depth_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
-        }
-
-        if (ImGui::CollapsingHeader("Lighting buffer")) {
-            ImGui::Text("Position  //  Normals");
-            ImGui::Image(REN()->lighting_buffer.position_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
-            ImGui::SameLine();
-            ImGui::Image(REN()->lighting_buffer.normals_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
-
-            ImGui::Text("Albedo  //  Depth");
-            ImGui::Image(REN()->lighting_buffer.albedo_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
-            ImGui::SameLine();
-            ImGui::Image(REN()->lighting_buffer.depth_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
-        }
-
-        ImGui::End();
-    }
-    
+  
     { // debug info
         ImGui::Begin("Debug info");
 
@@ -1845,9 +1868,9 @@ void editor_draw_ui(State *state) {
         ImGui::Begin("Settings");
 
         if (ImGui::CollapsingHeader("Cheats")) {
-            ImGui::Checkbox("Weapon binds", &CHEAT_WEAPON_BINDS);
-            ImGui::Checkbox("Infinite ammo", &CHEAT_INFINITE_AMMO);
-            ImGui::Checkbox("No damage", &CHEAT_NO_DAMAGE);
+            ImGui::Checkbox("Weapon binds", &g_cheat_weapon_binds);
+            ImGui::Checkbox("Infinite ammo", &g_cheat_infinite_ammo);
+            ImGui::Checkbox("No damage", &g_cheat_no_damage);
 
             { // give weapon buttons
                 ImGui::SeparatorText("Give weapon");
@@ -1866,25 +1889,31 @@ void editor_draw_ui(State *state) {
         }
 
         if (ImGui::CollapsingHeader("Player")) {
-            Entity *player = get_client_player(state, state->instance_id);
-            if (player) {
-                imgui_entity(player);
-            }
-
             ImGui::SeparatorText("Movement");
-            ImGui::InputFloat("Ground acceleration", &PLAYER_GROUND_ACCELERATION);
-            ImGui::InputFloat("Jump acceleration", &PLAYER_JUMP_ACCELERATION);
-            ImGui::InputFloat("Ground drag", &PLAYER_GROUND_DRAG);
-            ImGui::InputFloat("Air control", &PLAYER_AIR_CONTROL);
-            ImGui::InputFloat("Gravity", &GRAVITY);
+            ImGui::InputFloat("Ground acceleration", &g_player_ground_acceleration);
+            ImGui::InputFloat("Jump acceleration", &g_player_jump_acceleration);
+            ImGui::InputFloat("Ground drag", &g_player_ground_drag);
+            ImGui::InputFloat("Air control", &g_player_air_control);
+            ImGui::InputFloat("Gravity", &g_gravity);
 
             ImGui::SeparatorText("Character");
-            ImGui::SliderFloat("Eyes offset", &PLAYER_EYES_OFFSET, 0, PLAYER_HEIGHT * 0.5);
+            ImGui::SliderFloat("Eyes offset", &g_player_eyes_offset, 0, g_player_height * 0.5);
+
+            ImGui::SeparatorText("Camera shake");
+            ImGui::SliderFloat("Landing shake duration", &g_landing_camera_shake_duration, 0, 2);
+            ImGui::SliderFloat("Landing shake intensity", &g_landing_camera_shake_intensity, 0, 2);
 
             ImGui::SeparatorText("Weapon");
             ImGui::SliderFloat("Fire Cooldown", &state->player_firing_cooldown, 0, g_weapons[state->player_weapon].firing_cooldown);
             ImGui::InputInt("Ammo", (i32 *) &state->player_ammo);
-            ImGui::SliderFloat3("Weapon offset", &WEAPON_DISPLAY_OFFSET.x, -2, 2);
+            ImGui::SliderFloat3("Weapon offset", &g_weapon_display_offset.x, -2, 2);
+
+            if (ImGui::CollapsingHeader("Entity")) {
+                Entity *player = get_client_player(state, state->instance_id);
+                if (player) {
+                    imgui_entity(player);
+                }
+            }
         }
 
         if (ImGui::CollapsingHeader("Renderer")) {
@@ -1894,13 +1923,42 @@ void editor_draw_ui(State *state) {
             ImGui::ColorEdit3("Sun colour",     &REN()->sun_colour[0]);
             ImGui::ColorEdit3("Shadow colour",  &REN()->shadow_colour[0]);
             imgui_v3_control("Sun position", &REN()->sun_position);
+
+            if (ImGui::CollapsingHeader("Frame buffers")) {
+                f32 image_downscale = 4;
+                ImVec2 size = ImVec2(GC()->viewport.size.x / image_downscale, GC()->viewport.size.y / image_downscale);
+        
+                if (ImGui::CollapsingHeader("G buffer")) {
+                    ImGui::Text("Position  //  Normals");
+                    ImGui::Image(REN()->g_buffer.position_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
+                    ImGui::SameLine();
+                    ImGui::Image(REN()->g_buffer.normals_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
+        
+                    ImGui::Text("Albedo  //  Depth");
+                    ImGui::Image(REN()->g_buffer.albedo_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
+                    ImGui::SameLine();
+                    ImGui::Image(REN()->g_buffer.depth_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
+                }
+        
+                if (ImGui::CollapsingHeader("Lighting buffer")) {
+                    ImGui::Text("Position  //  Normals");
+                    ImGui::Image(REN()->lighting_buffer.position_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
+                    ImGui::SameLine();
+                    ImGui::Image(REN()->lighting_buffer.normals_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
+        
+                    ImGui::Text("Albedo  //  Depth");
+                    ImGui::Image(REN()->lighting_buffer.albedo_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
+                    ImGui::SameLine();
+                    ImGui::Image(REN()->lighting_buffer.depth_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
+                }
+            }
         }
 
         if (ImGui::CollapsingHeader("Crosshair")) {
-            ImGui::SliderFloat("Gap", &CROSSHAIR_GAP, 0, 20);
-            ImGui::SliderFloat("Length", &CROSSHAIR_LENGTH, 0, 20);
-            ImGui::SliderFloat("Thickness", &CROSSHAIR_THICKNESS, 0, 20);
-            ImGui::ColorEdit4("Colour", &CROSSHAIR_COLOUR[0]);
+            ImGui::SliderFloat("Gap", &g_crosshair_gap, 0, 20);
+            ImGui::SliderFloat("Length", &g_crosshair_length, 0, 20);
+            ImGui::SliderFloat("Thickness", &g_crosshair_thickness, 0, 20);
+            ImGui::ColorEdit4("Colour", &g_crosshair_colour[0]);
         }
 
         ImGui::End();
@@ -2081,8 +2139,6 @@ void editor_draw_ui(State *state) {
 }
 
 void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
-    static i32 number_of_players = 0;
-
     switch (message->type) {
         case NM_CLIENT_CONNECTED: {
             // when client connects, the server generates this message and a few things happen
@@ -2175,9 +2231,9 @@ void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
             bool grounded = entity_is_grounded(state, player);
 
             if (grounded) {
-                player->velocity.x += message->move_player.input_direction.x * message->move_player.speed_factor * PLAYER_GROUND_ACCELERATION * delta_time;
-                player->velocity.y += message->move_player.jump                                                  * PLAYER_JUMP_ACCELERATION;
-                player->velocity.z += message->move_player.input_direction.y * message->move_player.speed_factor * PLAYER_GROUND_ACCELERATION * delta_time;
+                player->velocity.x += message->move_player.input_direction.x * message->move_player.speed_factor * g_player_ground_acceleration * delta_time;
+                player->velocity.y += message->move_player.jump                                                  * g_player_jump_acceleration;
+                player->velocity.z += message->move_player.input_direction.y * message->move_player.speed_factor * g_player_ground_acceleration * delta_time;
             }
             else {
                 v2 wish_direction = message->move_player.input_direction;
@@ -2188,7 +2244,7 @@ void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
                 if (length(wish_direction) > 0 && h_speed > 0) {
                     v2 h_direction = norm(h_velocity); 
 
-                    v2 new_h_direction = norm(HMM_LerpV2(h_direction, PLAYER_AIR_CONTROL * delta_time, wish_direction));
+                    v2 new_h_direction = norm(HMM_LerpV2(h_direction, g_player_air_control * delta_time, wish_direction));
 
                     player->velocity.x = new_h_direction.x * h_speed;
                     player->velocity.z = new_h_direction.y * h_speed;
@@ -2389,7 +2445,7 @@ void move_to_random_spawn_point(State *state, Entity *entity) {
     for (Entity &other : state->entities) {
         if (BitSet(other.flags, EF_SPAWN_POINT)) {
             if (spawn_point_number == current_spawn_point_number) {
-                entity->position = other.position + v3{0, PLAYER_HEIGHT + 1, 0};
+                entity->position = other.position + v3{0, g_player_height + 1, 0};
                 break;
             }
 
@@ -2399,7 +2455,7 @@ void move_to_random_spawn_point(State *state, Entity *entity) {
 }
 
 bool entity_is_grounded(State *state, Entity *entity) {
-    v3 collider_size        = v3{PLAYER_WIDTH, 0.2, PLAYER_WIDTH};
+    v3 collider_size        = v3{g_player_width, 0.2, g_player_width};
     f32 collider_y          = entity->position.y - (entity->size.y * 0.5) - (collider_size.y * 0.5);
     v3 collider_position    = v3{entity->position.x, collider_y, entity->position.z};
 
@@ -2454,7 +2510,7 @@ Entity *local_spawn_player(State *state) {
         .flags = EF_PLAYER | EF_DAMAGEABLE | EF_SOLID_HITBOX | EF_COMPLEX_PHYSICS,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
-        .size = v3{PLAYER_WIDTH, PLAYER_HEIGHT, PLAYER_WIDTH},
+        .size = v3{g_player_width, g_player_height, g_player_width},
         .colour = TURQUOISE,
         .max_health = 100,
         .health = 100,
@@ -2468,7 +2524,7 @@ Entity *local_spawn_dummy(State *state) {
         .flags = EF_DUMMY | EF_DAMAGEABLE | EF_SOLID_HITBOX | EF_COMPLEX_PHYSICS,
         .id = new_entity_id(),
         .owner = SERVER_INSTANCE_ID,
-        .size = v3{PLAYER_WIDTH, PLAYER_HEIGHT, PLAYER_WIDTH},
+        .size = v3{g_player_width, g_player_height, g_player_width},
         .colour = BLUE,
         .max_health = 100,
         .health = 100,
@@ -3125,13 +3181,13 @@ void fire_raycast_weapon(State *state, WeaponHandle weapon) {
 
     if (hit_entity) {
         f32 hit_height_offset = hit_position.y - hit_entity->position.y;
-        f32 half_head_size = (PLAYER_HEIGHT * 0.5)  - PLAYER_EYES_OFFSET;
+        f32 half_head_size = (g_player_height * 0.5)  - g_player_eyes_offset;
 
         f32 damage              = {};
         SoundHandle hit_sound   = {};
 
         // headshot
-        if (hit_height_offset >= PLAYER_EYES_OFFSET - half_head_size) {
+        if (hit_height_offset >= g_player_eyes_offset - half_head_size) {
             damage = player_weapon->headshot_damage;
             hit_sound = SH_HEADSHOT_HIT;
             g_player_hit_headshot = true;
@@ -3170,6 +3226,38 @@ void fire_tap(State *state) {
     };
 
     client_send_to_server(NET(), bytes_from_ptr(&message));
+}
+
+void camera_shake_start(CameraShake *camera_shake, f32 duration, f32 intensity) {
+    Assert(duration != 0);
+
+    camera_shake->start_duration = duration;
+    camera_shake->remaining_duration = duration;
+    camera_shake->intensity = intensity;
+}
+
+void camera_shake_tick(CameraShake *camera_shake, f32 delta_time) {
+    camera_shake->remaining_duration -= delta_time;
+
+    if (camera_shake->remaining_duration < 0) {
+        camera_shake->remaining_duration = 0;
+    }
+}
+
+CameraShakeResult camera_shake_is_active(CameraShake *camera_shake) {
+    if (camera_shake->remaining_duration == 0) {
+        return CameraShakeResult {.active = false};
+    }
+
+    // remaining is how much left of the original duration is left from 1->0
+    // 1:   being the full duration is left
+    // 0.5: halfway through the duration 
+    // 0:   ended
+    return CameraShakeResult {
+        .remaining = camera_shake->remaining_duration / camera_shake->start_duration,
+        .intensity = camera_shake->intensity,
+        .active = true
+    };
 }
 
 void run_tests() {
