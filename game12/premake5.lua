@@ -83,7 +83,7 @@ project "game12"
 
         postbuildcommands {
             "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/release/*.dll] %[build/bin/release]",
-            "{COPYFILE} %[src/libs/assimp/bin/x64/*.dll] %[build/bin/debug]",
+            "{COPYFILE} %[src/libs/assimp/bin/x64/*.dll] %[build/bin/release]",
         }
 
     filter "configurations:Profile"
@@ -95,7 +95,7 @@ project "game12"
 
         postbuildcommands {
             "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/release/*.dll] %[build/bin/profile]",
-            "{COPYFILE} %[src/libs/assimp/bin/x64/*.dll] %[build/bin/debug]",
+            "{COPYFILE} %[src/libs/assimp/bin/x64/*.dll] %[build/bin/profile]",
         }
 
 project "meta"

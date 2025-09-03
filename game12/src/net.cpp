@@ -6,6 +6,7 @@
 #include "math.cpp"
 #include "platform.h"
 
+#include <chrono>
 #include <thread>
 #include <mutex>
 #include <queue>
@@ -158,7 +159,6 @@ net->thread = std::thread([net] () {
         f32 delta_time = 0;
 
         if (!timer_is_complete(&tick_timer, &delta_time)) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
             continue;
         }
 
@@ -174,6 +174,8 @@ net->thread = std::thread([net] () {
         atomic_snapshot_copy_and_swap(&net->mspt_sampler_snapshot, &net->mspt_sampler);
         atomic_snapshot_copy_and_swap(&net->client_in_messages_sampler_snapshot, &net->client_in_messages_sampler);
         atomic_snapshot_copy_and_swap(&net->server_in_messages_sampler_snaphot, &net->server_in_messages_sampler);
+
+        std::this_thread::sleep_for(std::chrono::microseconds(NETWORK_MS_PER_TICK - 1));
     }
 });
 }

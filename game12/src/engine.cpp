@@ -102,7 +102,6 @@ struct Window {
     string title;
     v2i logical_size;
     v2i frame_buffer_size;
-    bool vsync;
     bool mouse_captured;
 };
 
@@ -133,7 +132,6 @@ void set_mouse_captured(Window *window, bool captured);
 void set_window_title(Window *window, string title);
 void poll_inputs();
 void swap_buffers(Window *window);
-void toggle_vsync(Window *window);
 void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
 void glfw_mouse_move_callback(GLFWwindow* window, f64 x, f64 y);
 void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 mods);
@@ -154,7 +152,6 @@ bool window_init(string title, i32 width, i32 height) {
         .glfw_window = NULL,
         .title = title,
         .logical_size = v2i{width, height},
-        .vsync = true,
         .mouse_captured = false,
     };
 
@@ -175,7 +172,7 @@ bool window_init(string title, i32 width, i32 height) {
     glfwMakeContextCurrent(g_window->glfw_window);
     glfwSetWindowUserPointer(g_window->glfw_window, g_window);
 
-    glfwSwapInterval(g_window->vsync);
+    glfwSwapInterval(0);
 
     glfwSetErrorCallback(glfw_error_callback);
     glfwSetKeyCallback(g_window->glfw_window, glfw_key_callback);
@@ -239,28 +236,22 @@ void poll_inputs() {
 
     MOUSE.delta = MOUSE.position - last_mouse_position;
 
+    // removed because it kept being too low but I am not sure if I want to
+    // remove it for sure - 03/09/25
+#if 0
     // max the mouse delta vector can be, stops huge spikes mouse input 
     // when mouse changes capture like at start of game
     // - 02/06/25
-    f32 max_delta = 200;
+    f32 max_delta = 4000;
          
     if (length(MOUSE.delta) > max_delta) {
         MOUSE.delta = norm(MOUSE.delta) * max_delta;
     }
+#endif
 }
 
 void swap_buffers(Window *window) {
     glfwSwapBuffers(window->glfw_window);
-}
-
-void toggle_vsync(Window *window) {
-    window->vsync = !window->vsync;
-
-    if (window->vsync) {
-        glfwSwapInterval(1);
-    } else {
-        glfwSwapInterval(0); 
-    }
 }
 
 void glfw_error_callback(int error_code, const char* description) {

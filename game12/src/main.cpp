@@ -1,4 +1,3 @@
-#include "implot/implot.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -15,7 +14,7 @@
 #include <chrono>
 #include <atomic>
 
-// Total: 98:30
+// Total: 105:30
 // Started: 10:00
 //
 // What do a programmer do?:
@@ -28,11 +27,11 @@
 //          - hitmarker feedback on crosshair (kinda)
 //          - more weapon models and sounds
 //          - better recoil
+//          - better control of timings so networking is more consistant and game is smoother overall
 //      - TODO / consider
 //          - longer press higher jump
 //          - health bars
 //          - better hitmarker feedback
-//          - fix "glitchy" movement
 // - game complete screen
 // - pickup more then one gun
 // - ammo pickup
@@ -77,7 +76,8 @@
 #define MAX_ENTITIES 500
 #define LEVEL_INSTANCE_ID 0
 #define SERVER_INSTANCE_ID 1
-#define GAME_MS_PER_TICK 16
+#define GAME_MS_PER_TICK 10
+#define GAME_MS_PER_FRAME 8
 #define MAX_TEAMS 2
 
 #define RUN_TESTS 0
@@ -405,7 +405,8 @@ struct State {
     u32 instance_id;
     
     f32 time;
-    f32 delta_time;
+    f32 tick_delta_time;
+    f32 frame_delta_time;
     bool game_complete;
     Arena arena;
     Arena frame_arena;
@@ -636,13 +637,15 @@ void game_server_entry() {
     deserialise_level(&GS()->state);
 
     while (!GS()->shutdown_signal) {
-        if (!timer_is_complete(&tick_timer, &GS()->state.delta_time)) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        f32 tick_delta_time = 0;
+        if (!timer_is_complete(&tick_timer, &tick_delta_time)) {
             continue;
         }
 
-        sampler_append(&GS()->state.mspt_sampler, GS()->state.delta_time * 1000.0f);
-        GS()->state.time += GS()->state.delta_time;
+        GS()->state.tick_delta_time = tick_delta_time;
+        GS()->state.time += GS()->state.tick_delta_time;
+
+        sampler_append(&GS()->state.mspt_sampler, GS()->state.tick_delta_time * 1000.0f);
 
         if (GS()->state.time >= g_game_length && !GS()->state.game_complete) {
             GS()->state.game_complete = true;
@@ -661,6 +664,8 @@ void game_server_entry() {
         atomic_snapshot_copy_and_swap(&GS()->mspt_sampler_snapshot, &GS()->state.mspt_sampler);
 
         arena_reset(&GS()->state.frame_arena);
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(GAME_MS_PER_TICK - 1));
     }
 
     Log("Game server was given shutdown signal.. stopping");
@@ -777,13 +782,22 @@ void game_client_entry() {
     }
 
     Timer tick_timer = timer_create_ms(GAME_MS_PER_TICK);
+    Timer frame_timer = timer_create_ms(GAME_MS_PER_FRAME);
+    Stopwatch frame_stopwatch = stopwatch_create();
 
     Infof("Started game client @ {}tps [thread={}]", i64(1000.0f / f32(GAME_MS_PER_TICK)), get_current_thread_id());
 
     deserialise_level(&GC()->state);
 
     while (!glfwWindowShouldClose(WIN()->glfw_window)) {
-        if (timer_is_complete(&tick_timer, &GC()->state.delta_time)) {
+        GC()->state.frame_delta_time = stopwatch_get_time(&frame_stopwatch);
+
+        f32 tick_delta_time = 0;
+
+        if (timer_is_complete(&tick_timer, &tick_delta_time)) {
+            GC()->state.tick_delta_time = tick_delta_time;
+
+            sampler_append(&GC()->state.mspt_sampler, GC()->state.tick_delta_time * 1000.0f);
 
             poll_inputs();
 
@@ -800,27 +814,30 @@ void game_client_entry() {
             }
         
             if (GC()->mode == GC_HOSTED || GC()->mode == GC_CLIENT) {
-                sampler_append(&GC()->state.mspt_sampler, GC()->state.delta_time * 1000.0f);
-
-                GC()->state.time += GC()->state.delta_time;
+                GC()->state.time += GC()->state.tick_delta_time;
                 process_network(&GC()->state);
                 game_client_update(&GC()->state);
             }
         }
 
-        // draw
-        renderer_start_frame(REN());
+        f32 frame_delta_time = 0;
 
-        game_client_draw(&GC()->state);
+        if (timer_is_complete(&frame_timer, &frame_delta_time)) {
+            GC()->state.frame_delta_time = frame_delta_time;
 
-        renderer_draw_frame(REN(), &ED()->camera, ED()->viewport, &ED()->editor_view, false);
-        renderer_draw_frame(REN(), &GC()->camera, GC()->viewport, &GC()->game_view, true);
+            renderer_start_frame(REN());
+    
+            game_client_draw(&GC()->state);
+    
+            renderer_draw_frame(REN(), &ED()->camera, ED()->viewport, &ED()->editor_view, false);
+            renderer_draw_frame(REN(), &GC()->camera, GC()->viewport, &GC()->game_view, true);
+    
+            renderer_end_frame(REN());
+    
+            editor_draw_ui(&GC()->state);
+            swap_buffers(WIN());
+        }
 
-        renderer_end_frame(REN());
-
-        editor_draw_ui(&GC()->state);
-
-        swap_buffers(WIN());
         arena_reset(&GC()->state.frame_arena);
     }
 
@@ -862,7 +879,7 @@ void process_network(State *state) {
         slice<u8> bytes;
         while (network_queue_pop(&NET()->server_in_queue, &bytes)) {
             NetworkMessage *message = (NetworkMessage *) bytes.ptr;
-            on_server_receive(state, message, state->delta_time);
+            on_server_receive(state, message, state->tick_delta_time);
             slice_free(bytes);
         }
     }
@@ -909,7 +926,7 @@ void game_server_update(State *state) {
     for (Entity &entity : state->entities) {
 
         if (BitSet(entity.flags, EF_PICKUP)) {
-            entity.pickup_cooldown -= state->delta_time;
+            entity.pickup_cooldown -= state->tick_delta_time;
             if (entity.pickup_cooldown <= 0) {
                 entity.pickup_cooldown = 0;
             }
@@ -955,7 +972,7 @@ void game_server_update(State *state) {
         }
 
         if (BitSet(entity.flags, EF_JUMP_PAD)) {
-            entity.jump_pad_cooldown -= state->delta_time;
+            entity.jump_pad_cooldown -= state->tick_delta_time;
             if (entity.jump_pad_cooldown <= 0) {
                 entity.jump_pad_cooldown = 0;
             }
@@ -985,7 +1002,7 @@ void game_server_update(State *state) {
         if (BitSet(entity.flags, EF_DEAD)) {
             Assert(BitSet(entity.flags, EF_DAMAGEABLE));
 
-            entity.death_cooldown -= state->delta_time;
+            entity.death_cooldown -= state->tick_delta_time;
 
             // cool down is over so now reset entity back to "non-dead" state
             if (entity.death_cooldown < 0) {
@@ -1034,15 +1051,15 @@ void game_server_physics(State *state) {
                 v3 h_velocity = v3{entity.velocity.x, 0, entity.velocity.z};
                 v3 drag = -h_velocity * g_player_ground_drag;
 
-                entity.velocity.x += drag.x * state->delta_time;
-                entity.velocity.z += drag.z * state->delta_time;
+                entity.velocity.x += drag.x * state->tick_delta_time;
+                entity.velocity.z += drag.z * state->tick_delta_time;
             }
 
-            entity.velocity.y -= g_gravity * state->delta_time;
+            entity.velocity.y -= g_gravity * state->tick_delta_time;
         }
 
         v3 starting_position = entity.position;
-        entity.position += entity.velocity * state->delta_time;
+        entity.position += entity.velocity * state->tick_delta_time;
 
         { // detect and resolve collisions
             if (BitSet(entity.flags, EF_SOLID_HITBOX)) {
@@ -1143,9 +1160,9 @@ void game_server_on_trigger_collision(State *state, Entity *trigger, Entity *oth
 }
 
 void game_client_update(State *state) {
-    camera_shake_tick(&GC()->camera_shake, state->delta_time);
+    camera_shake_tick(&GC()->camera_shake, state->tick_delta_time);
 
-    state->player_firing_cooldown -= state->delta_time;
+    state->player_firing_cooldown -= state->tick_delta_time;
     if (state->player_firing_cooldown <= 0) {
         state->player_firing_cooldown = 0;
     }
@@ -1201,12 +1218,12 @@ void game_client_update(State *state) {
     // check player input
     if (GC()->viewport.focused) {
         if (WIN()->mouse_captured) {
-            f32 sensitivity = 0.09;
+            f32 sensitivity = 2;
             v2 mouse_input = MOUSE.delta;
-   
+    
             // camera control
             if (length(mouse_input) > 0) {
-                GC()->camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
+                GC()->camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity * state->tick_delta_time;
                 GC()->camera.rotation.x = clamp(-90, GC()->camera.rotation.x, 90);
             }
 
@@ -1333,7 +1350,7 @@ void game_client_update(State *state) {
                 static f32 s_footstep_sound_cooldown = 0;
                 static i64 s_next_sound = 0;
         
-                s_footstep_sound_cooldown -= state->delta_time;
+                s_footstep_sound_cooldown -= state->tick_delta_time;
                 if (s_footstep_sound_cooldown < 0) {
                     s_footstep_sound_cooldown = 0; 
                 }
@@ -1802,6 +1819,18 @@ void editor_draw_ui(State *state) {
                     ImPlot::EndPlot();
                 }
             }
+        }
+
+        { // basic timings
+            ImGui::SeparatorText("Client frame timings");
+            ImGui::Text("FPS: %.1f", 1.0f / state->frame_delta_time);
+            ImGui::Text("Delta time (s): %f", state->frame_delta_time);
+            ImGui::Text("Delta time (ms): %.1f", state->frame_delta_time * 1000);
+
+            ImGui::SeparatorText("Client tick timings");
+            ImGui::Text("TPS: %.1f", 1.0f / state->tick_delta_time);
+            ImGui::Text("Delta time (s): %f", state->tick_delta_time);
+            ImGui::Text("Delta time (ms): %.1f", state->tick_delta_time * 1000);
         }
 
         { // main display info

@@ -172,6 +172,11 @@ struct Timer {
     std::chrono::milliseconds time_limit; 
 };
 
+// @stopwatch
+struct Stopwatch {
+    std::chrono::steady_clock::time_point last_time;
+};
+
 // @sampler
 #define SAMPLER_SIZE 150
 struct Sampler {
@@ -240,7 +245,11 @@ template <typename T>   slice<T> to_slice(DynamicArray<T> *array);
 // @timer
 Timer timer_create_ms(i64 milliseconds); 
 bool timer_is_complete_reset(Timer *timer); 
-bool timer_is_complete(Timer *timer, f32 *delta_time); 
+bool timer_is_complete(Timer *timer, f32 *delta_time);
+
+// @stopwatch
+Stopwatch stopwatch_create();
+f32 stopwatch_get_time(Stopwatch *stopwatch);
 
 // @sampler
 Sampler sampler_create(); 
@@ -712,6 +721,21 @@ bool timer_is_complete(Timer *timer, f32 *delta_time) {
     }
 
     return false;
+}
+
+Stopwatch stopwatch_create() {
+    return Stopwatch {
+        .last_time = std::chrono::steady_clock::now(),
+    };
+}
+
+f32 stopwatch_get_time(Stopwatch *stopwatch) {
+    auto now = std::chrono::steady_clock::now();
+    auto duration = now - stopwatch->last_time;
+
+    stopwatch->last_time = now;
+
+    return std::chrono::duration<f32>(duration).count();
 }
 
 Sampler sampler_create() {
