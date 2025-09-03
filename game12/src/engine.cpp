@@ -1019,6 +1019,7 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
     { // init imgui
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
+        ImPlot::CreateContext();
     
         // ImGui::StyleColorsLight();
         ImGui::StyleColorsDark();

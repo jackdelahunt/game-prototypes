@@ -38,6 +38,7 @@ project "game12"
         "src/type_info.h",
         "src/win_platform.cpp",
         "src/libs/imgui/imgui*.cpp",
+        "src/libs/implot/implot*.cpp",
         "src/libs/miniaudio/miniaudio.c"
     }
 

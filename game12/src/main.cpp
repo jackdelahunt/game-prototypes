@@ -1,4 +1,4 @@
-#include "imgui.h"
+#include "implot/implot.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -77,8 +77,7 @@
 #define MAX_ENTITIES 500
 #define LEVEL_INSTANCE_ID 0
 #define SERVER_INSTANCE_ID 1
-#define GAME_SERVER_MS_PER_TICK 16
-#define GAME_CLIENT_MS_PER_TICK 16
+#define GAME_MS_PER_TICK 16
 #define MAX_TEAMS 2
 
 #define RUN_TESTS 0
@@ -630,9 +629,9 @@ void game_server_entry() {
         .entities           = stack_array_create<Entity, MAX_ENTITIES>(),
     };
 
-    Timer tick_timer = timer_create_ms(GAME_SERVER_MS_PER_TICK);
+    Timer tick_timer = timer_create_ms(GAME_MS_PER_TICK);
 
-    Infof("Started game server @ {}tps [thread={}]", i64(1000.0f / f32(GAME_SERVER_MS_PER_TICK)), get_current_thread_id());
+    Infof("Started game server @ {}tps [thread={}]", i64(1000.0f / f32(GAME_MS_PER_TICK)), get_current_thread_id());
 
     deserialise_level(&GS()->state);
 
@@ -777,9 +776,9 @@ void game_client_entry() {
         }
     }
 
-    Timer tick_timer = timer_create_ms(GAME_CLIENT_MS_PER_TICK);
+    Timer tick_timer = timer_create_ms(GAME_MS_PER_TICK);
 
-    Infof("Started game client @ {}tps [thread={}]", i64(1000.0f / f32(GAME_SERVER_MS_PER_TICK)), get_current_thread_id());
+    Infof("Started game client @ {}tps [thread={}]", i64(1000.0f / f32(GAME_MS_PER_TICK)), get_current_thread_id());
 
     deserialise_level(&GC()->state);
 
@@ -1715,6 +1714,9 @@ void editor_draw_ui(State *state) {
     // https://github.com/ocornut/imgui/blob/master/imgui_demo.cpp
     // ImGui::ShowDemoWindow();
 
+    // https://github.com/epezent/implot/blob/master/implot_demo.cpp
+    // ImPlot::ShowDemoWindow();
+
     if (false) {
         ImGui::Begin("Scoreboard style");
 
@@ -1747,66 +1749,57 @@ void editor_draw_ui(State *state) {
     { // debug info
         ImGui::Begin("Debug info");
 
-        ImVec2 plot_size = ImVec2(0, 60);
+        ImVec2 plot_size = ImVec2(450, 300);
 
         if (ImGui::CollapsingHeader("Performance")) {
-            constexpr i32 buffer_size = 32;
-            static char s_overlay_buffer[buffer_size] = {};
 
-            { 
-                ImGui::SeparatorText("Client");
+            if (ImPlot::BeginPlot("Time to start new tick", plot_size, ImPlotFlags_NoInputs)) {
+                f32 min_y = GAME_MS_PER_TICK - 2;
+                f32 target_y = GAME_MS_PER_TICK;
+                f32 max_y = GAME_MS_PER_TICK + 10;
 
-                f32 average = sampler_average(&state->mspt_sampler);
-                MemZero(s_overlay_buffer, buffer_size);
-                sprintf(s_overlay_buffer, "Avg: %0.2f", average);
+                ImPlot::SetupAxes("time","ms", ImPlotAxisFlags_NoGridLines, 0);
+                ImPlot::SetupAxesLimits(0, SAMPLER_SIZE, min_y, max_y);
 
-                ImGui::Text("ms/t (target=%dms/t)", GAME_CLIENT_MS_PER_TICK);
-                ImGui::PlotLines("##client_mspt", state->mspt_sampler.samples, SAMPLER_SIZE, 0, s_overlay_buffer, 0.0001, FLT_MAX, plot_size);
-            }
+                ImPlot::PlotInfLines("Target", &target_y, 1, ImPlotInfLinesFlags_Horizontal);
+                ImPlot::PlotLine("Client", state->mspt_sampler.samples, SAMPLER_SIZE);
 
-            if (GC()->mode == GC_HOSTED) {
-                ImGui::SeparatorText("Server");
+                if (GC()->mode == GC_HOSTED) {
+                    Sampler *sampler = atomic_snapshot_read(&GS()->mspt_sampler_snapshot);
+                    ImPlot::PlotLine("Server", sampler->samples, SAMPLER_SIZE);
+                }
 
-                Sampler *sampler = atomic_snapshot_read(&GS()->mspt_sampler_snapshot);
-                f32 average = sampler_average(sampler);
-                MemZero(s_overlay_buffer, buffer_size);
-                sprintf(s_overlay_buffer, "Avg: %0.2f", average);
-
-                ImGui::Text("ms/t (target=%dms/t)", GAME_SERVER_MS_PER_TICK);
-                ImGui::PlotLines("##server_mspt", sampler->samples, SAMPLER_SIZE, 0, s_overlay_buffer, 0.0001, FLT_MAX, plot_size);
+                ImPlot::EndPlot();
             }
 
             if (GC()->mode != GC_EDITOR) {
-                ImGui::SeparatorText("Network");
-
-                { // mspt
+                if (ImPlot::BeginPlot("Time to start new tick (Net)", plot_size, ImPlotFlags_NoInputs)) {
+                    f32 min_y = NETWORK_MS_PER_TICK - 2;
+                    f32 target_y = NETWORK_MS_PER_TICK;
+                    f32 max_y = NETWORK_MS_PER_TICK + 10;
+    
+                    ImPlot::SetupAxes("time","ms", ImPlotAxisFlags_NoGridLines, 0);
+                    ImPlot::SetupAxesLimits(0, SAMPLER_SIZE, min_y, max_y);
+    
+                    ImPlot::PlotInfLines("Target", &target_y, 1, ImPlotInfLinesFlags_Horizontal);
+    
                     Sampler *sampler = atomic_snapshot_read(&NET()->mspt_sampler_snapshot);
-                    f32 average = sampler_average(sampler);
-                    MemZero(s_overlay_buffer, buffer_size);
-                    sprintf(s_overlay_buffer, "Avg: %0.2f", average);
+                    ImPlot::PlotLine("Net", sampler->samples, SAMPLER_SIZE);
     
-                    ImGui::Text("ms/t (target=%dms/t)", NETWORK_MS_PER_TICK);
-                    ImGui::PlotLines("##network_mspt", sampler->samples, SAMPLER_SIZE, 0, s_overlay_buffer, 0.0001, FLT_MAX, plot_size);
+                    ImPlot::EndPlot();
                 }
 
-                { // client in messages
-                    Sampler *sampler = atomic_snapshot_read(&NET()->client_in_messages_sampler_snapshot);
-                    f32 average = sampler_average(sampler);
-                    MemZero(s_overlay_buffer, buffer_size);
-                    sprintf(s_overlay_buffer, "Avg: %0.2f", average);
+                if (ImPlot::BeginPlot("Incoming messages", plot_size, ImPlotFlags_NoInputs)) {
+                    ImPlot::SetupAxes("time","Messages", ImPlotAxisFlags_NoGridLines, 0);
+                    ImPlot::SetupAxesLimits(0, SAMPLER_SIZE, 0, 20);
     
-                    ImGui::Text("client messages/t");
-                    ImGui::PlotLines("##network_client_in", sampler->samples, SAMPLER_SIZE, 0, s_overlay_buffer, 0.0001, FLT_MAX, plot_size);
-                }
+                    Sampler *client_sampler = atomic_snapshot_read(&NET()->client_in_messages_sampler_snapshot);
+                    ImPlot::PlotLine("Client", client_sampler->samples, SAMPLER_SIZE);
 
-                { // server in messages
-                    Sampler *sampler = atomic_snapshot_read(&NET()->server_in_messages_sampler_snaphot);
-                    f32 average = sampler_average(sampler);
-                    MemZero(s_overlay_buffer, buffer_size);
-                    sprintf(s_overlay_buffer, "Avg: %0.2f", average);
+                    Sampler *server_sampler = atomic_snapshot_read(&NET()->server_in_messages_sampler_snaphot);
+                    ImPlot::PlotLine("Server", server_sampler->samples, SAMPLER_SIZE);
     
-                    ImGui::Text("server messages/t");
-                    ImGui::PlotLines("##network_server_in", sampler->samples, SAMPLER_SIZE, 0, s_overlay_buffer, 0.0001, FLT_MAX, plot_size);
+                    ImPlot::EndPlot();
                 }
             }
         }

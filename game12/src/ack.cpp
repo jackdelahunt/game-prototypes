@@ -173,7 +173,7 @@ struct Timer {
 };
 
 // @sampler
-#define SAMPLER_SIZE 200
+#define SAMPLER_SIZE 150
 struct Sampler {
     f32         samples[SAMPLER_SIZE];
     TimePoint   times[SAMPLER_SIZE];
