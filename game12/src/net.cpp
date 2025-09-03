@@ -10,7 +10,7 @@
 #include <mutex>
 #include <queue>
 
-#define NETWORK_DELAY_MS 8
+#define NETWORK_MS_PER_TICK 8
 #define DEFAULT_PORT 27020
 
 // I hate c++
@@ -47,8 +47,7 @@ struct Server {
     HSteamNetPollGroup poll_group;
     StackArray<HSteamNetConnection, 10> connections;
 
-    // call backs to be defined in the game
-    // !!! this is called from the server network thread
+    // NOTE: callback defined in game, called from network thread 
     NewConnectionCallback on_new_connection;
 };
 
@@ -65,6 +64,14 @@ struct NetworkLayer {
     bool running;
 
     ISteamNetworkingSockets *interface;
+
+    Sampler mspt_sampler;
+    Sampler client_in_messages_sampler;
+    Sampler server_in_messages_sampler;
+
+    AtomicSnapshot<Sampler> mspt_sampler_snapshot;
+    AtomicSnapshot<Sampler> client_in_messages_sampler_snapshot;
+    AtomicSnapshot<Sampler> server_in_messages_sampler_snaphot;
 
     Client client;
     Server server;
@@ -115,7 +122,10 @@ NetworkLayer *NET() {
 
 bool network_layer_init() {
     g_network_layer = new NetworkLayer {};
-    g_network_layer->arena = arena_create(10 * 1024 * 1024);
+    g_network_layer->arena = arena_create(MB(10));
+    atomic_snapshot_init(&g_network_layer->mspt_sampler_snapshot);
+    atomic_snapshot_init(&g_network_layer->client_in_messages_sampler_snapshot);
+    atomic_snapshot_init(&g_network_layer->server_in_messages_sampler_snaphot);
 
     SteamDatagramErrMsg error_message;
     if (!GameNetworkingSockets_Init(nullptr, error_message)) {
@@ -138,16 +148,32 @@ void network_layer_start() {
 net->thread = std::thread([net] () {
     log_set_thread_name("network");
 
-    Infof("Started networking thread @ {}tps [thread={}]", i64(1000.0f / f32(NETWORK_DELAY_MS)), get_current_thread_id());
+    Timer tick_timer = timer_create_ms(NETWORK_MS_PER_TICK);
+
+    Infof("Started networking thread @ {}tps [thread={}]", i64(1000.0f / f32(NETWORK_MS_PER_TICK)), get_current_thread_id());
 
     net->running = true;
 
     while (net->running) {
+        f32 delta_time = 0;
+
+        if (!timer_is_complete(&tick_timer, &delta_time)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+        }
+
+        sampler_append(&net->mspt_sampler, delta_time * 1000.0f);
+
         network_layer_update_server(net);
         network_layer_update_client(net); 
         net->interface->RunCallbacks();
- 
-	std::this_thread::sleep_for(std::chrono::milliseconds(NETWORK_DELAY_MS));
+
+        sampler_append(&net->client_in_messages_sampler, f32(network_queue_size(&net->client_in_queue)));
+        sampler_append(&net->server_in_messages_sampler, f32(network_queue_size(&net->server_in_queue)));
+
+        atomic_snapshot_copy_and_swap(&net->mspt_sampler_snapshot, &net->mspt_sampler);
+        atomic_snapshot_copy_and_swap(&net->client_in_messages_sampler_snapshot, &net->client_in_messages_sampler);
+        atomic_snapshot_copy_and_swap(&net->server_in_messages_sampler_snaphot, &net->server_in_messages_sampler);
     }
 });
 }
@@ -323,12 +349,12 @@ void network_layer_update_server(NetworkLayer *net) {
     if (net->server.server_state == RUNNING) {
         while (net->client.client_state == RUNNING) {
             ISteamNetworkingMessage *incoming_message = NULL;
-            int message_count = net->interface->ReceiveMessagesOnPollGroup(net->server.poll_group, &incoming_message, 1);
+            i32 message_count = net->interface->ReceiveMessagesOnPollGroup(net->server.poll_group, &incoming_message, 1);
     
             if (message_count == 0) {
                 break;
             }
-    
+
             Assert(message_count == 1 && incoming_message != NULL);
     
             { // copy message contents to byte slice and add to network queue

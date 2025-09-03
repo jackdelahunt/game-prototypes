@@ -668,10 +668,6 @@ bool check_gl_errors();
 
 void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, i32 length, const char *message, const void *user_param);
 
-void print(v2 vector);
-void print(v3 vector);
-void print(v4 vector);
-
 f32 accel_lerp(f32 a, f32 b, f32 f);
 
 Camera camera_create(CameraMode mode, f32 fov, v3 position, f32 near_plane, f32 far_plane) {
@@ -2174,18 +2170,6 @@ bool check_gl_errors() {
 
 void opengl_error_callback(GLenum source, GLenum type, u32 id, GLenum severity, i32 length, const char *message, const void *user_param) {
     printf("OpenGL error: %s\n", message);
-}
-
-void print(v2 vector) {
-    printf("{x: %f, y: %f}\n", vector.x, vector.y);
-}
-
-void print(v3 vector) {
-    printf("{x: %f, y: %f, z: %f}\n", vector.x, vector.y, vector.z);
-}
-
-void print(v4 vector) {
-    printf("{x: %f, y: %f, z: %f, w: %f}\n", vector.x, vector.y, vector.z, vector.w);
 }
 
 f32 accel_lerp(f32 a, f32 b, f32 f) {

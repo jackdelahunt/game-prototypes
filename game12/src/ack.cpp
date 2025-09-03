@@ -173,7 +173,7 @@ struct Timer {
 };
 
 // @sampler
-#define SAMPLER_SIZE 100
+#define SAMPLER_SIZE 200
 struct Sampler {
     f32         samples[SAMPLER_SIZE];
     TimePoint   times[SAMPLER_SIZE];
@@ -254,6 +254,7 @@ template <typename T>   void atomic_snapshot_init(AtomicSnapshot<T> *snapshot);
 template <typename T>   T *atomic_snapshot_write(AtomicSnapshot<T> *snapshot); 
 template <typename T>   T *atomic_snapshot_read(AtomicSnapshot<T> *snapshot); 
 template <typename T>   void atomic_snapshot_swap(AtomicSnapshot<T> *snapshot);
+template <typename T>   void atomic_snapshot_copy_and_swap(AtomicSnapshot<T> *snapshot, T *value);
 
 // @file
 string read_entire_file(string path);
@@ -775,6 +776,13 @@ template <typename T>
 void atomic_snapshot_swap(AtomicSnapshot<T> *snapshot) {
     T* old_read = snapshot->read_ptr.exchange(snapshot->write_ptr, std::memory_order_acq_rel);
     snapshot->write_ptr = old_read;
+}
+
+template <typename T>   
+void atomic_snapshot_copy_and_swap(AtomicSnapshot<T> *snapshot, T *value) {
+    T *write_ptr = atomic_snapshot_write(snapshot);
+    memcpy(write_ptr, value, sizeof(T));
+    atomic_snapshot_swap(snapshot);
 }
 
 // 0 -> 1

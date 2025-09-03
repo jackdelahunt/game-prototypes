@@ -1,3 +1,4 @@
+#include "imgui.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -20,10 +21,18 @@
 // What do a programmer do?:
 // Game:
 // - improve game feel:
-//      - longer press higher jump
-//      - health bars
-//      - better hitmarker feedback
-//      - fix "glitchy" movement
+//      - Progress
+//          - better hit sounds
+//          - player movement sounds
+//          - camera shake on player landing
+//          - hitmarker feedback on crosshair (kinda)
+//          - more weapon models and sounds
+//          - better recoil
+//      - TODO / consider
+//          - longer press higher jump
+//          - health bars
+//          - better hitmarker feedback
+//          - fix "glitchy" movement
 // - game complete screen
 // - pickup more then one gun
 // - ammo pickup
@@ -131,7 +140,7 @@ bool g_player_hit_target = false;       // used for hitmarker
 bool g_player_hit_headshot = false;     // used for hitmarker
 
 f32 g_landing_camera_shake_duration = 0.15f;
-f32 g_landing_camera_shake_intensity = 0.3f;
+f32 g_landing_camera_shake_intensity = 0.2f;
 
 enum MeshHandle : u32 {
     MH_NONE,
@@ -405,7 +414,7 @@ struct State {
     StackArray<Team, MAX_TEAMS> teams;
 
     Sampler network_in_sampler;
-    Sampler fps_sampler;
+    Sampler mspt_sampler;
 
     WeaponHandle player_weapon;
     i64 player_ammo;
@@ -419,6 +428,9 @@ struct State {
 struct GameServer {
     std::thread thread;
     std::atomic<bool> shutdown_signal;
+
+    AtomicSnapshot<Sampler> network_in_sampler_snapshot;
+    AtomicSnapshot<Sampler> mspt_sampler_snapshot;
 
     State state;
 };
@@ -460,8 +472,6 @@ Editor     *g_editor      = NULL;
 GameServer *GS();
 GameClient *GC();
 Editor *ED();
-
-AtomicSnapshot<Sampler> server_messages_snapshot;
 
 void game_server_start();
 void game_server_entry();
@@ -547,6 +557,9 @@ void camera_shake_start(CameraShake *camera_shake, f32 duration, f32 intensity);
 void camera_shake_tick(CameraShake *camera_shake, f32 delta_time);
 CameraShakeResult camera_shake_is_active(CameraShake *camera_shake);
 
+f32 tween_ease_out_sin(f32 x);
+f32 tween_ease_in_out_sin(f32 x);
+
 void run_tests();
 
 // @main
@@ -595,14 +608,13 @@ Editor *ED() {
 void game_server_start() {
     Assert(g_game_server == NULL);
 
-    // my strategy for this is init everything in the instance
-    // besides the state object before starting the new thread
-    // then it is up to the server thread to init the state
-    // and go from there
-    atomic_snapshot_init(&server_messages_snapshot);
-
     g_game_server = new GameServer {};
+
+    // NOTE: doing this stuff before new thread is started
+    atomic_snapshot_init(&g_game_server->network_in_sampler_snapshot);
+    atomic_snapshot_init(&g_game_server->mspt_sampler_snapshot);
     g_game_server->shutdown_signal = false;
+
     g_game_server->thread = std::thread(game_server_entry); 
 }
 
@@ -630,6 +642,7 @@ void game_server_entry() {
             continue;
         }
 
+        sampler_append(&GS()->state.mspt_sampler, GS()->state.delta_time * 1000.0f);
         GS()->state.time += GS()->state.delta_time;
 
         if (GS()->state.time >= g_game_length && !GS()->state.game_complete) {
@@ -645,11 +658,8 @@ void game_server_entry() {
         game_server_physics(&GS()->state);
         sync_clients(&GS()->state);
 
-        { // update event sampler snapshot
-            Sampler *s = atomic_snapshot_write(&server_messages_snapshot);
-            *s = GS()->state.network_in_sampler;
-            atomic_snapshot_swap(&server_messages_snapshot);
-        }
+        atomic_snapshot_copy_and_swap(&GS()->network_in_sampler_snapshot, &GS()->state.network_in_sampler);
+        atomic_snapshot_copy_and_swap(&GS()->mspt_sampler_snapshot, &GS()->state.mspt_sampler);
 
         arena_reset(&GS()->state.frame_arena);
     }
@@ -791,6 +801,8 @@ void game_client_entry() {
             }
         
             if (GC()->mode == GC_HOSTED || GC()->mode == GC_CLIENT) {
+                sampler_append(&GC()->state.mspt_sampler, GC()->state.delta_time * 1000.0f);
+
                 GC()->state.time += GC()->state.delta_time;
                 process_network(&GC()->state);
                 game_client_update(&GC()->state);
@@ -808,9 +820,6 @@ void game_client_entry() {
         renderer_end_frame(REN());
 
         editor_draw_ui(&GC()->state);
-
-        // using fps instead of dt due to less noise with lower float values
-        sampler_append(&GC()->state.fps_sampler, 1.0f / GC()->state.delta_time);
 
         swap_buffers(WIN());
         arena_reset(&GC()->state.frame_arena);
@@ -1174,14 +1183,16 @@ void game_client_update(State *state) {
             f32 y_offset = 0;
        
             if (remaining >= 0.5f) {
-                // converting 1->0.5 to 1->0
-                f32 half_remaining = (remaining - 0.5f) * 2;
-                y_offset = intensity * (1 - half_remaining); // 1- to convert 1->0 to 0->1
+                f32 time = (remaining - 0.5f) * 2;  // 1->0.5 to 1->0
+                time = 1 - time;                    // 1->0 to 0->1
+                time = tween_ease_in_out_sin(time); // 0->1 to 0~>1
+                    
+                y_offset = intensity * time;
             }
             else {
-                // converting 0.5->0 to 1->0
-                f32 half_remaining = remaining * 2;
-                y_offset = intensity * half_remaining;
+                f32 time = remaining * 2; // 0.5->0 to 1->0
+
+                y_offset = intensity * time;
             }
 
             GC()->camera.position.y -= y_offset;
@@ -1736,63 +1747,68 @@ void editor_draw_ui(State *state) {
     { // debug info
         ImGui::Begin("Debug info");
 
-        ImGui::SeparatorText("Performance");
+        ImVec2 plot_size = ImVec2(0, 60);
 
-        { // fps sampler info
-            static Sampler rolling_average_sampler = {};
+        if (ImGui::CollapsingHeader("Performance")) {
+            constexpr i32 buffer_size = 32;
+            static char s_overlay_buffer[buffer_size] = {};
 
-            f32 average = sampler_average(&state->fps_sampler);
+            { 
+                ImGui::SeparatorText("Client");
 
-            // overkill? LoL
-            sampler_append(&rolling_average_sampler, average);
-            f32 average_rolling_average = sampler_average(&state->fps_sampler);
+                f32 average = sampler_average(&state->mspt_sampler);
+                MemZero(s_overlay_buffer, buffer_size);
+                sprintf(s_overlay_buffer, "Avg: %0.2f", average);
 
-            ImGui::Text("Avg: %f", average_rolling_average);
-            ImGui::PlotLines("FPS (rolling average)", rolling_average_sampler.samples, SAMPLER_SIZE, 0, NULL, 0.01, FLT_MAX, ImVec2(0, 60));
-        }
+                ImGui::Text("ms/t (target=%dms/t)", GAME_CLIENT_MS_PER_TICK);
+                ImGui::PlotLines("##client_mspt", state->mspt_sampler.samples, SAMPLER_SIZE, 0, s_overlay_buffer, 0.0001, FLT_MAX, plot_size);
+            }
 
-        { // client arena usage sampler info 
-            static f32 plot_data[2] = {};
-            f32 arena_usage = f32(state->arena.end) / f32(state->arena.bytes.len);
-            f32 frame_arena_usage = f32(state->frame_arena.end) / f32(state->frame_arena.bytes.len);
+            if (GC()->mode == GC_HOSTED) {
+                ImGui::SeparatorText("Server");
 
-            plot_data[0] = arena_usage * 100;
-            plot_data[1] = frame_arena_usage * 100;
+                Sampler *sampler = atomic_snapshot_read(&GS()->mspt_sampler_snapshot);
+                f32 average = sampler_average(sampler);
+                MemZero(s_overlay_buffer, buffer_size);
+                sprintf(s_overlay_buffer, "Avg: %0.2f", average);
 
-            ImGui::Text("Client arena usage (arena / frame arena)");
-            ImGui::PlotHistogram("##client_arena", plot_data, 2, 0, NULL, 0, 100, ImVec2(60, 100));
-        }
+                ImGui::Text("ms/t (target=%dms/t)", GAME_SERVER_MS_PER_TICK);
+                ImGui::PlotLines("##server_mspt", sampler->samples, SAMPLER_SIZE, 0, s_overlay_buffer, 0.0001, FLT_MAX, plot_size);
+            }
 
-        ImGui::SeparatorText("Network messages");
+            if (GC()->mode != GC_EDITOR) {
+                ImGui::SeparatorText("Network");
 
-        f32 message_in_MB = f32(sizeof(NetworkMessage)) / (8.0f * 1024.0f);
-     
-        { // client events sampler info
-            f32 average = sampler_average(&state->network_in_sampler);
-            f32 samples_per_second = sampler_samples_per_second(&state->network_in_sampler);
-            f32 messages_per_second = average * samples_per_second;
-            f32 MB_per_second = messages_per_second * message_in_MB;
-     
-            ImGui::Text("Avg: %f", average);
-            ImGui::Text("Samples/s: %f", samples_per_second);
-            ImGui::Text("Messages/s: %f", messages_per_second);
-            ImGui::Text("MB/s: %f", MB_per_second);
-            ImGui::PlotLines("Client", state->network_in_sampler.samples, SAMPLER_SIZE, 0, NULL, FLT_MAX, FLT_MAX, ImVec2(0, 60));
-        }
-     
-        if (g_game_server != NULL) { // server events sampler info
-            Sampler *sampler = atomic_snapshot_read(&server_messages_snapshot);
+                { // mspt
+                    Sampler *sampler = atomic_snapshot_read(&NET()->mspt_sampler_snapshot);
+                    f32 average = sampler_average(sampler);
+                    MemZero(s_overlay_buffer, buffer_size);
+                    sprintf(s_overlay_buffer, "Avg: %0.2f", average);
+    
+                    ImGui::Text("ms/t (target=%dms/t)", NETWORK_MS_PER_TICK);
+                    ImGui::PlotLines("##network_mspt", sampler->samples, SAMPLER_SIZE, 0, s_overlay_buffer, 0.0001, FLT_MAX, plot_size);
+                }
 
-            f32 average = sampler_average(sampler);
-            f32 samples_per_second = sampler_samples_per_second(sampler);
-            f32 messages_per_second = average * samples_per_second;
-            f32 MB_per_second = messages_per_second * message_in_MB;
-     
-            ImGui::Text("Avg: %f", average);
-            ImGui::Text("Samples/s: %f", samples_per_second);
-            ImGui::Text("Messages/s: %f", messages_per_second);
-            ImGui::Text("MB/s: %f", MB_per_second);
-            ImGui::PlotLines("Server", sampler->samples, SAMPLER_SIZE, 0, NULL, FLT_MAX, FLT_MAX, ImVec2(0, 60));
+                { // client in messages
+                    Sampler *sampler = atomic_snapshot_read(&NET()->client_in_messages_sampler_snapshot);
+                    f32 average = sampler_average(sampler);
+                    MemZero(s_overlay_buffer, buffer_size);
+                    sprintf(s_overlay_buffer, "Avg: %0.2f", average);
+    
+                    ImGui::Text("client messages/t");
+                    ImGui::PlotLines("##network_client_in", sampler->samples, SAMPLER_SIZE, 0, s_overlay_buffer, 0.0001, FLT_MAX, plot_size);
+                }
+
+                { // server in messages
+                    Sampler *sampler = atomic_snapshot_read(&NET()->server_in_messages_sampler_snaphot);
+                    f32 average = sampler_average(sampler);
+                    MemZero(s_overlay_buffer, buffer_size);
+                    sprintf(s_overlay_buffer, "Avg: %0.2f", average);
+    
+                    ImGui::Text("server messages/t");
+                    ImGui::PlotLines("##network_server_in", sampler->samples, SAMPLER_SIZE, 0, s_overlay_buffer, 0.0001, FLT_MAX, plot_size);
+                }
+            }
         }
 
         { // main display info
@@ -3260,6 +3276,16 @@ CameraShakeResult camera_shake_is_active(CameraShake *camera_shake) {
     };
 }
 
+f32 tween_ease_out_sin(f32 x) {
+    // https://easings.net/#easeOutSine
+    return sinf((x * HMM_PI32) * 0.5);
+}
+
+f32 tween_ease_in_out_sin(f32 x) {
+    // https://easings.net/#easeInOutSine
+    return -(cosf(HMM_PI32 * x) - 1) * 0.5f;
+}
+
 void run_tests() {
 #if 0
     Assert(1 >= 1000);
@@ -3290,6 +3316,13 @@ void run_tests() {
     for (i32 n : a) {
         Logf("{}", n);
     }
+
+    Logf("{} {} {} {}", 
+         tween_ease_out_sin(0.0f),
+         tween_ease_out_sin(0.25f),
+         tween_ease_out_sin(0.5f),
+         tween_ease_out_sin(1.0f)
+    );
 }
 
 template<>
