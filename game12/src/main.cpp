@@ -14,7 +14,7 @@
 #include <chrono>
 #include <atomic>
 
-// Total: 105:30
+// Total: 106:30
 // Started: 10:30
 //
 // What do a programmer do?:
@@ -133,6 +133,12 @@ bool g_player_hit_headshot = false;     // used for hitmarker
 
 f32 g_landing_camera_shake_duration = 0.15f;
 f32 g_landing_camera_shake_intensity = 0.2f;
+
+i32 g_health_bar_notch_count    = 10;
+f32 g_health_bar_notch_width    = 0.2f;
+f32 g_health_bar_notch_height   = 0.3f;
+f32 g_health_bar_notch_gap      = 0.05f;
+v3 g_health_bar_offset          = v3{0, 1.5, 0};
 
 enum MeshHandle : u32 {
     MH_NONE,
@@ -1523,6 +1529,34 @@ void game_client_draw(State *state) {
             if (BitSet(entity.flags, EF_DEAD)) {
                 draw_colour = mix(draw_colour, RED, 0.65);
             }
+
+            { // health bar
+                f32 total_health_bar_width = 0;
+                total_health_bar_width += f32(g_health_bar_notch_count) * g_health_bar_notch_width;
+                total_health_bar_width += f32(g_health_bar_notch_count - 1) * g_health_bar_notch_gap;
+
+                f32 health_scale = entity.health / entity.max_health;
+                i32 current_health_notch = i32(f32(g_health_bar_notch_count * health_scale));
+
+                for (i32 i = 0; i < g_health_bar_notch_count; i++) {
+                    v3 notch_offset = {};                                   // offset from health bar centre to notch centre
+                    notch_offset.x += f32(i) * g_health_bar_notch_width;    // shift by its width
+                    notch_offset.x += f32(i) * g_health_bar_notch_gap;      // shift by the gap
+                    notch_offset.x += g_health_bar_notch_width * 0.5;       // because drawing is from centre, shoft over by half width so it is totally in the bar width
+                    notch_offset.x -= total_health_bar_width * 0.5;         // shift total bar width so all notches are centred on the bar offset
+                   
+                    v4 notch_colour = brightness(RED, 0.8);
+                    if (i > current_health_notch) {
+                        notch_colour = brightness(RED, 0.4);
+                    }
+
+                    draw_quad(REN(), entity.position + g_health_bar_offset + notch_offset, {g_health_bar_notch_width, g_health_bar_notch_height}, {}, notch_colour);
+                }
+
+
+                // draw_quad(REN(), centre, {max_width * health_scale, height}, {}, brightness(RED, 0.8));
+                // draw_quad(REN(), centre, {max_width, height}, {}, brightness(RED, 0.4));
+            }
         }
 
         // pickups 
@@ -1727,31 +1761,48 @@ void editor_draw_ui(State *state) {
     // https://github.com/epezent/implot/blob/master/implot_demo.cpp
     // ImPlot::ShowDemoWindow();
 
-    if (false) {
-        ImGui::Begin("Scoreboard style");
+    if (true) {
+        ImGui::Begin("Style");
 
-        ImGui::PushID("timer_style");
+        { // timer card
+            ImGui::PushID("timer_style");
+    
+            ImGui::SeparatorText("Timer");
+            imgui_colour_control("Background", &UI_TIME_BACKGROUND_COLOUR);
+            ImGui::SliderFloat("Font size", &UI_TIME_FONT_SIZE, 1, 60);
+            ImGui::SliderFloat("Y padding", &UI_TIME_Y_PADDING, 1, 60);
+            ImGui::SliderFloat("Width", &UI_TIME_BG_WIDTH, 1, 200);
+    
+            ImGui::PopID();
+        }
 
-        ImGui::SeparatorText("Timer");
-        imgui_colour_control("Background", &UI_TIME_BACKGROUND_COLOUR);
-        ImGui::SliderFloat("Font size", &UI_TIME_FONT_SIZE, 1, 60);
-        ImGui::SliderFloat("Y padding", &UI_TIME_Y_PADDING, 1, 60);
-        ImGui::SliderFloat("Width", &UI_TIME_BG_WIDTH, 1, 200);
+        { // score card
+            ImGui::PushID("score_style");
+    
+            ImGui::SeparatorText("Score");
+            imgui_colour_control("Background", &UI_SCORE_BACKGROUND_COLOUR);
+            ImGui::SliderFloat("Font size", &UI_SCORE_FONT_SIZE, 1, 60);
+            ImGui::SliderFloat("Y padding", &UI_SCORE_Y_PADDING, 1, 60);
+            ImGui::SliderFloat("X offset", &UI_SCORE_START_X_OFFSET, 1, 150);
+            ImGui::SliderFloat("Y offset", &UI_SCORE_START_Y_OFFSET, -50, 50);
+            ImGui::SliderFloat("Gap", &UI_SCORE_GAP, 1, 100);
+            ImGui::SliderFloat("Width", &UI_SCORE_BG_WIDTH, 1, 200);
+    
+            ImGui::PopID();
+        }
 
-        ImGui::PopID();
-
-        ImGui::PushID("score_style");
-
-        ImGui::SeparatorText("Score");
-        imgui_colour_control("Background", &UI_SCORE_BACKGROUND_COLOUR);
-        ImGui::SliderFloat("Font size", &UI_SCORE_FONT_SIZE, 1, 60);
-        ImGui::SliderFloat("Y padding", &UI_SCORE_Y_PADDING, 1, 60);
-        ImGui::SliderFloat("X offset", &UI_SCORE_START_X_OFFSET, 1, 150);
-        ImGui::SliderFloat("Y offset", &UI_SCORE_START_Y_OFFSET, -50, 50);
-        ImGui::SliderFloat("Gap", &UI_SCORE_GAP, 1, 100);
-        ImGui::SliderFloat("Width", &UI_SCORE_BG_WIDTH, 1, 200);
-
-        ImGui::PopID();
+        { // health bars
+            ImGui::PushID("health_bar_style");
+    
+            ImGui::SeparatorText("Health bars");
+            ImGui::SliderInt("Notch count", &g_health_bar_notch_count, 1, 100);
+            ImGui::SliderFloat("Notch width", &g_health_bar_notch_width, 0, 2);
+            ImGui::SliderFloat("Notch height", &g_health_bar_notch_height, 0, 2);
+            ImGui::SliderFloat("Notch gap", &g_health_bar_notch_gap, 0, 2);
+            imgui_v3_control("Offset", &g_health_bar_offset);
+    
+            ImGui::PopID();
+        }
 
         ImGui::End();
     }
