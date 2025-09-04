@@ -14,8 +14,8 @@
 #include <chrono>
 #include <atomic>
 
-// Total: 106:30
-// Started: 10:30
+// Total: 111:00
+// Started: 14:00
 //
 // What do a programmer do?:
 // Game:
@@ -134,11 +134,20 @@ bool g_player_hit_headshot = false;     // used for hitmarker
 f32 g_landing_camera_shake_duration = 0.15f;
 f32 g_landing_camera_shake_intensity = 0.2f;
 
-i32 g_health_bar_notch_count    = 10;
-f32 g_health_bar_notch_width    = 0.2f;
-f32 g_health_bar_notch_height   = 0.3f;
-f32 g_health_bar_notch_gap      = 0.05f;
 v3 g_health_bar_offset          = v3{0, 1.5, 0};
+v4 g_health_bar_fg_colour       = v4 {0.877637, 0.322171, 0.322171, 1.000000};
+v4 g_health_bar_bg_colour       = v4 {0.894515, 0.894515, 0.894515, 1.000000};
+f32 g_health_bar_max_magnify_factor = 3;
+f32 g_health_bar_max_magnify_distance = 70;
+i32 g_health_bar_notch_count    = 30;
+f32 g_health_bar_notch_width    = 0.08f;
+f32 g_health_bar_notch_height   = 0.3f;
+f32 g_health_bar_notch_gap      = 0.0f;
+f32 g_health_bar_notch_disabled_height_factor  = 0.8f;
+f32 g_health_bar_notch_active_max_height_factor  = 1.6f;
+f32 g_health_bar_notch_active_max_width_factor  = 1.6f;
+
+f32 g_temp_health_bar_rotation = 0;
 
 enum MeshHandle : u32 {
     MH_NONE,
@@ -209,11 +218,11 @@ Weapon g_weapons[_WH_COUNT] = {
         .handle = WH_M4,
         .display_name = "M4",
         .colour = v4 {0.2, 0.2, 0.2, 1},
-        .damage = 8,
-        .headshot_damage = 20,
+        .damage = 5,
+        .headshot_damage = 15,
         .ammo_count = 35,
         .automatic = true,
-        .firing_cooldown = 0.10,
+        .firing_cooldown = 0.1,
         .mesh = MH_M4,
         .firing_sound = SH_FIRE_SILENCED_GUN_HIGH,
         .recoil_offset = v3{0, -0.01, -0.15},
@@ -1508,10 +1517,12 @@ void game_client_draw(State *state) {
             { // draw ammo
                 draw_text_ui(REN(), fmt(&state->frame_arena, "{}:  {}", player_weapon->display_name, state->player_ammo), {7, 10, 0}, 30, alpha(BLACK, 0.4), false);
             }
+
+            continue;
         }
 
         // every other player
-        if (BitSet(entity.flags, EF_PLAYER) && entity.owner != state->instance_id) {
+        if (BitSet(entity.flags, EF_PLAYER)) {
             { // draw head
                 // want to draw a second cube where the head will be, centre of this cube is eye position
                 f32 eyes_to_top = (g_player_height * 0.5)  - g_player_eyes_offset;
@@ -1531,31 +1542,115 @@ void game_client_draw(State *state) {
             }
 
             { // health bar
-                f32 total_health_bar_width = 0;
-                total_health_bar_width += f32(g_health_bar_notch_count) * g_health_bar_notch_width;
-                total_health_bar_width += f32(g_health_bar_notch_count - 1) * g_health_bar_notch_gap;
+                // TODO: move this out
+                static auto rotate_position = [](v2 position, v2 centre, f32 degrees) {
+                    f32 radians = HMM_DegToRad * degrees;
+                    v2 local_position = position - centre;
+        
+                    v2 local_rotated_position = v2 {
+                        (local_position.x * cosf(radians)) - (local_position.y * sinf(radians)),
+                        (local_position.x * sinf(radians)) + (local_position.y * cosf(radians)),
+                    };
+        
+                    v2 rotated_position = local_rotated_position + centre;
+        
+                    return rotated_position;
+                };
 
-                f32 health_scale = entity.health / entity.max_health;
-                i32 current_health_notch = i32(f32(g_health_bar_notch_count * health_scale));
+                v3 health_bar_centre = entity.position + g_health_bar_offset;
+                v3 camera_direction = GC()->camera.position - health_bar_centre;
+                v3 camera_direction_n = norm(camera_direction);
+
+                f32 pitch = camera_direction_n.y;
+                f32 yaw = camera_direction_n.x;
+                v3 notch_rotation = v3{pitch * -90.0f, 0, 0};
+
+                if (camera_direction_n.z <= 0) {
+                    notch_rotation.y = yaw * 90.0f;
+                }
+                else {
+                    notch_rotation.y = (sign(yaw) * 180) - (yaw * 90);
+                }
+
+                f32 camera_distance = length(camera_direction);
+                camera_distance = clamp(0.1, camera_distance, g_health_bar_max_magnify_distance);
+                f32 magnification_factor = max(1, (camera_distance / g_health_bar_max_magnify_distance) * g_health_bar_max_magnify_factor);
+
+                f32 notch_width     = g_health_bar_notch_width * magnification_factor;
+                f32 notch_height    = g_health_bar_notch_height * magnification_factor;
+                f32 notch_gap       = g_health_bar_notch_gap * magnification_factor;
+
+                f32 total_health_bar_width = 0;
+                total_health_bar_width += f32(g_health_bar_notch_count) * notch_width;
+                total_health_bar_width += f32(g_health_bar_notch_count - 1) * notch_gap;
+
+                f32 health = entity.health;
+                f32 max_health = entity.max_health;
+                f32 health_per_notch = max_health / f32(g_health_bar_notch_count);
+
+                i32 active_notch_index = 0;
+
+                // first find which notch is "active" i.e. not either fully enabled or disabled
+                for (i32 i = 0; i < g_health_bar_notch_count; i++) {
+                    f32 notch_health_begin = f32(i) * health_per_notch;
+                    f32 notch_health_end = f32(i + 1) * health_per_notch;
+
+                    if (health <= 0) {
+                        active_notch_index = -1;
+                        break;
+                    }
+
+                    if (health <= notch_health_end && health >= notch_health_begin) {
+                        active_notch_index = i;
+                        break;
+                    }
+                }
 
                 for (i32 i = 0; i < g_health_bar_notch_count; i++) {
                     v3 notch_offset = {};                                   // offset from health bar centre to notch centre
-                    notch_offset.x += f32(i) * g_health_bar_notch_width;    // shift by its width
-                    notch_offset.x += f32(i) * g_health_bar_notch_gap;      // shift by the gap
-                    notch_offset.x += g_health_bar_notch_width * 0.5;       // because drawing is from centre, shoft over by half width so it is totally in the bar width
+                    notch_offset.x += f32(i) * notch_width;                 // shift by its width
+                    notch_offset.x += f32(i) * notch_gap;                   // shift by the gap
+                    notch_offset.x += notch_width * 0.5;                    // because drawing is from centre, shoft over by half width so it is totally in the bar width
                     notch_offset.x -= total_health_bar_width * 0.5;         // shift total bar width so all notches are centred on the bar offset
-                   
-                    v4 notch_colour = brightness(RED, 0.8);
-                    if (i > current_health_notch) {
-                        notch_colour = brightness(RED, 0.4);
+                  
+                    f32 notch_health_begin = f32(i) * health_per_notch;
+                    f32 notch_health_end = f32(i + 1) * health_per_notch;
+
+                    v4 notch_colour = {};
+                    f32 notch_height_factor = 0;
+                    f32 notch_width_factor = 0;
+
+                    if (i > active_notch_index) {
+                        notch_colour = g_health_bar_bg_colour;
+                        notch_height_factor = g_health_bar_notch_disabled_height_factor;
+                        notch_width_factor = 1;
+                    }
+                    else if (i < active_notch_index) {
+                        notch_colour = g_health_bar_fg_colour;
+                        notch_height_factor = 1;
+                        notch_width_factor = 1;
+                    }
+                    else {
+                        // 0->1, ~0 low health left in notch, ~1 notch is about full health
+                        f32 remaining_in_notch = (health - notch_health_begin) / health_per_notch;
+                        
+                        notch_colour = mix(g_health_bar_bg_colour, g_health_bar_fg_colour, max(0.7, remaining_in_notch));
+                        // notch_colour = mix(g_health_bar_bg_colour, g_health_bar_fg_colour, 0.8);
+
+                        notch_height_factor = 1 + ((g_health_bar_notch_active_max_height_factor - 1) * (1 - remaining_in_notch));
+                        notch_width_factor = 1 + ((g_health_bar_notch_active_max_width_factor - 1) * (1 - remaining_in_notch));
+                        // notch_height_factor = g_health_bar_notch_active_max_height_factor;
+                        // notch_width_factor = g_health_bar_notch_active_max_width_factor;
                     }
 
-                    draw_quad(REN(), entity.position + g_health_bar_offset + notch_offset, {g_health_bar_notch_width, g_health_bar_notch_height}, {}, notch_colour);
+                    v3 notch_position = health_bar_centre + notch_offset;
+
+                    v2 rotated = rotate_position(v2{notch_position.x, notch_position.z}, v2{health_bar_centre.x, health_bar_centre.z}, notch_rotation.y);
+                    notch_position.x = rotated.x;
+                    notch_position.z = rotated.y;
+
+                    draw_mesh(REN(), REN()->quad_primitive, notch_position, {notch_width * notch_width_factor, notch_height * notch_height_factor}, notch_rotation, notch_colour);
                 }
-
-
-                // draw_quad(REN(), centre, {max_width * health_scale, height}, {}, brightness(RED, 0.8));
-                // draw_quad(REN(), centre, {max_width, height}, {}, brightness(RED, 0.4));
             }
         }
 
@@ -1795,11 +1890,47 @@ void editor_draw_ui(State *state) {
             ImGui::PushID("health_bar_style");
     
             ImGui::SeparatorText("Health bars");
+
+            if (ImGui::Button("Big")) {
+                g_health_bar_notch_count = 4;
+                g_health_bar_notch_width = 0.6;
+                g_health_bar_notch_active_max_height_factor = 1.8;
+            }
+
+            if (ImGui::Button("Bedium")) {
+                g_health_bar_notch_count = 6;
+                g_health_bar_notch_width = 0.4;
+                g_health_bar_notch_active_max_height_factor = 1.8;
+                g_health_bar_notch_active_max_width_factor = 1.8;
+            }
+
+            if (ImGui::Button("Medium")) {
+                g_health_bar_notch_count = 10;
+                g_health_bar_notch_width = 0.25;
+                g_health_bar_notch_active_max_height_factor = 1.6;
+            }
+
+            if (ImGui::Button("Small")) {
+                g_health_bar_notch_count = 30;
+                g_health_bar_notch_width = 0.08;
+                g_health_bar_notch_active_max_height_factor = 1.6;
+            }
+
+            imgui_v3_control("Offset", &g_health_bar_offset);
+            imgui_colour_control("Foreground colour", &g_health_bar_fg_colour);
+            imgui_colour_control("Background colour", &g_health_bar_bg_colour);
+            ImGui::SliderFloat("Max magnification", &g_health_bar_max_magnify_factor, 1, 10);
+            ImGui::SliderFloat("Max magnification distance", &g_health_bar_max_magnify_distance, 1, 100);
+
             ImGui::SliderInt("Notch count", &g_health_bar_notch_count, 1, 100);
             ImGui::SliderFloat("Notch width", &g_health_bar_notch_width, 0, 2);
             ImGui::SliderFloat("Notch height", &g_health_bar_notch_height, 0, 2);
             ImGui::SliderFloat("Notch gap", &g_health_bar_notch_gap, 0, 2);
-            imgui_v3_control("Offset", &g_health_bar_offset);
+            ImGui::SliderFloat("Notch disabled height factor", &g_health_bar_notch_disabled_height_factor, 0, 1);
+            ImGui::SliderFloat("Notch active max height factor", &g_health_bar_notch_active_max_height_factor, 1, 2);
+            ImGui::SliderFloat("Notch active max width factor", &g_health_bar_notch_active_max_width_factor, 1, 2);
+
+            ImGui::SliderFloat("bar rotation", &g_temp_health_bar_rotation, -180, 180);
     
             ImGui::PopID();
         }
