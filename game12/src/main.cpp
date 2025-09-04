@@ -15,23 +15,16 @@
 #include <atomic>
 
 // Total: 105:30
-// Started: 10:00
+// Started: 10:30
 //
 // What do a programmer do?:
 // Game:
 // - improve game feel:
-//      - Progress
-//          - better hit sounds
-//          - player movement sounds
-//          - camera shake on player landing
-//          - hitmarker feedback on crosshair (kinda)
-//          - more weapon models and sounds
-//          - better recoil
-//          - better control of timings so networking is more consistant and game is smoother overall
-//      - TODO / consider
-//          - longer press higher jump
-//          - health bars
-//          - better hitmarker feedback
+//      - make getting kills more fun
+//          - sound on kill
+//      - longer press higher jump
+//      - health bars
+//      - better hitmarker feedback
 // - game complete screen
 // - pickup more then one gun
 // - ammo pickup
@@ -1218,7 +1211,7 @@ void game_client_update(State *state) {
     // check player input
     if (GC()->viewport.focused) {
         if (WIN()->mouse_captured) {
-            f32 sensitivity = 2;
+            f32 sensitivity = 3;
             v2 mouse_input = MOUSE.delta;
     
             // camera control
