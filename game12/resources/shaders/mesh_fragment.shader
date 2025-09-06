@@ -13,7 +13,12 @@ uniform vec4 colour;
 uniform sampler2D albedo;
 
 void main() {
+    vec4 albedo_sample = texture(albedo, uv);
+    if (albedo_sample.a == 0) {
+        discard;
+    }
+
     g_position = vec4(fragment_position, 1);
-    g_albedo = texture(albedo, uv) * colour;
+    g_albedo = albedo_sample * colour;
     g_normal = vec4(normal, 1);
 } 

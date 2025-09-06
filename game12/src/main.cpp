@@ -15,7 +15,7 @@
 #include <chrono>
 #include <atomic>
 
-// Total: 117:00
+// Total: 118:00
 // Started: 15:30
 //
 // What do a programmer do?:
@@ -125,7 +125,8 @@ f32 EXPLOSION_DAMAGE        = 200;
 f32 JUMP_PAD_COOLDOWN       = 1;
 f32 JUMP_PAD_ACCELERATION   = 55;
 
-bool DEBUG_DRAW_OWNER       = false;
+bool g_debug_draw_owner                 = false;
+bool g_debug_always_draw_muzzle_flash   = false;
 
 bool g_cheat_weapon_binds     = true;
 bool g_cheat_infinite_ammo    = true;
@@ -134,7 +135,7 @@ bool g_cheat_no_damage        = false;
 f32 g_game_length = Minute(5);
 // f32 g_game_length = Second(10);
 
-bool g_dual_wield_recoil_switch = true; // used for dual wield switching of recoil
+bool g_dual_wield_recoil_switch = true;
 
 f32 g_landing_camera_shake_duration = 0.15f;
 f32 g_landing_camera_shake_intensity = 0.2f;
@@ -160,6 +161,14 @@ v4 g_clear_colour = v4 {0.398013, 0.481982, 0.582278, 1.000000};
 v3 g_ambient_light_colour = v3 {0.304082, 0.304082, 0.590717};
 v3 g_sun_colour = v3 {0.696203, 0.489398, 0.179191};
 v3 g_shadow_colour = BLACK.rgb;
+
+enum MaterialHandle : u32 {
+    MAT_NONE,
+    MAT_MUZZLE_FLASH,
+    _MAT_COUNT
+};
+
+Material *g_materials[_MAT_COUNT] = {};
 
 enum MeshHandle : u32 {
     MH_NONE,
@@ -202,12 +211,14 @@ struct Weapon {
     v4 colour;
     f32 damage;
     f32 headshot_damage;
-    i64 ammo_count;
+    i32 ammo_count;
     bool automatic;
     f32 firing_cooldown;
     MeshHandle mesh; 
     SoundHandle firing_sound;
     v3 recoil_offset;
+    f32 muzzle_flash_size;
+    v3 muzzle_flash_offset;
     f32 speed_factor;
 };
 
@@ -224,6 +235,8 @@ Weapon g_weapons[_WH_COUNT] = {
         .mesh = MH_DEAGLE,
         .firing_sound = SH_FIRE_DEAGLE,
         .recoil_offset = v3{0, -0.08, -0.4},
+        .muzzle_flash_size = 0.4f,
+        .muzzle_flash_offset = v3{0, 0.17, 0.46},
         .speed_factor = 0.8,
     },
     Weapon {
@@ -238,6 +251,8 @@ Weapon g_weapons[_WH_COUNT] = {
         .mesh = MH_M4,
         .firing_sound = SH_FIRE_SILENCED_GUN_HIGH,
         .recoil_offset = v3{0, -0.01, -0.15},
+        .muzzle_flash_size = 0.2f,
+        .muzzle_flash_offset = v3{-0.01f, 0.21f, 1.4f},
         .speed_factor = 0.7,
     },
     Weapon {
@@ -252,6 +267,8 @@ Weapon g_weapons[_WH_COUNT] = {
         .mesh = MH_DEAGLE,
         .firing_sound = SH_FIRE_DEAGLE,
         .recoil_offset = v3{0, -0.08, -0.4},
+        .muzzle_flash_size = 0.3f,
+        .muzzle_flash_offset = v3{0, 0, 0},
         .speed_factor = 0.5,
     },
     Weapon {
@@ -266,6 +283,8 @@ Weapon g_weapons[_WH_COUNT] = {
         .mesh = MH_DEAGLE,
         .firing_sound = SH_FIRE_DEAGLE,
         .recoil_offset = v3{0, -0.08, -0.4},
+        .muzzle_flash_size = 0.3f,
+        .muzzle_flash_offset = v3{0, 0, 0},
         .speed_factor = 1,
     }
 };
@@ -710,21 +729,26 @@ void game_client_entry() {
         }
 
         ok = renderer_init(WIN(), g_clear_colour, g_ambient_light_colour, g_sun_colour, v3{50, 100, -100}, g_shadow_colour);
-        Assert(ok);
-
         if (!ok) {
             Log("Failed when trying to init the renderer");
             return;
         }
 
-        g_meshes[MH_DEAGLE] = mesh_create_from_file(REN(), "resources/models/deagle/deagle.obj");
-        Assert(g_meshes[MH_DEAGLE]);
+        { // load meshes
+            g_meshes[MH_DEAGLE] = mesh_create_from_file(REN(), "resources/models/deagle/deagle.obj");
+            Assert(g_meshes[MH_DEAGLE]);
+    
+            g_meshes[MH_M4] = mesh_create_from_file(REN(), "resources/models/m4/m4.obj");
+            Assert(g_meshes[MH_M4]);
+    
+            g_meshes[MH_CROSS] = mesh_create_from_file(REN(), "resources/models/cross/cross.obj");
+            Assert(g_meshes[MH_CROSS]);
+        }
 
-        g_meshes[MH_M4] = mesh_create_from_file(REN(), "resources/models/m4/m4.obj");
-        Assert(g_meshes[MH_M4]);
-
-        g_meshes[MH_CROSS] = mesh_create_from_file(REN(), "resources/models/cross/cross.obj");
-        Assert(g_meshes[MH_CROSS]);
+        { // load materials
+            g_materials[MAT_MUZZLE_FLASH] = material_create(REN(), render_texture_create_from_file(REN(), "resources/textures/muzzle_flash/muzzle_flash.png"));
+            Assert(g_materials[MAT_MUZZLE_FLASH]);
+        }
 
         ok = sound_engine_init();
         Assert(ok);
@@ -734,35 +758,37 @@ void game_client_entry() {
             return;
         }
 
-        g_sounds[SH_FIRE_DEAGLE] = sound_engine_load(SE(), "resources/sounds/deagle_fire.wav");
-        Assert(g_sounds[SH_FIRE_DEAGLE]);
-
-        g_sounds[SH_FIRE_SILENCED_GUN_HIGH] = sound_engine_load(SE(), "resources/sounds/silenced_gun_high.wav");
-        Assert(g_sounds[SH_FIRE_SILENCED_GUN_HIGH]);
-
-        g_sounds[SH_FIRE_SILENCED_GUN_MID] = sound_engine_load(SE(), "resources/sounds/silenced_gun_mid.wav");
-        Assert(g_sounds[SH_FIRE_SILENCED_GUN_MID]);
-
-        g_sounds[SH_FIRE_SILENCED_GUN_LOW] = sound_engine_load(SE(), "resources/sounds/silenced_gun_low.wav");
-        Assert(g_sounds[SH_FIRE_SILENCED_GUN_LOW]);
-
-        g_sounds[SH_TARGET_HIT] = sound_engine_load(SE(), "resources/sounds/target_hit.wav");
-        Assert(g_sounds[SH_TARGET_HIT]);
-
-        g_sounds[SH_HEADSHOT_HIT] = sound_engine_load(SE(), "resources/sounds/headshot_hit.wav");
-        Assert(g_sounds[SH_HEADSHOT_HIT]);
-
-        g_sounds[SH_JUMP] = sound_engine_load(SE(), "resources/sounds/jump.wav");
-        Assert(g_sounds[SH_JUMP]);
-
-        g_sounds[SH_STEP_1] = sound_engine_load(SE(), "resources/sounds/step_1.wav");
-        Assert(g_sounds[SH_STEP_1]);
-
-        g_sounds[SH_STEP_2] = sound_engine_load(SE(), "resources/sounds/step_2.wav", 5);
-        Assert(g_sounds[SH_STEP_2]);
-
-        g_sounds[SH_STEP_3] = sound_engine_load(SE(), "resources/sounds/step_3.wav");
-        Assert(g_sounds[SH_STEP_3]);
+        { // load sounds
+            g_sounds[SH_FIRE_DEAGLE] = sound_engine_load(SE(), "resources/sounds/deagle_fire.wav");
+            Assert(g_sounds[SH_FIRE_DEAGLE]);
+    
+            g_sounds[SH_FIRE_SILENCED_GUN_HIGH] = sound_engine_load(SE(), "resources/sounds/silenced_gun_high.wav");
+            Assert(g_sounds[SH_FIRE_SILENCED_GUN_HIGH]);
+    
+            g_sounds[SH_FIRE_SILENCED_GUN_MID] = sound_engine_load(SE(), "resources/sounds/silenced_gun_mid.wav");
+            Assert(g_sounds[SH_FIRE_SILENCED_GUN_MID]);
+    
+            g_sounds[SH_FIRE_SILENCED_GUN_LOW] = sound_engine_load(SE(), "resources/sounds/silenced_gun_low.wav");
+            Assert(g_sounds[SH_FIRE_SILENCED_GUN_LOW]);
+    
+            g_sounds[SH_TARGET_HIT] = sound_engine_load(SE(), "resources/sounds/target_hit.wav");
+            Assert(g_sounds[SH_TARGET_HIT]);
+    
+            g_sounds[SH_HEADSHOT_HIT] = sound_engine_load(SE(), "resources/sounds/headshot_hit.wav");
+            Assert(g_sounds[SH_HEADSHOT_HIT]);
+    
+            g_sounds[SH_JUMP] = sound_engine_load(SE(), "resources/sounds/jump.wav");
+            Assert(g_sounds[SH_JUMP]);
+    
+            g_sounds[SH_STEP_1] = sound_engine_load(SE(), "resources/sounds/step_1.wav");
+            Assert(g_sounds[SH_STEP_1]);
+    
+            g_sounds[SH_STEP_2] = sound_engine_load(SE(), "resources/sounds/step_2.wav", 5);
+            Assert(g_sounds[SH_STEP_2]);
+    
+            g_sounds[SH_STEP_3] = sound_engine_load(SE(), "resources/sounds/step_3.wav");
+            Assert(g_sounds[SH_STEP_3]);
+        }
     }
 
     g_game_client = new GameClient {
@@ -1464,22 +1490,11 @@ void game_client_draw(GameClient *client, State *state) {
 
             { // draw weapon
                 if (player_weapon->handle == WH_PAL) {
-                    static bool side = false;
-
                     draw_player_weapon(state, player_weapon, g_weapon_display_offset, g_dual_wield_recoil_switch);
                     draw_player_weapon(state, player_weapon, g_weapon_display_offset * v3{-1, 1, 1}, !g_dual_wield_recoil_switch);
                 }
                 else {
                     draw_player_weapon(state, player_weapon, g_weapon_display_offset, true);
-                }
-            }
-
-            { // draw muzzle flash
-                v3 light_position = client->camera.position + get_forward_direction(&client->camera);
-
-                TimedEffectState muzzle_flash = timed_effect_state(&client->muzzle_flash);
-                if (muzzle_flash.active) {
-                    draw_point_light(REN(), light_position, g_muzzle_flash_distance, g_muzzle_flash_colour);
                 }
             }
 
@@ -1547,7 +1562,7 @@ void game_client_draw(GameClient *client, State *state) {
                 // add a little extra to stop z fighting
                 head_size += v3{0.01, 0.01, 0.01};
     
-                draw_cube(REN(), entity.position + v3{0, g_player_eyes_offset, 0}, head_size, entity.rotation, BEIGE);
+                draw_cube(REN(), entity.position + v3{0, g_player_eyes_offset, 0}, head_size, entity.rotation, BEIGE, REN()->default_material);
             }
         }
 
@@ -1665,7 +1680,7 @@ void game_client_draw(GameClient *client, State *state) {
                     notch_position.x = rotated.x;
                     notch_position.z = rotated.y;
 
-                    draw_quad(REN(), notch_position, {notch_width * notch_width_factor, notch_height * notch_height_factor}, notch_rotation, notch_colour);
+                    draw_quad(REN(), notch_position, {notch_width * notch_width_factor, notch_height * notch_height_factor}, notch_rotation, notch_colour, REN()->default_material);
                 }
             }
         }
@@ -1708,7 +1723,7 @@ void game_client_draw(GameClient *client, State *state) {
                 default: Assertf(false, "Did you add a new pickup type?");
             }
 
-            draw_mesh(REN(), mesh, pickup_position, pickup_size, pickup_rotation, pickup_colour);
+            draw_mesh(REN(), mesh, pickup_position, pickup_size, pickup_rotation, pickup_colour, REN()->default_material);
         }
 
         if (BitSet(entity.flags, EF_MISSLE)) {
@@ -1722,7 +1737,7 @@ void game_client_draw(GameClient *client, State *state) {
                 v3 trail_offset = trail_direction * trail_gap * t;
                 v4 trail_colour = mix(RED, SUN_YELLOW, t);
 
-                draw_sphere(REN(), entity.position + trail_offset, trail_radius * (1.0f - t), trail_colour);
+                draw_sphere(REN(), entity.position + trail_offset, trail_radius * (1.0f - t), trail_colour, REN()->default_material);
             }
         }
 
@@ -1730,7 +1745,7 @@ void game_client_draw(GameClient *client, State *state) {
             draw_colour = RED;
         }
 
-        if (DEBUG_DRAW_OWNER) {
+        if (g_debug_draw_owner) {
             if (entity.owner == LEVEL_INSTANCE_ID) {
                 draw_colour = GREEN;
             }
@@ -1742,7 +1757,7 @@ void game_client_draw(GameClient *client, State *state) {
             }
         }
 
-        draw_cube(REN(), entity.position, entity.size, entity.rotation, draw_colour);
+        draw_cube(REN(), entity.position, entity.size, entity.rotation, draw_colour, REN()->default_material);
     }
 }
 
@@ -2133,7 +2148,6 @@ void editor_draw_ui(State *state) {
         }
 
         if (ImGui::CollapsingHeader("Renderer")) {
-            ImGui::Checkbox("Draw network owner", &DEBUG_DRAW_OWNER);
             imgui_colour_control("Clear colour", &REN()->clear_colour);
             imgui_colour_control("Ambient light", &REN()->ambient_light);
             imgui_colour_control("Sun colour", &REN()->sun_colour);
@@ -2175,6 +2189,31 @@ void editor_draw_ui(State *state) {
             ImGui::SliderFloat("Length", &g_crosshair_length, 0, 20);
             ImGui::SliderFloat("Thickness", &g_crosshair_thickness, 0, 20);
             ImGui::ColorEdit4("Colour", &g_crosshair_colour[0]);
+        }
+
+        if (ImGui::CollapsingHeader("Weapons")) {
+            for (i32 i = 0; i < _WH_COUNT; i++) {
+                Weapon *weapon = &g_weapons[(WeaponHandle) i];
+                if (ImGui::CollapsingHeader(weapon->display_name.c())) {
+                    ImGui::Text("Name: %s", weapon->display_name.c());
+                    imgui_colour_control("Colour", &weapon->colour);
+                    ImGui::InputFloat("Damage", &weapon->damage);
+                    ImGui::InputFloat("Headshot Damage", &weapon->headshot_damage);
+                    ImGui::InputInt("Ammo", &weapon->ammo_count);
+                    ImGui::Checkbox("Automatic", &weapon->automatic);
+                    ImGui::Text("TODO: mesh");
+                    ImGui::Text("TODO: sound");
+                    imgui_v3_control("Recoil offset", &weapon->recoil_offset);
+                    ImGui::DragFloat("Muzzle flash size", &weapon->muzzle_flash_size, 0, 1, 0.01);
+                    imgui_v3_control("Muzzle flash offset", &weapon->muzzle_flash_offset, 0.01);
+                    ImGui::InputFloat("Speed factor", &weapon->speed_factor);
+                }
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Debug")) {
+            ImGui::Checkbox("Draw network owner", &g_debug_draw_owner);
+            ImGui::Checkbox("Always draw muzzle flash", &g_debug_always_draw_muzzle_flash);
         }
 
         ImGui::End();
@@ -3349,7 +3388,27 @@ void draw_player_weapon(State *state, Weapon *weapon, v3 display_offset, bool sh
     weapon_position += GC()->camera.position;
     v3 weapon_rotation = v3{GC()->camera.rotation.x, -GC()->camera.rotation.y, 0};
 
-    draw_mesh(REN(), g_meshes[weapon->mesh], weapon_position, {1, 1, 1}, weapon_rotation, weapon->colour);
+    draw_mesh(REN(), g_meshes[weapon->mesh], weapon_position, {1, 1, 1}, weapon_rotation, weapon->colour, REN()->default_material);
+
+
+    { // draw muzzle flash
+        v3 light_position = GC()->camera.position + forward;
+
+        TimedEffectState muzzle_flash = timed_effect_state(&GC()->muzzle_flash);
+        if (muzzle_flash.active) {
+            draw_point_light(REN(), light_position, g_muzzle_flash_distance, g_muzzle_flash_colour);
+        }
+
+        if (muzzle_flash.active || g_debug_always_draw_muzzle_flash) {
+            v3 muzzle_flash_position = v3{};
+            muzzle_flash_position += weapon_position;
+            muzzle_flash_position += weapon->muzzle_flash_offset.x * right;
+            muzzle_flash_position += weapon->muzzle_flash_offset.y * up;
+            muzzle_flash_position += weapon->muzzle_flash_offset .z * forward;
+
+            draw_quad(REN(), muzzle_flash_position, {weapon->muzzle_flash_size, weapon->muzzle_flash_size}, {}, WHITE, g_materials[MAT_MUZZLE_FLASH]);
+        }
+    }
 }
 
 Weapon *get_player_weapon(State *state) {

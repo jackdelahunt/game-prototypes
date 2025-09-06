@@ -619,11 +619,11 @@ void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_ani
 void push_screen_quad(Renderer *renderer, v4 color);
 
 // Drawing API
-void draw_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour);
-void draw_line(Renderer *renderer, v3 position, v3 direction, f32 radius, f32 step, v4 colour);
-void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 colour);
-void draw_sphere(Renderer *renderer, v3 position, f32 radius, v4 colour);
-void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position, v3 scale, v3 rotation, v4 colour);
+void draw_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour, Material *material);
+void draw_line(Renderer *renderer, v3 position, v3 direction, f32 radius, f32 step, v4 colour, Material *material);
+void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 colour, Material *material);
+void draw_sphere(Renderer *renderer, v3 position, f32 radius, v4 colour, Material *material);
+void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position, v3 scale, v3 rotation, v4 colour, Material *material);
 
 // Drawing UI API
 void draw_quad_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour, v2 uvs[4], DrawType type);
@@ -979,6 +979,8 @@ RenderTexture *render_texture_create_from_file(Renderer *renderer, string path) 
 }
 
 Material *material_create(Renderer *renderer, RenderTexture *albedo) {
+    Assert(albedo);
+
     Material *material = push(&renderer->materials);
     material->albedo = albedo;
 
@@ -1608,28 +1610,28 @@ void push_screen_quad(Renderer *renderer, v4 color) {
     quad->vertices[3].draw_type = 0;
 }
 
-void draw_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour) {
-    draw_mesh(renderer, renderer->quad_primitive, position, v3{size.x, size.y, 1}, rotation, colour);
+void draw_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour, Material *material) {
+    draw_mesh(renderer, renderer->quad_primitive, position, v3{size.x, size.y, 1}, rotation, colour, material);
 }
 
-void draw_line(Renderer *renderer, v3 position, v3 direction, f32 radius, f32 step, v4 colour) {
+void draw_line(Renderer *renderer, v3 position, v3 direction, f32 radius, f32 step, v4 colour, Material *material) {
     v3 dir = norm(direction);
 
     for (i64 i = 0; i < 200; i++) {
         v3 draw_position = position + (dir * step * f32(i));
-        draw_sphere(renderer, draw_position, radius, colour);
+        draw_sphere(renderer, draw_position, radius, colour, material);
     }
 }
 
-void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 colour) {
-    draw_mesh(renderer, renderer->cube_primitive, position, size, rotation, colour);
+void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 colour, Material *material) {
+    draw_mesh(renderer, renderer->cube_primitive, position, size, rotation, colour, material);
 }
 
-void draw_sphere(Renderer *renderer, v3 position, f32 radius, v4 colour) {
-    draw_mesh(renderer, renderer->sphere_primitive, position, v3{radius, radius, radius} * 2, v3{}, colour);
+void draw_sphere(Renderer *renderer, v3 position, f32 radius, v4 colour, Material *material) {
+    draw_mesh(renderer, renderer->sphere_primitive, position, v3{radius, radius, radius} * 2, v3{}, colour, material);
 }
 
-void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position, v3 scale, v3 rotation, v4 colour) {
+void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position, v3 scale, v3 rotation, v4 colour, Material *material) {
     RenderCommand *command = push(&renderer->commands);
     command->type = RC_MODEL;
     command->mesh.position = position;
@@ -1637,7 +1639,7 @@ void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position, v3 scale, v3 rotatio
     command->mesh.rotation = rotation;
     command->mesh.mesh = mesh;
     command->mesh.colour = colour;
-    command->mesh.material = renderer->default_material;
+    command->mesh.material = material;
 }
 
 void draw_quad_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour, v2 uvs[4], DrawType type) {
