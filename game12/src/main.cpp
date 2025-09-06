@@ -6,6 +6,7 @@
 #include "platform.h"
 #include "meta.h"
 
+#include <cmath>
 #include <stdio.h>
 #include <string.h>
 #include <thread>
@@ -14,8 +15,8 @@
 #include <chrono>
 #include <atomic>
 
-// Total: 111:00
-// Started: 14:00
+// Total: 114:00
+// Started: 11:30
 //
 // What do a programmer do?:
 // Game:
@@ -135,17 +136,18 @@ f32 g_landing_camera_shake_duration = 0.15f;
 f32 g_landing_camera_shake_intensity = 0.2f;
 
 v3 g_health_bar_offset          = v3{0, 1.5, 0};
-v4 g_health_bar_fg_colour       = v4 {0.877637, 0.322171, 0.322171, 1.000000};
-v4 g_health_bar_bg_colour       = v4 {0.894515, 0.894515, 0.894515, 1.000000};
+v4 g_health_bar_health_colour       = v4 {0.877637, 0.322171, 0.322171, 1.000000};
+v4 g_health_bar_decay_colour       = v4 {0.894515, 0.894515, 0.894515, 1.000000};
+v4 g_health_bar_empty_colour       = v4 {0.3, 0.3, 0.3, 1.000000};
 f32 g_health_bar_max_magnify_factor = 3;
 f32 g_health_bar_max_magnify_distance = 70;
-i32 g_health_bar_notch_count    = 30;
-f32 g_health_bar_notch_width    = 0.08f;
+i32 g_health_bar_notch_count    = 25;
+f32 g_health_bar_notch_width    = 0.10f;
 f32 g_health_bar_notch_height   = 0.3f;
 f32 g_health_bar_notch_gap      = 0.0f;
-f32 g_health_bar_notch_disabled_height_factor  = 0.8f;
-f32 g_health_bar_notch_active_max_height_factor  = 1.6f;
-f32 g_health_bar_notch_active_max_width_factor  = 1.6f;
+f32 g_health_bar_notch_decay_max_height_factor  = 1.6f;
+f32 g_health_bar_notch_decay_max_width_factor  = 1.6f;
+f32 g_health_bar_notch_empty_height_factor  = 0.8f;
 
 f32 g_temp_health_bar_rotation = 0;
 
@@ -222,7 +224,7 @@ Weapon g_weapons[_WH_COUNT] = {
         .headshot_damage = 15,
         .ammo_count = 35,
         .automatic = true,
-        .firing_cooldown = 0.1,
+        .firing_cooldown = 0.08,
         .mesh = MH_M4,
         .firing_sound = SH_FIRE_SILENCED_GUN_HIGH,
         .recoil_offset = v3{0, -0.01, -0.15},
@@ -327,43 +329,45 @@ enum NetworkMessageType {
     NM_SYNC_ENTITY,
     NM_DELETE_ENTITY,
     NM_MOVE_PLAYER,
-    NM_DEALT_DAMAGE,
+    NM_SHOT_ENTITY,
+    NM_CLIENT_DEALT_DAMAGE,
     NM_SET_WEAPON,
     NM_SPAWN_MISSLE,
     NM_NEW_TEAM,
     NM_SYNC_TEAM,
     NM_GAME_COMPLETE,
-}; 
+};
 
 struct NetworkMessage {
     ConnectionId client_id;
     NetworkMessageType type;
     
     union {
-        u32 assign_client_id;
-        ConnectionId client_connected;
-        Entity spawn_entity;
-        Entity sync_entity;
-        u32 delete_entity;
+        u32             assign_client_id;
+        ConnectionId    client_connected;
+        Entity          spawn_entity;
+        Entity          sync_entity;
+        u32             delete_entity;
         struct {
             f32 speed_factor;
             f32 jump;
             v2 input_direction;
-        } move_player;
+        }               move_player;
         struct {
             u32 target_id;
             f32 damage;
-        } dealt_damage;
-        v3 spawn_dummy;
-        WeaponHandle set_weapon;
-        Ray spawn_missle;
+        }               shot_entity;
+        f32             client_dealt_damage;
+        v3              spawn_dummy;
+        WeaponHandle    set_weapon;
+        Ray             spawn_missle;
         struct {
             i32 red;
             i32 blue;
-        } update_score;
-        Team new_team;  // name is not synced
-        Team sync_team; // name is not synced
-        // game_complete
+        }               update_score;
+        Team            new_team;
+        Team            sync_team;
+        //              game_complete
     };
 };
 
@@ -385,18 +389,16 @@ struct CubeCollision {
 };
 
 // want to be able to apply game effects in relation to time
-// 1. over a given T: over T seconds apply this effect, the intensity is proportional to the time left
-// 2. once a given T: apply this effect immedietly but wai T seconds before applying it again
+// 1. over a given T: over T seconds apply this effect
+// 2. once a given T: apply this effect immedietly but wait T seconds before applying it again
 // .. probably more
-//
-// could generalise these out more but for now doing the straight imlps to see what I need
-struct CameraShake {
+struct TimedEffect {
     f32 start_duration;
     f32 remaining_duration;
     f32 intensity;
 };
 
-struct CameraShakeResult {
+struct TimedEffectState {
     f32 remaining;
     f32 intensity;
     bool active;
@@ -424,6 +426,7 @@ struct State {
     Sampler network_in_sampler;
     Sampler mspt_sampler;
 
+    // TODO: move to game client
     WeaponHandle player_weapon;
     i64 player_ammo;
     f32 player_firing_cooldown;
@@ -457,7 +460,8 @@ struct GameClient {
     Viewport viewport;
     FrameBuffer game_view;
 
-    CameraShake camera_shake;
+    TimedEffect camera_shake;
+    TimedEffect health_bar_decay;
 
     State state;
 };
@@ -495,8 +499,8 @@ void game_server_update(State *state);
 void game_server_physics(State *state);
 void game_server_on_trigger_collision(State *state, Entity *trigger, Entity *other);
 
-void game_client_update(State *state);
-void game_client_draw(State *state);
+void game_client_update(GameClient *client, State *state);
+void game_client_draw(GameClient *client, State *state);
 
 void editor_update(State *state);
 void editor_draw_ui(State *state);
@@ -561,9 +565,10 @@ void play_weapon_fire_sound(Weapon *weapon);
 void fire_raycast_weapon(State *state, WeaponHandle weapon);
 void fire_tap(State *state);
 
-void camera_shake_start(CameraShake *camera_shake, f32 duration, f32 intensity);
-void camera_shake_tick(CameraShake *camera_shake, f32 delta_time);
-CameraShakeResult camera_shake_is_active(CameraShake *camera_shake);
+void timed_effect_start(TimedEffect *timed_effect, f32 duration, f32 intensity);
+void timed_effect_start_or_accumulate(TimedEffect *timed_effect, f32 duration, f32 intensity);
+void timed_effect_tick(TimedEffect *timed_effect, f32 delta_time);
+TimedEffectState timed_effect_state(TimedEffect *timed_effect);
 
 f32 tween_ease_out_sin(f32 x);
 f32 tween_ease_in_out_sin(f32 x);
@@ -824,7 +829,7 @@ void game_client_entry() {
             if (GC()->mode == GC_HOSTED || GC()->mode == GC_CLIENT) {
                 GC()->state.time += GC()->state.tick_delta_time;
                 process_network(&GC()->state);
-                game_client_update(&GC()->state);
+                game_client_update(GC(), &GC()->state);
             }
         }
 
@@ -835,7 +840,7 @@ void game_client_entry() {
 
             renderer_start_frame(REN());
     
-            game_client_draw(&GC()->state);
+            game_client_draw(GC(), &GC()->state);
     
             renderer_draw_frame(REN(), &ED()->camera, ED()->viewport, &ED()->editor_view, false);
             renderer_draw_frame(REN(), &GC()->camera, GC()->viewport, &GC()->game_view, true);
@@ -1167,8 +1172,9 @@ void game_server_on_trigger_collision(State *state, Entity *trigger, Entity *oth
 
 }
 
-void game_client_update(State *state) {
-    camera_shake_tick(&GC()->camera_shake, state->tick_delta_time);
+void game_client_update(GameClient *client, State *state) {
+    timed_effect_tick(&client->camera_shake, state->tick_delta_time);
+    timed_effect_tick(&client->health_bar_decay, state->tick_delta_time);
 
     state->player_firing_cooldown -= state->tick_delta_time;
     if (state->player_firing_cooldown <= 0) {
@@ -1189,7 +1195,7 @@ void game_client_update(State *state) {
 
     Entity *player = get_client_player(state, state->instance_id);
     if (player != NULL) {
-        GC()->camera.position = player->position + v3{0, g_player_eyes_offset, 0};
+        client->camera.position = player->position + v3{0, g_player_eyes_offset, 0};
     }
 
     { // camera shake
@@ -1201,7 +1207,7 @@ void game_client_update(State *state) {
         // is the same as the orignial camera positon therefore making the transition from
         // "active" camera shake to normal, smooth
         // - 03/09/25
-        auto [remaining, intensity, active] = camera_shake_is_active(&GC()->camera_shake);
+        auto [remaining, intensity, active] = timed_effect_state(&GC()->camera_shake);
 
         if (active) {
             f32 y_offset = 0;
@@ -1219,20 +1225,20 @@ void game_client_update(State *state) {
                 y_offset = intensity * time;
             }
 
-            GC()->camera.position.y -= y_offset;
+            client->camera.position.y -= y_offset;
         }
     }
 
     // check player input
-    if (GC()->viewport.focused) {
+    if (client->viewport.focused) {
         if (WIN()->mouse_captured) {
             f32 sensitivity = 3;
             v2 mouse_input = MOUSE.delta;
     
             // camera control
             if (length(mouse_input) > 0) {
-                GC()->camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity * state->tick_delta_time;
-                GC()->camera.rotation.x = clamp(-90, GC()->camera.rotation.x, 90);
+                client->camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity * state->tick_delta_time;
+                client->camera.rotation.x = clamp(-90, client->camera.rotation.x, 90);
             }
 
             // shooting
@@ -1254,17 +1260,20 @@ void game_client_update(State *state) {
                     switch (state->player_weapon) {
                         case WH_DEAGLE:
                         case WH_M4:
+                        case WH_PAL:
                             fire_raycast_weapon(state, state->player_weapon);
                         break;
                         case WH_TAP:
                             fire_tap(state);
                         break;
+                        default:
+                            Unreachable("Unknown weapon type when trying to shoot weapon");
                     }
                 }
             }
 
             // cheats to give weapons 
-            if (g_cheat_weapon_binds && GC()->viewport.focused) {
+            if (g_cheat_weapon_binds && client->viewport.focused) {
                 if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
                     KEYS[GLFW_KEY_1] == InputState::DOWN) {
                     set_player_weapon(state, WH_DEAGLE, 0);
@@ -1310,8 +1319,8 @@ void game_client_update(State *state) {
         }
 
         if (length(keyboard_input) > 0) {
-            v3 forward = get_forward_direction(&GC()->camera);
-            v3 right = get_right_direction(&GC()->camera);
+            v3 forward = get_forward_direction(&client->camera);
+            v3 right = get_right_direction(&client->camera);
    
             // remove y component and normalise to just get h input
             v2 h_forward = norm(v2{forward.x, forward.z});
@@ -1347,7 +1356,7 @@ void game_client_update(State *state) {
             // landing sounds
             if (!s_grounded_last_tick) {
                 sound_engine_play(g_sounds[SH_STEP_2]);
-                camera_shake_start(&GC()->camera_shake, g_landing_camera_shake_duration, g_landing_camera_shake_intensity);
+                timed_effect_start(&client->camera_shake, g_landing_camera_shake_duration, g_landing_camera_shake_intensity);
             }
 
             // footstep sounds
@@ -1381,12 +1390,12 @@ void game_client_update(State *state) {
     }
 }
 
-void game_client_draw(State *state) {
+void game_client_draw(GameClient *client, State *state) {
     Assert(is_client(state));
 
     { // top bar ui
         v3 time_bg_size = v3{UI_TIME_BG_WIDTH, UI_TIME_FONT_SIZE + UI_TIME_Y_PADDING, 0};
-        v3 time_centre = v3{time_bg_size.x * 0.5f, GC()->viewport.size.y - (time_bg_size.y * 0.5f)};
+        v3 time_centre = v3{time_bg_size.x * 0.5f, client->viewport.size.y - (time_bg_size.y * 0.5f)};
         
         { // time
             i32 target_seconds = g_game_length;
@@ -1428,7 +1437,7 @@ void game_client_draw(State *state) {
 
     // game complete screen
     if (state->game_complete) { 
-        v3 top_right = relative_to_screen_position(GC()->viewport, {1, 1});
+        v3 top_right = relative_to_screen_position(client->viewport, {1, 1});
         v3 centre = top_right * 0.5;
         v2 size = top_right.xy;
 
@@ -1461,7 +1470,7 @@ void game_client_draw(State *state) {
                 f32 max_width = 40;
                 f32 height = 3;
 
-                v3 centre = relative_to_screen_position(GC()->viewport, {0.5, 0.5});
+                v3 centre = relative_to_screen_position(client->viewport, {0.5, 0.5});
                 v3 centre_offset = v3{0, -50, 0};
 
                 f32 cooldown_scale = state->player_firing_cooldown / player_weapon->firing_cooldown;
@@ -1470,7 +1479,7 @@ void game_client_draw(State *state) {
             }
        
             { // draw crosshair
-                v3 centre = relative_to_screen_position(GC()->viewport, {0.5, 0.5});
+                v3 centre = relative_to_screen_position(client->viewport, {0.5, 0.5});
 
                 // horizontal
                 draw_rectangle_ui(REN(), centre - v3{g_crosshair_gap, 0, 0}, {g_crosshair_length, g_crosshair_thickness}, {}, g_crosshair_colour);
@@ -1497,7 +1506,7 @@ void game_client_draw(State *state) {
             { // draw health
                 f32 max_width = 600;
                 f32 height = 30;
-                v3 centre = relative_to_screen_position(GC()->viewport, {0.5, 0.01});
+                v3 centre = relative_to_screen_position(client->viewport, {0.5, 0.01});
 
                 f32 health_scale = entity.health / entity.max_health;
 
@@ -1507,7 +1516,7 @@ void game_client_draw(State *state) {
 
             // blood overlay when dead 
             if (BitSet(entity.flags, EF_DEAD)) {
-                v3 top_right = relative_to_screen_position(GC()->viewport, {1, 1});
+                v3 top_right = relative_to_screen_position(client->viewport, {1, 1});
                 v3 centre = top_right * 0.5;
                 v2 size = top_right.xy;
 
@@ -1541,7 +1550,7 @@ void game_client_draw(State *state) {
                 draw_colour = mix(draw_colour, RED, 0.65);
             }
 
-            { // health bar
+            { // neo health bar
                 // TODO: move this out
                 static auto rotate_position = [](v2 position, v2 centre, f32 degrees) {
                     f32 radians = HMM_DegToRad * degrees;
@@ -1558,7 +1567,7 @@ void game_client_draw(State *state) {
                 };
 
                 v3 health_bar_centre = entity.position + g_health_bar_offset;
-                v3 camera_direction = GC()->camera.position - health_bar_centre;
+                v3 camera_direction = client->camera.position - health_bar_centre;
                 v3 camera_direction_n = norm(camera_direction);
 
                 f32 pitch = camera_direction_n.y;
@@ -1584,26 +1593,34 @@ void game_client_draw(State *state) {
                 total_health_bar_width += f32(g_health_bar_notch_count) * notch_width;
                 total_health_bar_width += f32(g_health_bar_notch_count - 1) * notch_gap;
 
+                // health bar is split into three sections
+                // [HHHHHH-DDDDD-EEEEEE]
+                // H - "Health" notch, the part of the health bar which signifies health remaining
+                // D - "Decay"  notch, the part of the health bar which signifies health just removed
+                // E - "Empty"  notch, the part of the health bar which signifies no health 
+
                 f32 health = entity.health;
                 f32 max_health = entity.max_health;
                 f32 health_per_notch = max_health / f32(g_health_bar_notch_count);
 
-                i32 active_notch_index = 0;
+                i32 last_health_notch = 0;
 
-                // first find which notch is "active" i.e. not either fully enabled or disabled
-                for (i32 i = 0; i < g_health_bar_notch_count; i++) {
-                    f32 notch_health_begin = f32(i) * health_per_notch;
-                    f32 notch_health_end = f32(i + 1) * health_per_notch;
+                {
+                    f32 filled_notches = health / health_per_notch;
+                    last_health_notch  = i32(ceilf(filled_notches) - 1);
+                }
 
-                    if (health <= 0) {
-                        active_notch_index = -1;
-                        break;
+                TimedEffectState decay = {};
+                i32 last_decay_notch = 0;
+
+                { 
+                    decay = timed_effect_state(&client->health_bar_decay);
+                    if (!decay.active) {
+                        last_decay_notch = -1;
                     }
-
-                    if (health <= notch_health_end && health >= notch_health_begin) {
-                        active_notch_index = i;
-                        break;
-                    }
+    
+                    f32 filled_and_decayed_notches = (health + decay.intensity) / health_per_notch;
+                    last_decay_notch = i32(ceilf(filled_and_decayed_notches) - 1);
                 }
 
                 for (i32 i = 0; i < g_health_bar_notch_count; i++) {
@@ -1613,34 +1630,26 @@ void game_client_draw(State *state) {
                     notch_offset.x += notch_width * 0.5;                    // because drawing is from centre, shoft over by half width so it is totally in the bar width
                     notch_offset.x -= total_health_bar_width * 0.5;         // shift total bar width so all notches are centred on the bar offset
                   
-                    f32 notch_health_begin = f32(i) * health_per_notch;
-                    f32 notch_health_end = f32(i + 1) * health_per_notch;
-
                     v4 notch_colour = {};
                     f32 notch_height_factor = 0;
                     f32 notch_width_factor = 0;
 
-                    if (i > active_notch_index) {
-                        notch_colour = g_health_bar_bg_colour;
-                        notch_height_factor = g_health_bar_notch_disabled_height_factor;
-                        notch_width_factor = 1;
-                    }
-                    else if (i < active_notch_index) {
-                        notch_colour = g_health_bar_fg_colour;
+                    if (i <= last_health_notch) {
+                        notch_colour = g_health_bar_health_colour;
                         notch_height_factor = 1;
                         notch_width_factor = 1;
                     }
-                    else {
-                        // 0->1, ~0 low health left in notch, ~1 notch is about full health
-                        f32 remaining_in_notch = (health - notch_health_begin) / health_per_notch;
-                        
-                        notch_colour = mix(g_health_bar_bg_colour, g_health_bar_fg_colour, max(0.7, remaining_in_notch));
-                        // notch_colour = mix(g_health_bar_bg_colour, g_health_bar_fg_colour, 0.8);
+                    else if (i <= last_decay_notch) {
+                        f32 i_remaining = 1 - decay.remaining;
 
-                        notch_height_factor = 1 + ((g_health_bar_notch_active_max_height_factor - 1) * (1 - remaining_in_notch));
-                        notch_width_factor = 1 + ((g_health_bar_notch_active_max_width_factor - 1) * (1 - remaining_in_notch));
-                        // notch_height_factor = g_health_bar_notch_active_max_height_factor;
-                        // notch_width_factor = g_health_bar_notch_active_max_width_factor;
+                        notch_colour = mix(g_health_bar_health_colour, g_health_bar_decay_colour, i_remaining);
+                        notch_height_factor = 1 + (i_remaining * (g_health_bar_notch_decay_max_height_factor - 1));
+                        notch_width_factor = 1 + (i_remaining * (g_health_bar_notch_decay_max_width_factor - 1));
+                    }
+                    else {
+                        notch_colour = g_health_bar_empty_colour;
+                        notch_height_factor = g_health_bar_notch_empty_height_factor;
+                        notch_width_factor = 1;
                     }
 
                     v3 notch_position = health_bar_centre + notch_offset;
@@ -1891,34 +1900,10 @@ void editor_draw_ui(State *state) {
     
             ImGui::SeparatorText("Health bars");
 
-            if (ImGui::Button("Big")) {
-                g_health_bar_notch_count = 4;
-                g_health_bar_notch_width = 0.6;
-                g_health_bar_notch_active_max_height_factor = 1.8;
-            }
-
-            if (ImGui::Button("Bedium")) {
-                g_health_bar_notch_count = 6;
-                g_health_bar_notch_width = 0.4;
-                g_health_bar_notch_active_max_height_factor = 1.8;
-                g_health_bar_notch_active_max_width_factor = 1.8;
-            }
-
-            if (ImGui::Button("Medium")) {
-                g_health_bar_notch_count = 10;
-                g_health_bar_notch_width = 0.25;
-                g_health_bar_notch_active_max_height_factor = 1.6;
-            }
-
-            if (ImGui::Button("Small")) {
-                g_health_bar_notch_count = 30;
-                g_health_bar_notch_width = 0.08;
-                g_health_bar_notch_active_max_height_factor = 1.6;
-            }
-
             imgui_v3_control("Offset", &g_health_bar_offset);
-            imgui_colour_control("Foreground colour", &g_health_bar_fg_colour);
-            imgui_colour_control("Background colour", &g_health_bar_bg_colour);
+            imgui_colour_control("Health colour", &g_health_bar_health_colour);
+            imgui_colour_control("Decay colour", &g_health_bar_decay_colour);
+            imgui_colour_control("Empty colour", &g_health_bar_empty_colour);
             ImGui::SliderFloat("Max magnification", &g_health_bar_max_magnify_factor, 1, 10);
             ImGui::SliderFloat("Max magnification distance", &g_health_bar_max_magnify_distance, 1, 100);
 
@@ -1926,11 +1911,9 @@ void editor_draw_ui(State *state) {
             ImGui::SliderFloat("Notch width", &g_health_bar_notch_width, 0, 2);
             ImGui::SliderFloat("Notch height", &g_health_bar_notch_height, 0, 2);
             ImGui::SliderFloat("Notch gap", &g_health_bar_notch_gap, 0, 2);
-            ImGui::SliderFloat("Notch disabled height factor", &g_health_bar_notch_disabled_height_factor, 0, 1);
-            ImGui::SliderFloat("Notch active max height factor", &g_health_bar_notch_active_max_height_factor, 1, 2);
-            ImGui::SliderFloat("Notch active max width factor", &g_health_bar_notch_active_max_width_factor, 1, 2);
-
-            ImGui::SliderFloat("bar rotation", &g_temp_health_bar_rotation, -180, 180);
+            ImGui::SliderFloat("Notch decay max height factor", &g_health_bar_notch_decay_max_height_factor, 1, 2);
+            ImGui::SliderFloat("Notch decay max width factor", &g_health_bar_notch_decay_max_width_factor, 1, 2);
+            ImGui::SliderFloat("Notch empty height factor", &g_health_bar_notch_empty_height_factor, 0, 1);
     
             ImGui::PopID();
         }
@@ -1982,8 +1965,17 @@ void editor_draw_ui(State *state) {
                 }
 
                 if (ImPlot::BeginPlot("Incoming messages", plot_size, ImPlotFlags_NoInputs)) {
+                    const f32 max_messages = 20; 
+
                     ImPlot::SetupAxes("time","Messages", ImPlotAxisFlags_NoGridLines, 0);
-                    ImPlot::SetupAxesLimits(0, SAMPLER_SIZE, 0, 20);
+                    ImPlot::SetupAxesLimits(0, SAMPLER_SIZE, 0, max_messages);
+
+                    { // MB axis
+                        f32 total_size_bytes = max_messages * f32(sizeof(NetworkMessage));
+
+                        ImPlot::SetupAxis(ImAxis_Y2, "KB", ImPlotAxisFlags_NoGridLines | ImPlotAxisFlags_Opposite);
+                        ImPlot::SetupAxisLimits(ImAxis_Y2, 0, total_size_bytes / 1024);
+                    }
     
                     Sampler *client_sampler = atomic_snapshot_read(&NET()->client_in_messages_sampler_snapshot);
                     ImPlot::PlotLine("Client", client_sampler->samples, SAMPLER_SIZE);
@@ -2466,18 +2458,31 @@ void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
                 f32 allignment = HMM_DotV2(h_velocity, wish_direction);
             }
         } break;
-        case NM_DEALT_DAMAGE: {
-            Entity *entity = get_entity_with_id(state, message->dealt_damage.target_id);
-            if (entity == NULL || !BitSet(entity->flags, EF_DAMAGEABLE)) {
-                Warn("Client sent message to deal damage to entity but it didn't exist or does not take damage");
-                return;
-            }
+        case NM_SHOT_ENTITY: {
+            Entity *entity = get_entity_with_id(state, message->shot_entity.target_id);
 
-            if (entity->death_cooldown > 0) {
-                return;
-            }
+            Assertf(entity, "Client sent \"shot entity\" message but the entity did not exist");
+            Assertf(BitSet(entity->flags, EF_DAMAGEABLE), "Client sent \"shot entity\" message but the entity was not damagable");
 
-            entity->health -= message->dealt_damage.damage;
+            { // apply damage
+                if (entity->death_cooldown > 0) {
+                    return;
+                }
+               
+                f32 start_health = entity->health;
+                entity->health -= message->shot_entity.damage;
+
+                if (entity->health < 0) {
+                    entity->health = 0;
+                }
+
+                // because we clamp health this means even damage that is hgher then the remaining health
+                // is still reported as the the damage needed to take the health to 0
+                f32 actual_damage = start_health - entity->health;
+    
+                NetworkMessage response = NetworkMessage{.type = NM_CLIENT_DEALT_DAMAGE, .client_dealt_damage = actual_damage};
+                server_send_to_client(NET(), bytes_from_ptr(&response), message->client_id);
+            }
 
             // if the target was a player and is now dead, add score to clients team
             if (BitSet(entity->flags, EF_PLAYER) && entity->health <= 0) {
@@ -2535,6 +2540,9 @@ void on_client_receive(State *state, NetworkMessage *message) {
                     return;
                 }
             }
+        } break;
+        case NM_CLIENT_DEALT_DAMAGE: {
+            timed_effect_start_or_accumulate(&GC()->health_bar_decay, 0.2, message->client_dealt_damage);
         } break;
         case NM_SET_WEAPON: {
             Logf("Client was told to use a new weapon: {}", (u32) message->set_weapon);
@@ -3416,8 +3424,8 @@ void fire_raycast_weapon(State *state, WeaponHandle weapon) {
 
         NetworkMessage message = NetworkMessage {
             .client_id = state->instance_id, 
-            .type = NM_DEALT_DAMAGE, 
-            .dealt_damage = {
+            .type = NM_SHOT_ENTITY, 
+            .shot_entity = {
                 .target_id = hit_entity->id,
                 .damage = damage 
             } 
@@ -3441,34 +3449,43 @@ void fire_tap(State *state) {
     client_send_to_server(NET(), bytes_from_ptr(&message));
 }
 
-void camera_shake_start(CameraShake *camera_shake, f32 duration, f32 intensity) {
+void timed_effect_start(TimedEffect *timed_effect, f32 duration, f32 intensity) {
     Assert(duration != 0);
 
-    camera_shake->start_duration = duration;
-    camera_shake->remaining_duration = duration;
-    camera_shake->intensity = intensity;
+    timed_effect->start_duration = duration;
+    timed_effect->remaining_duration = duration;
+    timed_effect->intensity = intensity;
 }
 
-void camera_shake_tick(CameraShake *camera_shake, f32 delta_time) {
-    camera_shake->remaining_duration -= delta_time;
+void timed_effect_start_or_accumulate(TimedEffect *timed_effect, f32 duration, f32 intensity) {
+    if (timed_effect->remaining_duration == 0) {
+        timed_effect_start(timed_effect, duration, intensity);
+        return;
+    }
 
-    if (camera_shake->remaining_duration < 0) {
-        camera_shake->remaining_duration = 0;
+    timed_effect->intensity += intensity;
+}
+
+void timed_effect_tick(TimedEffect *timed_effect, f32 delta_time) {
+    timed_effect->remaining_duration -= delta_time;
+
+    if (timed_effect->remaining_duration < 0) {
+        timed_effect->remaining_duration = 0;
     }
 }
 
-CameraShakeResult camera_shake_is_active(CameraShake *camera_shake) {
-    if (camera_shake->remaining_duration == 0) {
-        return CameraShakeResult {.active = false};
+TimedEffectState timed_effect_state(TimedEffect *timed_effect) {
+    if (timed_effect->remaining_duration == 0) {
+        return TimedEffectState {.active = false};
     }
 
     // remaining is how much left of the original duration is left from 1->0
     // 1:   being the full duration is left
     // 0.5: halfway through the duration 
     // 0:   ended
-    return CameraShakeResult {
-        .remaining = camera_shake->remaining_duration / camera_shake->start_duration,
-        .intensity = camera_shake->intensity,
+    return TimedEffectState {
+        .remaining = timed_effect->remaining_duration / timed_effect->start_duration,
+        .intensity = timed_effect->intensity,
         .active = true
     };
 }
