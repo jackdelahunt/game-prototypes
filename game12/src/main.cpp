@@ -16,16 +16,22 @@
 #include <atomic>
 
 // Total: 114:00
-// Started: 11:30
+// Started: 15:30
 //
 // What do a programmer do?:
 // Game:
+// - improve the look:
+//      - point lights
+//      - anti-aliasing
+//      - particles
 // - improve game feel:
-//      - make getting kills more fun
+//      - shooting
 //          - sound on kill
+//          - health bars
+//          - hitmarkers 
+//          - muzzle blast
+//          - bullet "decals"
 //      - longer press higher jump
-//      - health bars
-//      - better hitmarker feedback
 // - game complete screen
 // - pickup more then one gun
 // - ammo pickup
@@ -129,8 +135,6 @@ f32 g_game_length = Minute(5);
 // f32 g_game_length = Second(10);
 
 bool g_dual_wield_recoil_switch = true; // used for dual wield switching of recoil
-bool g_player_hit_target = false;       // used for hitmarker
-bool g_player_hit_headshot = false;     // used for hitmarker
 
 f32 g_landing_camera_shake_duration = 0.15f;
 f32 g_landing_camera_shake_intensity = 0.2f;
@@ -149,7 +153,13 @@ f32 g_health_bar_notch_decay_max_height_factor  = 1.6f;
 f32 g_health_bar_notch_decay_max_width_factor  = 1.6f;
 f32 g_health_bar_notch_empty_height_factor  = 0.8f;
 
-f32 g_temp_health_bar_rotation = 0;
+v4 g_muzzle_flash_colour = DARK_GRAY;
+f32 g_muzzle_flash_distance = 35;
+
+v4 g_clear_colour = v4 {0.398013, 0.481982, 0.582278, 1.000000};
+v3 g_ambient_light_colour = v3 {0.304082, 0.304082, 0.590717};
+v3 g_sun_colour = v3 {0.696203, 0.489398, 0.179191};
+v3 g_shadow_colour = BLACK.rgb;
 
 enum MeshHandle : u32 {
     MH_NONE,
@@ -224,7 +234,7 @@ Weapon g_weapons[_WH_COUNT] = {
         .headshot_damage = 15,
         .ammo_count = 35,
         .automatic = true,
-        .firing_cooldown = 0.08,
+        .firing_cooldown = 0.1,
         .mesh = MH_M4,
         .firing_sound = SH_FIRE_SILENCED_GUN_HIGH,
         .recoil_offset = v3{0, -0.01, -0.15},
@@ -462,6 +472,7 @@ struct GameClient {
 
     TimedEffect camera_shake;
     TimedEffect health_bar_decay;
+    TimedEffect muzzle_flash;
 
     State state;
 };
@@ -548,6 +559,7 @@ void imgui_entity(Entity *entity);
 Viewport imgui_viewport(const char *label, u32 texture_id, bool force_focus);
 void imgui_v3_control(const char *label, v3 *vector, f32 step = 1);
 void imgui_colour_control(const char *label, v4 *colour);
+void imgui_colour_control(const char *label, v3 *colour);
 
 void clear_level(State *state);
 void serialise_level(State *state);
@@ -697,7 +709,7 @@ void game_client_entry() {
             return;
         }
 
-        ok = renderer_init(WIN(), v4{0.3, 0.45, 0.72, 1}, v3{0.38, 0.38, 0.38}, v3{0.61, 0.61, 0.61}, v3{50, 100, -100}, v3{0, 0, 0});
+        ok = renderer_init(WIN(), g_clear_colour, g_ambient_light_colour, g_sun_colour, v3{50, 100, -100}, g_shadow_colour);
         Assert(ok);
 
         if (!ok) {
@@ -1175,6 +1187,7 @@ void game_server_on_trigger_collision(State *state, Entity *trigger, Entity *oth
 void game_client_update(GameClient *client, State *state) {
     timed_effect_tick(&client->camera_shake, state->tick_delta_time);
     timed_effect_tick(&client->health_bar_decay, state->tick_delta_time);
+    timed_effect_tick(&client->muzzle_flash, state->tick_delta_time);
 
     state->player_firing_cooldown -= state->tick_delta_time;
     if (state->player_firing_cooldown <= 0) {
@@ -1230,7 +1243,7 @@ void game_client_update(GameClient *client, State *state) {
     }
 
     // check player input
-    if (client->viewport.focused) {
+    if (client->viewport.focused && player != NULL) {
         if (WIN()->mouse_captured) {
             f32 sensitivity = 3;
             v2 mouse_input = MOUSE.delta;
@@ -1245,9 +1258,6 @@ void game_client_update(GameClient *client, State *state) {
             Weapon *player_weapon = get_player_weapon(state);
             InputState state_needed = player_weapon->automatic ? InputState::PRESSED : InputState::DOWN;
 
-            g_player_hit_target = false;
-            g_player_hit_headshot = false;
-
             if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == state_needed) {
                 if (state->player_ammo > 0 && state->player_firing_cooldown <= 0) {
                     state->player_ammo -= 1; 
@@ -1256,6 +1266,7 @@ void game_client_update(GameClient *client, State *state) {
                     g_dual_wield_recoil_switch = !g_dual_wield_recoil_switch;
 
                     play_weapon_fire_sound(player_weapon);
+                    timed_effect_start_or_accumulate(&client->muzzle_flash, 0.05, 1);
 
                     switch (state->player_weapon) {
                         case WH_DEAGLE:
@@ -1463,6 +1474,15 @@ void game_client_draw(GameClient *client, State *state) {
                 }
             }
 
+            { // draw muzzle flash
+                v3 light_position = client->camera.position + get_forward_direction(&client->camera);
+
+                TimedEffectState muzzle_flash = timed_effect_state(&client->muzzle_flash);
+                if (muzzle_flash.active) {
+                    draw_point_light(REN(), light_position, g_muzzle_flash_distance, g_muzzle_flash_colour);
+                }
+            }
+
             // @hud
 
             // draw fire cooldown when using non auto gun
@@ -1488,19 +1508,6 @@ void game_client_draw(GameClient *client, State *state) {
                 // vertical
                 draw_rectangle_ui(REN(), centre - v3{0, g_crosshair_gap, 0}, {g_crosshair_thickness, g_crosshair_length}, {}, g_crosshair_colour);
                 draw_rectangle_ui(REN(), centre + v3{0, g_crosshair_gap, 0}, {g_crosshair_thickness, g_crosshair_length}, {}, g_crosshair_colour);
-
-                // hitmarkers
-                if (g_player_hit_target || g_player_hit_headshot) {
-                    v2 dot_size = v2{g_crosshair_thickness, g_crosshair_thickness} * 2.0f;
-
-                    // bl and tr
-                    draw_circle_ui(REN(), centre - v3{g_crosshair_gap, g_crosshair_gap, 0}, dot_size, {}, RED);
-                    draw_rectangle_ui(REN(), centre + v3{g_crosshair_gap, g_crosshair_gap, 0}, dot_size, {}, RED);
-
-                    // tl and br
-                    draw_circle_ui(REN(), centre - v3{g_crosshair_gap, -g_crosshair_gap, 0}, dot_size, {}, RED);
-                    draw_rectangle_ui(REN(), centre + v3{g_crosshair_gap, -g_crosshair_gap, 0}, dot_size, {}, RED);
-                }
             }
 
             { // draw health
@@ -1658,7 +1665,7 @@ void game_client_draw(GameClient *client, State *state) {
                     notch_position.x = rotated.x;
                     notch_position.z = rotated.y;
 
-                    draw_mesh(REN(), REN()->quad_primitive, notch_position, {notch_width * notch_width_factor, notch_height * notch_height_factor}, notch_rotation, notch_colour);
+                    draw_quad(REN(), notch_position, {notch_width * notch_width_factor, notch_height * notch_height_factor}, notch_rotation, notch_colour);
                 }
             }
         }
@@ -2113,6 +2120,10 @@ void editor_draw_ui(State *state) {
             ImGui::InputInt("Ammo", (i32 *) &state->player_ammo);
             ImGui::SliderFloat3("Weapon offset", &g_weapon_display_offset.x, -2, 2);
 
+            ImGui::SeparatorText("Muzzle flash");
+            imgui_colour_control("Colour", &g_muzzle_flash_colour);
+            ImGui::SliderFloat("Distance", &g_muzzle_flash_distance, 0, 50);
+
             if (ImGui::CollapsingHeader("Entity")) {
                 Entity *player = get_client_player(state, state->instance_id);
                 if (player) {
@@ -2123,10 +2134,10 @@ void editor_draw_ui(State *state) {
 
         if (ImGui::CollapsingHeader("Renderer")) {
             ImGui::Checkbox("Draw network owner", &DEBUG_DRAW_OWNER);
-            ImGui::ColorEdit4("Clear colour",   &REN()->clear_colour[0]);
-            ImGui::ColorEdit3("Ambient light",  &REN()->ambient_light[0]);
-            ImGui::ColorEdit3("Sun colour",     &REN()->sun_colour[0]);
-            ImGui::ColorEdit3("Shadow colour",  &REN()->shadow_colour[0]);
+            imgui_colour_control("Clear colour", &REN()->clear_colour);
+            imgui_colour_control("Ambient light", &REN()->ambient_light);
+            imgui_colour_control("Sun colour", &REN()->sun_colour);
+            imgui_colour_control("Shadow colour", &REN()->shadow_colour);
             imgui_v3_control("Sun position", &REN()->sun_position);
 
             if (ImGui::CollapsingHeader("Frame buffers")) {
@@ -3105,6 +3116,22 @@ void imgui_colour_control(const char *label, v4 *colour) {
     ImGui::PopID();
 }
 
+void imgui_colour_control(const char *label, v3 *colour) {
+    ImGui::PushID(label);
+
+    ImGui::Text(label);
+
+    ImGui::SameLine();
+    ImGui::ColorEdit3("##colour", &colour->r, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
+    ImGui::SameLine();
+
+    if (ImGui::Button("print")) {
+        Infof("{}", *colour);
+    }
+
+    ImGui::PopID();
+}
+
 void clear_level(State *state) {
     reset(&state->entities);
 }
@@ -3411,13 +3438,11 @@ void fire_raycast_weapon(State *state, WeaponHandle weapon) {
         if (hit_height_offset >= g_player_eyes_offset - half_head_size) {
             damage = player_weapon->headshot_damage;
             hit_sound = SH_HEADSHOT_HIT;
-            g_player_hit_headshot = true;
         }
         // body shot
         else {
             damage = player_weapon->damage;
             hit_sound = SH_TARGET_HIT;
-            g_player_hit_target = true;
         }
 
         sound_engine_play(g_sounds[hit_sound]);

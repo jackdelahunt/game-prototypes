@@ -304,10 +304,9 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 #define MAX_QUADS 500
 #define MAX_RENDER_COMMANDS 5000
 #define MAX_MESHES 128
-#define MAX_MODELS 128
 #define MAX_LIGHTS 20
-#define MAX_SPRITES 256
 #define MAX_TEXTURES 256
+#define MAX_MATERIALS 256
 
 #define UI_LAYER_0 0.0f
 #define UI_LAYER_1 1.0f
@@ -408,12 +407,6 @@ enum class TextureType {
     ANIMATED,
 };
 
-// For Texture.uv:
-// x and y of each corner of the texture in the atlas
-// uv[0] == top left point
-// uv[1] == top right point
-// uv[2] == bottom right point
-// uv[3] == bottom left point
 struct Texture {
     TextureType type;
     i64 width;
@@ -439,6 +432,15 @@ struct Font {
     u8 *bitmap_data;
 };
 
+struct PointLight {
+    v3 position;
+    f32 distance;
+    v3 colour;
+};
+
+struct Material {
+    RenderTexture albedo;
+};
 
 // @viewport
 struct Viewport {
@@ -482,8 +484,11 @@ struct MeshRenderCommand {
     v3 position;
     v3 scale;
     v3 rotation;
+
     Mesh *mesh;
+
     v4 colour;
+    Material *material;
 };
 
 struct RenderCommand {
@@ -514,12 +519,18 @@ struct Renderer {
     FixedArray<Mesh> meshes;
     FixedArray<RenderCommand> commands;
     StackArray<Texture, MAX_TEXTURES> textures;
+    StackArray<PointLight, MAX_LIGHTS> lights;
+    StackArray<RenderTexture, MAX_TEXTURES> render_textures;
+    StackArray<Material, MAX_MATERIALS> materials;
 
     Mesh *cube_primitive;
     Mesh *sphere_primitive;
     Mesh *quad_primitive;
 
     Texture *default_normal;
+
+    RenderTexture *default_albedo;
+    Material *default_material;
 
     Font font;
 
@@ -616,6 +627,9 @@ void draw_quad_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colo
 void draw_rectangle_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour);
 void draw_circle_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour);
 void draw_text_ui(Renderer *renderer, string text, v3 position, f32 font_size, v4 color, bool centred);
+
+// Lights API
+void draw_point_light(Renderer *renderer, v3 position, f32 distance, v4 colour);
 
 void toggle_wireframe(Renderer *renderer);
 f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
@@ -1453,6 +1467,16 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
         set_uniform_v3(renderer->lighting_shader, "sun_position", renderer->sun_position);
         set_uniform_v3(renderer->lighting_shader, "sun_colour", renderer->sun_colour);
         set_uniform_v3(renderer->lighting_shader, "shadow_colour", renderer->shadow_colour);
+        set_uniform_i32(renderer->lighting_shader, "light_count", renderer->lights.len);
+
+        for (i64 i = 0; i < renderer->lights.len; i++) {
+            PointLight light = renderer->lights[i];
+            v4 light_position = view_matrix * v4{light.position.x, light.position.y, light.position.z, 1};
+
+            set_uniform_v3(renderer->lighting_shader, "lights[0].position", light_position.xyz);
+            set_uniform_v3(renderer->lighting_shader, "lights[0].colour", light.colour);
+            set_uniform_f32(renderer->lighting_shader, "lights[0].distance", light.distance);
+        }
             
         glDrawElements(GL_TRIANGLES, 6 * renderer->screen_quad.quads.len, GL_UNSIGNED_INT, 0);
     
@@ -1498,6 +1522,7 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
 
 void renderer_end_frame(Renderer *renderer) {
     reset(&renderer->commands);
+    reset(&renderer->lights);
     quad_buffer_reset(&renderer->ui_quads);
     quad_buffer_reset(&renderer->screen_quad);
 }
@@ -1693,6 +1718,16 @@ void draw_text_ui(Renderer *renderer, string text, v3 position, f32 font_size, v
     }
 
     slice_free(glyphs);
+}
+
+void draw_point_light(Renderer *renderer, v3 position, f32 distance, v4 colour) {
+    PointLight light = PointLight {
+        .position = position,
+        .distance = distance,
+        .colour = colour.rgb,
+    };
+
+    append(&renderer->lights, light);
 }
 
 void toggle_wireframe(Renderer *renderer) {
