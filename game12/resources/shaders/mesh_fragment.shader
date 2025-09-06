@@ -10,8 +10,10 @@ in vec2 uv;
 
 uniform vec4 colour;
 
+uniform sampler2D albedo;
+
 void main() {
     g_position = vec4(fragment_position, 1);
-    g_albedo = colour;
+    g_albedo = texture(albedo, uv) * colour;
     g_normal = vec4(normal, 1);
 } 

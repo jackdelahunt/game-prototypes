@@ -420,8 +420,8 @@ struct Texture {
 
 struct RenderTexture {
     u32 id;
-    i64 width;
-    i64 height;
+    i32 width;
+    i32 height;
     u8 *data;
 };
 
@@ -439,7 +439,7 @@ struct PointLight {
 };
 
 struct Material {
-    RenderTexture albedo;
+    RenderTexture *albedo;
 };
 
 // @viewport
@@ -572,13 +572,14 @@ v3 get_up_direction(Camera *camera);
 // Shader API
 bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, string fragment_shader_path);
 void assign_texture_slot(Shader *shader, string texture_name, i32 slot);
-void use_shader(Shader shader);
-void set_uniform_i32(Shader shader, string name, i32 value);
-void set_uniform_f32(Shader shader, string name, f32 value);
-void set_uniform_m4(Shader shader, string name, m4 *matrix);
-void set_uniform_v2(Shader shader, string name, v2 vector);
-void set_uniform_v3(Shader shader, string name, v3 vector);
-void set_uniform_v4(Shader shader, string name, v4 vector);
+void shader_use(Shader shader);
+void shader_set_texture(Shader shader, RenderTexture *render_texture, i32 slot);
+void shader_set_i32(Shader shader, string name, i32 value);
+void shader_set_f32(Shader shader, string name, f32 value);
+void shader_set_m4(Shader shader, string name, m4 *matrix);
+void shader_set_v2(Shader shader, string name, v2 vector);
+void shader_set_v3(Shader shader, string name, v3 vector);
+void shader_set_v4(Shader shader, string name, v4 vector);
 
 // Mesh API
 Mesh *mesh_create(Renderer *renderer, slice<MeshVertex> vertices, slice<u32> indices);
@@ -586,8 +587,10 @@ Mesh *mesh_create_from_file(Renderer *renderer, string mesh_path);
 void upload_mesh(Mesh *mesh);
 
 // Render Texture API
-RenderTexture load_render_texture(Renderer *renderer, string path);
-void upload_texture_to_gpu(Renderer *renderer, RenderTexture *texture);
+RenderTexture *render_texture_create_from_file(Renderer *renderer, string path);
+
+// Material API
+Material *material_create(Renderer *renderer, RenderTexture *albedo);
 
 // Renderer init API
 Renderer *REN();
@@ -776,19 +779,24 @@ void assign_texture_slot(Shader *shader, string texture_name, i32 slot) {
     glUseProgram(0);
 }
 
-void use_shader(Shader shader) {
+void shader_use(Shader shader) {
     glUseProgram(shader.id);
 }
 
-void set_uniform_i32(Shader shader, string name, i32 value) {
+void shader_set_texture(Shader shader, RenderTexture *render_texture, i32 slot) {
+    glActiveTexture(GL_TEXTURE0 + slot);
+    glBindTexture(GL_TEXTURE_2D, render_texture->id);
+}
+
+void shader_set_i32(Shader shader, string name, i32 value) {
     glUniform1i(glGetUniformLocation(shader.id, name.c()), value);
 }
 
-void set_uniform_f32(Shader shader, string name, f32 value) {
+void shader_set_f32(Shader shader, string name, f32 value) {
     glUniform1f(glGetUniformLocation(shader.id, name.c()), value);
 }
 
-void set_uniform_m4(Shader shader, string name, m4 *matrix) {
+void shader_set_m4(Shader shader, string name, m4 *matrix) {
     glUniformMatrix4fv(
         glGetUniformLocation(shader.id, name.c()),
         1,
@@ -797,21 +805,21 @@ void set_uniform_m4(Shader shader, string name, m4 *matrix) {
     );
 }
 
-void set_uniform_v2(Shader shader, string name, v2 vector) {
+void shader_set_v2(Shader shader, string name, v2 vector) {
     glUniform2f(
         glGetUniformLocation(shader.id, name.c()),
         vector.x, vector.y
     );
 }
 
-void set_uniform_v3(Shader shader, string name, v3 vector) {
+void shader_set_v3(Shader shader, string name, v3 vector) {
     glUniform3f(
         glGetUniformLocation(shader.id, name.c()),
         vector.x, vector.y, vector.z 
     );
 }
 
-void set_uniform_v4(Shader shader, string name, v4 vector) {
+void shader_set_v4(Shader shader, string name, v4 vector) {
     glUniform4f(
         glGetUniformLocation(shader.id, name.c()),
         vector.x, vector.y, vector.z, vector.w
@@ -886,6 +894,9 @@ Mesh *mesh_create_from_file(Renderer *renderer, string mesh_path) {
     Assert(node->mNumMeshes == 1);
     aiMesh *loaded_mesh = scene->mMeshes[node->mMeshes[0]];
 
+    Assert(loaded_mesh->HasNormals());
+    Assert(loaded_mesh->HasTextureCoords(0));
+
     slice<MeshVertex> vertices = slice_create_malloc<MeshVertex>(loaded_mesh->mNumVertices);
     slice<u32> indices = slice_create_malloc<u32>(loaded_mesh->mNumFaces * 3);
 
@@ -899,8 +910,8 @@ Mesh *mesh_create_from_file(Renderer *renderer, string mesh_path) {
         vertex.normal.y = loaded_mesh->mNormals[v].y;
         vertex.normal.z = loaded_mesh->mNormals[v].z;
 
-        // is this needed ?
-        // vertex.normal = norm(vertex.normal);
+        vertex.uv.x = loaded_mesh->mTextureCoords[0][v].x;
+        vertex.uv.y = loaded_mesh->mTextureCoords[0][v].y;
 
         vertices[v] = vertex;
     }
@@ -925,43 +936,53 @@ void upload_mesh(Mesh *mesh) {
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(MeshVertex) * mesh->vertices.len, &mesh->vertices[0]);
 }
 
-RenderTexture load_render_texture(Renderer *renderer, string path) {
-    i32 width       = 0;
-    i32 height      = 0;
-    i32 channels    = 0;
-    u8 *image_data  = nullptr;
+RenderTexture *render_texture_create_from_file(Renderer *renderer, string path) {
+    RenderTexture *texture = push(&renderer->render_textures);
 
-    stbi_set_flip_vertically_on_load(true);
+    { // loading from file
+        i32 width       = 0;
+        i32 height      = 0;
+        i32 channels    = 0;
+        u8 *data        = NULL;
+    
+        stbi_set_flip_vertically_on_load(true);
+    
+        data = stbi_load(path.c(), &width, &height, &channels, 4);
+        if (!data) {
+            Errf("Failed to load texture \"{}\"", path);
+            return NULL;
+        }
 
-    image_data = stbi_load(path.c(), &width, &height, &channels, 4);
-    if (!image_data) {
-        printf("Failed to load texture: %s\n", path.c());
-        return {};
+        texture->width = width;
+        texture->height = height;
+        texture->data = data;
     }
 
-    Logf("loaded texture with path \"{}\" [{}x{}] {} bytes", path.c(), width, height, width * height * channels);
+    { // send to GPU
+        glGenTextures(1, &texture->id);
+    
+        glBindTexture(GL_TEXTURE_2D, texture->id);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texture->width, texture->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, texture->data);
+    
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
 
-    return RenderTexture {
-        .id = 0,
-        .width = width,
-        .height = height,
-        .data = image_data,
-    };
+    Logf("Loaded texture with path \"{}\" [{}x{}] {} bytes", path, texture->width, texture->height, texture->width * texture->height * 4);
+
+    return texture;
 }
 
-void upload_texture_to_gpu(Renderer *renderer, RenderTexture *texture) {
-    glGenTextures(1, &texture->id);
+Material *material_create(Renderer *renderer, RenderTexture *albedo) {
+    Material *material = push(&renderer->materials);
+    material->albedo = albedo;
 
-    glBindTexture(GL_TEXTURE_2D, texture->id);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texture->width, texture->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, texture->data);
-
-    glBindTexture(GL_TEXTURE_2D, 0);
+    return material;
 }
 
 Renderer *REN() {
@@ -1043,16 +1064,30 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
 
         ImGui_ImplGlfw_InitForOpenGL(window->glfw_window, true);
         ImGui_ImplOpenGL3_Init("#version 460");
-    } 
+    }
 
-    { // load default normal texture
-        Texture *texture = load_texture(renderer, "resources/textures/defaults/normal.png");
-        if (texture == NULL) {
-            Log("failed to load default texture");
-            return false;
-        }
+    { // create ui quad buffer
+        renderer->ui_quads = quad_buffer_create(MAX_UI_QUADS);
+        renderer->screen_quad = quad_buffer_create(1);
+    }
 
-        renderer->default_normal = texture;
+    { // create frame buffers 
+        frame_buffer_init(&renderer->g_buffer);
+        frame_buffer_init(&renderer->lighting_buffer);
+        frame_buffer_init(&renderer->ui_buffer);
+    }
+
+    { // load default textures
+        renderer->default_albedo = render_texture_create_from_file(renderer, "resources/textures/defaults/default_albedo.png");
+        Assert(renderer->default_albedo);
+
+        renderer->default_normal = load_texture(renderer, "resources/textures/defaults/normal.png");
+        Assert(renderer->default_normal);
+    }
+
+    { // create default material
+        renderer->default_material = material_create(renderer, renderer->default_albedo);
+        Assert(renderer->default_material);
     }
 
     { // load default font
@@ -1089,44 +1124,41 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         Assert(renderer->quad_primitive);
     }
 
-    { // create ui quad buffer
-        renderer->ui_quads = quad_buffer_create(MAX_UI_QUADS);
-        renderer->screen_quad = quad_buffer_create(1);
-    }
-
-    { // create frame buffers 
-        frame_buffer_init(&renderer->g_buffer);
-        frame_buffer_init(&renderer->lighting_buffer);
-        frame_buffer_init(&renderer->ui_buffer);
-    }
-
     return true;
 }
 
 bool load_shaders(Renderer *renderer) {
-    bool ok = init_shader(&renderer->ui_shader, "UI shader", "resources/shaders/ui_vertex.shader", "resources/shaders/ui_fragment.shader");
-    if (!ok) {
-        return false;
+    {
+        bool ok = init_shader(&renderer->ui_shader, "UI shader", "resources/shaders/ui_vertex.shader", "resources/shaders/ui_fragment.shader");
+        if (!ok) {
+            return false;
+        }
+    
+        assign_texture_slot(&renderer->ui_shader, "atlas_texture", 0);
+        assign_texture_slot(&renderer->ui_shader, "font_texture", 1);
     }
 
-    assign_texture_slot(&renderer->ui_shader, "atlas_texture", 0);
-    assign_texture_slot(&renderer->ui_shader, "font_texture", 1);
-
-    ok = init_shader(&renderer->lighting_shader, "Lighting shader", "resources/shaders/lighting_vertex.shader", "resources/shaders/lighting_fragment.shader");
-    if (!ok) {
-        return false;
+    {
+        bool ok = init_shader(&renderer->lighting_shader, "Lighting shader", "resources/shaders/lighting_vertex.shader", "resources/shaders/lighting_fragment.shader");
+        if (!ok) {
+            return false;
+        }
+    
+        assign_texture_slot(&renderer->lighting_shader, "position_map", 0);
+        assign_texture_slot(&renderer->lighting_shader, "normal_map", 1);
+        assign_texture_slot(&renderer->lighting_shader, "albedo_map", 2);
+        assign_texture_slot(&renderer->lighting_shader, "sun_position_map", 3);
+        assign_texture_slot(&renderer->lighting_shader, "shadow_map", 4);
+        assign_texture_slot(&renderer->lighting_shader, "ssao_map", 5);
     }
 
-    assign_texture_slot(&renderer->lighting_shader, "position_map", 0);
-    assign_texture_slot(&renderer->lighting_shader, "normal_map", 1);
-    assign_texture_slot(&renderer->lighting_shader, "albedo_map", 2);
-    assign_texture_slot(&renderer->lighting_shader, "sun_position_map", 3);
-    assign_texture_slot(&renderer->lighting_shader, "shadow_map", 4);
-    assign_texture_slot(&renderer->lighting_shader, "ssao_map", 5);
+    {
+        bool ok = init_shader(&renderer->mesh_shader, "Mesh shader", "resources/shaders/mesh_vertex.shader", "resources/shaders/mesh_fragment.shader");
+        if (!ok) {
+            return false;
+        }
 
-    ok = init_shader(&renderer->mesh_shader, "Mesh shader", "resources/shaders/mesh_vertex.shader", "resources/shaders/mesh_fragment.shader");
-    if (!ok) {
-        return false;
+        assign_texture_slot(&renderer->mesh_shader, "albedo", 0);
     }
 
     return true;
@@ -1429,13 +1461,15 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
                  
                 m4 model_matrix = get_model_matrix(model_cmd->position, model_cmd->scale, model_cmd->rotation);
          
-                use_shader(renderer->mesh_shader);
+                shader_use(renderer->mesh_shader);
          
-                set_uniform_m4(renderer->mesh_shader, "model", &model_matrix);
-                set_uniform_m4(renderer->mesh_shader, "view", &view_matrix);
-                set_uniform_m4(renderer->mesh_shader, "projection", &projection_matrix);
-                set_uniform_v4(renderer->mesh_shader, "colour", model_cmd->colour);
-            
+                shader_set_m4(renderer->mesh_shader, "model", &model_matrix);
+                shader_set_m4(renderer->mesh_shader, "view", &view_matrix);
+                shader_set_m4(renderer->mesh_shader, "projection", &projection_matrix);
+                shader_set_v4(renderer->mesh_shader, "colour", model_cmd->colour);
+
+                shader_set_texture(renderer->mesh_shader, model_cmd->material->albedo, 0);
+
                 GLCall(glBindVertexArray(model_cmd->mesh->vertex_array_id));
                 GLCall(glDrawElements(GL_TRIANGLES, model_cmd->mesh->indices.len, GL_UNSIGNED_INT, 0));
             }
@@ -1452,7 +1486,7 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
         push_screen_quad(renderer, WHITE);
         quad_buffer_bind_and_update(&renderer->screen_quad);
         
-        use_shader(renderer->lighting_shader);
+        shader_use(renderer->lighting_shader);
     
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.position_attachment);
@@ -1463,19 +1497,19 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
         glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.albedo_attachment);
     
-        set_uniform_v3(renderer->lighting_shader, "ambient_light", renderer->ambient_light);
-        set_uniform_v3(renderer->lighting_shader, "sun_position", renderer->sun_position);
-        set_uniform_v3(renderer->lighting_shader, "sun_colour", renderer->sun_colour);
-        set_uniform_v3(renderer->lighting_shader, "shadow_colour", renderer->shadow_colour);
-        set_uniform_i32(renderer->lighting_shader, "light_count", renderer->lights.len);
+        shader_set_v3(renderer->lighting_shader, "ambient_light", renderer->ambient_light);
+        shader_set_v3(renderer->lighting_shader, "sun_position", renderer->sun_position);
+        shader_set_v3(renderer->lighting_shader, "sun_colour", renderer->sun_colour);
+        shader_set_v3(renderer->lighting_shader, "shadow_colour", renderer->shadow_colour);
+        shader_set_i32(renderer->lighting_shader, "light_count", renderer->lights.len);
 
         for (i64 i = 0; i < renderer->lights.len; i++) {
             PointLight light = renderer->lights[i];
             v4 light_position = view_matrix * v4{light.position.x, light.position.y, light.position.z, 1};
 
-            set_uniform_v3(renderer->lighting_shader, "lights[0].position", light_position.xyz);
-            set_uniform_v3(renderer->lighting_shader, "lights[0].colour", light.colour);
-            set_uniform_f32(renderer->lighting_shader, "lights[0].distance", light.distance);
+            shader_set_v3(renderer->lighting_shader, "lights[0].position", light_position.xyz);
+            shader_set_v3(renderer->lighting_shader, "lights[0].colour", light.colour);
+            shader_set_f32(renderer->lighting_shader, "lights[0].distance", light.distance);
         }
             
         glDrawElements(GL_TRIANGLES, 6 * renderer->screen_quad.quads.len, GL_UNSIGNED_INT, 0);
@@ -1496,7 +1530,7 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
     
         quad_buffer_bind_and_update(&renderer->ui_quads);
      
-        use_shader(renderer->ui_shader);
+        shader_use(renderer->ui_shader);
     
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
@@ -1504,9 +1538,9 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, renderer->font_texture_id);
     
-        set_uniform_m4(renderer->ui_shader, "model", &model_matrix);
-        set_uniform_m4(renderer->ui_shader, "view", &view_matrix);
-        set_uniform_m4(renderer->ui_shader, "projection", &projection_matrix);
+        shader_set_m4(renderer->ui_shader, "model", &model_matrix);
+        shader_set_m4(renderer->ui_shader, "view", &view_matrix);
+        shader_set_m4(renderer->ui_shader, "projection", &projection_matrix);
     
         glDrawElements(GL_TRIANGLES, 6 * renderer->ui_quads.quads.len, GL_UNSIGNED_INT, 0);
     
@@ -1603,6 +1637,7 @@ void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position, v3 scale, v3 rotatio
     command->mesh.rotation = rotation;
     command->mesh.mesh = mesh;
     command->mesh.colour = colour;
+    command->mesh.material = renderer->default_material;
 }
 
 void draw_quad_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour, v2 uvs[4], DrawType type) {
