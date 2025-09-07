@@ -11,9 +11,10 @@ in vec2 uv;
 uniform vec4 colour;
 
 uniform sampler2D albedo;
+uniform vec2 tiling_factor;
 
 void main() {
-    vec4 albedo_sample = texture(albedo, uv);
+    vec4 albedo_sample = texture(albedo, uv * tiling_factor);
     if (albedo_sample.a == 0) {
         discard;
     }

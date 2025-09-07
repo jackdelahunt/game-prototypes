@@ -440,6 +440,7 @@ struct PointLight {
 
 struct Material {
     RenderTexture *albedo;
+    v2 tiling_factor;
 };
 
 // @viewport
@@ -590,7 +591,7 @@ void upload_mesh(Mesh *mesh);
 RenderTexture *render_texture_create_from_file(Renderer *renderer, string path);
 
 // Material API
-Material *material_create(Renderer *renderer, RenderTexture *albedo);
+Material *material_create(Renderer *renderer, RenderTexture *albedo, v2 tiling_factor);
 
 // Renderer init API
 Renderer *REN();
@@ -978,11 +979,12 @@ RenderTexture *render_texture_create_from_file(Renderer *renderer, string path) 
     return texture;
 }
 
-Material *material_create(Renderer *renderer, RenderTexture *albedo) {
+Material *material_create(Renderer *renderer, RenderTexture *albedo, v2 tiling_factor) {
     Assert(albedo);
 
     Material *material = push(&renderer->materials);
     material->albedo = albedo;
+    material->tiling_factor = tiling_factor;
 
     return material;
 }
@@ -1088,7 +1090,7 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
     }
 
     { // create default material
-        renderer->default_material = material_create(renderer, renderer->default_albedo);
+        renderer->default_material = material_create(renderer, renderer->default_albedo, {1, 1});
         Assert(renderer->default_material);
     }
 
@@ -1471,6 +1473,7 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
                 shader_set_v4(renderer->mesh_shader, "colour", model_cmd->colour);
 
                 shader_set_texture(renderer->mesh_shader, model_cmd->material->albedo, 0);
+                shader_set_v2(renderer->mesh_shader, "tiling_factor", model_cmd->material->tiling_factor);
 
                 GLCall(glBindVertexArray(model_cmd->mesh->vertex_array_id));
                 GLCall(glDrawElements(GL_TRIANGLES, model_cmd->mesh->indices.len, GL_UNSIGNED_INT, 0));

@@ -1,3 +1,4 @@
+#include "imgui.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -15,8 +16,8 @@
 #include <chrono>
 #include <atomic>
 
-// Total: 118:00
-// Started: 15:30
+// Total: 120:00
+// Started: 8:30
 //
 // What do a programmer do?:
 // Game:
@@ -162,9 +163,11 @@ v3 g_ambient_light_colour = v3 {0.304082, 0.304082, 0.590717};
 v3 g_sun_colour = v3 {0.696203, 0.489398, 0.179191};
 v3 g_shadow_colour = BLACK.rgb;
 
-enum MaterialHandle : u32 {
-    MAT_NONE,
+meta enum MaterialHandle : u32 {
+    MAT_DEFAULT,
     MAT_MUZZLE_FLASH,
+    MAT_METAL_PLATE,
+    MAT_BROKEN_BRICK_WALL,
     _MAT_COUNT
 };
 
@@ -312,6 +315,7 @@ meta enum EntityFlag : u32 {
     EF_MISSLE           = 1 << 9,
     EF_JUMP_PAD         = 1 << 10,
     EF_COMPLEX_PHYSICS  = 1 << 11,
+    EF_ORB              = 1 << 12,
     EF_DELETE           = 1 << 16,
 };
 
@@ -331,6 +335,7 @@ struct Entity {
 
     // rendering
     v4 colour;
+    MaterialHandle material;
 
     // flag: damageable
     f32 max_health;
@@ -576,9 +581,13 @@ bool point_collision(v3 point, v3 collider_position, v3 collider_size);
 
 void imgui_entity(Entity *entity);
 Viewport imgui_viewport(const char *label, u32 texture_id, bool force_focus);
+void imgui_v2_control(const char *label, v2 *vector, f32 step = 1);
 void imgui_v3_control(const char *label, v3 *vector, f32 step = 1);
 void imgui_colour_control(const char *label, v4 *colour);
 void imgui_colour_control(const char *label, v3 *colour);
+
+template <typename T>
+void imgui_enum_dropdown(const char *label, T *value);
 
 void clear_level(State *state);
 void serialise_level(State *state);
@@ -746,8 +755,17 @@ void game_client_entry() {
         }
 
         { // load materials
-            g_materials[MAT_MUZZLE_FLASH] = material_create(REN(), render_texture_create_from_file(REN(), "resources/textures/muzzle_flash/muzzle_flash.png"));
+            g_materials[MAT_DEFAULT] = REN()->default_material;
+            Assert(g_materials[MAT_DEFAULT]);
+
+            g_materials[MAT_MUZZLE_FLASH] = material_create(REN(), render_texture_create_from_file(REN(), "resources/textures/muzzle_flash/muzzle_flash.png"), {1, 1});
             Assert(g_materials[MAT_MUZZLE_FLASH]);
+
+            g_materials[MAT_METAL_PLATE] = material_create(REN(), render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_diff_1k.png"), {12.3, 12.3});
+            Assert(g_materials[MAT_METAL_PLATE]);
+
+            g_materials[MAT_BROKEN_BRICK_WALL] = material_create(REN(), render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_diff_1k.png"), {15, 15});
+            Assert(g_materials[MAT_BROKEN_BRICK_WALL]);
         }
 
         ok = sound_engine_init();
@@ -793,7 +811,7 @@ void game_client_entry() {
 
     g_game_client = new GameClient {
         .mode = GC_EDITOR,
-        .camera = camera_create(CameraMode::FIRST_PERSON, 90, v3{0, 0, 0}, 0.1, 300),
+        .camera = camera_create(CameraMode::FIRST_PERSON, 90, v3{0, 10, 0}, 0.1, 300),
         .viewport =  Viewport {
             .focused = false,
             .size = WIN()->frame_buffer_size
@@ -809,7 +827,7 @@ void game_client_entry() {
     };
 
     g_editor = new Editor {
-        .camera = camera_create(CameraMode::FIRST_PERSON, 90, v3{0, 5, -20}, 0.1, 300),
+        .camera = camera_create(CameraMode::FIRST_PERSON, 90, v3{0, 15, -20}, 0.1, 300),
         .viewport =  Viewport {
             .focused = false,
             .size = WIN()->frame_buffer_size
@@ -1498,6 +1516,10 @@ void game_client_draw(GameClient *client, State *state) {
                 }
             }
 
+            { // testing light
+                draw_point_light(REN(), entity.position + v3{0, 0, 5}, 30, RED);
+            }
+
             // @hud
 
             // draw fire cooldown when using non auto gun
@@ -1757,7 +1779,7 @@ void game_client_draw(GameClient *client, State *state) {
             }
         }
 
-        draw_cube(REN(), entity.position, entity.size, entity.rotation, draw_colour, REN()->default_material);
+        draw_cube(REN(), entity.position, entity.size, entity.rotation, draw_colour, g_materials[entity.material]);
     }
 }
 
@@ -2136,7 +2158,7 @@ void editor_draw_ui(State *state) {
             ImGui::SliderFloat3("Weapon offset", &g_weapon_display_offset.x, -2, 2);
 
             ImGui::SeparatorText("Muzzle flash");
-            imgui_colour_control("Colour", &g_muzzle_flash_colour);
+            imgui_colour_control("Flash colour", &g_muzzle_flash_colour);
             ImGui::SliderFloat("Distance", &g_muzzle_flash_distance, 0, 50);
 
             if (ImGui::CollapsingHeader("Entity")) {
@@ -2207,6 +2229,21 @@ void editor_draw_ui(State *state) {
                     ImGui::DragFloat("Muzzle flash size", &weapon->muzzle_flash_size, 0, 1, 0.01);
                     imgui_v3_control("Muzzle flash offset", &weapon->muzzle_flash_offset, 0.01);
                     ImGui::InputFloat("Speed factor", &weapon->speed_factor);
+                }
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Materials")) {
+            EnumValue<MaterialHandle> *material_handles = meta_values<MaterialHandle>();
+            for (i64 i = 0; i < meta_count<MaterialHandle>() - 1; i++) {
+                EnumValue<MaterialHandle> material_handle = material_handles[i];
+
+                if (ImGui::CollapsingHeader(material_handle.name.c())) {
+                    Material *material = g_materials[material_handles[i].value];
+
+                    ImGui::Text("Albedo: %dx%d", material->albedo->width, material->albedo->height);
+                    ImGui::Image(material->albedo->id, ImVec2(200, 200));
+                    imgui_v2_control("Tiling factor", &material->tiling_factor, 0.01);
                 }
             }
         }
@@ -2992,32 +3029,11 @@ void imgui_entity(Entity *entity) {
     imgui_v3_control("rotation", &entity->rotation);
     imgui_v3_control("velocity", &entity->velocity);
     imgui_colour_control("colour", &entity->colour);
+    imgui_enum_dropdown("Material", &entity->material);
     ImGui::InputFloat("max health", &entity->max_health);
     ImGui::InputFloat("health", &entity->health);
     ImGui::InputFloat("death cooldown", &entity->death_cooldown);
-
-    { // pickup type enum combo box
-        EnumValue<PickupType> *values = meta_values<PickupType>();
-        int members_count = meta_count<PickupType>();
-        i32 selected_index = meta_index(entity->pickup_type);
-        string selected_name = values[selected_index].name;
-    
-        if (ImGui::BeginCombo("pickup type", selected_name.c())) {
-            for (i32 i = 0; i < members_count; i++) {
-                bool is_selected = selected_index == i;
-    
-                if (ImGui::Selectable(values[i].name.c(), is_selected))  {
-                    entity->pickup_type = values[i].value;
-                }
-    
-                // set the initial focus when opening the combo
-                if (is_selected)
-                    ImGui::SetItemDefaultFocus();
-            }
-    
-            ImGui::EndCombo();
-        }
-    }
+    imgui_enum_dropdown("Pickup type", &entity->pickup_type);
 
     ImGui::InputFloat("pickup cooldown", &entity->pickup_cooldown);
     ImGui::InputFloat("jump pad cooldown", &entity->jump_pad_cooldown);
@@ -3077,6 +3093,52 @@ Viewport imgui_viewport(const char *label, u32 texture_id, bool force_focus) {
     ImGui::PopStyleVar();
 
     return viewport;
+}
+
+void imgui_v2_control(const char *label, v2 *vector, f32 step) {
+    ImVec4 x_button_colour = ImVec4(0.7, 0.1, 0.1, 1);
+    ImVec4 y_button_colour = ImVec4(0.1, 0.7, 0.1, 1);
+
+    ImGui::PushID(label);
+    ImGui::Columns(2);
+
+    { // label column
+        ImGui::SetColumnWidth(0, 80);
+        ImGui::Text(label);
+        ImGui::NextColumn();
+    }
+
+    { // controls column
+        ImGui::PushMultiItemsWidths(3, ImGui::CalcItemWidth());
+   
+        { // X
+            ImGui::PushStyleColor(ImGuiCol_Button, x_button_colour);
+            if (ImGui::Button("X")) {
+                vector->x = 0;        
+            }
+        
+            ImGui::SameLine();
+            ImGui::DragFloat("##X", &(*vector)[0], step);
+            ImGui::PopItemWidth();
+        }
+
+        { // Y
+            ImGui::SameLine();
+
+            ImGui::PushStyleColor(ImGuiCol_Button, y_button_colour);
+            if (ImGui::Button("Y")) {
+                vector->y = 0;        
+            }
+        
+            ImGui::SameLine();
+            ImGui::DragFloat("##Y", &(*vector)[1], step);
+            ImGui::PopItemWidth();
+        }
+    }
+    
+    ImGui::PopStyleColor(2);
+    ImGui::Columns(1);
+    ImGui::PopID();
 }
 
 void imgui_v3_control(const char *label, v3 *vector, f32 step) {
@@ -3171,6 +3233,31 @@ void imgui_colour_control(const char *label, v3 *colour) {
     ImGui::PopID();
 }
 
+template <typename T>
+void imgui_enum_dropdown(const char *label, T *value) {
+    EnumValue<T> *values = meta_values<T>();
+    int members_count = meta_count<T>();
+
+    i32 selected_index = meta_index(*value);
+    string selected_name = values[selected_index].name;
+ 
+    if (ImGui::BeginCombo(label, selected_name.c())) {
+        for (i32 i = 0; i < members_count; i++) {
+            bool is_selected = selected_index == i;
+ 
+            if (ImGui::Selectable(values[i].name.c(), is_selected))  {
+                *value = values[i].value;
+            }
+ 
+            // set the initial focus when opening the combo
+            if (is_selected)
+                ImGui::SetItemDefaultFocus();
+        }
+ 
+        ImGui::EndCombo();
+    }
+}
+
 void clear_level(State *state) {
     reset(&state->entities);
 }
@@ -3233,6 +3320,7 @@ void serialise_entity(YAML::Emitter &out, Entity *entity) {
     out << YAML::Key << "rotation"      << YAML::Value << entity->rotation;
     out << YAML::Key << "velocity"      << YAML::Value << entity->velocity;
     out << YAML::Key << "colour"        << YAML::Value << entity->colour;
+    out << YAML::Key << "material"      << YAML::Value << meta_name(entity->material);
     out << YAML::Key << "max_health"    << YAML::Value << entity->max_health;
     out << YAML::Key << "health"        << YAML::Value << entity->health;
     out << YAML::Key << "pickup_type"   << YAML::Value << meta_name(entity->pickup_type);
@@ -3284,6 +3372,20 @@ void deserialise_level(State *state) {
         entity.colour =                      node["colour"].as<v4>();
         entity.max_health =                  node["max_health"].as<f32>();
         entity.health =                      node["health"].as<f32>();
+
+        { // decode material from string
+            std::string s = node["material"].as<std::string>();
+            string saved_name = slice_create((u8 *) s.c_str(), s.size());
+
+            // check if saved name is valid
+            EnumValue<MaterialHandle> *material_handle = meta_value<MaterialHandle>(saved_name);
+            if (!material_handle) {
+                Warnf("No material was found with name \"{}\", okay if deleted but could be a bug!!", saved_name);
+                Breakpoint;
+            }
+
+            entity.material = material_handle->value;
+        }
 
         { // decode pickup type from string
             std::string s = node["pickup_type"].as<std::string>();
@@ -3374,12 +3476,11 @@ void draw_player_weapon(State *state, Weapon *weapon, v3 display_offset, bool sh
     // apply recoil if there is cooldown
     if (show_recoil && state->player_firing_cooldown > 0) { 
         f32 cooldown_scale = state->player_firing_cooldown / weapon->firing_cooldown;
-        v3 wro = weapon->recoil_offset;
         v3 recoil_offset = v3{};
 
-        recoil_offset += wro.x * right;
-        recoil_offset += wro.y * up;
-        recoil_offset += wro.z * forward;
+        recoil_offset += weapon->recoil_offset.x * right;
+        recoil_offset += weapon->recoil_offset.y * up;
+        recoil_offset += weapon->recoil_offset.z * forward;
         recoil_offset *= cooldown_scale;
 
         weapon_position += recoil_offset;
@@ -3406,7 +3507,7 @@ void draw_player_weapon(State *state, Weapon *weapon, v3 display_offset, bool sh
             muzzle_flash_position += weapon->muzzle_flash_offset.y * up;
             muzzle_flash_position += weapon->muzzle_flash_offset .z * forward;
 
-            draw_quad(REN(), muzzle_flash_position, {weapon->muzzle_flash_size, weapon->muzzle_flash_size}, {}, WHITE, g_materials[MAT_MUZZLE_FLASH]);
+            draw_quad(REN(), muzzle_flash_position, {weapon->muzzle_flash_size, weapon->muzzle_flash_size}, weapon_rotation, WHITE, g_materials[MAT_MUZZLE_FLASH]);
         }
     }
 }

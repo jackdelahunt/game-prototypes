@@ -7,6 +7,44 @@
 #include "meta.h"
 
 template<>
+struct MetaEnum<MaterialHandle> {
+const static int count = 5;
+
+inline static EnumValue<MaterialHandle> values[count] = {
+    EnumValue<MaterialHandle>(string("MAT_DEFAULT"), MAT_DEFAULT),
+    EnumValue<MaterialHandle>(string("MAT_MUZZLE_FLASH"), MAT_MUZZLE_FLASH),
+    EnumValue<MaterialHandle>(string("MAT_METAL_PLATE"), MAT_METAL_PLATE),
+    EnumValue<MaterialHandle>(string("MAT_BROKEN_BRICK_WALL"), MAT_BROKEN_BRICK_WALL),
+    EnumValue<MaterialHandle>(string("_MAT_COUNT"), _MAT_COUNT),
+};
+
+static string name(MaterialHandle value) {
+    switch (value) {
+        case MAT_DEFAULT: return values[0].name;
+        case MAT_MUZZLE_FLASH: return values[1].name;
+        case MAT_METAL_PLATE: return values[2].name;
+        case MAT_BROKEN_BRICK_WALL: return values[3].name;
+        case _MAT_COUNT: return values[4].name;
+    }
+}
+
+static EnumValue<MaterialHandle> *value(string name) {
+    for (int i = 0; i < count; i++) {
+        if (slice_memcmp(values[i].name, name)) return &values[i];
+    }
+    return nullptr;
+}
+
+static int index(MaterialHandle value) {
+    for (int i = 0; i < count; i++) {
+        if (values[i].value == value) return i;
+    }
+    return -1;
+}
+
+};
+
+template<>
 struct MetaEnum<WeaponHandle> {
 const static int count = 5;
 
@@ -84,7 +122,7 @@ static int index(PickupType value) {
 
 template<>
 struct MetaEnum<EntityFlag> {
-const static int count = 13;
+const static int count = 14;
 
 inline static EnumValue<EntityFlag> values[count] = {
     EnumValue<EntityFlag>(string("EF_PLAYER"), EF_PLAYER),
@@ -99,6 +137,7 @@ inline static EnumValue<EntityFlag> values[count] = {
     EnumValue<EntityFlag>(string("EF_MISSLE"), EF_MISSLE),
     EnumValue<EntityFlag>(string("EF_JUMP_PAD"), EF_JUMP_PAD),
     EnumValue<EntityFlag>(string("EF_COMPLEX_PHYSICS"), EF_COMPLEX_PHYSICS),
+    EnumValue<EntityFlag>(string("EF_ORB"), EF_ORB),
     EnumValue<EntityFlag>(string("EF_DELETE"), EF_DELETE),
 };
 
@@ -116,7 +155,8 @@ static string name(EntityFlag value) {
         case EF_MISSLE: return values[9].name;
         case EF_JUMP_PAD: return values[10].name;
         case EF_COMPLEX_PHYSICS: return values[11].name;
-        case EF_DELETE: return values[12].name;
+        case EF_ORB: return values[12].name;
+        case EF_DELETE: return values[13].name;
     }
 }
 
