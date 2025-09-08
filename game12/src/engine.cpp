@@ -440,6 +440,8 @@ struct PointLight {
 
 struct Material {
     RenderTexture *albedo;
+    RenderTexture *ambient_occlusion;
+
     v2 tiling_factor;
 };
 
@@ -530,7 +532,9 @@ struct Renderer {
 
     Texture *default_normal;
 
-    RenderTexture *default_albedo;
+    RenderTexture *default_material_albedo;
+    RenderTexture *default_material_ambient_occlusion;
+
     Material *default_material;
 
     Font font;
@@ -591,7 +595,7 @@ void upload_mesh(Mesh *mesh);
 RenderTexture *render_texture_create_from_file(Renderer *renderer, string path);
 
 // Material API
-Material *material_create(Renderer *renderer, RenderTexture *albedo, v2 tiling_factor);
+Material *material_create(Renderer *renderer, RenderTexture *albedo, RenderTexture *ambient_occlusion, v2 tiling_factor);
 
 // Renderer init API
 Renderer *REN();
@@ -979,11 +983,12 @@ RenderTexture *render_texture_create_from_file(Renderer *renderer, string path) 
     return texture;
 }
 
-Material *material_create(Renderer *renderer, RenderTexture *albedo, v2 tiling_factor) {
-    Assert(albedo);
+Material *material_create(Renderer *renderer, RenderTexture *albedo, RenderTexture *ambient_occlusion, v2 tiling_factor) {
+    Assert(albedo && ambient_occlusion);
 
     Material *material = push(&renderer->materials);
     material->albedo = albedo;
+    material->ambient_occlusion = ambient_occlusion;
     material->tiling_factor = tiling_factor;
 
     return material;
@@ -1082,15 +1087,18 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
     }
 
     { // load default textures
-        renderer->default_albedo = render_texture_create_from_file(renderer, "resources/textures/defaults/default_albedo.png");
-        Assert(renderer->default_albedo);
+        renderer->default_material_albedo = render_texture_create_from_file(renderer, "resources/textures/defaults/default_albedo.png");
+        Assert(renderer->default_material_albedo);
+
+        renderer->default_material_ambient_occlusion = render_texture_create_from_file(renderer, "resources/textures/defaults/default_ambient_occlusion.png");
+        Assert(renderer->default_material_ambient_occlusion);
 
         renderer->default_normal = load_texture(renderer, "resources/textures/defaults/normal.png");
         Assert(renderer->default_normal);
     }
 
     { // create default material
-        renderer->default_material = material_create(renderer, renderer->default_albedo, {1, 1});
+        renderer->default_material = material_create(renderer, renderer->default_material_albedo, renderer->default_material_ambient_occlusion, {1, 1});
         Assert(renderer->default_material);
     }
 
@@ -1162,7 +1170,8 @@ bool load_shaders(Renderer *renderer) {
             return false;
         }
 
-        assign_texture_slot(&renderer->mesh_shader, "albedo", 0);
+        assign_texture_slot(&renderer->mesh_shader, "material_albedo", 0);
+        assign_texture_slot(&renderer->mesh_shader, "material_ambient_occlusion", 1);
     }
 
     return true;
@@ -1473,6 +1482,7 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
                 shader_set_v4(renderer->mesh_shader, "colour", model_cmd->colour);
 
                 shader_set_texture(renderer->mesh_shader, model_cmd->material->albedo, 0);
+                shader_set_texture(renderer->mesh_shader, model_cmd->material->ambient_occlusion, 1);
                 shader_set_v2(renderer->mesh_shader, "tiling_factor", model_cmd->material->tiling_factor);
 
                 GLCall(glBindVertexArray(model_cmd->mesh->vertex_array_id));

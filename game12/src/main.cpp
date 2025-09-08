@@ -758,13 +758,28 @@ void game_client_entry() {
             g_materials[MAT_DEFAULT] = REN()->default_material;
             Assert(g_materials[MAT_DEFAULT]);
 
-            g_materials[MAT_MUZZLE_FLASH] = material_create(REN(), render_texture_create_from_file(REN(), "resources/textures/muzzle_flash/muzzle_flash.png"), {1, 1});
+            g_materials[MAT_MUZZLE_FLASH] = material_create(REN(), 
+                render_texture_create_from_file(REN(), "resources/textures/muzzle_flash/muzzle_flash.png"),
+                REN()->default_material_ambient_occlusion,
+                {1.0, 1.0}
+            );
+
             Assert(g_materials[MAT_MUZZLE_FLASH]);
 
-            g_materials[MAT_METAL_PLATE] = material_create(REN(), render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_diff_1k.png"), {12.3, 12.3});
+            g_materials[MAT_METAL_PLATE] = material_create(REN(),
+                render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_diff_1k.png"),
+                render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_ao_1k.png"),
+                {12.3, 12.3}
+            );
+
             Assert(g_materials[MAT_METAL_PLATE]);
 
-            g_materials[MAT_BROKEN_BRICK_WALL] = material_create(REN(), render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_diff_1k.png"), {15, 15});
+            g_materials[MAT_BROKEN_BRICK_WALL] = material_create(REN(), 
+                render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_diff_1k.png"),
+                render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_ao_1k.png"),
+                {15, 15}
+            );
+
             Assert(g_materials[MAT_BROKEN_BRICK_WALL]);
         }
 
@@ -2243,6 +2258,10 @@ void editor_draw_ui(State *state) {
 
                     ImGui::Text("Albedo: %dx%d", material->albedo->width, material->albedo->height);
                     ImGui::Image(material->albedo->id, ImVec2(200, 200));
+
+                    ImGui::Text("Ambient occlusion: %dx%d", material->ambient_occlusion->width, material->ambient_occlusion->height);
+                    ImGui::Image(material->ambient_occlusion->id, ImVec2(200, 200));
+
                     imgui_v2_control("Tiling factor", &material->tiling_factor, 0.01);
                 }
             }
