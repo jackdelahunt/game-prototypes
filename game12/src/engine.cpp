@@ -304,7 +304,7 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 #define MAX_QUADS 500
 #define MAX_RENDER_COMMANDS 5000
 #define MAX_MESHES 128
-#define MAX_POINT_LIGHTS 20
+#define MAX_POINT_LIGHTS 20 // keep in sync with pbr shader 
 #define MAX_TEXTURES 256
 #define MAX_MATERIALS 256
 
@@ -441,6 +441,7 @@ struct PointLight {
 struct Material {
     v2 tiling_factor;
     RenderTexture *albedo;
+    RenderTexture *normal;
     RenderTexture *ambient_occlusion;
 };
 
@@ -528,9 +529,8 @@ struct Renderer {
     Mesh *sphere_primitive;
     Mesh *quad_primitive;
 
-    Texture *default_normal;
-
     RenderTexture *default_material_albedo;
+    RenderTexture *default_material_normal;
     RenderTexture *default_material_ambient_occlusion;
 
     Material *default_material;
@@ -590,7 +590,7 @@ void upload_mesh(Mesh *mesh);
 RenderTexture *render_texture_create_from_file(Renderer *renderer, string path);
 
 // Material API
-Material *material_create(Renderer *renderer, v2 tiling_factor, RenderTexture *albedo, RenderTexture *ambient_occlusion);
+Material *material_create(Renderer *renderer, v2 tiling_factor, RenderTexture *albedo, RenderTexture *normal, RenderTexture *ambient_occlusion);
 
 // Renderer init API
 Renderer *REN();
@@ -977,12 +977,13 @@ RenderTexture *render_texture_create_from_file(Renderer *renderer, string path) 
     return texture;
 }
 
-Material *material_create(Renderer *renderer, v2 tiling_factor, RenderTexture *albedo, RenderTexture *ambient_occlusion) {
+Material *material_create(Renderer *renderer, v2 tiling_factor, RenderTexture *albedo, RenderTexture *normal, RenderTexture *ambient_occlusion) {
     Assert(albedo && ambient_occlusion);
 
     Material *material = push(&renderer->materials);
     material->tiling_factor = tiling_factor;
     material->albedo = albedo;
+    material->normal = normal;
     material->ambient_occlusion = ambient_occlusion;
 
     return material;
@@ -1083,15 +1084,20 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
         renderer->default_material_albedo = render_texture_create_from_file(renderer, "resources/textures/defaults/default_albedo.png");
         Assert(renderer->default_material_albedo);
 
+        renderer->default_material_normal = render_texture_create_from_file(renderer, "resources/textures/defaults/default_normal.png");
+        Assert(renderer->default_material_normal);
+
         renderer->default_material_ambient_occlusion = render_texture_create_from_file(renderer, "resources/textures/defaults/default_ambient_occlusion.png");
         Assert(renderer->default_material_ambient_occlusion);
-
-        renderer->default_normal = load_texture(renderer, "resources/textures/defaults/normal.png");
-        Assert(renderer->default_normal);
     }
 
     { // create default material
-        renderer->default_material = material_create(renderer, v2{1, 1}, renderer->default_material_albedo, renderer->default_material_ambient_occlusion);
+        renderer->default_material = material_create(renderer, v2{1, 1}, 
+            renderer->default_material_albedo, 
+            renderer->default_material_normal, 
+            renderer->default_material_ambient_occlusion
+        );
+
         Assert(renderer->default_material);
     }
 
@@ -1150,7 +1156,8 @@ bool load_shaders(Renderer *renderer) {
         }
 
         assign_texture_slot(&renderer->pbr_shader, "material_albedo", 0);
-        assign_texture_slot(&renderer->pbr_shader, "material_ambient_occlusion", 1);
+        assign_texture_slot(&renderer->pbr_shader, "material_normal", 1);
+        assign_texture_slot(&renderer->pbr_shader, "material_ambient_occlusion", 2);
     }
 
     return true;
@@ -1459,6 +1466,8 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
                 shader_set_m4(renderer->pbr_shader, "view", &view_matrix);
                 shader_set_m4(renderer->pbr_shader, "projection", &projection_matrix);
 
+                shader_set_v3(renderer->pbr_shader, "camera_position", camera->position);
+
                 shader_set_v4(renderer->pbr_shader, "colour", model_cmd->colour);
 
                 shader_set_v3(renderer->pbr_shader, "ambient_light", renderer->ambient_light);
@@ -1467,19 +1476,19 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
 
                 shader_set_v2(renderer->pbr_shader, "material_tiling_factor", model_cmd->material->tiling_factor);
                 shader_set_texture(renderer->pbr_shader, model_cmd->material->albedo, 0);
-                shader_set_texture(renderer->pbr_shader, model_cmd->material->ambient_occlusion, 1);
+                shader_set_texture(renderer->pbr_shader, model_cmd->material->normal, 1);
+                shader_set_texture(renderer->pbr_shader, model_cmd->material->ambient_occlusion, 2);
 
                 shader_set_i32(renderer->pbr_shader, "light_count", renderer->lights.len);
 
                 for (i64 i = 0; i < renderer->lights.len; i++) {
                     PointLight light = renderer->lights[i];
-                    v4 light_position = view_matrix * v4{light.position.x, light.position.y, light.position.z, 1};
 
                     string position_string = fmtc(renderer->frame_arena, "lights[{}].position", i);
                     string colour_string = fmtc(renderer->frame_arena, "lights[{}].colour", i);
                     string distance_string = fmtc(renderer->frame_arena, "lights[{}].distance", i);
 
-                    shader_set_v3(renderer->pbr_shader, position_string, light_position.xyz);
+                    shader_set_v3(renderer->pbr_shader, position_string, light.position);
                     shader_set_v3(renderer->pbr_shader, colour_string, light.colour);
                     shader_set_f32(renderer->pbr_shader, distance_string, light.distance);
                 }

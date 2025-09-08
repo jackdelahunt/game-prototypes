@@ -1,21 +1,23 @@
 #version 460 core
 
-layout(location = 0) out vec4 colour_attachment;
-
 struct PointLight {
     vec3 position;
     vec3 colour;
     float distance;
 };
 
-// needs to be kept in sync if renderer 
+// keep in sync with renderer 
 #define MAX_POINT_LIGHTS 20
+
+layout(location = 0) out vec4 colour_attachment;
 
 in vec3 fragment_position;
 in vec3 normal;
 in vec2 uv;
 
-uniform vec4 colour;
+uniform vec3        camera_position;
+
+uniform vec4        colour;
 
 uniform vec3        ambient_light;
 uniform vec3        sun_position;
@@ -23,42 +25,15 @@ uniform vec3        sun_colour;
 
 uniform vec2        material_tiling_factor;
 uniform sampler2D   material_albedo;
+uniform sampler2D   material_normal;
 uniform sampler2D   material_ambient_occlusion;
 
 uniform int         light_count;
 uniform PointLight  lights[MAX_POINT_LIGHTS];
 
-vec3 diffuse_calculation(vec3 position, vec3 normal) {
-    vec3 sun_direction = normalize(sun_position - position);
-
-    float diffuse = dot(sun_direction, normal);
-    return sun_colour * diffuse;
-}
-
-float ease_in_quint(float x) {
-    return x * x * x * x * x;
-}
-
-vec3 point_light_calculation(vec3 position) {
-    vec3 total_light = vec3(0);
-
-    for (int i = 0; i < light_count; i++) {
-        PointLight light = lights[i];
-
-        float distance = length(light.position - position);
-        float influence = 1 - (distance / light.distance);
-    
-        if (influence < 0) {
-            influence = 0;
-        }
-    
-        influence = ease_in_quint(influence);
-    
-        total_light += light.colour * influence; 
-    }
-
-    return total_light;
-}
+vec3 fresnelSchlick(float cosTheta, vec3 F0) {
+    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+} 
 
 void main() {
     vec4 fragment_colour;
@@ -76,13 +51,50 @@ void main() {
 
     vec3 fragment_lighting;
 
-    {
+    { // PBR
+        vec3 N = normalize(normal);
+        vec3 V = normalize(camera_position - fragment_position);
+
+        // total incoming radiance
+        vec3 irradiance = vec3(0);
+
+        for (int i = 0; i < light_count; i++) {
+            PointLight light = lights[i];
+            float light_intensity = 10; // TODO: make this configurable
+
+            vec3 light_direction = normalize(light.position - fragment_position);
+            float light_distance = length(light.position - fragment_position);
+
+            float cosTheta = max(dot(N, light_direction), 0.0);
+            float attenuation = 1.0 / (light_distance * light_distance);
+
+            vec3 radiance = light.colour * attenuation * cosTheta * light_intensity;
+
+            irradiance += radiance;
+        }
+    
+        fragment_lighting = ambient_light + irradiance;
+    }
+
+    if (false) { // draw normals unlit 
+        fragment_lighting = vec3(1);
+        fragment_colour = vec4(normal, 1);
+    }
+
+    if (false) { // draw position unlit 
+        fragment_lighting = vec3(1);
+        fragment_colour = vec4(fragment_position.rgb, 1);
+    }
+
+    colour_attachment = fragment_colour * vec4(fragment_lighting, 1);
+} 
+
+#if 0
+    { // Blinn-Phong
         vec3 diffuse_light = diffuse_calculation(fragment_position, normal);
         vec3 point_light = point_light_calculation(fragment_position);
 
         fragment_lighting = ambient_light + diffuse_light + point_light;
     }
+#endif
 
-
-    colour_attachment = fragment_colour * vec4(fragment_lighting, 1);
-} 

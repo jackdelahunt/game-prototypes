@@ -1,4 +1,3 @@
-#include "imgui.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -16,12 +15,11 @@
 #include <chrono>
 #include <atomic>
 
-// Total: 120:00
+// Total: 125:00
 // Started: 12:00
 //
 // NOTES: {
 //      IN_PROGRESS: {
-//          - forward rendering
 //          - PBR
 //      },
 //
@@ -759,6 +757,7 @@ void game_client_entry() {
             g_materials[MAT_MUZZLE_FLASH] = material_create(REN(), 
                 {1.0, 1.0},
                 render_texture_create_from_file(REN(), "resources/textures/muzzle_flash/muzzle_flash.png"),
+                REN()->default_material_normal,
                 REN()->default_material_ambient_occlusion
             );
 
@@ -767,6 +766,7 @@ void game_client_entry() {
             g_materials[MAT_METAL_PLATE] = material_create(REN(),
                 {12.3, 12.3},
                 render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_diff_1k.png"),
+                render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_nor_gl_1k.png"),
                 render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_ao_1k.png")
             );
 
@@ -775,6 +775,7 @@ void game_client_entry() {
             g_materials[MAT_BROKEN_BRICK_WALL] = material_create(REN(), 
                 {15, 15},
                 render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_diff_1k.png"),
+                render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_nor_gl_1k.png"),
                 render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_ao_1k.png")
             );
 
@@ -869,7 +870,17 @@ void game_client_entry() {
 
     Infof("Started game client @ {}tps [thread={}]", i64(1000.0f / f32(GAME_MS_PER_TICK)), get_current_thread_id());
 
+#if 0
     deserialise_level(&GC()->state);
+#else
+    ED()->camera.position = {};
+
+    REN()->ambient_light = {0.1, 0.1, 0.1};
+
+    Entity *light = local_spawn_point_light(&GC()->state);
+    light->position = {1, -1, 0};
+    light->light_distance = 15;
+#endif
 
     while (!glfwWindowShouldClose(WIN()->glfw_window)) {
         GC()->state.frame_delta_time = stopwatch_get_time(&frame_stopwatch);
@@ -1469,6 +1480,18 @@ void game_client_update(GameClient *client, State *state) {
 void game_client_draw(GameClient *client, State *state) {
     Assert(is_client(state));
 
+    { // TODO: temp
+        i32 range = 3;
+
+        for (i32 y = -range; y < range; y++) {
+            for (i32 x = -range; x < range; x++) {
+                v3 position = {f32(x), f32(y), 3};
+
+                draw_mesh(REN(), REN()->sphere_primitive, position, {1, 1, 1}, {}, v4{0.8, 0.2, 0.2, 1}, REN()->default_material);
+            }
+        }
+    }
+
     { // top bar ui
         v3 time_bg_size = v3{UI_TIME_BG_WIDTH, UI_TIME_FONT_SIZE + UI_TIME_Y_PADDING, 0};
         v3 time_centre = v3{time_bg_size.x * 0.5f, client->viewport.size.y - (time_bg_size.y * 0.5f)};
@@ -1909,13 +1932,15 @@ void editor_update(State *state) {
         v3 forward = get_forward_direction(camera);
         v3 up = {0, 1, 0};
         v3 right = get_right_direction(camera);
-        v3 movement = v3{};
 
+        v3 movement = v3{};
         movement += right * keyboard_input.x;
         movement += up * keyboard_input.y;
         movement += forward * keyboard_input.z;
+
+        f32 speed = 0.5f;
         
-        camera->position += movement;
+        camera->position += movement * speed;
     }
 }
 

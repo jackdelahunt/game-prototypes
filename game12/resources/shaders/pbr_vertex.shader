@@ -14,11 +14,9 @@ out vec2 uv;
 
 void main()
 {
-    vec4 view_position = view * model * vec4(a_position, 1);
-
-    fragment_position = view_position.xyz;
+    fragment_position = (model * vec4(a_position, 1)).xyz;
     normal = a_normal;
     uv = a_uv;
 
-    gl_Position = projection * view_position;
+    gl_Position = projection * view * model * vec4(a_position, 1);
 }
