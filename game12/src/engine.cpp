@@ -552,7 +552,7 @@ struct Renderer {
 
     Shader ui_shader;
     Shader lighting_shader;
-    Shader mesh_shader;
+    Shader pbr_shader;
 
     u32 atlas_texture_id;
     u32 font_texture_id;
@@ -1165,13 +1165,13 @@ bool load_shaders(Renderer *renderer) {
     }
 
     {
-        bool ok = init_shader(&renderer->mesh_shader, "Mesh shader", "resources/shaders/mesh_vertex.shader", "resources/shaders/mesh_fragment.shader");
+        bool ok = init_shader(&renderer->pbr_shader, "PBR shader", "resources/shaders/pbr_vertex.shader", "resources/shaders/pbr_fragment.shader");
         if (!ok) {
             return false;
         }
 
-        assign_texture_slot(&renderer->mesh_shader, "material_albedo", 0);
-        assign_texture_slot(&renderer->mesh_shader, "material_ambient_occlusion", 1);
+        assign_texture_slot(&renderer->pbr_shader, "material_albedo", 0);
+        assign_texture_slot(&renderer->pbr_shader, "material_ambient_occlusion", 1);
     }
 
     return true;
@@ -1180,7 +1180,7 @@ bool load_shaders(Renderer *renderer) {
 void delete_shaders(Renderer *renderer) {
     glDeleteProgram(renderer->ui_shader.id);
     glDeleteProgram(renderer->lighting_shader.id);
-    glDeleteProgram(renderer->mesh_shader.id);
+    glDeleteProgram(renderer->pbr_shader.id);
 }
 
 Texture *load_texture(Renderer *renderer, string path) {
@@ -1474,16 +1474,16 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
                  
                 m4 model_matrix = get_model_matrix(model_cmd->position, model_cmd->scale, model_cmd->rotation);
          
-                shader_use(renderer->mesh_shader);
+                shader_use(renderer->pbr_shader);
          
-                shader_set_m4(renderer->mesh_shader, "model", &model_matrix);
-                shader_set_m4(renderer->mesh_shader, "view", &view_matrix);
-                shader_set_m4(renderer->mesh_shader, "projection", &projection_matrix);
-                shader_set_v4(renderer->mesh_shader, "colour", model_cmd->colour);
+                shader_set_m4(renderer->pbr_shader, "model", &model_matrix);
+                shader_set_m4(renderer->pbr_shader, "view", &view_matrix);
+                shader_set_m4(renderer->pbr_shader, "projection", &projection_matrix);
+                shader_set_v4(renderer->pbr_shader, "colour", model_cmd->colour);
 
-                shader_set_texture(renderer->mesh_shader, model_cmd->material->albedo, 0);
-                shader_set_texture(renderer->mesh_shader, model_cmd->material->ambient_occlusion, 1);
-                shader_set_v2(renderer->mesh_shader, "tiling_factor", model_cmd->material->tiling_factor);
+                shader_set_texture(renderer->pbr_shader, model_cmd->material->albedo, 0);
+                shader_set_texture(renderer->pbr_shader, model_cmd->material->ambient_occlusion, 1);
+                shader_set_v2(renderer->pbr_shader, "tiling_factor", model_cmd->material->tiling_factor);
 
                 GLCall(glBindVertexArray(model_cmd->mesh->vertex_array_id));
                 GLCall(glDrawElements(GL_TRIANGLES, model_cmd->mesh->indices.len, GL_UNSIGNED_INT, 0));

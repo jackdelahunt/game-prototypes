@@ -1,4 +1,3 @@
-#include "imgui.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -17,62 +16,48 @@
 #include <atomic>
 
 // Total: 120:00
-// Started: 8:30
+// Started: 12:00
 //
-// What do a programmer do?:
-// Game:
-// - improve the look:
-//      - point lights
-//      - anti-aliasing
-//      - particles
-// - improve game feel:
-//      - shooting
-//          - sound on kill
-//          - health bars
-//          - hitmarkers 
-//          - muzzle blast
-//          - bullet "decals"
-//      - longer press higher jump
-// - game complete screen
-// - pickup more then one gun
-// - ammo pickup
-//	ammo: restore some amount of ammor for a gun (full for deagle, half for m4, 3 for sniper)
-// - actually make a real map
-// - TAP model
-// - TAP sounds & explosion sounds
-// - scoreboard
-// - player sounds, running jumping, maybe taking damage?
+// NOTES: {
+//      IN_PROGRESS: {
+//          - forward rendering
+//          - PBR
+//      },
 //
-// Editor:
-// - setting to allow entity to be positioned so it is flush with the face of another
+//      REVISE: {
+//          - point lights
+//          - muzzle flash
+//          - TAP weapon
+//          - PAL weapon
+//      },
 //
-// Todo but not right now:
-// Engine:
-// - PBR
-//      - metalic
-//      - roughness
-//      - idea of a material
-// - real model loading
-//      - textures
-//      - more then one mesh
-//      - animations
-// - combine vs and fs in the one file
-// - fond out why camera yaw (Y) is flipped
-// - switch to quaternions for rotation, this allows camera roll which is broke
-// - sky box
-// - define assets in editor and get handles in game
-// - load game as dll
+//      TODO: {
+//          - sky box
+//          - anti aliasing
+//          - particles
+//          - sound on enemy kill
+//          - hitmarkers
+//          - hold space == higher jump
+//          - real game over screen
+//          - ammo pickups
+//          - pickup more then one gun
+//          - score board effect and polish
+//          - position entity flush with the face of another
+//      },
 //
-// Meta program:
-// - reduce the templating in the code gen
-// - meta_name<EntityFlag>(flag) -> MetaEntityFlag::name(flag)
-//
-// Refine Ack structure:
-//  - asserts: enable/disable, assert with message, differnt actions to do on an assert
-//  - basic type, include math types?
-//  - strings, arrays, arenas
-//  - formating
-//  - Timers and profiling markers
+//      FUTURE_GAME: {
+//          - more then one mesh per model
+//          - animations
+//          - asset system
+//          - "folders" in entity list in editor, filter by flags maybe?
+//          - combine vs and fs in the one file
+//          - fond out why camera yaw (Y) is flipped
+//          - switch to quaternions for rotation, this allows camera roll which is broke
+//          - define assets in editor and get handles in game
+//          - load game as dll
+//          - meta overhaul and rethink 
+//      }
+// }
 
 #define MAX_ENTITIES 500
 #define LEVEL_INSTANCE_ID 0
