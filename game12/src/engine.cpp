@@ -304,7 +304,7 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 #define MAX_QUADS 500
 #define MAX_RENDER_COMMANDS 5000
 #define MAX_MESHES 128
-#define MAX_LIGHTS 20
+#define MAX_POINT_LIGHTS 20
 #define MAX_TEXTURES 256
 #define MAX_MATERIALS 256
 
@@ -439,10 +439,9 @@ struct PointLight {
 };
 
 struct Material {
+    v2 tiling_factor;
     RenderTexture *albedo;
     RenderTexture *ambient_occlusion;
-
-    v2 tiling_factor;
 };
 
 // @viewport
@@ -457,9 +456,7 @@ struct FrameBuffer {
     u32 id;
     v2i size;
 
-    u32 position_attachment;
-    u32 normals_attachment;
-    u32 albedo_attachment;
+    u32 colour_attachment;
     u32 depth_attachment;
 };
 
@@ -511,7 +508,8 @@ struct QuadBuffer {
 };
 
 struct Renderer {
-    bool wireframe;
+    Arena *arena;
+    Arena *frame_arena;
 
     v4 clear_colour;
     v3 ambient_light;
@@ -522,7 +520,7 @@ struct Renderer {
     FixedArray<Mesh> meshes;
     FixedArray<RenderCommand> commands;
     StackArray<Texture, MAX_TEXTURES> textures;
-    StackArray<PointLight, MAX_LIGHTS> lights;
+    StackArray<PointLight, MAX_POINT_LIGHTS> lights;
     StackArray<RenderTexture, MAX_TEXTURES> render_textures;
     StackArray<Material, MAX_MATERIALS> materials;
 
@@ -542,17 +540,14 @@ struct Renderer {
     QuadBuffer ui_quads;
     QuadBuffer screen_quad;
 
-    FrameBuffer g_buffer;
-    FrameBuffer lighting_buffer;
-    FrameBuffer ui_buffer;
+    FrameBuffer main_buffer;
 
     u32 vertex_array_id;
     u32 vertex_buffer_id;
     u32 index_buffer_id;
 
-    Shader ui_shader;
-    Shader lighting_shader;
     Shader pbr_shader;
+    Shader ui_shader;
 
     u32 atlas_texture_id;
     u32 font_texture_id;
@@ -595,11 +590,11 @@ void upload_mesh(Mesh *mesh);
 RenderTexture *render_texture_create_from_file(Renderer *renderer, string path);
 
 // Material API
-Material *material_create(Renderer *renderer, RenderTexture *albedo, RenderTexture *ambient_occlusion, v2 tiling_factor);
+Material *material_create(Renderer *renderer, v2 tiling_factor, RenderTexture *albedo, RenderTexture *ambient_occlusion);
 
 // Renderer init API
 Renderer *REN();
-bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_colour, v3 sun_position, v3 shadow_colour);
+bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_colour, v3 ambient_light, v3 sun_colour, v3 sun_position, v3 shadow_colour);
 
 bool load_shaders(Renderer *renderer);
 void delete_shaders(Renderer *renderer);
@@ -639,7 +634,6 @@ void draw_text_ui(Renderer *renderer, string text, v3 position, f32 font_size, v
 // Lights API
 void draw_point_light(Renderer *renderer, v3 position, f32 distance, v4 colour);
 
-void toggle_wireframe(Renderer *renderer);
 f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
 
 bool frame_buffer_init(FrameBuffer *frame_buffer);
@@ -722,13 +716,13 @@ bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, s
     
     string vertex_shader_source = read_entire_file(vertex_shader_path);
     if (vertex_shader_source.len == 0) {
-        Logf("{}: failed to load vertex shader file", debug_name.c());
+        Errf("{}: failed to load vertex shader file", debug_name.c());
         return false;
     }
 
     string fragment_shader_source = read_entire_file(fragment_shader_path);
     if (fragment_shader_source.len == 0) {
-        Logf("{}: failed to load fragment shader file", debug_name.c());
+        Errf("{}: failed to load fragment shader file", debug_name.c());
         return false;
     }
 
@@ -740,7 +734,7 @@ bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, s
     glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &compile_status);
     if (compile_status == 0) {
         glGetShaderInfoLog(vertex_shader, buffer_size, nullptr, &error_buffer[0]);
-        Logf("{}: failed to compile vertex shader: {}", debug_name.c(), error_buffer);
+        Errf("{}: failed to compile vertex shader: {}", debug_name.c(), error_buffer);
         return false;
     }
 
@@ -752,7 +746,7 @@ bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, s
     glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &compile_status);
     if (compile_status == 0) {
         glGetShaderInfoLog(fragment_shader, buffer_size, nullptr, &error_buffer[0]);
-        Logf("{}: failed to compile fragment shader: {}", debug_name.c(), error_buffer);
+        Errf("{}: failed to compile fragment shader: {}", debug_name.c(), error_buffer);
         return false;
     }
 
@@ -766,14 +760,14 @@ bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, s
 
     if (link_status == 0) {
         glGetProgramInfoLog(shader_program, buffer_size, nullptr, &error_buffer[0]);
-        Logf("{}: failed to link shader program: {}", debug_name.c(), error_buffer);
+        Errf("{}: failed to link shader program: {}", debug_name.c(), error_buffer);
         return false;
     }
  
     shader->id = shader_program; 
     shader->debug_name = debug_name;
 
-    Logf("Compiled and linked {}", debug_name.c());
+    Infof("Compiled and linked {}", debug_name.c());
 
     return true;
 }
@@ -983,13 +977,13 @@ RenderTexture *render_texture_create_from_file(Renderer *renderer, string path) 
     return texture;
 }
 
-Material *material_create(Renderer *renderer, RenderTexture *albedo, RenderTexture *ambient_occlusion, v2 tiling_factor) {
+Material *material_create(Renderer *renderer, v2 tiling_factor, RenderTexture *albedo, RenderTexture *ambient_occlusion) {
     Assert(albedo && ambient_occlusion);
 
     Material *material = push(&renderer->materials);
+    material->tiling_factor = tiling_factor;
     material->albedo = albedo;
     material->ambient_occlusion = ambient_occlusion;
-    material->tiling_factor = tiling_factor;
 
     return material;
 }
@@ -999,8 +993,10 @@ Renderer *REN() {
     return g_renderer;
 }
 
-bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_colour, v3 sun_position, v3 shadow_colour) {
+bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_colour, v3 ambient_light, v3 sun_colour, v3 sun_position, v3 shadow_colour) {
     g_renderer = new Renderer {
+        .arena = arena,
+        .frame_arena = frame_arena,
         .clear_colour = clear_colour,
         .ambient_light = ambient_light,
         .sun_colour = sun_colour,
@@ -1009,9 +1005,8 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
         .meshes = fixed_array_create<Mesh>(MAX_MESHES),
         .commands = fixed_array_create<RenderCommand>(MAX_RENDER_COMMANDS),
         .textures = stack_array_create<Texture, MAX_TEXTURES>(),
-        .g_buffer = FrameBuffer {.size = {100, 100}},
-        .lighting_buffer = FrameBuffer {.size = {100, 100}},
-        .ui_buffer = FrameBuffer {.size = {100, 100}},
+        .lights = stack_array_create<PointLight, MAX_POINT_LIGHTS>(),
+        .main_buffer = FrameBuffer {.size = {100, 100}},
     };
 
     Renderer *renderer = REN();
@@ -1047,7 +1042,7 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
 
     bool ok = load_shaders(renderer);
     if (!ok) {
-        Log("Error when loading and compiling shaders");
+        Err("Got an error when loading and compiling shaders");
         return false;
     }
 
@@ -1081,9 +1076,7 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
     }
 
     { // create frame buffers 
-        frame_buffer_init(&renderer->g_buffer);
-        frame_buffer_init(&renderer->lighting_buffer);
-        frame_buffer_init(&renderer->ui_buffer);
+        frame_buffer_init(&renderer->main_buffer);
     }
 
     { // load default textures
@@ -1098,7 +1091,7 @@ bool renderer_init(Window *window, v4 clear_colour, v3 ambient_light, v3 sun_col
     }
 
     { // create default material
-        renderer->default_material = material_create(renderer, renderer->default_material_albedo, renderer->default_material_ambient_occlusion, {1, 1});
+        renderer->default_material = material_create(renderer, v2{1, 1}, renderer->default_material_albedo, renderer->default_material_ambient_occlusion);
         Assert(renderer->default_material);
     }
 
@@ -1151,20 +1144,6 @@ bool load_shaders(Renderer *renderer) {
     }
 
     {
-        bool ok = init_shader(&renderer->lighting_shader, "Lighting shader", "resources/shaders/lighting_vertex.shader", "resources/shaders/lighting_fragment.shader");
-        if (!ok) {
-            return false;
-        }
-    
-        assign_texture_slot(&renderer->lighting_shader, "position_map", 0);
-        assign_texture_slot(&renderer->lighting_shader, "normal_map", 1);
-        assign_texture_slot(&renderer->lighting_shader, "albedo_map", 2);
-        assign_texture_slot(&renderer->lighting_shader, "sun_position_map", 3);
-        assign_texture_slot(&renderer->lighting_shader, "shadow_map", 4);
-        assign_texture_slot(&renderer->lighting_shader, "ssao_map", 5);
-    }
-
-    {
         bool ok = init_shader(&renderer->pbr_shader, "PBR shader", "resources/shaders/pbr_vertex.shader", "resources/shaders/pbr_fragment.shader");
         if (!ok) {
             return false;
@@ -1179,7 +1158,6 @@ bool load_shaders(Renderer *renderer) {
 
 void delete_shaders(Renderer *renderer) {
     glDeleteProgram(renderer->ui_shader.id);
-    glDeleteProgram(renderer->lighting_shader.id);
     glDeleteProgram(renderer->pbr_shader.id);
 }
 
@@ -1464,9 +1442,10 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
     m4 projection_matrix = get_projection_matrix(camera, f32(viewport.size.x) / f32(viewport.size.y));
 
     { // geometry pass
-        frame_buffer_maybe_resize(&renderer->g_buffer, viewport.size);
-        frame_buffer_bind(&renderer->g_buffer);
-        renderer_clear_frame(BLACK);
+        frame_buffer_maybe_resize(&renderer->main_buffer, viewport.size);
+        frame_buffer_bind(&renderer->main_buffer);
+
+        renderer_clear_frame(renderer->clear_colour);
     
         for (RenderCommand &command : renderer->commands) {
             if (command.type == RC_MODEL) {
@@ -1479,11 +1458,31 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
                 shader_set_m4(renderer->pbr_shader, "model", &model_matrix);
                 shader_set_m4(renderer->pbr_shader, "view", &view_matrix);
                 shader_set_m4(renderer->pbr_shader, "projection", &projection_matrix);
+
                 shader_set_v4(renderer->pbr_shader, "colour", model_cmd->colour);
 
+                shader_set_v3(renderer->pbr_shader, "ambient_light", renderer->ambient_light);
+                shader_set_v3(renderer->pbr_shader, "sun_position", renderer->sun_position);
+                shader_set_v3(renderer->pbr_shader, "sun_colour", renderer->sun_colour);
+
+                shader_set_v2(renderer->pbr_shader, "material_tiling_factor", model_cmd->material->tiling_factor);
                 shader_set_texture(renderer->pbr_shader, model_cmd->material->albedo, 0);
                 shader_set_texture(renderer->pbr_shader, model_cmd->material->ambient_occlusion, 1);
-                shader_set_v2(renderer->pbr_shader, "tiling_factor", model_cmd->material->tiling_factor);
+
+                shader_set_i32(renderer->pbr_shader, "light_count", renderer->lights.len);
+
+                for (i64 i = 0; i < renderer->lights.len; i++) {
+                    PointLight light = renderer->lights[i];
+                    v4 light_position = view_matrix * v4{light.position.x, light.position.y, light.position.z, 1};
+
+                    string position_string = fmtc(renderer->frame_arena, "lights[{}].position", i);
+                    string colour_string = fmtc(renderer->frame_arena, "lights[{}].colour", i);
+                    string distance_string = fmtc(renderer->frame_arena, "lights[{}].distance", i);
+
+                    shader_set_v3(renderer->pbr_shader, position_string, light_position.xyz);
+                    shader_set_v3(renderer->pbr_shader, colour_string, light.colour);
+                    shader_set_f32(renderer->pbr_shader, distance_string, light.distance);
+                }
 
                 GLCall(glBindVertexArray(model_cmd->mesh->vertex_array_id));
                 GLCall(glDrawElements(GL_TRIANGLES, model_cmd->mesh->indices.len, GL_UNSIGNED_INT, 0));
@@ -1493,60 +1492,18 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
         frame_buffer_unbind();
     }
 
-    { // lighting pass
-        frame_buffer_maybe_resize(&renderer->lighting_buffer, viewport.size);
-        frame_buffer_bind(&renderer->lighting_buffer);
-        renderer_clear_frame(renderer->clear_colour);
-    
-        push_screen_quad(renderer, WHITE);
-        quad_buffer_bind_and_update(&renderer->screen_quad);
-        
-        shader_use(renderer->lighting_shader);
-    
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.position_attachment);
-    
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.normals_attachment);
-    
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, renderer->g_buffer.albedo_attachment);
-    
-        shader_set_v3(renderer->lighting_shader, "ambient_light", renderer->ambient_light);
-        shader_set_v3(renderer->lighting_shader, "sun_position", renderer->sun_position);
-        shader_set_v3(renderer->lighting_shader, "sun_colour", renderer->sun_colour);
-        shader_set_v3(renderer->lighting_shader, "shadow_colour", renderer->shadow_colour);
-        shader_set_i32(renderer->lighting_shader, "light_count", renderer->lights.len);
-
-        for (i64 i = 0; i < renderer->lights.len; i++) {
-            PointLight light = renderer->lights[i];
-            v4 light_position = view_matrix * v4{light.position.x, light.position.y, light.position.z, 1};
-
-            shader_set_v3(renderer->lighting_shader, "lights[0].position", light_position.xyz);
-            shader_set_v3(renderer->lighting_shader, "lights[0].colour", light.colour);
-            shader_set_f32(renderer->lighting_shader, "lights[0].distance", light.distance);
-        }
-            
-        glDrawElements(GL_TRIANGLES, 6 * renderer->screen_quad.quads.len, GL_UNSIGNED_INT, 0);
-    
-        quad_buffer_reset(&renderer->screen_quad);
-        quad_buffer_unbind();
-    
-        frame_buffer_unbind();
-    }
-
     if (draw_ui) { // ui pass
         m4 model_matrix = HMM_M4D(1.0f);
         m4 view_matrix = HMM_M4D(1.0f);
         m4 projection_matrix = HMM_Orthographic_LH_NO(0, viewport.size.x, 0, viewport.size.y,  0, 10);
 
-        // drawing on top of lighting buffer output
-        frame_buffer_bind(&renderer->lighting_buffer);
+        // drawing on top of main buffer output
+        frame_buffer_bind(&renderer->main_buffer);
     
         quad_buffer_bind_and_update(&renderer->ui_quads);
      
         shader_use(renderer->ui_shader);
-    
+
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, renderer->atlas_texture_id);
     
@@ -1565,7 +1522,7 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
 
     { // copy to target buffer
         frame_buffer_maybe_resize(target, viewport.size);
-        frame_buffer_copy_to(&renderer->lighting_buffer, target);
+        frame_buffer_copy_to(&renderer->main_buffer, target);
     }
 }
 
@@ -1780,16 +1737,6 @@ void draw_point_light(Renderer *renderer, v3 position, f32 distance, v4 colour) 
     append(&renderer->lights, light);
 }
 
-void toggle_wireframe(Renderer *renderer) {
-    renderer->wireframe = !renderer->wireframe;
-
-    if (renderer->wireframe) {
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-    } else {
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    }
-}
-
 f32 texture_aspect_ratio(Renderer *renderer, Texture *texture) {
     return (f32) texture->width / (f32) texture->height;
 }
@@ -1823,45 +1770,23 @@ bool frame_buffer_maybe_resize(FrameBuffer *frame_buffer, v2i new_size) {
 bool frame_buffer_rebuild(FrameBuffer *frame_buffer) {
     if (frame_buffer->id != 0) {
         glDeleteFramebuffers(1, &frame_buffer->id);
-        glDeleteTextures(1, &frame_buffer->position_attachment);
-        glDeleteTextures(1, &frame_buffer->normals_attachment);
-        glDeleteTextures(1, &frame_buffer->albedo_attachment);
+        glDeleteTextures(1, &frame_buffer->colour_attachment);
         glDeleteTextures(1, &frame_buffer->depth_attachment);
     }
 
     glCreateFramebuffers(1, &frame_buffer->id);
     glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer->id);
 
-    { // position attachment
-        glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->position_attachment);
-        glBindTexture(GL_TEXTURE_2D, frame_buffer->position_attachment);
+    { // colour attachment
+        glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->colour_attachment);
+        glBindTexture(GL_TEXTURE_2D, frame_buffer->colour_attachment);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, frame_buffer->size.x, frame_buffer->size.y, 0, GL_RGBA, GL_FLOAT, NULL);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); 
 
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frame_buffer->position_attachment, 0);
-    }
-
-    { // normal attachment
-        glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->normals_attachment);
-        glBindTexture(GL_TEXTURE_2D, frame_buffer->normals_attachment);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, frame_buffer->size.x, frame_buffer->size.y, 0, GL_RGBA, GL_FLOAT, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, frame_buffer->normals_attachment, 0);
-    }
-
-    { // albedo attachment
-        glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->albedo_attachment);
-        glBindTexture(GL_TEXTURE_2D, frame_buffer->albedo_attachment);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, frame_buffer->size.x, frame_buffer->size.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, frame_buffer->albedo_attachment, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frame_buffer->colour_attachment, 0);
     }
 
     { // depth attachment
@@ -1874,15 +1799,17 @@ bool frame_buffer_rebuild(FrameBuffer *frame_buffer) {
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, frame_buffer->depth_attachment, 0);
     }
 
-    GLenum draw_buffers[3] = {
-        GL_COLOR_ATTACHMENT0,
-        GL_COLOR_ATTACHMENT1,
-        GL_COLOR_ATTACHMENT2,
-    };
+    { // set draw buffers
+        const i32 count = 1;
 
-    // when using more then one colour attachment, need to set all colour buffers the
-    // frame buffer can write too, if not the normal buffer will not be write too
-    glDrawBuffers(3, draw_buffers);
+        GLenum draw_buffers[count] = {
+            GL_COLOR_ATTACHMENT0,
+        };
+    
+        // when using more then one colour attachment, need to set all colour buffers the
+        // frame buffer can write too, if not the normal buffer will not be write too
+        glDrawBuffers(count, draw_buffers);
+    }
 
     if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         Err("error when createing frame buffer, was not complete");

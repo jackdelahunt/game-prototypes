@@ -276,6 +276,7 @@ string read_entire_file(string path);
 
 // @fmt
 template<typename... Args>  string fmt(Arena *arena, string format, Args... args);
+template<typename... Args>  string fmtc(Arena *arena, string format, Args... args);
 template<typename T>        void fmt_arg(DynamicArray<u8> *bytes, string format, i64 &index, T arg); 
 template<typename T>        void fmt_value(DynamicArray<u8> *bytes, T value);
 template<>                  void fmt_value(DynamicArray<u8> *bytes, i64 value);
@@ -576,16 +577,16 @@ T* StackArray<T, N>::end() {
 
 template <typename T, i64 N>
 StackArray<T, N> stack_array_create() {
-    auto sa = StackArray<T, N> {
+    StackArray<T, N> array = StackArray<T, N> {
         .data = {},
         .size = N,
         .len = 0
     };
 
-    // all zeros
-    memset(sa.data, 0, N);
+    // TODO: is this needed or is it handled by the {} above 
+    MemZero(array.data, array.size);
 
-    return sa;
+    return array;
 }
 
 template <typename T, i64 N>
@@ -929,7 +930,36 @@ string fmt(Arena *arena, string format, Args... args) {
         }
     }
 
-    return slice_range(bytes.slice, 0, bytes.len);
+    string formated_string = slice_range(bytes.slice, 0, bytes.len);
+
+    return formated_string;
+}
+
+// this is the same function as the normal "fmt", the only differance
+// is that this adds an addition null byte to the end of the formatted
+// string to be compatable with c libs - 08/09/25
+template<typename... Args>
+string fmtc(Arena *arena, string format, Args... args) {
+    i64 index = 0;
+    DynamicArray<u8> bytes = dynamic_array_create<u8>(arena, format.len * 2);
+
+    // unfolds as seperate statements for each arg 
+    (fmt_arg(&bytes, format, index, args), ...);
+
+    // write remaining bytes to buffer as there are no more args
+    // to search for a {} pair in the format string
+    if (index < format.len) {
+        while(index < format.len) {
+            append(&bytes, format[index]);
+            index++;
+        }
+    }
+
+    // add null terminator but don't use it in the string 
+    append(&bytes, u8('\0'));
+    string formated_string = slice_range(bytes.slice, 0, bytes.len - 1);
+
+    return formated_string;
 }
 
 template<typename T>

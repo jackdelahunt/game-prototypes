@@ -137,7 +137,7 @@ inline static EnumValue<EntityFlag> values[count] = {
     EnumValue<EntityFlag>(string("EF_MISSLE"), EF_MISSLE),
     EnumValue<EntityFlag>(string("EF_JUMP_PAD"), EF_JUMP_PAD),
     EnumValue<EntityFlag>(string("EF_COMPLEX_PHYSICS"), EF_COMPLEX_PHYSICS),
-    EnumValue<EntityFlag>(string("EF_ORB"), EF_ORB),
+    EnumValue<EntityFlag>(string("EF_POINT_LIGHT"), EF_POINT_LIGHT),
     EnumValue<EntityFlag>(string("EF_DELETE"), EF_DELETE),
 };
 
@@ -155,7 +155,7 @@ static string name(EntityFlag value) {
         case EF_MISSLE: return values[9].name;
         case EF_JUMP_PAD: return values[10].name;
         case EF_COMPLEX_PHYSICS: return values[11].name;
-        case EF_ORB: return values[12].name;
+        case EF_POINT_LIGHT: return values[12].name;
         case EF_DELETE: return values[13].name;
     }
 }

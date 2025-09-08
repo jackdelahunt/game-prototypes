@@ -1,3 +1,4 @@
+#include "imgui.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -300,7 +301,7 @@ meta enum EntityFlag : u32 {
     EF_MISSLE           = 1 << 9,
     EF_JUMP_PAD         = 1 << 10,
     EF_COMPLEX_PHYSICS  = 1 << 11,
-    EF_ORB              = 1 << 12,
+    EF_POINT_LIGHT      = 1 << 12,
     EF_DELETE           = 1 << 16,
 };
 
@@ -333,6 +334,10 @@ struct Entity {
 
     // flag: jump pad
     f32 jump_pad_cooldown; // not saved
+
+    // flag: point light 
+    f32 light_distance;
+    v4 light_colour;
 };
 
 struct Team {
@@ -430,6 +435,9 @@ enum InstanceType {
 
 // @state
 struct State {
+    Arena *arena;
+    Arena *frame_arena;
+
     InstanceType instance_type;
     u32 instance_id;
     
@@ -437,8 +445,6 @@ struct State {
     f32 tick_delta_time;
     f32 frame_delta_time;
     bool game_complete;
-    Arena arena;
-    Arena frame_arena;
 
     StackArray<Team, MAX_TEAMS> teams;
 
@@ -549,6 +555,7 @@ Entity *local_spawn_static_box(State *state);
 Entity *local_spawn_pickup(State *state, PickupType type);
 Entity *local_spawn_missle(State *state);
 Entity *local_spawn_jump_pad(State *state);
+Entity *local_spawn_point_light(State *state);
 
 void game_client_host();
 void game_client_connect();
@@ -660,11 +667,14 @@ void game_server_start() {
 void game_server_entry() {
     log_set_thread_name("server");
 
+    Arena arena = arena_create(MB(5));
+    Arena frame_arena = arena_create(MB(5));
+
     GS()->state = State {
+        .arena              = &arena,
+        .frame_arena        = &frame_arena,
         .instance_type      = IT_SERVER,
         .instance_id        = SERVER_INSTANCE_ID,
-        .arena              = arena_create(MB(5)),
-        .frame_arena        = arena_create(MB(5)),
         .entities           = stack_array_create<Entity, MAX_ENTITIES>(),
     };
 
@@ -701,7 +711,7 @@ void game_server_entry() {
         atomic_snapshot_copy_and_swap(&GS()->network_in_sampler_snapshot, &GS()->state.network_in_sampler);
         atomic_snapshot_copy_and_swap(&GS()->mspt_sampler_snapshot, &GS()->state.mspt_sampler);
 
-        arena_reset(&GS()->state.frame_arena);
+        arena_reset(GS()->state.frame_arena);
 
         std::this_thread::sleep_for(std::chrono::milliseconds(GAME_MS_PER_TICK - 1));
     }
@@ -711,6 +721,9 @@ void game_server_entry() {
 
 // @entrygc @gc
 void game_client_entry() {
+    Arena arena = arena_create(MB(5));
+    Arena frame_arena = arena_create(MB(5));
+
     { // init all the global stuff
         bool ok = false;
 
@@ -722,7 +735,7 @@ void game_client_entry() {
             return;
         }
 
-        ok = renderer_init(WIN(), g_clear_colour, g_ambient_light_colour, g_sun_colour, v3{50, 100, -100}, g_shadow_colour);
+        ok = renderer_init(&arena, &frame_arena, WIN(), g_clear_colour, g_ambient_light_colour, g_sun_colour, v3{50, 100, -100}, g_shadow_colour);
         if (!ok) {
             Log("Failed when trying to init the renderer");
             return;
@@ -744,25 +757,25 @@ void game_client_entry() {
             Assert(g_materials[MAT_DEFAULT]);
 
             g_materials[MAT_MUZZLE_FLASH] = material_create(REN(), 
+                {1.0, 1.0},
                 render_texture_create_from_file(REN(), "resources/textures/muzzle_flash/muzzle_flash.png"),
-                REN()->default_material_ambient_occlusion,
-                {1.0, 1.0}
+                REN()->default_material_ambient_occlusion
             );
 
             Assert(g_materials[MAT_MUZZLE_FLASH]);
 
             g_materials[MAT_METAL_PLATE] = material_create(REN(),
+                {12.3, 12.3},
                 render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_diff_1k.png"),
-                render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_ao_1k.png"),
-                {12.3, 12.3}
+                render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_ao_1k.png")
             );
 
             Assert(g_materials[MAT_METAL_PLATE]);
 
             g_materials[MAT_BROKEN_BRICK_WALL] = material_create(REN(), 
+                {15, 15},
                 render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_diff_1k.png"),
-                render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_ao_1k.png"),
-                {15, 15}
+                render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_ao_1k.png")
             );
 
             Assert(g_materials[MAT_BROKEN_BRICK_WALL]);
@@ -818,10 +831,10 @@ void game_client_entry() {
         },
         .game_view = FrameBuffer {.size = WIN()->frame_buffer_size},
         .state = State {
+            .arena = &arena,
+            .frame_arena = &frame_arena,
             .instance_type = IT_CLIENT,
             .instance_id = 0,
-            .arena = arena_create(MB(5)),
-            .frame_arena = arena_create(MB(5)),
             .entities = stack_array_create<Entity, MAX_ENTITIES>(),
         }
     };
@@ -907,7 +920,7 @@ void game_client_entry() {
             swap_buffers(WIN());
         }
 
-        arena_reset(&GC()->state.frame_arena);
+        arena_reset(GC()->state.frame_arena);
     }
 
     glfwTerminate();
@@ -1255,6 +1268,14 @@ void game_client_update(GameClient *client, State *state) {
         client->camera.position = player->position + v3{0, g_player_eyes_offset, 0};
     }
 
+    { // TODO: remove
+        if (player && KEYS[GLFW_KEY_F] == InputState::DOWN) {
+            Entity *light = local_spawn_point_light(state);
+            light->position = player->position;
+            light->light_distance = 20;
+        }
+    }
+
     { // camera shake
         // camera shake works by offesting the camera on the y axis over time,
         // the extent of the offset is the intensity in world units.
@@ -1463,7 +1484,7 @@ void game_client_draw(GameClient *client, State *state) {
             if (minutes < 0) minutes = 0;
             if (seconds < 0) seconds = 0;
 
-            string time_string = fmt(&state->frame_arena, "{}:{}", minutes, seconds);
+            string time_string = fmt(state->frame_arena, "{}:{}", minutes, seconds);
 
             draw_rectangle_ui(REN(), v3{time_centre.x, time_centre.y, UI_LAYER_1}, time_bg_size.xy, {}, UI_TIME_BACKGROUND_COLOUR);
             draw_text_ui(REN(), time_string, v3{time_centre.x, time_centre.y, UI_LAYER_0}, UI_TIME_FONT_SIZE, WHITE, true);
@@ -1478,7 +1499,7 @@ void game_client_draw(GameClient *client, State *state) {
             v3 score_centre = score_centre_begin;
             score_centre.x += (score_bg_size.x + UI_SCORE_GAP) * f32(i);
 
-            string score_text = fmt(&state->frame_arena, "{}", team->score);
+            string score_text = fmt(state->frame_arena, "{}", team->score);
 
             draw_rectangle_ui(REN(), v3{score_centre.x, score_centre.y, UI_LAYER_1}, score_bg_size.xy, {}, UI_SCORE_BACKGROUND_COLOUR);
             draw_text_ui(REN(), score_text, v3{score_centre.x, score_centre.y, UI_LAYER_0}, UI_SCORE_FONT_SIZE, team->colour, true);
@@ -1514,10 +1535,6 @@ void game_client_draw(GameClient *client, State *state) {
                 else {
                     draw_player_weapon(state, player_weapon, g_weapon_display_offset, true);
                 }
-            }
-
-            { // testing light
-                draw_point_light(REN(), entity.position + v3{0, 0, 5}, 30, RED);
             }
 
             // @hud
@@ -1568,7 +1585,7 @@ void game_client_draw(GameClient *client, State *state) {
             }
        
             { // draw ammo
-                draw_text_ui(REN(), fmt(&state->frame_arena, "{}:  {}", player_weapon->display_name, state->player_ammo), {7, 10, 0}, 30, alpha(BLACK, 0.4), false);
+                draw_text_ui(REN(), fmt(state->frame_arena, "{}:  {}", player_weapon->display_name, state->player_ammo), {7, 10, 0}, 30, alpha(BLACK, 0.4), false);
             }
 
             continue;
@@ -1761,6 +1778,10 @@ void game_client_draw(GameClient *client, State *state) {
 
                 draw_sphere(REN(), entity.position + trail_offset, trail_radius * (1.0f - t), trail_colour, REN()->default_material);
             }
+        }
+
+        if (BitSet(entity.flags, EF_POINT_LIGHT)) {
+            draw_point_light(REN(), entity.position, entity.light_distance, entity.light_colour);
         }
 
         if (ED()->selected_entity && ED()->selected_entity->id == entity.id) {
@@ -2116,6 +2137,11 @@ void editor_draw_ui(State *state) {
     { // settings
         ImGui::Begin("Settings");
 
+        if (ImGui::Button("Reload shaders")) {
+            delete_shaders(REN());
+            load_shaders(REN());
+        }
+
         if (ImGui::CollapsingHeader("Cheats")) {
             ImGui::Checkbox("Weapon binds", &g_cheat_weapon_binds);
             ImGui::Checkbox("Infinite ammo", &g_cheat_infinite_ammo);
@@ -2179,30 +2205,9 @@ void editor_draw_ui(State *state) {
             if (ImGui::CollapsingHeader("Frame buffers")) {
                 f32 image_downscale = 4;
                 ImVec2 size = ImVec2(GC()->viewport.size.x / image_downscale, GC()->viewport.size.y / image_downscale);
-        
-                if (ImGui::CollapsingHeader("G buffer")) {
-                    ImGui::Text("Position  //  Normals");
-                    ImGui::Image(REN()->g_buffer.position_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
-                    ImGui::SameLine();
-                    ImGui::Image(REN()->g_buffer.normals_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
-        
-                    ImGui::Text("Albedo  //  Depth");
-                    ImGui::Image(REN()->g_buffer.albedo_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
-                    ImGui::SameLine();
-                    ImGui::Image(REN()->g_buffer.depth_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
-                }
-        
-                if (ImGui::CollapsingHeader("Lighting buffer")) {
-                    ImGui::Text("Position  //  Normals");
-                    ImGui::Image(REN()->lighting_buffer.position_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
-                    ImGui::SameLine();
-                    ImGui::Image(REN()->lighting_buffer.normals_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
-        
-                    ImGui::Text("Albedo  //  Depth");
-                    ImGui::Image(REN()->lighting_buffer.albedo_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
-                    ImGui::SameLine();
-                    ImGui::Image(REN()->lighting_buffer.depth_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
-                }
+
+                ImGui::Image(REN()->main_buffer.colour_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Image(REN()->main_buffer.depth_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
             }
         }
 
@@ -2358,6 +2363,12 @@ void editor_draw_ui(State *state) {
             ED()->selected_entity = local_spawn_dummy(state);
         }
 
+        ImGui::SameLine();
+
+        if (ImGui::Button("Point light")) {
+            ED()->selected_entity = local_spawn_point_light(state);
+        }
+
         ImGui::SeparatorText("Teams");
 
         for (i64 i = 0; i < state->teams.len; i++) {
@@ -2428,8 +2439,8 @@ void editor_draw_ui(State *state) {
         ImGui::End();
     }
 
-    GC()->viewport = imgui_viewport("Game", GC()->game_view.albedo_attachment, WIN()->mouse_captured);
-    ED()->viewport = imgui_viewport("Editor", ED()->editor_view.albedo_attachment, false);
+    GC()->viewport = imgui_viewport("Game", GC()->game_view.colour_attachment, WIN()->mouse_captured);
+    ED()->viewport = imgui_viewport("Editor", ED()->editor_view.colour_attachment, false);
 
     draw_imgui_frame();
 }
@@ -2906,6 +2917,20 @@ Entity *local_spawn_jump_pad(State *state) {
     return local_spawn_entity(state, entity);
 }
 
+Entity *local_spawn_point_light(State *state) {
+    Entity entity = Entity {
+        .flags = EF_POINT_LIGHT,
+        .id = new_entity_id(),
+        .owner = LEVEL_INSTANCE_ID,
+        .size = {0.5, 0.5, 0.5},
+        .colour = WHITE,
+        .light_distance = 10,
+        .light_colour = WHITE,
+    };
+
+    return local_spawn_entity(state, entity);
+}
+
 void game_client_host() {
     Info("starting hosted game");
 
@@ -3033,14 +3058,15 @@ void imgui_entity(Entity *entity) {
     imgui_v3_control("rotation", &entity->rotation);
     imgui_v3_control("velocity", &entity->velocity);
     imgui_colour_control("colour", &entity->colour);
-    imgui_enum_dropdown("Material", &entity->material);
+    imgui_enum_dropdown("material", &entity->material);
     ImGui::InputFloat("max health", &entity->max_health);
     ImGui::InputFloat("health", &entity->health);
     ImGui::InputFloat("death cooldown", &entity->death_cooldown);
     imgui_enum_dropdown("Pickup type", &entity->pickup_type);
-
     ImGui::InputFloat("pickup cooldown", &entity->pickup_cooldown);
     ImGui::InputFloat("jump pad cooldown", &entity->jump_pad_cooldown);
+    ImGui::InputFloat("light distance", &entity->light_distance);
+    imgui_colour_control("light colour", &entity->light_colour);
 }
 
 Viewport imgui_viewport(const char *label, u32 texture_id, bool force_focus) {
@@ -3328,6 +3354,8 @@ void serialise_entity(YAML::Emitter &out, Entity *entity) {
     out << YAML::Key << "max_health"    << YAML::Value << entity->max_health;
     out << YAML::Key << "health"        << YAML::Value << entity->health;
     out << YAML::Key << "pickup_type"   << YAML::Value << meta_name(entity->pickup_type);
+    out << YAML::Key << "light_distance"<< YAML::Value << entity->light_distance;
+    out << YAML::Key << "light_colour"  << YAML::Value << entity->light_colour;
     out << YAML::EndMap;
 }
 
@@ -3404,6 +3432,9 @@ void deserialise_level(State *state) {
 
             entity.pickup_type = pickup_type->value;
         }
+
+        entity.light_distance =              node["light_distance"].as<f32>();
+        entity.light_colour =                node["light_colour"].as<v4>();
 
         if (BitSet(entity.flags, EF_SPAWN_POINT)) {
             state->spawn_point_count += 1;
