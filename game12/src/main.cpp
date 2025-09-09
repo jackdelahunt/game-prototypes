@@ -15,13 +15,11 @@
 #include <chrono>
 #include <atomic>
 
-// Total: 128:00
+// Total: 132:30
 // Started: 11:30
 //
 // NOTES: {
 //      IN_PROGRESS: {
-//          - PBR
-//          - HDR
 //      },
 //
 //      REVISE: {
@@ -33,6 +31,8 @@
 //
 //      TODO: {
 //          - sky box
+//          - fix uvs on primative mesh
+//          - fix flat normals for sphere mesh
 //          - anti aliasing
 //          - particles
 //          - sound on enemy kill
@@ -146,13 +146,14 @@ f32 g_health_bar_notch_decay_max_height_factor  = 1.6f;
 f32 g_health_bar_notch_decay_max_width_factor  = 1.6f;
 f32 g_health_bar_notch_empty_height_factor  = 0.8f;
 
-v4 g_muzzle_flash_colour = DARK_GRAY;
+v4 g_muzzle_flash_colour     = DARK_GRAY;
 f32 g_muzzle_flash_intensity = 35;
 
-v4 g_clear_colour = v4 {0.398013, 0.481982, 0.582278, 1.000000};
-v3 g_ambient_light_colour = v3 {0.189873, 0.189873, 0.189873};
-v3 g_sun_colour = v3 {0.696203, 0.489398, 0.179191};
-v3 g_shadow_colour = BLACK.rgb;
+v4 g_clear_colour           = v4 {0.398013, 0.481982, 0.582278, 1.000000};
+v3 g_ambient_light_colour   = v3 {0.189873, 0.189873, 0.189873};
+v3 g_sun_colour             = v3 {0.696203, 0.489398, 0.179191};
+v3 g_sun_position           = v3 {10, 50, -10};
+f32 g_sun_intensity         = 1;
 
 meta enum MaterialHandle : u32 {
     MAT_DEFAULT,
@@ -741,7 +742,7 @@ void game_client_entry() {
             return;
         }
 
-        ok = renderer_init(&arena, &frame_arena, WIN(), g_clear_colour, g_ambient_light_colour, g_sun_colour, v3{50, 100, -100}, g_shadow_colour);
+        ok = renderer_init(&arena, &frame_arena, WIN(), g_clear_colour, g_ambient_light_colour, g_sun_colour, v3{50, 100, -100}, g_sun_intensity);
         if (!ok) {
             Log("Failed when trying to init the renderer");
             return;
@@ -774,7 +775,7 @@ void game_client_entry() {
             Assert(g_materials[MAT_MUZZLE_FLASH]);
 
             g_materials[MAT_METAL_PLATE] = material_create(REN(),
-                {4.5, 4.5},
+                {1, 1},
                 render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_diff_1k.png",      TD_sRGBA_8, TD_sRGBA_8),
                 render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_nor_gl_1k.png",    TD_RGBA_8, TD_RGBA_8),
                 render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_ao_1k.png",        TD_RGBA_8, TD_RGBA_8),
@@ -785,7 +786,7 @@ void game_client_entry() {
             Assert(g_materials[MAT_METAL_PLATE]);
 
             g_materials[MAT_BROKEN_BRICK_WALL] = material_create(REN(), 
-                {5, 5},
+                {1, 1},
                 render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_diff_1k.png",    TD_sRGBA_8, TD_sRGBA_8),
                 render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_nor_gl_1k.png",  TD_RGBA_8, TD_RGBA_8),
                 render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_ao_1k.png",      TD_RGBA_8, TD_RGBA_8),
@@ -1819,7 +1820,7 @@ void game_client_draw(GameClient *client, State *state) {
 
         if (BitSet(entity.flags, EF_POINT_LIGHT)) {
             static f32 total_time = 0;
-            total_time += state->frame_delta_time;
+            total_time += state->frame_delta_time * 1.5;
 
             f32 scale = 1.5;
             f32 x = sinf(total_time);
@@ -2249,8 +2250,8 @@ void editor_draw_ui(State *state) {
             imgui_colour_control("Clear colour", &REN()->clear_colour);
             imgui_colour_control("Ambient light", &REN()->ambient_light);
             imgui_colour_control("Sun colour", &REN()->sun_colour);
-            imgui_colour_control("Shadow colour", &REN()->shadow_colour);
             imgui_v3_control("Sun position", &REN()->sun_position);
+            ImGui::InputFloat("Sun intensity", &REN()->sun_intensity);
 
             if (ImGui::CollapsingHeader("Frame buffers")) {
                 f32 image_downscale = 4;

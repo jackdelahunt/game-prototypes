@@ -8,7 +8,7 @@ entities:
     size: [5, 0.100000001, 5]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
-    colour: [0.94092828, 0.289821804, 0.289821804, 1]
+    colour: [0.504110038, 0.94092828, 0.289821804, 1]
     material: MAT_DEFAULT
     max_health: 0
     health: 0
@@ -39,7 +39,7 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
-    material: MAT_METAL_PLATE
+    material: MAT_METAL_05C
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -55,6 +55,21 @@ entities:
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
     material: MAT_BROKEN_BRICK_WALL
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 29246
+    owner: 0
+    position: [2.5, 2.5, 0]
+    size: [0.100000001, 5, 5]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_METAL_PLATE
     max_health: 0
     health: 0
     pickup_type: PT_NONE

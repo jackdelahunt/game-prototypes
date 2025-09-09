@@ -526,7 +526,7 @@ struct Renderer {
     v3 ambient_light;
     v3 sun_colour;
     v3 sun_position;
-    v3 shadow_colour;
+    f32 sun_intensity;
 
     FixedArray<Mesh> meshes;
     FixedArray<RenderCommand> commands;
@@ -611,7 +611,7 @@ Material *material_create(Renderer *renderer, v2 tiling_factor, RenderTexture *a
 
 // Renderer init API
 Renderer *REN();
-bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_colour, v3 ambient_light, v3 sun_colour, v3 sun_position, v3 shadow_colour);
+bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_colour, v3 ambient_light, v3 sun_colour, v3 sun_position, f32 sun_intensity);
 
 bool load_shaders(Renderer *renderer);
 void delete_shaders(Renderer *renderer);
@@ -1054,7 +1054,7 @@ Renderer *REN() {
     return g_renderer;
 }
 
-bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_colour, v3 ambient_light, v3 sun_colour, v3 sun_position, v3 shadow_colour) {
+bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_colour, v3 ambient_light, v3 sun_colour, v3 sun_position, f32 sun_intensity) {
     g_renderer = new Renderer {
         .arena = arena,
         .frame_arena = frame_arena,
@@ -1062,7 +1062,7 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
         .ambient_light = ambient_light,
         .sun_colour = sun_colour,
         .sun_position = sun_position,
-        .shadow_colour = shadow_colour,
+        .sun_intensity = sun_intensity,
         .meshes = fixed_array_create<Mesh>(MAX_MESHES),
         .commands = fixed_array_create<RenderCommand>(MAX_RENDER_COMMANDS),
         .textures = stack_array_create<Texture, MAX_TEXTURES>(),
@@ -1543,6 +1543,7 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
                 shader_set_v3(renderer->pbr_shader, "ambient_light", renderer->ambient_light);
                 shader_set_v3(renderer->pbr_shader, "sun_position", renderer->sun_position);
                 shader_set_v3(renderer->pbr_shader, "sun_colour", renderer->sun_colour);
+                shader_set_f32(renderer->pbr_shader, "sun_intensity", renderer->sun_intensity);
 
                 shader_set_v2(renderer->pbr_shader, "material_tiling_factor", model_cmd->material->tiling_factor);
                 shader_set_texture(renderer->pbr_shader, model_cmd->material->albedo, 0);

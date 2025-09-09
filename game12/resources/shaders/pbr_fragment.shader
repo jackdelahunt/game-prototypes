@@ -24,6 +24,7 @@ uniform vec4        colour;
 uniform vec3        ambient_light;
 uniform vec3        sun_position;
 uniform vec3        sun_colour;
+uniform float       sun_intensity;
 
 uniform vec2        material_tiling_factor;
 uniform sampler2D   material_albedo;
@@ -100,6 +101,30 @@ void main() {
         F0 = mix(F0, albedo_sample, metalness_sample);
 
         vec3 Lo = vec3(0);
+
+        { // directional light
+            vec3 L = normalize(sun_position);
+            vec3 H = normalize(V + L);
+
+            float attenuation = 1.0;
+            vec3 radiance = sun_colour * attenuation * sun_intensity;
+
+            float D = BRDF_distribution(N, H, roughness_sample);
+            float G = BRDF_geometry(N, V, L, roughness_sample);
+            vec3 F  = BRDF_fresnel(max(dot(H, V), 0.0), F0);
+
+            vec3 numerator    = D * G * F;
+            float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0)  + 0.0001;
+            vec3 specular     = numerator / denominator;
+
+            vec3 kS = F;
+            vec3 kD = vec3(1.0) - kS;
+  
+            kD *= 1.0 - metalness_sample;
+
+            float NdotL = max(dot(N, L), 0.0);        
+            Lo += (kD * albedo_sample / PI + specular) * radiance * NdotL;
+        }
 
         for (int i = 0; i < light_count; i++) {
             PointLight light = lights[i];
