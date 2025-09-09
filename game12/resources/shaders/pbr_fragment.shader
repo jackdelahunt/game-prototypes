@@ -3,11 +3,11 @@
 struct PointLight {
     vec3 position;
     vec3 colour;
-    float distance;
+    float intensity;
 };
 
 // keep in sync with renderer 
-#define MAX_POINT_LIGHTS 20
+#define MAX_POINT_LIGHTS 50
    
 const float PI = 3.14159265359;
 
@@ -34,6 +34,20 @@ uniform sampler2D   material_metalness;
 
 uniform int         light_count;
 uniform PointLight  lights[MAX_POINT_LIGHTS];
+
+vec3 get_fragment_normal(vec3 normal_sample) {
+    vec3 Q1  = dFdx(fragment_position);
+    vec3 Q2  = dFdy(fragment_position);
+    vec2 st1 = dFdx(uv);
+    vec2 st2 = dFdy(uv);
+
+    vec3 N   = normalize(normal);
+    vec3 T  = normalize(Q1*st2.t - Q2*st1.t);
+    vec3 B  = -normalize(cross(normal, T));
+    mat3 TBN = mat3(T, B, normal);
+
+    return normalize(TBN * normal_sample);
+}
 
 float BRDF_distribution(vec3 N, vec3 H, float roughness) {
     float a      = roughness * roughness;
@@ -73,13 +87,13 @@ vec3 BRDF_fresnel(float cosTheta, vec3 F0) {
 
 void main() {
     vec3 albedo_sample              = (texture(material_albedo,             uv * material_tiling_factor) * colour).rgb;
+    vec3 normal_sample              = (texture(material_normal,             uv * material_tiling_factor).xyz * 2.0) - 1.0;
     float ambient_occlusion_sample  = (texture(material_ambient_occlusion,  uv * material_tiling_factor)).r;
     float roughness_sample          = (texture(material_roughness,          uv * material_tiling_factor)).r;
     float metalness_sample          = (texture(material_metalness,          uv * material_tiling_factor)).r;
 
     { // PBR
-        float light_intensity = 30;
-        vec3 N = normalize(normal);
+        vec3 N = get_fragment_normal(normal_sample);
         vec3 V = normalize(camera_position - fragment_position);
 
         vec3 F0 = vec3(0.04); 
@@ -95,7 +109,7 @@ void main() {
 
             float light_distance = length(light.position - fragment_position);
             float attenuation = 1.0 / (light_distance * light_distance);
-            vec3 radiance = light.colour * attenuation * light_intensity;
+            vec3 radiance = light.colour * attenuation * light.intensity;
 
             float D = BRDF_distribution(N, H, roughness_sample);
             float G = BRDF_geometry(N, V, L, roughness_sample);
@@ -116,8 +130,11 @@ void main() {
 
         vec3 colour = (ambient_light * albedo_sample * ambient_occlusion_sample) + Lo;
 
-        colour = colour / (colour + vec3(1.0));
-        // colour = pow(colour, vec3(1.0/2.2)); 
+        colour = colour / (colour + vec3(1.0)); // tone mapping     HDR -> LDR
+        colour = pow(colour, vec3(1.0/2.2));    // gamma correction RGB -> sRGB
+
+        // debug draw normals
+        // colour = (N + 1) * 0.5;
     
         colour_attachment = vec4(colour, 1);
     }

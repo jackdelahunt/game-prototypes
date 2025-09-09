@@ -304,7 +304,7 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 #define MAX_QUADS 500
 #define MAX_RENDER_COMMANDS 5000
 #define MAX_MESHES 128
-#define MAX_POINT_LIGHTS 20 // keep in sync with pbr shader 
+#define MAX_POINT_LIGHTS 50 // keep in sync with pbr shader 
 #define MAX_TEXTURES 256
 #define MAX_MATERIALS 256
 
@@ -418,6 +418,14 @@ struct Texture {
     slice<Texture> sub_textures;
 };
 
+enum TextureDescription {
+    TD_R_8,
+    TD_RGB_8,
+    TD_RGBA_8,
+
+    TD_sRGBA_8,
+};
+
 struct RenderTexture {
     u32 id;
     i32 width;
@@ -434,8 +442,8 @@ struct Font {
 
 struct PointLight {
     v3 position;
-    f32 distance;
     v3 colour;
+    f32 intensity;
 };
 
 struct Material {
@@ -590,8 +598,13 @@ Mesh *mesh_create(Renderer *renderer, slice<MeshVertex> vertices, slice<u32> ind
 Mesh *mesh_create_from_file(Renderer *renderer, string mesh_path);
 void upload_mesh(Mesh *mesh);
 
+// Texture descriptions
+i32 texture_description_channel_count(TextureDescription texture_description);
+GLenum texture_description_gl_source_format(TextureDescription texture_description);
+GLenum texture_description_gl_internal_format(TextureDescription texture_description);
+
 // Render Texture API
-RenderTexture *render_texture_create_from_file(Renderer *renderer, string path);
+RenderTexture *render_texture_create_from_file(Renderer *renderer, string path, TextureDescription source_format, TextureDescription gpu_format);
 
 // Material API
 Material *material_create(Renderer *renderer, v2 tiling_factor, RenderTexture *albedo, RenderTexture *normal, RenderTexture *ambient_occlusion, RenderTexture *roughness, RenderTexture *metalness);
@@ -636,7 +649,7 @@ void draw_circle_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 co
 void draw_text_ui(Renderer *renderer, string text, v3 position, f32 font_size, v4 color, bool centred);
 
 // Lights API
-void draw_point_light(Renderer *renderer, v3 position, f32 distance, v4 colour);
+void draw_point_light(Renderer *renderer, v3 position, v4 colour, f32 intensity);
 
 f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
 
@@ -939,8 +952,45 @@ void upload_mesh(Mesh *mesh) {
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(MeshVertex) * mesh->vertices.len, &mesh->vertices[0]);
 }
 
-RenderTexture *render_texture_create_from_file(Renderer *renderer, string path) {
+i32 texture_description_channel_count(TextureDescription texture_description) {
+    switch (texture_description) {
+        case TD_R_8:        return 1;
+        case TD_RGB_8:      return 3;
+        case TD_RGBA_8:     return 4;
+        case TD_sRGBA_8:    return 4;
+
+        default: Unreachable("Texture description not known when getting channel count");
+    }
+}
+
+GLenum texture_description_gl_source_format(TextureDescription texture_description) {
+    switch (texture_description) {
+        case TD_R_8:        return GL_RED;
+        case TD_RGB_8:      return GL_RGB;
+        case TD_RGBA_8:     return GL_RGBA;
+        case TD_sRGBA_8:    return GL_RGBA;
+
+        default: Unreachable("Texture description not known when OpenGL source format");
+    }
+}
+
+GLenum texture_description_gl_internal_format(TextureDescription texture_description) {
+    switch (texture_description) {
+        case TD_R_8:        return GL_R8;
+        case TD_RGB_8:      return GL_RGB8;
+        case TD_RGBA_8:     return GL_RGBA8;
+        case TD_sRGBA_8:    return GL_SRGB8_ALPHA8;
+
+        default: Unreachable("Texture description not known when OpenGL format");
+    }
+}
+
+RenderTexture *render_texture_create_from_file(Renderer *renderer, string path, TextureDescription source_format, TextureDescription gpu_format) {
     RenderTexture *texture = push(&renderer->render_textures);
+
+    i32 desired_channels = texture_description_channel_count(source_format);
+    GLenum gl_source_format = texture_description_gl_source_format(source_format);
+    GLenum gl_internal_format = texture_description_gl_internal_format(gpu_format);
 
     { // loading from file
         i32 width       = 0;
@@ -950,10 +1000,14 @@ RenderTexture *render_texture_create_from_file(Renderer *renderer, string path) 
     
         stbi_set_flip_vertically_on_load(true);
     
-        data = stbi_load(path.c(), &width, &height, &channels, 4);
+        data = stbi_load(path.c(), &width, &height, &channels, desired_channels);
         if (!data) {
             Errf("Failed to load texture \"{}\"", path);
             return NULL;
+        }
+
+        if (channels != desired_channels) {
+            Warnf("When loading texture: \"{}\", expected {} channels but got {}, forcing channel count anyway", path, desired_channels, channels);
         }
 
         texture->width = width;
@@ -971,7 +1025,7 @@ RenderTexture *render_texture_create_from_file(Renderer *renderer, string path) 
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texture->width, texture->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, texture->data);
+        glTexImage2D(GL_TEXTURE_2D, 0, gl_internal_format, texture->width, texture->height, 0, gl_source_format, GL_UNSIGNED_BYTE, texture->data);
     
         glBindTexture(GL_TEXTURE_2D, 0);
     }
@@ -1087,19 +1141,19 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
     }
 
     { // load default textures
-        renderer->default_material_albedo = render_texture_create_from_file(renderer, "resources/textures/defaults/default_albedo.png");
+        renderer->default_material_albedo = render_texture_create_from_file(renderer, "resources/textures/defaults/default_albedo.png", TD_RGBA_8, TD_RGBA_8);
         Assert(renderer->default_material_albedo);
 
-        renderer->default_material_normal = render_texture_create_from_file(renderer, "resources/textures/defaults/default_normal.png");
+        renderer->default_material_normal = render_texture_create_from_file(renderer, "resources/textures/defaults/default_normal.png", TD_RGBA_8, TD_RGBA_8);
         Assert(renderer->default_material_normal);
 
-        renderer->default_material_ambient_occlusion = render_texture_create_from_file(renderer, "resources/textures/defaults/default_ambient_occlusion.png");
+        renderer->default_material_ambient_occlusion = render_texture_create_from_file(renderer, "resources/textures/defaults/default_ambient_occlusion.png", TD_RGBA_8, TD_RGBA_8);
         Assert(renderer->default_material_ambient_occlusion);
 
-        renderer->default_material_roughness = render_texture_create_from_file(renderer, "resources/textures/defaults/default_roughness.png");
+        renderer->default_material_roughness = render_texture_create_from_file(renderer, "resources/textures/defaults/default_roughness.png", TD_RGBA_8, TD_RGBA_8);
         Assert(renderer->default_material_roughness);
 
-        renderer->default_material_metalness = render_texture_create_from_file(renderer, "resources/textures/defaults/default_metalness.png");
+        renderer->default_material_metalness = render_texture_create_from_file(renderer, "resources/textures/defaults/default_metalness.png", TD_RGBA_8, TD_RGBA_8);
         Assert(renderer->default_material_metalness);
     }
 
@@ -1504,11 +1558,11 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
 
                     string position_string = fmtc(renderer->frame_arena, "lights[{}].position", i);
                     string colour_string = fmtc(renderer->frame_arena, "lights[{}].colour", i);
-                    string distance_string = fmtc(renderer->frame_arena, "lights[{}].distance", i);
+                    string intensity_string = fmtc(renderer->frame_arena, "lights[{}].intensity", i);
 
                     shader_set_v3(renderer->pbr_shader, position_string, light.position);
                     shader_set_v3(renderer->pbr_shader, colour_string, light.colour);
-                    shader_set_f32(renderer->pbr_shader, distance_string, light.distance);
+                    shader_set_f32(renderer->pbr_shader, intensity_string, light.intensity);
                 }
 
                 GLCall(glBindVertexArray(model_cmd->mesh->vertex_array_id));
@@ -1754,11 +1808,11 @@ void draw_text_ui(Renderer *renderer, string text, v3 position, f32 font_size, v
     slice_free(glyphs);
 }
 
-void draw_point_light(Renderer *renderer, v3 position, f32 distance, v4 colour) {
+void draw_point_light(Renderer *renderer, v3 position, v4 colour, f32 intensity) {
     PointLight light = PointLight {
         .position = position,
-        .distance = distance,
         .colour = colour.rgb,
+        .intensity = intensity,
     };
 
     append(&renderer->lights, light);

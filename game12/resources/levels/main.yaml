@@ -13,8 +13,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_SPAWN_POINT
     id: 6087
@@ -28,8 +28,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_JUMP_PAD
     id: 23123
@@ -43,8 +43,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_STATIC_HITBOX
     id: 8486
@@ -58,8 +58,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_STATIC_HITBOX
     id: 5150
@@ -73,8 +73,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_STATIC_HITBOX
     id: 27624
@@ -88,8 +88,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_STATIC_HITBOX
     id: 27293
@@ -103,8 +103,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_STATIC_HITBOX
     id: 10528
@@ -118,8 +118,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_STATIC_HITBOX
     id: 12917
@@ -133,8 +133,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_STATIC_HITBOX
     id: 10995
@@ -148,8 +148,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_STATIC_HITBOX
     id: 26630
@@ -163,8 +163,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_STATIC_HITBOX
     id: 9238
@@ -178,8 +178,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_STATIC_HITBOX
     id: 1844
@@ -193,8 +193,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_STATIC_HITBOX
     id: 27170
@@ -208,8 +208,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_JUMP_PAD
     id: 21722
@@ -223,8 +223,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_JUMP_PAD
     id: 22613
@@ -238,8 +238,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_STATIC_HITBOX
     id: 3913
@@ -253,8 +253,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_STATIC_HITBOX
     id: 9620
@@ -268,8 +268,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_DUMMY
       - EF_SOLID_HITBOX
@@ -286,8 +286,8 @@ entities:
     max_health: 100
     health: 100
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_STATIC_HITBOX
     id: 7926
@@ -301,8 +301,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_STATIC_HITBOX
     id: 28578
@@ -316,8 +316,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_STATIC_HITBOX
     id: 28029
@@ -331,8 +331,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_STATIC_HITBOX
     id: 30607
@@ -346,8 +346,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_DUMMY
       - EF_SOLID_HITBOX
@@ -364,8 +364,8 @@ entities:
     max_health: 100
     health: 100
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_DUMMY
       - EF_SOLID_HITBOX
@@ -382,8 +382,8 @@ entities:
     max_health: 100
     health: 100
     pickup_type: PT_NONE
-    light_distance: 0
     light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
       - EF_POINT_LIGHT
     id: 5820
@@ -397,8 +397,8 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 30
     light_colour: [1, 1, 1, 1]
+    light_intensity: 200
   - flags:
       - EF_POINT_LIGHT
     id: 30245
@@ -412,5 +412,5 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_distance: 30
     light_colour: [0.25316453, 0.744752526, 1, 1]
+    light_intensity: 100

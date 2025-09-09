@@ -16,11 +16,12 @@
 #include <atomic>
 
 // Total: 128:00
-// Started: 18:30
+// Started: 11:30
 //
 // NOTES: {
 //      IN_PROGRESS: {
 //          - PBR
+//          - HDR
 //      },
 //
 //      REVISE: {
@@ -50,11 +51,15 @@
 //          - asset system
 //          - "folders" in entity list in editor, filter by flags maybe?
 //          - combine vs and fs in the one file
+//          - clean up pbr shader naming and convention etc.
 //          - fond out why camera yaw (Y) is flipped
 //          - switch to quaternions for rotation, this allows camera roll which is broke
 //          - define assets in editor and get handles in game
 //          - load game as dll
-//          - meta overhaul and rethink 
+//          - meta overhaul and rethink
+//          - frame buffer overhaul:
+//              - attachment parameters are configurable (RGBA, RGBA32F)
+//              - can get attachments based on index (frame_buffer_attachment(fb, 0))
 //      }
 // }
 
@@ -66,6 +71,8 @@
 #define MAX_TEAMS 2
 
 #define RUN_TESTS 0
+
+string g_level_save_file          = "resources/levels/light_scene.yaml";
 
 f32 g_player_height               = 2;
 f32 g_player_width                = 0.65;
@@ -140,10 +147,10 @@ f32 g_health_bar_notch_decay_max_width_factor  = 1.6f;
 f32 g_health_bar_notch_empty_height_factor  = 0.8f;
 
 v4 g_muzzle_flash_colour = DARK_GRAY;
-f32 g_muzzle_flash_distance = 35;
+f32 g_muzzle_flash_intensity = 35;
 
 v4 g_clear_colour = v4 {0.398013, 0.481982, 0.582278, 1.000000};
-v3 g_ambient_light_colour = v3 {0.304082, 0.304082, 0.590717};
+v3 g_ambient_light_colour = v3 {0.189873, 0.189873, 0.189873};
 v3 g_sun_colour = v3 {0.696203, 0.489398, 0.179191};
 v3 g_shadow_colour = BLACK.rgb;
 
@@ -335,8 +342,8 @@ struct Entity {
     f32 jump_pad_cooldown; // not saved
 
     // flag: point light 
-    f32 light_distance;
     v4 light_colour;
+    f32 light_intensity;
 };
 
 struct Team {
@@ -757,7 +764,7 @@ void game_client_entry() {
 
             g_materials[MAT_MUZZLE_FLASH] = material_create(REN(), 
                 {1.0, 1.0},
-                render_texture_create_from_file(REN(), "resources/textures/muzzle_flash/muzzle_flash.png"),
+                render_texture_create_from_file(REN(), "resources/textures/muzzle_flash/muzzle_flash.png", TD_RGBA_8, TD_RGBA_8),
                 REN()->default_material_normal,
                 REN()->default_material_ambient_occlusion,
                 REN()->default_material_roughness,
@@ -768,10 +775,10 @@ void game_client_entry() {
 
             g_materials[MAT_METAL_PLATE] = material_create(REN(),
                 {4.5, 4.5},
-                render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_diff_1k.png"),
-                render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_nor_gl_1k.png"),
-                render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_ao_1k.png"),
-                render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_rough_1k.png"),
+                render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_diff_1k.png",      TD_sRGBA_8, TD_sRGBA_8),
+                render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_nor_gl_1k.png",    TD_RGBA_8, TD_RGBA_8),
+                render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_ao_1k.png",        TD_RGBA_8, TD_RGBA_8),
+                render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_rough_1k.png",     TD_RGBA_8, TD_RGBA_8),
                 REN()->default_material_metalness
             );
 
@@ -779,10 +786,10 @@ void game_client_entry() {
 
             g_materials[MAT_BROKEN_BRICK_WALL] = material_create(REN(), 
                 {5, 5},
-                render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_diff_1k.png"),
-                render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_nor_gl_1k.png"),
-                render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_ao_1k.png"),
-                render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_rough_1k.png"),
+                render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_diff_1k.png",    TD_sRGBA_8, TD_sRGBA_8),
+                render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_nor_gl_1k.png",  TD_RGBA_8, TD_RGBA_8),
+                render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_ao_1k.png",      TD_RGBA_8, TD_RGBA_8),
+                render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_rough_1k.png",   TD_RGBA_8, TD_RGBA_8),
                 REN()->default_material_metalness
             );
 
@@ -790,11 +797,11 @@ void game_client_entry() {
 
             g_materials[MAT_METAL_05C] = material_create(REN(), 
                 {1, 1},
-                render_texture_create_from_file(REN(), "resources/textures/metal05C/Metal050C_1K-PNG_Color.png"),
-                render_texture_create_from_file(REN(), "resources/textures/metal05C/Metal050C_1K-PNG_NormalGL.png"),
+                render_texture_create_from_file(REN(), "resources/textures/metal05C/Metal050C_1K-PNG_Color.png",        TD_sRGBA_8, TD_sRGBA_8),
+                render_texture_create_from_file(REN(), "resources/textures/metal05C/Metal050C_1K-PNG_NormalGL.png",     TD_RGBA_8, TD_RGBA_8),
                 REN()->default_material_ambient_occlusion,
-                render_texture_create_from_file(REN(), "resources/textures/metal05C/Metal050C_1K-PNG_Roughness.png"),
-                render_texture_create_from_file(REN(), "resources/textures/metal05C/Metal050C_1K-PNG_Metalness.png")
+                render_texture_create_from_file(REN(), "resources/textures/metal05C/Metal050C_1K-PNG_Roughness.png",    TD_RGBA_8, TD_RGBA_8),
+                render_texture_create_from_file(REN(), "resources/textures/metal05C/Metal050C_1K-PNG_Metalness.png",    TD_RGBA_8, TD_RGBA_8)
             );
 
             Assert(g_materials[MAT_METAL_05C]);
@@ -890,6 +897,7 @@ void game_client_entry() {
 
 #if 1
     deserialise_level(&GC()->state);
+    ED()->camera.position = {0, 2.4, -5};
 #else
     ED()->camera.position = {};
 
@@ -1301,7 +1309,7 @@ void game_client_update(GameClient *client, State *state) {
         if (player && KEYS[GLFW_KEY_F] == InputState::DOWN) {
             Entity *light = local_spawn_point_light(state);
             light->position = player->position;
-            light->light_distance = 20;
+            light->light_intensity = 20;
         }
     }
 
@@ -1336,7 +1344,7 @@ void game_client_update(GameClient *client, State *state) {
         }
     }
 
-    // check player input
+    // update client owned player 
     if (client->viewport.focused && player != NULL) {
         if (WIN()->mouse_captured) {
             f32 sensitivity = 3;
@@ -1497,8 +1505,6 @@ void game_client_update(GameClient *client, State *state) {
 
 void game_client_draw(GameClient *client, State *state) {
     Assert(is_client(state));
-
-    draw_mesh(REN(), REN()->cube_primitive, {0, 0, 5}, {5, 5, 1}, {}, WHITE, g_materials[MAT_BROKEN_BRICK_WALL]);
 
     { // top bar ui
         v3 time_bg_size = v3{UI_TIME_BG_WIDTH, UI_TIME_FONT_SIZE + UI_TIME_Y_PADDING, 0};
@@ -1812,7 +1818,18 @@ void game_client_draw(GameClient *client, State *state) {
         }
 
         if (BitSet(entity.flags, EF_POINT_LIGHT)) {
-            draw_point_light(REN(), entity.position, entity.light_distance, entity.light_colour);
+            static f32 total_time = 0;
+            total_time += state->frame_delta_time;
+
+            f32 scale = 1.5;
+            f32 x = sinf(total_time);
+            f32 y = cosf(total_time);
+            f32 z = sinf(total_time) * -0.5f;
+
+            v3 offset = v3{x, y, z} * scale;
+
+            draw_point_light(REN(), entity.position + offset, entity.light_colour, entity.light_intensity);
+            continue;
         }
 
         if (ED()->selected_entity && ED()->selected_entity->id == entity.id) {
@@ -2218,7 +2235,7 @@ void editor_draw_ui(State *state) {
 
             ImGui::SeparatorText("Muzzle flash");
             imgui_colour_control("Flash colour", &g_muzzle_flash_colour);
-            ImGui::SliderFloat("Distance", &g_muzzle_flash_distance, 0, 50);
+            ImGui::SliderFloat("Intensity", &g_muzzle_flash_intensity, 0, 50);
 
             if (ImGui::CollapsingHeader("Entity")) {
                 Entity *player = get_client_player(state, state->instance_id);
@@ -2961,10 +2978,10 @@ Entity *local_spawn_point_light(State *state) {
         .flags = EF_POINT_LIGHT,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
-        .size = {0.5, 0.5, 0.5},
+        .size = {0.2, 0.2, 0.2},
         .colour = WHITE,
-        .light_distance = 10,
         .light_colour = WHITE,
+        .light_intensity = 10,
     };
 
     return local_spawn_entity(state, entity);
@@ -3104,8 +3121,8 @@ void imgui_entity(Entity *entity) {
     imgui_enum_dropdown("Pickup type", &entity->pickup_type);
     ImGui::InputFloat("pickup cooldown", &entity->pickup_cooldown);
     ImGui::InputFloat("jump pad cooldown", &entity->jump_pad_cooldown);
-    ImGui::InputFloat("light distance", &entity->light_distance);
     imgui_colour_control("light colour", &entity->light_colour);
+    ImGui::InputFloat("light intensity", &entity->light_intensity);
 }
 
 Viewport imgui_viewport(const char *label, u32 texture_id, bool force_focus) {
@@ -3345,7 +3362,7 @@ void serialise_level(State *state) {
     out << YAML::EndMap;
 
     // writing to the file
-    File file = new_file("resources/levels/main.yaml");
+    File file = new_file(g_level_save_file);
 
     bool ok = create_file(&file);
     if (!ok) {
@@ -3382,24 +3399,24 @@ void serialise_entity(YAML::Emitter &out, Entity *entity) {
     }
     out << YAML::EndSeq;
 
-    out << YAML::Key << "id"            << YAML::Value << entity->id;
-    out << YAML::Key << "owner"         << YAML::Value << entity->owner;
-    out << YAML::Key << "position"      << YAML::Value << entity->position;
-    out << YAML::Key << "size"          << YAML::Value << entity->size;
-    out << YAML::Key << "rotation"      << YAML::Value << entity->rotation;
-    out << YAML::Key << "velocity"      << YAML::Value << entity->velocity;
-    out << YAML::Key << "colour"        << YAML::Value << entity->colour;
-    out << YAML::Key << "material"      << YAML::Value << meta_name(entity->material);
-    out << YAML::Key << "max_health"    << YAML::Value << entity->max_health;
-    out << YAML::Key << "health"        << YAML::Value << entity->health;
-    out << YAML::Key << "pickup_type"   << YAML::Value << meta_name(entity->pickup_type);
-    out << YAML::Key << "light_distance"<< YAML::Value << entity->light_distance;
-    out << YAML::Key << "light_colour"  << YAML::Value << entity->light_colour;
+    out << YAML::Key << "id"                << YAML::Value << entity->id;
+    out << YAML::Key << "owner"             << YAML::Value << entity->owner;
+    out << YAML::Key << "position"          << YAML::Value << entity->position;
+    out << YAML::Key << "size"              << YAML::Value << entity->size;
+    out << YAML::Key << "rotation"          << YAML::Value << entity->rotation;
+    out << YAML::Key << "velocity"          << YAML::Value << entity->velocity;
+    out << YAML::Key << "colour"            << YAML::Value << entity->colour;
+    out << YAML::Key << "material"          << YAML::Value << meta_name(entity->material);
+    out << YAML::Key << "max_health"        << YAML::Value << entity->max_health;
+    out << YAML::Key << "health"            << YAML::Value << entity->health;
+    out << YAML::Key << "pickup_type"       << YAML::Value << meta_name(entity->pickup_type);
+    out << YAML::Key << "light_colour"      << YAML::Value << entity->light_colour;
+    out << YAML::Key << "light_intensity"   << YAML::Value << entity->light_intensity;
     out << YAML::EndMap;
 }
 
 void deserialise_level(State *state) {
-    YAML::Node root = YAML::LoadFile("resources/levels/main.yaml");
+    YAML::Node root = YAML::LoadFile(g_level_save_file.c());
 
     YAML::Node entities = root["entities"];
     if (!entities) {
@@ -3472,8 +3489,8 @@ void deserialise_level(State *state) {
             entity.pickup_type = pickup_type->value;
         }
 
-        entity.light_distance =              node["light_distance"].as<f32>();
-        entity.light_colour =                node["light_colour"].as<v4>();
+        entity.light_colour     = node["light_colour"].as<v4>();
+        entity.light_intensity  = node["light_intensity"].as<f32>();
 
         if (BitSet(entity.flags, EF_SPAWN_POINT)) {
             state->spawn_point_count += 1;
@@ -3571,7 +3588,7 @@ void draw_player_weapon(State *state, Weapon *weapon, v3 display_offset, bool sh
 
         TimedEffectState muzzle_flash = timed_effect_state(&GC()->muzzle_flash);
         if (muzzle_flash.active) {
-            draw_point_light(REN(), light_position, g_muzzle_flash_distance, g_muzzle_flash_colour);
+            draw_point_light(REN(), light_position, g_muzzle_flash_colour, g_muzzle_flash_intensity);
         }
 
         if (muzzle_flash.active || g_debug_always_draw_muzzle_flash) {
