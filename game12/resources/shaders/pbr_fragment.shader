@@ -8,6 +8,8 @@ struct PointLight {
 
 // keep in sync with renderer 
 #define MAX_POINT_LIGHTS 20
+   
+const float PI = 3.14159265359;
 
 layout(location = 0) out vec4 colour_attachment;
 
@@ -27,74 +29,93 @@ uniform vec2        material_tiling_factor;
 uniform sampler2D   material_albedo;
 uniform sampler2D   material_normal;
 uniform sampler2D   material_ambient_occlusion;
+uniform sampler2D   material_roughness;
+uniform sampler2D   material_metalness;
 
 uniform int         light_count;
 uniform PointLight  lights[MAX_POINT_LIGHTS];
 
-vec3 fresnelSchlick(float cosTheta, vec3 F0) {
+float BRDF_distribution(vec3 N, vec3 H, float roughness) {
+    float a      = roughness * roughness;
+    float a2     = a*a;
+    float NdotH  = max(dot(N, H), 0.0);
+    float NdotH2 = NdotH*NdotH;
+	
+    float num   = a2;
+    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    denom = PI * denom * denom;
+	
+    return num / denom;
+}
+
+float GeometrySchlickGGX(float NdotV, float roughness) {
+    float r = (roughness + 1.0);
+    float k = (r*r) / 8.0;
+
+    float num   = NdotV;
+    float denom = NdotV * (1.0 - k) + k;
+	
+    return num / denom;
+}
+
+float BRDF_geometry(vec3 N, vec3 V, vec3 L, float roughness) {
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    float ggx2  = GeometrySchlickGGX(NdotV, roughness);
+    float ggx1  = GeometrySchlickGGX(NdotL, roughness);
+	
+    return ggx1 * ggx2;
+}
+
+vec3 BRDF_fresnel(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-} 
+}
 
 void main() {
-    vec4 fragment_colour;
-
-    {
-        vec4 albedo_sample = texture(material_albedo, uv * material_tiling_factor);
-        vec4 ambient_occlusion_sample = texture(material_ambient_occlusion, uv * material_tiling_factor);
-
-        if (albedo_sample.a == 0) {
-            discard;
-        }
-
-        fragment_colour = (albedo_sample * colour) * ambient_occlusion_sample;
-    }
-
-    vec3 fragment_lighting;
+    vec3 albedo_sample              = (texture(material_albedo,             uv * material_tiling_factor) * colour).rgb;
+    float ambient_occlusion_sample  = (texture(material_ambient_occlusion,  uv * material_tiling_factor) * colour).r;
+    float roughness_sample          = (texture(material_roughness,          uv * material_tiling_factor) * colour).r;
+    float metalness_sample          = (texture(material_metalness,          uv * material_tiling_factor) * colour).r;
 
     { // PBR
+        float light_intensity = 40;
         vec3 N = normalize(normal);
         vec3 V = normalize(camera_position - fragment_position);
 
-        // total incoming radiance
-        vec3 irradiance = vec3(0);
+        vec3 F0 = vec3(0.04); 
+        F0 = mix(F0, albedo_sample, metalness_sample);
+
+        vec3 Lo = vec3(0);
 
         for (int i = 0; i < light_count; i++) {
             PointLight light = lights[i];
-            float light_intensity = 10; // TODO: make this configurable
 
-            vec3 light_direction = normalize(light.position - fragment_position);
+            vec3 L = normalize(light.position - fragment_position);
+            vec3 H = normalize(V + L);
+
+            // 1: calculate the incoming light from the source (radiance)
             float light_distance = length(light.position - fragment_position);
-
-            float cosTheta = max(dot(N, light_direction), 0.0);
             float attenuation = 1.0 / (light_distance * light_distance);
+            vec3 radiance = light.colour * attenuation * light_intensity;
 
-            vec3 radiance = light.colour * attenuation * cosTheta * light_intensity;
+            // 2: calculate the BRDF normal distribution
+            float D = BRDF_distribution(N, H, roughness_sample);
+            float G = BRDF_geometry(N, V, L, roughness_sample);    
+            vec3 F  = BRDF_fresnel(max(dot(H, V), 0.0), F0);
 
-            irradiance += radiance;
+            vec3 numerator    = D * G * F;
+            float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0)  + 0.0001;
+            vec3 specular     = numerator / denominator;
+
+            vec3 kS = F;
+            vec3 kD = vec3(1.0) - kS;
+  
+            kD *= 1.0 - metalness_sample;
+
+            float NdotL = max(dot(N, L), 0.0);        
+            Lo += (kD * albedo_sample / PI + specular) * radiance * NdotL;
         }
     
-        fragment_lighting = ambient_light + irradiance;
+        colour_attachment = vec4(ambient_light + Lo, 1);
     }
-
-    if (false) { // draw normals unlit 
-        fragment_lighting = vec3(1);
-        fragment_colour = vec4(normal, 1);
-    }
-
-    if (false) { // draw position unlit 
-        fragment_lighting = vec3(1);
-        fragment_colour = vec4(fragment_position.rgb, 1);
-    }
-
-    colour_attachment = fragment_colour * vec4(fragment_lighting, 1);
 } 
-
-#if 0
-    { // Blinn-Phong
-        vec3 diffuse_light = diffuse_calculation(fragment_position, normal);
-        vec3 point_light = point_light_calculation(fragment_position);
-
-        fragment_lighting = ambient_light + diffuse_light + point_light;
-    }
-#endif
-

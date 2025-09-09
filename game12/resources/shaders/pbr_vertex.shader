@@ -15,7 +15,10 @@ out vec2 uv;
 void main()
 {
     fragment_position = (model * vec4(a_position, 1)).xyz;
-    normal = a_normal;
+
+    mat3 normal_matrix = transpose(inverse(mat3(model)));
+    normal = normalize(normal_matrix * a_normal);
+
     uv = a_uv;
 
     gl_Position = projection * view * model * vec4(a_position, 1);

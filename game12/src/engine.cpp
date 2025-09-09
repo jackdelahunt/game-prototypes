@@ -443,6 +443,8 @@ struct Material {
     RenderTexture *albedo;
     RenderTexture *normal;
     RenderTexture *ambient_occlusion;
+    RenderTexture *roughness;
+    RenderTexture *metalness;
 };
 
 // @viewport
@@ -532,6 +534,8 @@ struct Renderer {
     RenderTexture *default_material_albedo;
     RenderTexture *default_material_normal;
     RenderTexture *default_material_ambient_occlusion;
+    RenderTexture *default_material_roughness;
+    RenderTexture *default_material_metalness;
 
     Material *default_material;
 
@@ -590,7 +594,7 @@ void upload_mesh(Mesh *mesh);
 RenderTexture *render_texture_create_from_file(Renderer *renderer, string path);
 
 // Material API
-Material *material_create(Renderer *renderer, v2 tiling_factor, RenderTexture *albedo, RenderTexture *normal, RenderTexture *ambient_occlusion);
+Material *material_create(Renderer *renderer, v2 tiling_factor, RenderTexture *albedo, RenderTexture *normal, RenderTexture *ambient_occlusion, RenderTexture *roughness, RenderTexture *metalness);
 
 // Renderer init API
 Renderer *REN();
@@ -977,7 +981,7 @@ RenderTexture *render_texture_create_from_file(Renderer *renderer, string path) 
     return texture;
 }
 
-Material *material_create(Renderer *renderer, v2 tiling_factor, RenderTexture *albedo, RenderTexture *normal, RenderTexture *ambient_occlusion) {
+Material *material_create(Renderer *renderer, v2 tiling_factor, RenderTexture *albedo, RenderTexture *normal, RenderTexture *ambient_occlusion, RenderTexture *roughness, RenderTexture *metalness) {
     Assert(albedo && ambient_occlusion);
 
     Material *material = push(&renderer->materials);
@@ -985,6 +989,8 @@ Material *material_create(Renderer *renderer, v2 tiling_factor, RenderTexture *a
     material->albedo = albedo;
     material->normal = normal;
     material->ambient_occlusion = ambient_occlusion;
+    material->roughness = roughness;
+    material->metalness = metalness;
 
     return material;
 }
@@ -1089,13 +1095,21 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
 
         renderer->default_material_ambient_occlusion = render_texture_create_from_file(renderer, "resources/textures/defaults/default_ambient_occlusion.png");
         Assert(renderer->default_material_ambient_occlusion);
+
+        renderer->default_material_roughness = render_texture_create_from_file(renderer, "resources/textures/defaults/default_roughness.png");
+        Assert(renderer->default_material_roughness);
+
+        renderer->default_material_metalness = render_texture_create_from_file(renderer, "resources/textures/defaults/default_metalness.png");
+        Assert(renderer->default_material_metalness);
     }
 
     { // create default material
         renderer->default_material = material_create(renderer, v2{1, 1}, 
             renderer->default_material_albedo, 
             renderer->default_material_normal, 
-            renderer->default_material_ambient_occlusion
+            renderer->default_material_ambient_occlusion,
+            renderer->default_material_roughness,
+            renderer->default_material_metalness
         );
 
         Assert(renderer->default_material);
@@ -1158,6 +1172,8 @@ bool load_shaders(Renderer *renderer) {
         assign_texture_slot(&renderer->pbr_shader, "material_albedo", 0);
         assign_texture_slot(&renderer->pbr_shader, "material_normal", 1);
         assign_texture_slot(&renderer->pbr_shader, "material_ambient_occlusion", 2);
+        assign_texture_slot(&renderer->pbr_shader, "material_roughness", 3);
+        assign_texture_slot(&renderer->pbr_shader, "material_metalness", 4);
     }
 
     return true;
@@ -1478,6 +1494,8 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
                 shader_set_texture(renderer->pbr_shader, model_cmd->material->albedo, 0);
                 shader_set_texture(renderer->pbr_shader, model_cmd->material->normal, 1);
                 shader_set_texture(renderer->pbr_shader, model_cmd->material->ambient_occlusion, 2);
+                shader_set_texture(renderer->pbr_shader, model_cmd->material->roughness, 3);
+                shader_set_texture(renderer->pbr_shader, model_cmd->material->metalness, 4);
 
                 shader_set_i32(renderer->pbr_shader, "light_count", renderer->lights.len);
 

@@ -15,8 +15,8 @@
 #include <chrono>
 #include <atomic>
 
-// Total: 125:00
-// Started: 12:00
+// Total: 128:00
+// Started: 18:30
 //
 // NOTES: {
 //      IN_PROGRESS: {
@@ -152,6 +152,7 @@ meta enum MaterialHandle : u32 {
     MAT_MUZZLE_FLASH,
     MAT_METAL_PLATE,
     MAT_BROKEN_BRICK_WALL,
+    MAT_METAL_05C,
     _MAT_COUNT
 };
 
@@ -758,28 +759,45 @@ void game_client_entry() {
                 {1.0, 1.0},
                 render_texture_create_from_file(REN(), "resources/textures/muzzle_flash/muzzle_flash.png"),
                 REN()->default_material_normal,
-                REN()->default_material_ambient_occlusion
+                REN()->default_material_ambient_occlusion,
+                REN()->default_material_roughness,
+                REN()->default_material_metalness
             );
 
             Assert(g_materials[MAT_MUZZLE_FLASH]);
 
             g_materials[MAT_METAL_PLATE] = material_create(REN(),
-                {12.3, 12.3},
+                {4.5, 4.5},
                 render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_diff_1k.png"),
                 render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_nor_gl_1k.png"),
-                render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_ao_1k.png")
+                render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_ao_1k.png"),
+                render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_rough_1k.png"),
+                REN()->default_material_metalness
             );
 
             Assert(g_materials[MAT_METAL_PLATE]);
 
             g_materials[MAT_BROKEN_BRICK_WALL] = material_create(REN(), 
-                {15, 15},
+                {1, 1},
                 render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_diff_1k.png"),
                 render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_nor_gl_1k.png"),
-                render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_ao_1k.png")
+                render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_ao_1k.png"),
+                REN()->default_material_roughness,
+                REN()->default_material_metalness
             );
 
             Assert(g_materials[MAT_BROKEN_BRICK_WALL]);
+
+            g_materials[MAT_METAL_05C] = material_create(REN(), 
+                {1, 1},
+                render_texture_create_from_file(REN(), "resources/textures/metal05C/Metal050C_1K-PNG_Color.png"),
+                render_texture_create_from_file(REN(), "resources/textures/metal05C/Metal050C_1K-PNG_NormalGL.png"),
+                REN()->default_material_ambient_occlusion,
+                render_texture_create_from_file(REN(), "resources/textures/metal05C/Metal050C_1K-PNG_Roughness.png"),
+                render_texture_create_from_file(REN(), "resources/textures/metal05C/Metal050C_1K-PNG_Metalness.png")
+            );
+
+            Assert(g_materials[MAT_METAL_05C]);
         }
 
         ok = sound_engine_init();
@@ -878,7 +896,7 @@ void game_client_entry() {
     REN()->ambient_light = {0.1, 0.1, 0.1};
 
     Entity *light = local_spawn_point_light(&GC()->state);
-    light->position = {1, -1, 0};
+    light->position = {2.5, 2.5, 0};
     light->light_distance = 15;
 #endif
 
@@ -1479,18 +1497,45 @@ void game_client_update(GameClient *client, State *state) {
 
 void game_client_draw(GameClient *client, State *state) {
     Assert(is_client(state));
-
+#if 0
     { // TODO: temp
-        i32 range = 3;
+        i32 range = 5;
+        f32 gap = 0.1;
 
-        for (i32 y = -range; y < range; y++) {
-            for (i32 x = -range; x < range; x++) {
-                v3 position = {f32(x), f32(y), 3};
+        Mesh *mesh = REN()->cube_primitive;
+        Material *material = g_materials[MAT_BROKEN_BRICK_WALL];
+        // v4 colour = {0.8, 0.2, 0.2, 1};
+        v4 colour = WHITE;
 
-                draw_mesh(REN(), REN()->sphere_primitive, position, {1, 1, 1}, {}, v4{0.8, 0.2, 0.2, 1}, REN()->default_material);
+        for (i32 y = 0; y < range; y++) {
+            for (i32 x = 0; x < range; x++) {
+                v3 position = {
+                    f32(x) + (f32(x) * gap), 
+                    f32(y) + (f32(y) * gap), 
+                    3
+                };
+
+                f32 roughness = f32(x) * (1.0f / f32(range));
+                f32 metalic = f32(y) * (1.0f / f32(range));
+
+                roughness = clamp(0.01f, roughness, 0.99f);
+                metalic = clamp(0.01f, metalic, 0.99f);
+
+                if (roughness <= 0) {
+                    roughness = 0.001f;
+                }
+
+                if (roughness >= 1) {
+                    roughness = 0.999f;
+                }
+
+                draw_mesh_ex(REN(), mesh, position, {1, 1, 1}, {0, 90, 0}, colour, material, roughness, metalic);
             }
         }
     }
+#endif
+
+    draw_mesh(REN(), REN()->cube_primitive, {0, 0, 5}, {5, 5, 1}, {}, WHITE, g_materials[MAT_METAL_PLATE]);
 
     { // top bar ui
         v3 time_bg_size = v3{UI_TIME_BG_WIDTH, UI_TIME_FONT_SIZE + UI_TIME_Y_PADDING, 0};
@@ -2271,13 +2316,19 @@ void editor_draw_ui(State *state) {
                 if (ImGui::CollapsingHeader(material_handle.name.c())) {
                     Material *material = g_materials[material_handles[i].value];
 
+                    imgui_v2_control("Tiling factor", &material->tiling_factor, 0.01);
+
                     ImGui::Text("Albedo: %dx%d", material->albedo->width, material->albedo->height);
                     ImGui::Image(material->albedo->id, ImVec2(200, 200));
 
                     ImGui::Text("Ambient occlusion: %dx%d", material->ambient_occlusion->width, material->ambient_occlusion->height);
                     ImGui::Image(material->ambient_occlusion->id, ImVec2(200, 200));
 
-                    imgui_v2_control("Tiling factor", &material->tiling_factor, 0.01);
+                    ImGui::Text("Roughness: %dx%d", material->roughness->width, material->roughness->height);
+                    ImGui::Image(material->roughness->id, ImVec2(200, 200));
+
+                    ImGui::Text("Metalness: %dx%d", material->metalness->width, material->metalness->height);
+                    ImGui::Image(material->metalness->id, ImVec2(200, 200));
                 }
             }
         }
@@ -3078,7 +3129,7 @@ void imgui_entity(Entity *entity) {
 
     ImGui::Text("id: %u", entity->id);
     ImGui::Text("owner: %u", entity->owner);
-    imgui_v3_control("position", &entity->position);
+    imgui_v3_control("position", &entity->position, 0.1f);
     imgui_v3_control("size", &entity->size);
     imgui_v3_control("rotation", &entity->rotation);
     imgui_v3_control("velocity", &entity->velocity);
