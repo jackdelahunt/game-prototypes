@@ -778,11 +778,11 @@ void game_client_entry() {
             Assert(g_materials[MAT_METAL_PLATE]);
 
             g_materials[MAT_BROKEN_BRICK_WALL] = material_create(REN(), 
-                {1, 1},
+                {5, 5},
                 render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_diff_1k.png"),
                 render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_nor_gl_1k.png"),
                 render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_ao_1k.png"),
-                REN()->default_material_roughness,
+                render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_rough_1k.png"),
                 REN()->default_material_metalness
             );
 
@@ -888,7 +888,7 @@ void game_client_entry() {
 
     Infof("Started game client @ {}tps [thread={}]", i64(1000.0f / f32(GAME_MS_PER_TICK)), get_current_thread_id());
 
-#if 0
+#if 1
     deserialise_level(&GC()->state);
 #else
     ED()->camera.position = {};
@@ -1497,45 +1497,8 @@ void game_client_update(GameClient *client, State *state) {
 
 void game_client_draw(GameClient *client, State *state) {
     Assert(is_client(state));
-#if 0
-    { // TODO: temp
-        i32 range = 5;
-        f32 gap = 0.1;
 
-        Mesh *mesh = REN()->cube_primitive;
-        Material *material = g_materials[MAT_BROKEN_BRICK_WALL];
-        // v4 colour = {0.8, 0.2, 0.2, 1};
-        v4 colour = WHITE;
-
-        for (i32 y = 0; y < range; y++) {
-            for (i32 x = 0; x < range; x++) {
-                v3 position = {
-                    f32(x) + (f32(x) * gap), 
-                    f32(y) + (f32(y) * gap), 
-                    3
-                };
-
-                f32 roughness = f32(x) * (1.0f / f32(range));
-                f32 metalic = f32(y) * (1.0f / f32(range));
-
-                roughness = clamp(0.01f, roughness, 0.99f);
-                metalic = clamp(0.01f, metalic, 0.99f);
-
-                if (roughness <= 0) {
-                    roughness = 0.001f;
-                }
-
-                if (roughness >= 1) {
-                    roughness = 0.999f;
-                }
-
-                draw_mesh_ex(REN(), mesh, position, {1, 1, 1}, {0, 90, 0}, colour, material, roughness, metalic);
-            }
-        }
-    }
-#endif
-
-    draw_mesh(REN(), REN()->cube_primitive, {0, 0, 5}, {5, 5, 1}, {}, WHITE, g_materials[MAT_METAL_PLATE]);
+    draw_mesh(REN(), REN()->cube_primitive, {0, 0, 5}, {5, 5, 1}, {}, WHITE, g_materials[MAT_BROKEN_BRICK_WALL]);
 
     { // top bar ui
         v3 time_bg_size = v3{UI_TIME_BG_WIDTH, UI_TIME_FONT_SIZE + UI_TIME_Y_PADDING, 0};

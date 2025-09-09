@@ -73,12 +73,12 @@ vec3 BRDF_fresnel(float cosTheta, vec3 F0) {
 
 void main() {
     vec3 albedo_sample              = (texture(material_albedo,             uv * material_tiling_factor) * colour).rgb;
-    float ambient_occlusion_sample  = (texture(material_ambient_occlusion,  uv * material_tiling_factor) * colour).r;
-    float roughness_sample          = (texture(material_roughness,          uv * material_tiling_factor) * colour).r;
-    float metalness_sample          = (texture(material_metalness,          uv * material_tiling_factor) * colour).r;
+    float ambient_occlusion_sample  = (texture(material_ambient_occlusion,  uv * material_tiling_factor)).r;
+    float roughness_sample          = (texture(material_roughness,          uv * material_tiling_factor)).r;
+    float metalness_sample          = (texture(material_metalness,          uv * material_tiling_factor)).r;
 
     { // PBR
-        float light_intensity = 40;
+        float light_intensity = 30;
         vec3 N = normalize(normal);
         vec3 V = normalize(camera_position - fragment_position);
 
@@ -93,14 +93,12 @@ void main() {
             vec3 L = normalize(light.position - fragment_position);
             vec3 H = normalize(V + L);
 
-            // 1: calculate the incoming light from the source (radiance)
             float light_distance = length(light.position - fragment_position);
             float attenuation = 1.0 / (light_distance * light_distance);
             vec3 radiance = light.colour * attenuation * light_intensity;
 
-            // 2: calculate the BRDF normal distribution
             float D = BRDF_distribution(N, H, roughness_sample);
-            float G = BRDF_geometry(N, V, L, roughness_sample);    
+            float G = BRDF_geometry(N, V, L, roughness_sample);
             vec3 F  = BRDF_fresnel(max(dot(H, V), 0.0), F0);
 
             vec3 numerator    = D * G * F;
@@ -115,7 +113,12 @@ void main() {
             float NdotL = max(dot(N, L), 0.0);        
             Lo += (kD * albedo_sample / PI + specular) * radiance * NdotL;
         }
+
+        vec3 colour = (ambient_light * albedo_sample * ambient_occlusion_sample) + Lo;
+
+        colour = colour / (colour + vec3(1.0));
+        // colour = pow(colour, vec3(1.0/2.2)); 
     
-        colour_attachment = vec4(ambient_light + Lo, 1);
+        colour_attachment = vec4(colour, 1);
     }
 } 
