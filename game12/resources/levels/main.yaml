@@ -5,21 +5,118 @@ entities:
     id: 2247
     owner: 0
     position: [0, 0, 0]
-    size: [30, 1, 25]
+    size: [20, 1, 25]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
-    colour: [1, 1, 1, 1]
-    material: MAT_METAL_PLATE
+    colour: [0.909803927, 0.152941182, 0.152941182, 1]
+    material: MAT_GRID
     max_health: 0
     health: 0
     pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_PICKUP
+    id: 28913
+    owner: 1
+    position: [18.5, 0.5, 0]
+    size: [2, 0.100000001, 2]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.5, 0.5, 0.5, 1]
+    material: MAT_DEFAULT
+    max_health: 0
+    health: 0
+    pickup_type: PT_M4
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 11832
+    owner: 0
+    position: [0, 0, -17.5]
+    size: [40, 1, 10]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.909803927, 0.152941182, 0.152941182, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 32663
+    owner: 0
+    position: [0, 0, 17.5]
+    size: [40, 1, 10]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.911392391, 0.153821513, 0.153821513, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 4690
+    owner: 0
+    position: [0, 10, -23]
+    size: [40, 20, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.235294119, 0.235294119, 0.235294119, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 13159
+    owner: 0
+    position: [0, 10, 23]
+    size: [40, 20, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.236286938, 0.236286938, 0.236286938, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 22628
+    owner: 0
+    position: [15, 0, 0]
+    size: [10, 1, 25]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.909803927, 0.152941182, 0.152941182, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
     light_colour: [0, 0, 0, 0]
     light_intensity: 0
   - flags:
       - EF_SPAWN_POINT
-    id: 6087
+    id: 1214
     owner: 0
-    position: [0, 0.5, 0]
+    position: [15, 0.5, -17.5]
     size: [3, 0.200000003, 3]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
@@ -28,389 +125,454 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_SPAWN_POINT
+    id: 17805
+    owner: 0
+    position: [15, 0.5, 17.5]
+    size: [3, 0.200000003, 3]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0, 1, 0, 1]
+    material: MAT_DEFAULT
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
     light_colour: [0, 0, 0, 0]
     light_intensity: 0
   - flags:
       - EF_JUMP_PAD
-    id: 23123
+    id: 22755
     owner: 0
-    position: [-11, 0.5, 0]
+    position: [-7.5, 0.5, 0]
     size: [3, 0.200000003, 3]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
-    colour: [0.75, 0.100000001, 0.899999976, 1]
+    colour: [1, 0.639999986, 0.100000001, 1]
     material: MAT_DEFAULT
     max_health: 0
     health: 0
     pickup_type: PT_NONE
+    jump_pad_force: 55
     light_colour: [0, 0, 0, 0]
     light_intensity: 0
   - flags:
       - EF_STATIC_HITBOX
-    id: 8486
+    id: 3438
     owner: 0
-    position: [11.5, 2, 0]
-    size: [12, 4, 25]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.953586519, 0.830943942, 0.728266478, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-    id: 5150
-    owner: 0
-    position: [22, 4, 0]
-    size: [15, 8, 55]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.953586519, 0.93932575, 0.728266478, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-    id: 27624
-    owner: 0
-    position: [0, 4, -20]
-    size: [30, 8, 15]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.953586519, 0.93932575, 0.728266478, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-    id: 27293
-    owner: 0
-    position: [0, 4, 20]
-    size: [30, 8, 15]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.953586519, 0.93932575, 0.728266478, 1]
-    material: MAT_BROKEN_BRICK_WALL
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-    id: 10528
-    owner: 0
-    position: [-22, 4, 0]
-    size: [15, 8, 55]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.953586519, 0.93932575, 0.728266478, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-    id: 12917
-    owner: 0
-    position: [-30, 20, 0]
-    size: [1, 40, 55]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.953586519, 0.830943942, 0.728266478, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-    id: 10995
-    owner: 0
-    position: [30, 20, 0]
-    size: [1, 40, 55]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.953586519, 0.830943942, 0.728266478, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-    id: 26630
-    owner: 0
-    position: [0, 20, 27.5]
-    size: [60, 40, 1]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.953586519, 0.830943942, 0.728266478, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-    id: 9238
-    owner: 0
-    position: [0, 20, -28]
-    size: [60, 40, 1]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.953586519, 0.830943942, 0.728266478, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-    id: 1844
-    owner: 0
-    position: [-21, 32, 23.5]
-    size: [18, 0.200000003, 8]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.180526599, 0.213627428, 0.25316453, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-    id: 27170
-    owner: 0
-    position: [21, 20, -23.5]
-    size: [18, 0.200000003, 8]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.180526599, 0.213627428, 0.25316453, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_JUMP_PAD
-    id: 21722
-    owner: 0
-    position: [-0.5, 8, -23.5]
-    size: [3, 0.200000003, 3]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.75, 0.100000001, 0.899999976, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_JUMP_PAD
-    id: 22613
-    owner: 0
-    position: [1, 8, 23]
-    size: [3, 0.200000003, 3]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.75, 0.100000001, 0.899999976, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-    id: 3913
-    owner: 0
-    position: [-27, 9, -22.5]
-    size: [5, 2, 10]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.953586519, 0.830943942, 0.728266478, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-    id: 9620
-    owner: 0
-    position: [-27, 10, -10]
-    size: [9, 4, 15]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.953586519, 0.830943942, 0.728266478, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_DUMMY
-      - EF_SOLID_HITBOX
-      - EF_DAMAGEABLE
-      - EF_COMPLEX_PHYSICS
-    id: 7920
-    owner: 1
-    position: [-5, 2, 8]
-    size: [0.649999976, 2, 0.649999976]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0, 0, 1, 1]
-    material: MAT_DEFAULT
-    max_health: 100
-    health: 100
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-    id: 7926
-    owner: 0
-    position: [-11.5, 8.5, -26]
-    size: [1, 1, 1]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.375527442, 0.375527442, 0.375527442, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-    id: 28578
-    owner: 0
-    position: [-13, 8.5, -25]
-    size: [2, 1, 4]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.375527442, 0.375527442, 0.375527442, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-    id: 28029
-    owner: 0
-    position: [-13, 9.5, -26.5]
-    size: [1, 1, 1]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.375527442, 0.375527442, 0.375527442, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-    id: 30607
-    owner: 0
-    position: [-14.5, 8.5, -25.5]
-    size: [1, 1, 1]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.375527442, 0.375527442, 0.375527442, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_DUMMY
-      - EF_SOLID_HITBOX
-      - EF_DAMAGEABLE
-      - EF_COMPLEX_PHYSICS
-    id: 23263
-    owner: 1
-    position: [-18, 9, 0]
-    size: [0.649999976, 2, 0.649999976]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0, 0, 1, 1]
-    material: MAT_DEFAULT
-    max_health: 100
-    health: 100
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_DUMMY
-      - EF_SOLID_HITBOX
-      - EF_DAMAGEABLE
-      - EF_COMPLEX_PHYSICS
-    id: 6688
-    owner: 1
-    position: [-26.6749992, 13, -9.67500019]
-    size: [0.649999976, 2, 0.649999976]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0, 0, 1, 1]
-    material: MAT_DEFAULT
-    max_health: 100
-    health: 100
-    pickup_type: PT_NONE
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_POINT_LIGHT
-    id: 5820
-    owner: 0
-    position: [2, 7, 7]
-    size: [0.5, 0.5, 0.5]
+    position: [-15, 7.5, 0]
+    size: [10, 15, 25]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
-    material: MAT_DEFAULT
+    material: MAT_GRID
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_colour: [1, 1, 1, 1]
-    light_intensity: 200
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
   - flags:
-      - EF_POINT_LIGHT
-    id: 30245
+      - EF_STATIC_HITBOX
+    id: 8821
     owner: 0
-    position: [-8, 5, -0.75]
-    size: [0.5, 0.5, 0.5]
+    position: [-6.0999999, 14.5, 10.1000004]
+    size: [2, 0.5, 2]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.152941182, 0.909803927, 0.211764708, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 27410
+    owner: 0
+    position: [0, 9.25, 17.5]
+    size: [20, 0.5, 10]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.132119164, 0.403944343, 0.763713062, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 22880
+    owner: 0
+    position: [10.1000004, 4.5, 7.5]
+    size: [0.200000003, 9, 10]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 4663
+    owner: 0
+    position: [-20.5, 10, 0]
+    size: [1, 20, 45]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.235294119, 0.235294119, 0.235294119, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 5975
+    owner: 0
+    position: [20.5, 10, 0]
+    size: [1, 20, 45]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.235294119, 0.235294119, 0.235294119, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 24663
+    owner: 0
+    position: [0, 9.25, -17.5]
+    size: [20, 0.5, 10]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.13333334, 0.403921574, 0.764705896, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 5064
+    owner: 0
+    position: [15, 14.5, 0]
+    size: [10, 11, 45]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.235294119, 0.235294119, 0.235294119, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 456
+    owner: 0
+    position: [15, 5, 0]
+    size: [4, 10, 4]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 25894
+    owner: 0
+    position: [10.1000004, 4.4000001, -7.5]
+    size: [0.200000003, 9.19999981, 10]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 13229
+    owner: 0
+    position: [-15, 15.25, 0]
+    size: [10, 0.5, 25]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.152941182, 0.909803927, 0.210424304, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 11476
+    owner: 0
+    position: [1.39999998, 14.5, 8.5]
+    size: [2, 0.5, 2]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.152941182, 0.909803927, 0.211764708, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 18666
+    owner: 0
+    position: [6.80000019, 14.5, 0.5]
+    size: [2, 0.5, 2]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.152941182, 0.909803927, 0.211764708, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 7351
+    owner: 0
+    position: [8.5, 14.5, -7.4000001]
+    size: [3, 0.5, 4]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.152941182, 0.909803927, 0.211764708, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_JUMP_PAD
+    id: 19393
+    owner: 0
+    position: [-15, 0.5, -17.5]
+    size: [3, 0.200000003, 3]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 0.639999986, 0.100000001, 1]
     material: MAT_DEFAULT
     max_health: 0
     health: 0
     pickup_type: PT_NONE
-    light_colour: [0.25316453, 0.744752526, 1, 1]
-    light_intensity: 100
+    jump_pad_force: 43
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_JUMP_PAD
+    id: 31362
+    owner: 0
+    position: [-15, 0.5, 17.5]
+    size: [3, 0.200000003, 3]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 0.639999986, 0.100000001, 1]
+    material: MAT_DEFAULT
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 43
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 21730
+    owner: 0
+    position: [-8, 4.4000001, 12.6000004]
+    size: [4, 9.19999981, 0.200000003]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 16708
+    owner: 0
+    position: [8, 4.4000001, 12.6000004]
+    size: [4, 9.19999981, 0.200000003]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 15181
+    owner: 0
+    position: [-8, 4.4000001, -12.6000004]
+    size: [4, 9.19999981, 0.200000003]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 15000
+    owner: 0
+    position: [8, 4.4000001, -12.6000004]
+    size: [4, 9.19999981, 0.200000003]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 13238
+    owner: 0
+    position: [0, 8, 12.6000004]
+    size: [12, 2, 0.200000003]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 26066
+    owner: 0
+    position: [0, 8, -12.6000004]
+    size: [12, 2, 0.200000003]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+    id: 12235
+    owner: 0
+    position: [10.1000004, 8, 0]
+    size: [0.200000003, 2, 5]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_PICKUP
+    id: 28707
+    owner: 1
+    position: [0, 0.5, 0]
+    size: [2, 0.100000001, 2]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.5, 0.5, 0.5, 1]
+    material: MAT_DEFAULT
+    max_health: 0
+    health: 0
+    pickup_type: PT_HEALTH
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_PICKUP
+    id: 8095
+    owner: 1
+    position: [-15.3999996, 15.5, 0]
+    size: [2, 0.100000001, 2]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.5, 0.5, 0.5, 1]
+    material: MAT_DEFAULT
+    max_health: 0
+    health: 0
+    pickup_type: PT_HEALTH
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_PICKUP
+    id: 16723
+    owner: 1
+    position: [8.5, 15, -7.4000001]
+    size: [2, 0.100000001, 2]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.5, 0.5, 0.5, 1]
+    material: MAT_DEFAULT
+    max_health: 0
+    health: 0
+    pickup_type: PT_TAP
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0

@@ -13,6 +13,7 @@
 
 #define NETWORK_MS_PER_TICK 8
 #define DEFAULT_PORT 27020
+#define DEFAULT_IP "192.168.0.171"
 
 // I hate c++
 struct Server; 
@@ -304,7 +305,7 @@ void network_layer_update_server(NetworkLayer *net) {
 
         { // parse ip address
             address.Clear();
-            Assert(address.ParseString("::1"));
+            Assert(address.ParseString(DEFAULT_IP));
             address.m_port = DEFAULT_PORT;
         }
 

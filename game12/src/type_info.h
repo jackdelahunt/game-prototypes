@@ -8,7 +8,7 @@
 
 template<>
 struct MetaEnum<MaterialHandle> {
-const static int count = 6;
+const static int count = 8;
 
 inline static EnumValue<MaterialHandle> values[count] = {
     EnumValue<MaterialHandle>(string("MAT_DEFAULT"), MAT_DEFAULT),
@@ -16,6 +16,8 @@ inline static EnumValue<MaterialHandle> values[count] = {
     EnumValue<MaterialHandle>(string("MAT_METAL_PLATE"), MAT_METAL_PLATE),
     EnumValue<MaterialHandle>(string("MAT_BROKEN_BRICK_WALL"), MAT_BROKEN_BRICK_WALL),
     EnumValue<MaterialHandle>(string("MAT_METAL_05C"), MAT_METAL_05C),
+    EnumValue<MaterialHandle>(string("MAT_TILES_037"), MAT_TILES_037),
+    EnumValue<MaterialHandle>(string("MAT_GRID"), MAT_GRID),
     EnumValue<MaterialHandle>(string("_MAT_COUNT"), _MAT_COUNT),
 };
 
@@ -26,7 +28,9 @@ static string name(MaterialHandle value) {
         case MAT_METAL_PLATE: return values[2].name;
         case MAT_BROKEN_BRICK_WALL: return values[3].name;
         case MAT_METAL_05C: return values[4].name;
-        case _MAT_COUNT: return values[5].name;
+        case MAT_TILES_037: return values[5].name;
+        case MAT_GRID: return values[6].name;
+        case _MAT_COUNT: return values[7].name;
     }
 }
 

@@ -87,7 +87,12 @@ vec3 BRDF_fresnel(float cosTheta, vec3 F0) {
 }
 
 void main() {
-    vec3 albedo_sample              = (texture(material_albedo,             uv * material_tiling_factor) * colour).rgb;
+    vec4 albedo = texture(material_albedo, uv * material_tiling_factor) * colour;
+    if (albedo.a == 0) {
+        discard;
+    }
+
+    vec3 albedo_sample              = albedo.rgb;
     vec3 normal_sample              = (texture(material_normal,             uv * material_tiling_factor).xyz * 2.0) - 1.0;
     float ambient_occlusion_sample  = (texture(material_ambient_occlusion,  uv * material_tiling_factor)).r;
     float roughness_sample          = (texture(material_roughness,          uv * material_tiling_factor)).r;

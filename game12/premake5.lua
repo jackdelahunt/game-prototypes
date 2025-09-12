@@ -18,13 +18,12 @@ workspace "Engine"
         defines { "DEBUG" }
         symbols "On"
 
-    filter "configurations:Release"
-        optimize "On"
-        defines { "RELEASE" }
-
     filter "configurations:Profile"
         profile "On"
         symbols "On"
+        optimize "On"
+
+    filter "configurations:Release"
         optimize "On"
 
 project "game12"
@@ -69,21 +68,9 @@ project "game12"
         }
 
         postbuildcommands {
-            "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/debug/*.dll] %[build/bin/debug]",
-            "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/debug/*.pdb] %[build/bin/debug]",
-            "{COPYFILE} %[src/libs/assimp/bin/x64/*.dll] %[build/bin/debug]",
-        }
-
-    filter "configurations:Release"
-        targetdir "build/bin/release"
-        links {
-            "src/libs/yaml-cpp/lib/release/yaml-cpp.lib",
-            "src/libs/GameNetworkingSockets/lib/release/GameNetworkingSockets.lib",
-        }
-
-        postbuildcommands {
-            "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/release/*.dll] %[build/bin/release]",
-            "{COPYFILE} %[src/libs/assimp/bin/x64/*.dll] %[build/bin/release]",
+            "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/debug/*.dll]   %[build/bin/debug]",
+            "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/debug/*.pdb]   %[build/bin/debug]",
+            "{COPYFILE} %[src/libs/assimp/bin/x64/*.dll]                    %[build/bin/debug]",
         }
 
     filter "configurations:Profile"
@@ -95,7 +82,22 @@ project "game12"
 
         postbuildcommands {
             "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/release/*.dll] %[build/bin/profile]",
-            "{COPYFILE} %[src/libs/assimp/bin/x64/*.dll] %[build/bin/profile]",
+            "{COPYFILE} %[src/libs/assimp/bin/x64/*.dll]                    %[build/bin/profile]",
+        }
+
+    filter "configurations:Release"
+        targetdir "build/bin/release"
+        links {
+            "src/libs/yaml-cpp/lib/release/yaml-cpp.lib",
+            "src/libs/GameNetworkingSockets/lib/release/GameNetworkingSockets.lib",
+        }
+
+        postbuildcommands {
+            "{COPYFILE} %[src/libs/GameNetworkingSockets/lib/release/*.dll] %[build/bin/release]",
+            "{COPYFILE} %[src/libs/assimp/bin/x64/*.dll]                    %[build/bin/release]",
+
+            "{COPYFILE} %[imgui.ini]                                        %[build/bin/release]",
+            "{COPYDIR}  %[resources/]                                       %[build/bin/release/resources]",
         }
 
 project "meta"

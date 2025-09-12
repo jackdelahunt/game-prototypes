@@ -15,34 +15,45 @@
 #include <chrono>
 #include <atomic>
 
-// Total: 132:30
-// Started: 11:30
+// Total: 138:30
+// Started: 12:30
 //
 // NOTES: {
 //      IN_PROGRESS: {
 //      },
 //
-//      REVISE: {
-//          - point lights
-//          - muzzle flash
-//          - TAP weapon
-//          - PAL weapon
-//      },
-//
-//      TODO: {
-//          - sky box
-//          - fix uvs on primative mesh
-//          - fix flat normals for sphere mesh
-//          - anti aliasing
-//          - particles
-//          - sound on enemy kill
-//          - hitmarkers
+//      GAME_TODO: {
+//          - work on making shooting better
+//              - camera shake
+//              - recoil
+//              - fix muzzle flash
+//              - particle effect where it hits
+//              - lighting
+//              - sound when killed enemy
+//              - hitmarkers
+//          - sound when player dies
+//          - start multiplayer game from within game
 //          - hold space == higher jump
 //          - real game over screen
 //          - ammo pickups
 //          - pickup more then one gun
 //          - score board effect and polish
+//      },
+//
+//      ENGINE_TODO: {
+//          - game "play button"
+//          - sky box
+//          - fix uvs on primative mesh
+//          - fix flat normals for sphere mesh
+//          - anti aliasing
+//          - particles
 //          - position entity flush with the face of another
+//      },
+//
+//      REVISE: {
+//          - muzzle flash
+//          - TAP weapon
+//          - PAL weapon
 //      },
 //
 //      FUTURE_GAME: {
@@ -60,6 +71,63 @@
 //          - frame buffer overhaul:
 //              - attachment parameters are configurable (RGBA, RGBA32F)
 //              - can get attachments based on index (frame_buffer_attachment(fb, 0))
+//      },
+// }
+//
+// DESIGN: {
+//      START: {
+//          - 1v1 matches in CS
+//      },
+//
+//      SOMETHING_NEW: {
+//          - game is ongoing, not round based
+//          - guns are picked up in the level
+//          - less realistic more game like movement
+//      },
+//
+//      BOUNDS: {
+//          - highest score wins
+//          - earn score by landing kills on enemy
+//      },
+//
+//      CORE: {
+//          - what makes it fun:
+//              - faster and crazier movement then normal fps
+//              - using your movement skill to get kills that are normally not possible
+//          - what makes this game "this game":
+//              - movement is a big part of learning curve
+//              - every gun is good just good in differant movement scenearios   
+//          - pitch:
+//              - [NAME] is a [GENRE] game about [FANTASY]. You [VERBS] + [USP]
+//              - "game12" is a "first person shooter" game about defeating your opponents head to head in an arena. You use weaposns in
+//                combination with your advanced movement to out skill your oppenent.
+//      },
+//
+//      DESIGNING_A_LEVEL: {
+//          - atleast one good pickup per area
+//          - can travel across map in <= 10 seconds
+//          - use landmarks to distinguish areas
+//          - every area should have atleast 2 connections, no deadends
+//          - make things go fast, door opening, jump pad etc.
+//          - constraints for first level:
+//              - one main area
+//              - two levls of elevation
+//              - auxilary route 
+//      },
+// }
+//
+// PLAYTEST: {
+//      CHECKLIST: {
+//          - turn off cheats
+//          - netsh advfirewall set allprofiles state off
+//      },
+//
+//      PLAYTEST_1_NOTES: {
+//          - movement felt good
+//          - shooting felt weird, no variance
+//          - reset weapon on respawn
+//          - can shoot when dead 
+//          - automate release process
 //      }
 // }
 
@@ -72,7 +140,9 @@
 
 #define RUN_TESTS 0
 
-string g_level_save_file          = "resources/levels/light_scene.yaml";
+#define IP "192.168.0.171"
+
+string g_level_save_file          = "resources/levels/main.yaml";
 
 f32 g_player_height               = 2;
 f32 g_player_width                = 0.65;
@@ -114,8 +184,7 @@ f32 EXPLOSION_RADIUS        = 12;
 f32 EXPLOSION_FORCE         = 60;
 f32 EXPLOSION_DAMAGE        = 200;
 
-f32 JUMP_PAD_COOLDOWN       = 1;
-f32 JUMP_PAD_ACCELERATION   = 55;
+f32 g_jump_pad_cooldown     = 1;
 
 bool g_debug_draw_owner                 = false;
 bool g_debug_always_draw_muzzle_flash   = false;
@@ -132,26 +201,26 @@ bool g_dual_wield_recoil_switch = true;
 f32 g_landing_camera_shake_duration = 0.15f;
 f32 g_landing_camera_shake_intensity = 0.2f;
 
-v3 g_health_bar_offset          = v3{0, 1.5, 0};
-v4 g_health_bar_health_colour       = v4 {0.877637, 0.322171, 0.322171, 1.000000};
-v4 g_health_bar_decay_colour       = v4 {0.894515, 0.894515, 0.894515, 1.000000};
-v4 g_health_bar_empty_colour       = v4 {0.3, 0.3, 0.3, 1.000000};
-f32 g_health_bar_max_magnify_factor = 3;
-f32 g_health_bar_max_magnify_distance = 70;
-i32 g_health_bar_notch_count    = 25;
-f32 g_health_bar_notch_width    = 0.10f;
-f32 g_health_bar_notch_height   = 0.3f;
-f32 g_health_bar_notch_gap      = 0.0f;
+v3 g_health_bar_offset                          = v3{0, 1.5, 0};
+v4 g_health_bar_health_colour                   = v4 {0.940928, 0.055582, 0.055582, 1.000000};
+v4 g_health_bar_decay_colour                    = WHITE;
+v4 g_health_bar_empty_colour                    = v4 {0.202532, 0.047001, 0.047001, 1.000000};
+f32 g_health_bar_max_magnify_factor             = 3;
+f32 g_health_bar_max_magnify_distance           = 70;
+i32 g_health_bar_notch_count                    = 25;
+f32 g_health_bar_notch_width                    = 0.10f;
+f32 g_health_bar_notch_height                   = 0.3f;
+f32 g_health_bar_notch_gap                      = 0.0f;
 f32 g_health_bar_notch_decay_max_height_factor  = 1.6f;
-f32 g_health_bar_notch_decay_max_width_factor  = 1.6f;
-f32 g_health_bar_notch_empty_height_factor  = 0.8f;
+f32 g_health_bar_notch_decay_max_width_factor   = 1.6f;
+f32 g_health_bar_notch_empty_height_factor      = 0.8f;
 
 v4 g_muzzle_flash_colour     = DARK_GRAY;
 f32 g_muzzle_flash_intensity = 35;
 
 v4 g_clear_colour           = v4 {0.398013, 0.481982, 0.582278, 1.000000};
 v3 g_ambient_light_colour   = v3 {0.189873, 0.189873, 0.189873};
-v3 g_sun_colour             = v3 {0.696203, 0.489398, 0.179191};
+v3 g_sun_colour             = v3 {1, 1, 1};
 v3 g_sun_position           = v3 {10, 50, -10};
 f32 g_sun_intensity         = 1;
 
@@ -161,6 +230,8 @@ meta enum MaterialHandle : u32 {
     MAT_METAL_PLATE,
     MAT_BROKEN_BRICK_WALL,
     MAT_METAL_05C,
+    MAT_TILES_037,
+    MAT_GRID,
     _MAT_COUNT
 };
 
@@ -238,7 +309,7 @@ Weapon g_weapons[_WH_COUNT] = {
     Weapon {
         .handle = WH_M4,
         .display_name = "M4",
-        .colour = v4 {0.2, 0.2, 0.2, 1},
+        .colour = v4 {0.1, 0.1, 0.1, 1},
         .damage = 5,
         .headshot_damage = 15,
         .ammo_count = 35,
@@ -340,6 +411,7 @@ struct Entity {
     f32 pickup_cooldown; // not saved
 
     // flag: jump pad
+    f32 jump_pad_force;
     f32 jump_pad_cooldown; // not saved
 
     // flag: point light 
@@ -451,19 +523,19 @@ struct State {
     f32 time;
     f32 tick_delta_time;
     f32 frame_delta_time;
-    bool game_complete;
-
-    StackArray<Team, MAX_TEAMS> teams;
 
     Sampler network_in_sampler;
     Sampler mspt_sampler;
 
-    // TODO: move to game client
+    // actual game state
+    bool game_complete;
+    StackArray<Team, MAX_TEAMS> teams;
+    i64 spawn_point_count;
+
     WeaponHandle player_weapon;
     i64 player_ammo;
     f32 player_firing_cooldown;
 
-    i64 spawn_point_count;
     StackArray<Entity, MAX_ENTITIES> entities;
 };
 
@@ -806,6 +878,28 @@ void game_client_entry() {
             );
 
             Assert(g_materials[MAT_METAL_05C]);
+
+            g_materials[MAT_TILES_037] = material_create(REN(), 
+                {1, 1},
+                render_texture_create_from_file(REN(), "resources/textures/Tiles037/Tiles037_2K-PNG_Color.png",         TD_sRGBA_8, TD_sRGBA_8),
+                render_texture_create_from_file(REN(), "resources/textures/Tiles037/Tiles037_2K-PNG_NormalGL.png",      TD_RGBA_8, TD_RGBA_8),
+                REN()->default_material_ambient_occlusion,
+                render_texture_create_from_file(REN(), "resources/textures/Tiles037/Tiles037_2K-PNG_Roughness.png",     TD_RGBA_8, TD_RGBA_8),
+                render_texture_create_from_file(REN(), "resources/textures/defaults/default_metalness.png",             TD_RGBA_8, TD_RGBA_8)
+            );
+
+            Assert(g_materials[MAT_TILES_037]);
+
+            g_materials[MAT_GRID] = material_create(REN(), 
+                {1, 1},
+                render_texture_create_from_file(REN(), "resources/textures/grid/albedo.png", TD_sRGBA_8, TD_sRGBA_8),
+                REN()->default_material_normal,
+                REN()->default_material_ambient_occlusion,
+                REN()->default_material_roughness,
+                REN()->default_material_metalness
+            );
+
+            Assert(g_materials[MAT_GRID]);
         }
 
         ok = sound_engine_init();
@@ -896,18 +990,8 @@ void game_client_entry() {
 
     Infof("Started game client @ {}tps [thread={}]", i64(1000.0f / f32(GAME_MS_PER_TICK)), get_current_thread_id());
 
-#if 1
     deserialise_level(&GC()->state);
     ED()->camera.position = {0, 2.4, -5};
-#else
-    ED()->camera.position = {};
-
-    REN()->ambient_light = {0.1, 0.1, 0.1};
-
-    Entity *light = local_spawn_point_light(&GC()->state);
-    light->position = {2.5, 2.5, 0};
-    light->light_distance = 15;
-#endif
 
     while (!glfwWindowShouldClose(WIN()->glfw_window)) {
         GC()->state.frame_delta_time = stopwatch_get_time(&frame_stopwatch);
@@ -1111,8 +1195,8 @@ void game_server_update(State *state) {
                     continue;
                 }
                 
-                other.velocity.y = JUMP_PAD_ACCELERATION;
-                entity.jump_pad_cooldown += JUMP_PAD_COOLDOWN;
+                other.velocity.y = entity.jump_pad_force;
+                entity.jump_pad_cooldown += g_jump_pad_cooldown;
 
                 // means only one player per cooldown can be effected?
                 break;
@@ -1135,6 +1219,9 @@ void game_server_update(State *state) {
                 // probably best to move this respawn logic to where the player handles it but
                 // for now this is the only entity that needs it so its fine
                 if (BitSet(entity.flags, EF_PLAYER)) {
+                    NetworkMessage message = NetworkMessage{.type = NM_SET_WEAPON, .set_weapon = WH_DEAGLE};
+                    server_send_to_client(NET(), bytes_from_ptr(&message), entity.owner);
+
                     move_to_random_spawn_point(state, &entity);
                 }
             }
@@ -1306,14 +1393,6 @@ void game_client_update(GameClient *client, State *state) {
         client->camera.position = player->position + v3{0, g_player_eyes_offset, 0};
     }
 
-    { // TODO: remove
-        if (player && KEYS[GLFW_KEY_F] == InputState::DOWN) {
-            Entity *light = local_spawn_point_light(state);
-            light->position = player->position;
-            light->light_intensity = 20;
-        }
-    }
-
     { // camera shake
         // camera shake works by offesting the camera on the y axis over time,
         // the extent of the offset is the intensity in world units.
@@ -1346,7 +1425,7 @@ void game_client_update(GameClient *client, State *state) {
     }
 
     // update client owned player 
-    if (client->viewport.focused && player != NULL) {
+    if (client->viewport.focused && player != NULL && !BitSet(player->flags, EF_DEAD)) {
         if (WIN()->mouse_captured) {
             f32 sensitivity = 3;
             v2 mouse_input = MOUSE.delta;
@@ -1819,18 +1898,7 @@ void game_client_draw(GameClient *client, State *state) {
         }
 
         if (BitSet(entity.flags, EF_POINT_LIGHT)) {
-            static f32 total_time = 0;
-            total_time += state->frame_delta_time * 1.5;
-
-            f32 scale = 1.5;
-            f32 x = sinf(total_time);
-            f32 y = cosf(total_time);
-            f32 z = sinf(total_time) * -0.5f;
-
-            v3 offset = v3{x, y, z} * scale;
-
-            draw_point_light(REN(), entity.position + offset, entity.light_colour, entity.light_intensity);
-            continue;
+            draw_point_light(REN(), entity.position, entity.light_colour, entity.light_intensity);
         }
 
         if (ED()->selected_entity && ED()->selected_entity->id == entity.id) {
@@ -2968,7 +3036,7 @@ Entity *local_spawn_jump_pad(State *state) {
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{3, 0.2, 3},
-        .colour = PURPLE,
+        .colour = ORANGE,
     };
 
     return local_spawn_entity(state, entity);
@@ -2995,7 +3063,7 @@ void game_client_host() {
 
     game_server_start();
     network_layer_start_server(NET());
-    network_layer_start_client(NET(), "::1");
+    network_layer_start_client(NET(), DEFAULT_IP);
 }
 
 void game_client_connect() {
@@ -3003,7 +3071,7 @@ void game_client_connect() {
 
     GC()->mode = GC_CLIENT;
 
-    network_layer_start_client(NET(), "::1");
+    network_layer_start_client(NET(), DEFAULT_IP);
 }
 
 void game_client_stop_game() {
@@ -3121,6 +3189,7 @@ void imgui_entity(Entity *entity) {
     ImGui::InputFloat("death cooldown", &entity->death_cooldown);
     imgui_enum_dropdown("Pickup type", &entity->pickup_type);
     ImGui::InputFloat("pickup cooldown", &entity->pickup_cooldown);
+    ImGui::InputFloat("jump pad force", &entity->jump_pad_force);
     ImGui::InputFloat("jump pad cooldown", &entity->jump_pad_cooldown);
     imgui_colour_control("light colour", &entity->light_colour);
     ImGui::InputFloat("light intensity", &entity->light_intensity);
@@ -3411,12 +3480,22 @@ void serialise_entity(YAML::Emitter &out, Entity *entity) {
     out << YAML::Key << "max_health"        << YAML::Value << entity->max_health;
     out << YAML::Key << "health"            << YAML::Value << entity->health;
     out << YAML::Key << "pickup_type"       << YAML::Value << meta_name(entity->pickup_type);
+    out << YAML::Key << "jump_pad_force"    << YAML::Value << entity->jump_pad_force;
     out << YAML::Key << "light_colour"      << YAML::Value << entity->light_colour;
     out << YAML::Key << "light_intensity"   << YAML::Value << entity->light_intensity;
     out << YAML::EndMap;
 }
 
 void deserialise_level(State *state) {
+    { // set default non-saved data in state
+        state->time = 0;
+        state->game_complete = false;
+        state->spawn_point_count = 0;
+        set_player_weapon(state, WH_DEAGLE, 0);
+        reset(&state->teams);
+        reset(&state->entities);
+    }
+
     YAML::Node root = YAML::LoadFile(g_level_save_file.c());
 
     YAML::Node entities = root["entities"];
@@ -3424,13 +3503,6 @@ void deserialise_level(State *state) {
         Err("No entities field in level file");
         return;
     }
-
-    state->time = 0;
-    state->game_complete = false;
-    state->spawn_point_count = 0;
-    set_player_weapon(state, WH_DEAGLE, 0);
-    reset(&state->teams);
-    reset(&state->entities);
 
     for (auto node : entities) {
         Entity entity = Entity {};
@@ -3490,6 +3562,7 @@ void deserialise_level(State *state) {
             entity.pickup_type = pickup_type->value;
         }
 
+        entity.jump_pad_force   = node["jump_pad_force"].as<f32>();
         entity.light_colour     = node["light_colour"].as<v4>();
         entity.light_intensity  = node["light_intensity"].as<f32>();
 
