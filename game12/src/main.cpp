@@ -15,8 +15,8 @@
 #include <chrono>
 #include <atomic>
 
-// Total: 143:00
-// Started: 21:00
+// Total: 143:30
+// Started: 22:00
 //
 // NOTES: {
 //      IN_PROGRESS: {
@@ -147,9 +147,9 @@ f32 g_player_height               = 2;
 f32 g_player_width                = 0.65;
 f32 g_player_eyes_offset          = 0.8;
 
-f32 g_player_recoil_factor           = 0.1;
+f32 g_player_recoil_factor           = 0.4;
 f32 g_player_recoil_gain_per_shot    = 0.1;
-f32 g_player_recoil_decay_per_second = 2;
+f32 g_player_recoil_decay_per_second = 1;
 
 f32 g_player_death_cooldown       = 3;
 f32 g_player_ground_acceleration  = 240;
@@ -699,17 +699,16 @@ void draw_player_weapon(State *state, Weapon *weapon, v3 display_offset, bool sh
 Weapon *get_player_weapon(State *state);
 void set_player_weapon(State *state, WeaponHandle weapon, f32 cooldown);
 void play_weapon_fire_sound(Weapon *weapon);
-void fire_raycast_weapon(State *state, WeaponHandle weapon);
-void fire_tap(State *state);
 
 void timed_effect_start(TimedEffect *timed_effect, f32 duration, f32 intensity);
 void timed_effect_start_or_accumulate(TimedEffect *timed_effect, f32 duration, f32 intensity);
 void timed_effect_tick(TimedEffect *timed_effect, f32 delta_time);
 TimedEffectState timed_effect_state(TimedEffect *timed_effect);
 
-f32 tween_ease_out_sin(f32 x);
-f32 tween_ease_in_out_sin(f32 x);
-f32 tween_ease_out_cubic(f32 x);
+f32 ease_in_cubic(f32 x);
+f32 ease_out_sin(f32 x);
+f32 ease_in_out_sin(f32 x);
+f32 ease_out_cubic(f32 x);
 
 v2 rotate_point(v2 position, v2 centre, f32 degrees);
 
@@ -1443,7 +1442,7 @@ void game_client_update(GameClient *client, State *state) {
             if (remaining >= 0.5f) {
                 f32 time = (remaining - 0.5f) * 2;  // 1->0.5 to 1->0
                 time = 1 - time;                    // 1->0 to 0->1
-                time = tween_ease_in_out_sin(time); // 0->1 to 0~>1
+                time = ease_in_out_sin(time); // 0->1 to 0~>1
                     
                 y_offset = intensity * time;
             }
@@ -1473,39 +1472,21 @@ void game_client_update(GameClient *client, State *state) {
             Weapon *player_weapon = get_player_weapon(state);
             InputState state_needed = player_weapon->automatic ? InputState::PRESSED : InputState::DOWN;
 
-            { // debug recoil
-                v3 ray_direction = get_forward_direction(&GC()->camera);
-                ray_direction.y += state->player_recoil * g_player_recoil_factor;
-             
-                Ray ray = ray_create(GC()->camera.position, ray_direction);
-                RaycastIterator it = raycast_iterator_create(ray, GC()->camera.far_plane - GC()->camera.near_plane);
-             
-                RaycastIteratorResult result = {};
-             
-                while (true) {
-                    result = next(&it, state);
-             
-                    if (result.entity == NULL) {
-                        break;
-                    }
-             
-                    if (result.entity->owner == state->instance_id) {
-                        continue;
-                    }
-             
-                    break;
-                }
-             
-                if (result.entity) {
-                    draw_sphere(REN(), result.hit_position, 0.1f, PURPLE, REN()->default_material);
-                }
-            }
-
             if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == state_needed) {
                 if (state->player_ammo > 0 && state->player_firing_cooldown <= 0) {
                     state->player_ammo -= 1; 
                     state->player_firing_cooldown = player_weapon->firing_cooldown;
-                    state->player_recoil += g_player_recoil_gain_per_shot;
+                    
+                    { // apply recoil
+                        f32 recoil_per_shot = 1.0f / f32(player_weapon->ammo_count);
+                        f32 recoil_to_add = recoil_per_shot * 0.5;
+                        recoil_to_add += recoil_per_shot * ease_in_cubic(state->player_recoil);
+
+                        state->player_recoil += recoil_to_add;
+                        state->player_recoil = clamp(0, state->player_recoil, 1);
+
+                        Logf("{}", state->player_recoil);
+                    }
 
                     g_dual_wield_recoil_switch = !g_dual_wield_recoil_switch;
 
@@ -1600,6 +1581,34 @@ void game_client_update(GameClient *client, State *state) {
                 state->player_recoil -= state->tick_delta_time * g_player_recoil_decay_per_second;
                 if (state->player_recoil <= 0) {
                     state->player_recoil = 0;
+                }
+            }
+
+            { // debug recoil
+                v3 ray_direction = get_forward_direction(&GC()->camera);
+                ray_direction.y += state->player_recoil * g_player_recoil_factor;
+             
+                Ray ray = ray_create(GC()->camera.position, ray_direction);
+                RaycastIterator it = raycast_iterator_create(ray, GC()->camera.far_plane - GC()->camera.near_plane);
+             
+                RaycastIteratorResult result = {};
+             
+                while (true) {
+                    result = next(&it, state);
+             
+                    if (result.entity == NULL) {
+                        break;
+                    }
+             
+                    if (result.entity->owner == state->instance_id) {
+                        continue;
+                    }
+             
+                    break;
+                }
+             
+                if (result.entity) {
+                    draw_sphere(REN(), result.hit_position, 0.1f, PURPLE, REN()->default_material);
                 }
             }
 
@@ -2069,10 +2078,10 @@ void game_client_draw(GameClient *client, State *state) {
                         v3 particle_direction = norm(v3{h_direction.x, v_direction.y, h_direction.y});
     
                         v3 particle_position = entity.position;
-                        particle_position += (particle_direction * g_particle_radial_distance) * tween_ease_out_cubic(effect_t) * min(1.5f, magnification_factor);
+                        particle_position += (particle_direction * g_particle_radial_distance) * ease_out_cubic(effect_t) * min(1.5f, magnification_factor);
     
                         f32 particle_size = g_particle_effect_size;
-                        particle_size *= 1.0f - tween_ease_out_cubic(effect_t);
+                        particle_size *= 1.0f - ease_out_cubic(effect_t);
     
                         draw_sphere(REN(), particle_position, particle_size * magnification_factor, particle_effect_colour, particle_material);
                     }
@@ -2519,7 +2528,7 @@ void editor_draw_ui(State *state) {
             ImGui::SliderFloat3("Weapon offset", &g_weapon_display_offset.x, -2, 2);
 
             ImGui::SeparatorText("Recoil");
-            ImGui::SliderFloat("Recoil factor", &g_player_recoil_factor, 0, 1);
+            ImGui::SliderFloat("Recoil factor", &g_player_recoil_factor, 0, 5);
             ImGui::SliderFloat("Recoil gain per shot", &g_player_recoil_gain_per_shot, 0, 10);
             ImGui::SliderFloat("Recoil decay per second", &g_player_recoil_decay_per_second, 0, 10);
 
@@ -3967,80 +3976,6 @@ void play_weapon_fire_sound(Weapon *weapon) {
     }
 }
 
-void fire_raycast_weapon(State *state, WeaponHandle weapon) {
-    v3 ray_direction = get_forward_direction(&GC()->camera);
-    ray_direction.y += state->player_recoil * g_player_recoil_factor;
-
-    Ray ray = ray_create(GC()->camera.position, ray_direction);
-    RaycastIterator it = raycast_iterator_create(ray, GC()->camera.far_plane - GC()->camera.near_plane);
-
-    RaycastIteratorResult result = {};
-
-    while (true) {
-        result = next(&it, state);
-
-        if (result.entity == NULL) {
-            break;
-        }
-
-        if (result.entity->owner == state->instance_id) {
-            continue;
-        }
-
-        break;
-    }
-
-    if (result.entity) {
-        { // spawn bullet particle effect
-            Entity *particle = local_spawn_blood_particle(state);
-            particle->position = result.hit_position;
-
-            if (BitSet(result.entity->flags, EF_DAMAGEABLE)) {
-                SetBit(particle->flags, EF_BLOOD_PARTICLE);
-            }
-            else {
-                SetBit(particle->flags, EF_SURFACE_PARTICLE);
-            }
-        }
-
-        if (BitSet(result.entity->flags, EF_DAMAGEABLE)) {
-            f32 hit_height_offset = result.hit_position.y - result.entity->position.y;
-            f32 half_head_size = (g_player_height * 0.5)  - g_player_eyes_offset;
-    
-            Weapon *player_weapon = &g_weapons[weapon];
-            f32 damage              = {};
-            SoundHandle hit_sound   = {};
-    
-            // headshot
-            if (hit_height_offset >= g_player_eyes_offset - half_head_size) {
-                damage = player_weapon->headshot_damage;
-                hit_sound = SH_HEADSHOT_HIT;
-            }
-            // body shot
-            else {
-                damage = player_weapon->damage;
-                hit_sound = SH_TARGET_HIT;
-            }
-    
-            sound_engine_play(g_sounds[hit_sound]);
-    
-            NetworkMessage message = NetworkMessage {
-                .client_id = state->instance_id, 
-                .type = NM_SHOT_ENTITY, 
-                .shot_entity = {
-                    .target_id = result.entity->id,
-                    .damage = damage 
-                } 
-            };
-    
-            client_send_to_server(NET(), bytes_from_ptr(&message));
-        }
-    }
-}
-
-void fire_tap(State *state) {
-}
-
 void timed_effect_start(TimedEffect *timed_effect, f32 duration, f32 intensity) {
     Assert(duration != 0);
 
@@ -4082,18 +4017,23 @@ TimedEffectState timed_effect_state(TimedEffect *timed_effect) {
     };
 }
 
-f32 tween_ease_out_sin(f32 x) {
-    // https://easings.net/#easeOutSine
+f32 ease_in_cubic(f32 x) {
+    // SOURCE: https://easings.net/#easeInCubic
+    return x * x * x;
+}
+
+f32 ease_out_sin(f32 x) {
+    // SOURCE: https://easings.net/#easeOutSine
     return sinf((x * HMM_PI32) * 0.5);
 }
 
-f32 tween_ease_in_out_sin(f32 x) {
-    // https://easings.net/#easeInOutSine
+f32 ease_in_out_sin(f32 x) {
+    // SOURCE: https://easings.net/#easeInOutSine
     return -(cosf(HMM_PI32 * x) - 1) * 0.5f;
 }
 
-f32 tween_ease_out_cubic(f32 x) {
-    // https://easings.net/#easeOutCubic
+f32 ease_out_cubic(f32 x) {
+    // SOURCE: https://easings.net/#easeOutCubic
     return 1 - powf(1.0f - x, 3.0f);
 }
 
@@ -4143,10 +4083,10 @@ void run_tests() {
     }
 
     Logf("{} {} {} {}", 
-         tween_ease_out_sin(0.0f),
-         tween_ease_out_sin(0.25f),
-         tween_ease_out_sin(0.5f),
-         tween_ease_out_sin(1.0f)
+         ease_out_sin(0.0f),
+         ease_out_sin(0.25f),
+         ease_out_sin(0.5f),
+         ease_out_sin(1.0f)
     );
 }
 
