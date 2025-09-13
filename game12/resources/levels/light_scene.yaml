@@ -2,6 +2,7 @@ name: <empty>
 entities:
   - flags:
       - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
     id: 20577
     owner: 0
     position: [0, 0, 0]
@@ -13,13 +14,14 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
+    jump_pad_force: 0
     light_colour: [0, 0, 0, 0]
     light_intensity: 0
   - flags:
       - EF_POINT_LIGHT
     id: 15708
     owner: 0
-    position: [0, 2.29999995, -0.100000001]
+    position: [0, 2.20000005, -0.100000001]
     size: [0.5, 0.5, 0.5]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
@@ -28,10 +30,12 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
+    jump_pad_force: 0
     light_colour: [1, 1, 1, 1]
     light_intensity: 10
   - flags:
       - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
     id: 6629
     owner: 0
     position: [0, 2.5, 2.5]
@@ -43,10 +47,12 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
+    jump_pad_force: 0
     light_colour: [0, 0, 0, 0]
     light_intensity: 0
   - flags:
       - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
     id: 30378
     owner: 0
     position: [-2.5, 2.5, 0]
@@ -58,10 +64,12 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
+    jump_pad_force: 0
     light_colour: [0, 0, 0, 0]
     light_intensity: 0
   - flags:
       - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
     id: 29246
     owner: 0
     position: [2.5, 2.5, 0]
@@ -73,5 +81,6 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_NONE
+    jump_pad_force: 0
     light_colour: [0, 0, 0, 0]
     light_intensity: 0

@@ -128,7 +128,7 @@ static int index(PickupType value) {
 
 template<>
 struct MetaEnum<EntityFlag> {
-const static int count = 14;
+const static int count = 17;
 
 inline static EnumValue<EntityFlag> values[count] = {
     EnumValue<EntityFlag>(string("EF_PLAYER"), EF_PLAYER),
@@ -144,6 +144,9 @@ inline static EnumValue<EntityFlag> values[count] = {
     EnumValue<EntityFlag>(string("EF_JUMP_PAD"), EF_JUMP_PAD),
     EnumValue<EntityFlag>(string("EF_COMPLEX_PHYSICS"), EF_COMPLEX_PHYSICS),
     EnumValue<EntityFlag>(string("EF_POINT_LIGHT"), EF_POINT_LIGHT),
+    EnumValue<EntityFlag>(string("EF_BLOOD_PARTICLE"), EF_BLOOD_PARTICLE),
+    EnumValue<EntityFlag>(string("EF_DRAW_MESH"), EF_DRAW_MESH),
+    EnumValue<EntityFlag>(string("EF_IGNORE_RAYCAST"), EF_IGNORE_RAYCAST),
     EnumValue<EntityFlag>(string("EF_DELETE"), EF_DELETE),
 };
 
@@ -162,7 +165,10 @@ static string name(EntityFlag value) {
         case EF_JUMP_PAD: return values[10].name;
         case EF_COMPLEX_PHYSICS: return values[11].name;
         case EF_POINT_LIGHT: return values[12].name;
-        case EF_DELETE: return values[13].name;
+        case EF_BLOOD_PARTICLE: return values[13].name;
+        case EF_DRAW_MESH: return values[14].name;
+        case EF_IGNORE_RAYCAST: return values[15].name;
+        case EF_DELETE: return values[16].name;
     }
 }
 

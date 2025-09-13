@@ -16,14 +16,19 @@
 #include <atomic>
 
 // Total: 138:30
-// Started: 12:30
+// Started: 13:00
 //
 // NOTES: {
 //      IN_PROGRESS: {
+//          - particle effect where it hits
 //      },
 //
 //      GAME_TODO: {
-//          - work on making shooting better
+//          - work on shooting feedback
+//              - player should know through feedback if:
+//                  - they missed
+//                  - they hit a body shot
+//                  - they hit a headshot
 //              - camera shake
 //              - recoil
 //              - fix muzzle flash
@@ -123,8 +128,13 @@
 //      },
 //
 //      PLAYTEST_1_NOTES: {
-//          - movement felt good
-//          - shooting felt weird, no variance
+//          - movement:
+//              - goodish
+//              - floaty
+//              - no-definite stop
+//          - shooting:
+//              - no variance feels weird
+//              - no feedback
 //          - reset weapon on respawn
 //          - can shoot when dead 
 //          - automate release process
@@ -139,8 +149,6 @@
 #define MAX_TEAMS 2
 
 #define RUN_TESTS 0
-
-#define IP "192.168.0.171"
 
 string g_level_save_file          = "resources/levels/main.yaml";
 
@@ -187,6 +195,7 @@ f32 EXPLOSION_DAMAGE        = 200;
 f32 g_jump_pad_cooldown     = 1;
 
 bool g_debug_draw_owner                 = false;
+bool g_debug_draw_no_mesh               = false;
 bool g_debug_always_draw_muzzle_flash   = false;
 
 bool g_cheat_weapon_binds     = true;
@@ -223,6 +232,15 @@ v3 g_ambient_light_colour   = v3 {0.189873, 0.189873, 0.189873};
 v3 g_sun_colour             = v3 {1, 1, 1};
 v3 g_sun_position           = v3 {10, 50, -10};
 f32 g_sun_intensity         = 1;
+
+f32 g_particle_lifetime = 2.0f;
+f32 g_particle_size = 0.06f;
+f32 g_particle_effect_lifetime = 0.3f;
+f32 g_particle_effect_size = 0.06f;
+i32 g_particle_horizontal_segments = 6;
+i32 g_particle_vertical_segments = 3;
+f32 g_particle_radial_distance = 0.4f;
+f32 g_particle_vertical_distance = 0.8;
 
 meta enum MaterialHandle : u32 {
     MAT_DEFAULT,
@@ -380,6 +398,9 @@ meta enum EntityFlag : u32 {
     EF_JUMP_PAD         = 1 << 10,
     EF_COMPLEX_PHYSICS  = 1 << 11,
     EF_POINT_LIGHT      = 1 << 12,
+    EF_BLOOD_PARTICLE   = 1 << 13,
+    EF_DRAW_MESH        = 1 << 14,
+    EF_IGNORE_RAYCAST   = 1 << 15,
     EF_DELETE           = 1 << 16,
 };
 
@@ -387,6 +408,7 @@ struct Entity {
     // meta
     u32 flags;
     u32 id;
+    f32 time_created;
 
     // networking
     u32 owner;
@@ -635,6 +657,7 @@ Entity *local_spawn_pickup(State *state, PickupType type);
 Entity *local_spawn_missle(State *state);
 Entity *local_spawn_jump_pad(State *state);
 Entity *local_spawn_point_light(State *state);
+Entity *local_spawn_blood_particle(State *state);
 
 void game_client_host();
 void game_client_connect();
@@ -683,6 +706,9 @@ TimedEffectState timed_effect_state(TimedEffect *timed_effect);
 
 f32 tween_ease_out_sin(f32 x);
 f32 tween_ease_in_out_sin(f32 x);
+f32 tween_ease_out_cubic(f32 x);
+
+v2 rotate_point(v2 position, v2 centre, f32 degrees);
 
 void run_tests();
 
@@ -1128,7 +1154,6 @@ void game_server_update(State *state) {
     Assert(is_server(state));
 
     for (Entity &entity : state->entities) {
-
         if (BitSet(entity.flags, EF_PICKUP)) {
             entity.pickup_cooldown -= state->tick_delta_time;
             if (entity.pickup_cooldown <= 0) {
@@ -1581,6 +1606,21 @@ void game_client_update(GameClient *client, State *state) {
 
         s_grounded_last_tick = grounded_this_tick;
     }
+
+    // remove any temperaory entities made for effects
+    i64 index = 0;
+    while (index < state->entities.len) {
+        Entity &entity = state->entities[index];
+
+        if (BitSet(entity.flags, EF_BLOOD_PARTICLE)) {
+            if (state->time - entity.time_created > g_particle_lifetime) {
+                local_delete_entity(state, entity.id);
+                continue;
+            }
+        }
+
+        index++;
+    }
 }
 
 void game_client_draw(GameClient *client, State *state) {
@@ -1639,6 +1679,10 @@ void game_client_draw(GameClient *client, State *state) {
 
     for (Entity &entity : state->entities) {
         v4 draw_colour = entity.colour;
+
+        if (!BitSet(entity.flags, EF_DRAW_MESH)) {
+            draw_colour = HOT_PINK;
+        }
 
         // client's player
         if (BitSet(entity.flags, EF_PLAYER) && entity.owner == state->instance_id) {
@@ -1722,28 +1766,12 @@ void game_client_draw(GameClient *client, State *state) {
             }
         }
 
-        // damageable
         if (BitSet(entity.flags, EF_DAMAGEABLE)) {
             if (BitSet(entity.flags, EF_DEAD)) {
                 draw_colour = mix(draw_colour, RED, 0.65);
             }
 
             { // neo health bar
-                // TODO: move this out
-                static auto rotate_position = [](v2 position, v2 centre, f32 degrees) {
-                    f32 radians = HMM_DegToRad * degrees;
-                    v2 local_position = position - centre;
-        
-                    v2 local_rotated_position = v2 {
-                        (local_position.x * cosf(radians)) - (local_position.y * sinf(radians)),
-                        (local_position.x * sinf(radians)) + (local_position.y * cosf(radians)),
-                    };
-        
-                    v2 rotated_position = local_rotated_position + centre;
-        
-                    return rotated_position;
-                };
-
                 v3 health_bar_centre = entity.position + g_health_bar_offset;
                 v3 camera_direction = client->camera.position - health_bar_centre;
                 v3 camera_direction_n = norm(camera_direction);
@@ -1832,7 +1860,7 @@ void game_client_draw(GameClient *client, State *state) {
 
                     v3 notch_position = health_bar_centre + notch_offset;
 
-                    v2 rotated = rotate_position(v2{notch_position.x, notch_position.z}, v2{health_bar_centre.x, health_bar_centre.z}, notch_rotation.y);
+                    v2 rotated = rotate_point(v2{notch_position.x, notch_position.z}, v2{health_bar_centre.x, health_bar_centre.z}, notch_rotation.y);
                     notch_position.x = rotated.x;
                     notch_position.z = rotated.y;
 
@@ -1841,7 +1869,6 @@ void game_client_draw(GameClient *client, State *state) {
             }
         }
 
-        // pickups 
         if (BitSet(entity.flags, EF_PICKUP)) {
             f32 t = sin(state->time * 0.5f);
             v3 pickup_position = entity.position + v3{0, 1.5f + t, 0};
@@ -1901,6 +1928,35 @@ void game_client_draw(GameClient *client, State *state) {
             draw_point_light(REN(), entity.position, entity.light_colour, entity.light_intensity);
         }
 
+        if (BitSet(entity.flags, EF_BLOOD_PARTICLE)) {
+            f32 alivetime = state->time - entity.time_created;
+            f32 effect_t = alivetime / g_particle_effect_lifetime;
+            f32 h_degrees_per_particle = 360.0f / f32(g_particle_horizontal_segments);
+            f32 v_degrees_per_particle = 180.0f / f32(g_particle_vertical_segments);
+
+            if (alivetime <= g_particle_effect_lifetime) {
+                for (i64 h = 0; h < g_particle_horizontal_segments; h++) {
+                    v2 h_direction = rotate_point({0, 1}, {0, 0}, h_degrees_per_particle * f32(h));
+    
+                    for (i64 v = 0; v < g_particle_vertical_segments; v++) {
+                        v2 v_direction = rotate_point({0, 1}, {0, 0}, v_degrees_per_particle * f32(v));
+    
+                        v3 particle_direction = norm(v3{h_direction.x, v_direction.y, h_direction.y});
+    
+                        v3 particle_position = entity.position;
+                        particle_position += (particle_direction * g_particle_radial_distance) * tween_ease_out_cubic(effect_t);
+    
+                        f32 particle_size = g_particle_effect_size;
+                        particle_size *= 1.0f - effect_t;
+    
+                        draw_sphere(REN(), particle_position, particle_size, brightness(entity.colour, 0.5f), REN()->default_material);
+                    }
+                }
+            }
+
+            draw_sphere(REN(), entity.position, g_particle_size, brightness(entity.colour, 0.25f), REN()->default_material);
+        }
+
         if (ED()->selected_entity && ED()->selected_entity->id == entity.id) {
             draw_colour = RED;
         }
@@ -1917,7 +1973,12 @@ void game_client_draw(GameClient *client, State *state) {
             }
         }
 
-        draw_cube(REN(), entity.position, entity.size, entity.rotation, draw_colour, g_materials[entity.material]);
+        if (BitSet(entity.flags, EF_DRAW_MESH)) {
+            draw_cube(REN(), entity.position, entity.size, entity.rotation, draw_colour, g_materials[entity.material]);
+        }
+        else if (g_debug_draw_no_mesh) {
+            draw_sphere(REN(), entity.position, entity.size.x * 0.5, HOT_PINK, g_materials[MAT_DEFAULT]);
+        }
     }
 }
 
@@ -2099,6 +2160,23 @@ void editor_draw_ui(State *state) {
             ImGui::SliderFloat("Notch decay max width factor", &g_health_bar_notch_decay_max_width_factor, 1, 2);
             ImGui::SliderFloat("Notch empty height factor", &g_health_bar_notch_empty_height_factor, 0, 1);
     
+            ImGui::PopID();
+        }
+
+        { // particles
+            ImGui::PushID("particle_style");
+
+            ImGui::SeparatorText("Particles");
+
+            ImGui::SliderFloat("Particle lifetime", &g_particle_lifetime, 0, 10);
+            ImGui::SliderFloat("Particle size", &g_particle_size, 0, 0.1f);
+            ImGui::SliderFloat("Particle effect lifetime", &g_particle_effect_lifetime, 0, 10);
+            ImGui::SliderFloat("Particle effect size", &g_particle_effect_size, 0, 0.1f);
+            ImGui::SliderInt("Particle horizontal segments", &g_particle_horizontal_segments, 0, 30);
+            ImGui::SliderInt("Particle vertical segments", &g_particle_vertical_segments, 0, 30);
+            ImGui::SliderFloat("Particle radial distance", &g_particle_radial_distance, 0, 1.5f);
+            ImGui::SliderFloat("Particle vertical distance", &g_particle_vertical_distance, 0, -2);
+
             ImGui::PopID();
         }
 
@@ -2384,6 +2462,7 @@ void editor_draw_ui(State *state) {
 
         if (ImGui::CollapsingHeader("Debug")) {
             ImGui::Checkbox("Draw network owner", &g_debug_draw_owner);
+            ImGui::Checkbox("Draw entities with no mesh", &g_debug_draw_no_mesh);
             ImGui::Checkbox("Always draw muzzle flash", &g_debug_always_draw_muzzle_flash);
         }
 
@@ -2492,6 +2571,12 @@ void editor_draw_ui(State *state) {
 
         if (ImGui::Button("Point light")) {
             ED()->selected_entity = local_spawn_point_light(state);
+        }
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("Blood particle")) {
+            ED()->selected_entity = local_spawn_blood_particle(state);
         }
 
         ImGui::SeparatorText("Teams");
@@ -2804,10 +2889,12 @@ u32 new_entity_id() {
 }
 
 Entity *local_spawn_entity(State *state, Entity entity) {
-    Entity *ptr = push(&state->entities);
-    *ptr = entity;
+    Entity *spawned = push(&state->entities);
+    *spawned = entity;
 
-    return ptr;
+    spawned->time_created = state->time;
+
+    return spawned;
 }
 
 void server_spawn_entity(Entity entity) {
@@ -2882,7 +2969,11 @@ bool entities_overlap(Entity *a, Entity *b) {
 }
 
 void move_to_random_spawn_point(State *state, Entity *entity) {
-    Assertf(state->spawn_point_count > 0, "No spawn points in the scene?");
+    if (state->spawn_point_count == 0) {
+        entity->position = {};
+        Warn("Tried to move entity to a spawn point but there were none in the scene");
+        return;
+    }
 
     // get a random number from 0 -> spawn point count
     // skip that number of spawn points in the list and
@@ -2944,6 +3035,7 @@ Entity *local_duplicate_entity(State *state, Entity *entity) {
 
 Entity *local_spawn_empty(State *state) {
     Entity entity = Entity {
+        .flags = EF_DRAW_MESH,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{1, 1, 1},
@@ -2955,7 +3047,7 @@ Entity *local_spawn_empty(State *state) {
 
 Entity *local_spawn_player(State *state) {
     Entity entity = Entity {
-        .flags = EF_PLAYER | EF_DAMAGEABLE | EF_SOLID_HITBOX | EF_COMPLEX_PHYSICS,
+        .flags = EF_PLAYER | EF_DAMAGEABLE | EF_SOLID_HITBOX | EF_COMPLEX_PHYSICS | EF_DRAW_MESH,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{g_player_width, g_player_height, g_player_width},
@@ -2969,7 +3061,7 @@ Entity *local_spawn_player(State *state) {
 
 Entity *local_spawn_dummy(State *state) {
     Entity entity = Entity {
-        .flags = EF_DUMMY | EF_DAMAGEABLE | EF_SOLID_HITBOX | EF_COMPLEX_PHYSICS,
+        .flags = EF_DUMMY | EF_DAMAGEABLE | EF_SOLID_HITBOX | EF_COMPLEX_PHYSICS | EF_DRAW_MESH,
         .id = new_entity_id(),
         .owner = SERVER_INSTANCE_ID,
         .size = v3{g_player_width, g_player_height, g_player_width},
@@ -2983,7 +3075,7 @@ Entity *local_spawn_dummy(State *state) {
 
 Entity *local_spawn_spawn_point(State *state) {
     Entity entity = Entity {
-        .flags = EF_SPAWN_POINT,
+        .flags = EF_SPAWN_POINT | EF_DRAW_MESH,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{3, 0.2, 3},
@@ -2995,7 +3087,7 @@ Entity *local_spawn_spawn_point(State *state) {
 
 Entity *local_spawn_static_box(State *state) {
     Entity entity = Entity {
-        .flags = EF_STATIC_HITBOX,
+        .flags = EF_STATIC_HITBOX | EF_DRAW_MESH,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{1, 1, 1},
@@ -3007,7 +3099,7 @@ Entity *local_spawn_static_box(State *state) {
 
 Entity *local_spawn_pickup(State *state, PickupType type) {
     Entity entity = Entity {
-        .flags = EF_PICKUP,
+        .flags = EF_PICKUP | EF_DRAW_MESH,
         .id = new_entity_id(),
         .owner = SERVER_INSTANCE_ID,
         .size = v3{2, 0.1, 2},
@@ -3032,7 +3124,7 @@ Entity *local_spawn_missle(State *state) {
 
 Entity *local_spawn_jump_pad(State *state) {
     Entity entity = Entity {
-        .flags = EF_JUMP_PAD,
+        .flags = EF_JUMP_PAD | EF_DRAW_MESH,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{3, 0.2, 3},
@@ -3044,13 +3136,24 @@ Entity *local_spawn_jump_pad(State *state) {
 
 Entity *local_spawn_point_light(State *state) {
     Entity entity = Entity {
-        .flags = EF_POINT_LIGHT,
+        .flags = EF_POINT_LIGHT | EF_IGNORE_RAYCAST,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = {0.2, 0.2, 0.2},
         .colour = WHITE,
         .light_colour = WHITE,
         .light_intensity = 10,
+    };
+
+    return local_spawn_entity(state, entity);
+}
+
+Entity *local_spawn_blood_particle(State *state) {
+    Entity entity = Entity {
+        .flags = EF_BLOOD_PARTICLE | EF_IGNORE_RAYCAST,
+        .id = new_entity_id(),
+        .owner = LEVEL_INSTANCE_ID,
+        .size = {0.2, 0.2, 0.2},
     };
 
     return local_spawn_entity(state, entity);
@@ -3120,6 +3223,10 @@ RaycastIteratorResult next(RaycastIterator *it, State *state) {
         it->check_position += v_step;
 
         for (Entity &entity : state->entities) {
+            if (BitSet(entity.flags, EF_IGNORE_RAYCAST)) {
+                continue;
+            }
+
             bool hit = point_collision(it->check_position, entity.position, entity.size);
             if (hit) {
                 return RaycastIteratorResult {.entity = &entity, .hit_position = it->check_position};
@@ -3720,22 +3827,13 @@ void fire_raycast_weapon(State *state, WeaponHandle weapon) {
     RaycastIterator it = raycast_iterator_create(ray, GC()->camera.far_plane - GC()->camera.near_plane);
 
     Weapon *player_weapon = &g_weapons[weapon];
-    
-    Entity *hit_entity = NULL;
-    v3 hit_position = v3{};
+
+    RaycastIteratorResult result = {};
 
     while (true) {
-        RaycastIteratorResult result = next(&it, state);
-        // ray cast failed if:
-        // 1. didn't hit anything, stop
-        // 2. didn't hit anything damageable, stop
-        // 3. hit the clients player, try again
-        // 4. the entity is already dead
-        if (result.entity == NULL) {
-            break;
-        }
+        result = next(&it, state);
 
-        if (!BitSet(result.entity->flags, EF_DAMAGEABLE)) {
+        if (result.entity == NULL) {
             break;
         }
 
@@ -3743,45 +3841,54 @@ void fire_raycast_weapon(State *state, WeaponHandle weapon) {
             continue;
         }
 
-        if (BitSet(result.entity->flags, EF_DEAD)) {
-            break;
-        }
-
-        hit_entity = result.entity;
-        hit_position = result.hit_position;
         break;
     }
 
-    if (hit_entity) {
-        f32 hit_height_offset = hit_position.y - hit_entity->position.y;
-        f32 half_head_size = (g_player_height * 0.5)  - g_player_eyes_offset;
-
-        f32 damage              = {};
-        SoundHandle hit_sound   = {};
-
-        // headshot
-        if (hit_height_offset >= g_player_eyes_offset - half_head_size) {
-            damage = player_weapon->headshot_damage;
-            hit_sound = SH_HEADSHOT_HIT;
-        }
-        // body shot
-        else {
-            damage = player_weapon->damage;
-            hit_sound = SH_TARGET_HIT;
+    if (result.entity) {
+        { // spawn bullet particle effect
+            // v4 particle_colour = result.entity->colour;
+            v4 particle_colour = SUN_YELLOW;
+    
+            if (BitSet(result.entity->flags, EF_DAMAGEABLE)) {
+                particle_colour = RED;
+            }
+    
+            Entity *particle = local_spawn_blood_particle(state);
+            particle->position = result.hit_position;
+            particle->colour = particle_colour;
         }
 
-        sound_engine_play(g_sounds[hit_sound]);
-
-        NetworkMessage message = NetworkMessage {
-            .client_id = state->instance_id, 
-            .type = NM_SHOT_ENTITY, 
-            .shot_entity = {
-                .target_id = hit_entity->id,
-                .damage = damage 
-            } 
-        };
-
-        client_send_to_server(NET(), bytes_from_ptr(&message));
+        if (BitSet(result.entity->flags, EF_DAMAGEABLE)) {
+            f32 hit_height_offset = result.hit_position.y - result.entity->position.y;
+            f32 half_head_size = (g_player_height * 0.5)  - g_player_eyes_offset;
+    
+            f32 damage              = {};
+            SoundHandle hit_sound   = {};
+    
+            // headshot
+            if (hit_height_offset >= g_player_eyes_offset - half_head_size) {
+                damage = player_weapon->headshot_damage;
+                hit_sound = SH_HEADSHOT_HIT;
+            }
+            // body shot
+            else {
+                damage = player_weapon->damage;
+                hit_sound = SH_TARGET_HIT;
+            }
+    
+            sound_engine_play(g_sounds[hit_sound]);
+    
+            NetworkMessage message = NetworkMessage {
+                .client_id = state->instance_id, 
+                .type = NM_SHOT_ENTITY, 
+                .shot_entity = {
+                    .target_id = result.entity->id,
+                    .damage = damage 
+                } 
+            };
+    
+            client_send_to_server(NET(), bytes_from_ptr(&message));
+        }
     }
 }
 
@@ -3849,6 +3956,25 @@ f32 tween_ease_in_out_sin(f32 x) {
     // https://easings.net/#easeInOutSine
     return -(cosf(HMM_PI32 * x) - 1) * 0.5f;
 }
+
+f32 tween_ease_out_cubic(f32 x) {
+    // https://easings.net/#easeOutCubic
+    return 1 - powf(1.0f - x, 3.0f);
+}
+
+v2 rotate_point(v2 position, v2 centre, f32 degrees) {
+    f32 radians = HMM_DegToRad * degrees;
+    v2 local_position = position - centre;
+     
+    v2 local_rotated_position = v2 {
+        (local_position.x * cosf(radians)) - (local_position.y * sinf(radians)),
+        (local_position.x * sinf(radians)) + (local_position.y * cosf(radians)),
+    }; 
+
+    v2 rotated_position = local_rotated_position + centre;
+
+    return rotated_position;
+};
 
 void run_tests() {
 #if 0
