@@ -15,8 +15,8 @@
 #include <chrono>
 #include <atomic>
 
-// Total: 142:30
-// Started: 13:00
+// Total: 143:00
+// Started: 21:00
 //
 // NOTES: {
 //      IN_PROGRESS: {
@@ -146,7 +146,10 @@ string g_level_save_file          = "resources/levels/main.yaml";
 f32 g_player_height               = 2;
 f32 g_player_width                = 0.65;
 f32 g_player_eyes_offset          = 0.8;
-f32 g_player_recoil_factor        = 0.1;
+
+f32 g_player_recoil_factor           = 0.1;
+f32 g_player_recoil_gain_per_shot    = 0.1;
+f32 g_player_recoil_decay_per_second = 2;
 
 f32 g_player_death_cooldown       = 3;
 f32 g_player_ground_acceleration  = 240;
@@ -1400,11 +1403,6 @@ void game_client_update(GameClient *client, State *state) {
     timed_effect_tick(&client->muzzle_flash, state->tick_delta_time);
 
     { // player state cooldowns
-        state->player_recoil -= state->tick_delta_time;
-        if (state->player_recoil <= 0) {
-            state->player_recoil = 0;
-        }
-    
         state->player_firing_cooldown -= state->tick_delta_time;
         if (state->player_firing_cooldown <= 0) {
             state->player_firing_cooldown = 0;
@@ -1475,29 +1473,133 @@ void game_client_update(GameClient *client, State *state) {
             Weapon *player_weapon = get_player_weapon(state);
             InputState state_needed = player_weapon->automatic ? InputState::PRESSED : InputState::DOWN;
 
+            { // debug recoil
+                v3 ray_direction = get_forward_direction(&GC()->camera);
+                ray_direction.y += state->player_recoil * g_player_recoil_factor;
+             
+                Ray ray = ray_create(GC()->camera.position, ray_direction);
+                RaycastIterator it = raycast_iterator_create(ray, GC()->camera.far_plane - GC()->camera.near_plane);
+             
+                RaycastIteratorResult result = {};
+             
+                while (true) {
+                    result = next(&it, state);
+             
+                    if (result.entity == NULL) {
+                        break;
+                    }
+             
+                    if (result.entity->owner == state->instance_id) {
+                        continue;
+                    }
+             
+                    break;
+                }
+             
+                if (result.entity) {
+                    draw_sphere(REN(), result.hit_position, 0.1f, PURPLE, REN()->default_material);
+                }
+            }
+
             if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == state_needed) {
                 if (state->player_ammo > 0 && state->player_firing_cooldown <= 0) {
                     state->player_ammo -= 1; 
                     state->player_firing_cooldown = player_weapon->firing_cooldown;
-                    state->player_recoil += 0.2f;
+                    state->player_recoil += g_player_recoil_gain_per_shot;
 
                     g_dual_wield_recoil_switch = !g_dual_wield_recoil_switch;
 
                     play_weapon_fire_sound(player_weapon);
                     timed_effect_start_or_accumulate(&client->muzzle_flash, 0.05, 1);
 
-                    switch (state->player_weapon) {
-                        case WH_DEAGLE:
-                        case WH_M4:
-                        case WH_PAL:
-                            fire_raycast_weapon(state, state->player_weapon);
-                        break;
-                        case WH_TAP:
-                            fire_tap(state);
-                        break;
-                        default:
-                            Unreachable("Unknown weapon type when trying to shoot weapon");
+                    if (state->player_weapon != WH_TAP) {
+                        v3 ray_direction = get_forward_direction(&GC()->camera);
+                        ray_direction.y += state->player_recoil * g_player_recoil_factor;
+                    
+                        Ray ray = ray_create(GC()->camera.position, ray_direction);
+                        RaycastIterator it = raycast_iterator_create(ray, GC()->camera.far_plane - GC()->camera.near_plane);
+                    
+                        RaycastIteratorResult result = {};
+                    
+                        while (true) {
+                            result = next(&it, state);
+                    
+                            if (result.entity == NULL) {
+                                break;
+                            }
+                    
+                            if (result.entity->owner == state->instance_id) {
+                                continue;
+                            }
+                    
+                            break;
+                        }
+                    
+                        if (result.entity) {
+                            { // spawn bullet particle effect
+                                Entity *particle = local_spawn_blood_particle(state);
+                                particle->position = result.hit_position;
+                    
+                                if (BitSet(result.entity->flags, EF_DAMAGEABLE)) {
+                                    SetBit(particle->flags, EF_BLOOD_PARTICLE);
+                                }
+                                else {
+                                    SetBit(particle->flags, EF_SURFACE_PARTICLE);
+                                }
+                            }
+                    
+                            if (BitSet(result.entity->flags, EF_DAMAGEABLE)) {
+                                f32 hit_height_offset = result.hit_position.y - result.entity->position.y;
+                                f32 half_head_size = (g_player_height * 0.5)  - g_player_eyes_offset;
+                        
+                                f32 damage              = {};
+                                SoundHandle hit_sound   = {};
+                        
+                                // headshot
+                                if (hit_height_offset >= g_player_eyes_offset - half_head_size) {
+                                    damage = player_weapon->headshot_damage;
+                                    hit_sound = SH_HEADSHOT_HIT;
+                                }
+                                // body shot
+                                else {
+                                    damage = player_weapon->damage;
+                                    hit_sound = SH_TARGET_HIT;
+                                }
+                        
+                                sound_engine_play(g_sounds[hit_sound]);
+                        
+                                NetworkMessage message = NetworkMessage {
+                                    .client_id = state->instance_id, 
+                                    .type = NM_SHOT_ENTITY, 
+                                    .shot_entity = {
+                                        .target_id = result.entity->id,
+                                        .damage = damage 
+                                    } 
+                                };
+                        
+                                client_send_to_server(NET(), bytes_from_ptr(&message));
+                            }
+                        }
                     }
+                    else {
+                        v3 forward = get_forward_direction(&GC()->camera);
+                        // spawn it at little how so we dont hit the player 
+                        Ray ray = ray_create(GC()->camera.position + forward, forward);
+                    
+                        NetworkMessage message = NetworkMessage {
+                            .client_id = state->instance_id, 
+                            .type = NM_SPAWN_MISSLE,
+                            .spawn_missle = ray
+                        };
+                    
+                        client_send_to_server(NET(), bytes_from_ptr(&message));
+                    }
+                }
+            }
+            else {
+                state->player_recoil -= state->tick_delta_time * g_player_recoil_decay_per_second;
+                if (state->player_recoil <= 0) {
+                    state->player_recoil = 0;
                 }
             }
 
@@ -2418,6 +2520,8 @@ void editor_draw_ui(State *state) {
 
             ImGui::SeparatorText("Recoil");
             ImGui::SliderFloat("Recoil factor", &g_player_recoil_factor, 0, 1);
+            ImGui::SliderFloat("Recoil gain per shot", &g_player_recoil_gain_per_shot, 0, 10);
+            ImGui::SliderFloat("Recoil decay per second", &g_player_recoil_decay_per_second, 0, 10);
 
             ImGui::SeparatorText("Muzzle flash");
             imgui_colour_control("Flash colour", &g_muzzle_flash_colour);
@@ -3935,17 +4039,6 @@ void fire_raycast_weapon(State *state, WeaponHandle weapon) {
 }
 
 void fire_tap(State *state) {
-    v3 forward = get_forward_direction(&GC()->camera);
-    // spawn it at little how so we dont hit the player 
-    Ray ray = ray_create(GC()->camera.position + forward, forward);
-
-    NetworkMessage message = NetworkMessage {
-        .client_id = state->instance_id, 
-        .type = NM_SPAWN_MISSLE,
-        .spawn_missle = ray
-    };
-
-    client_send_to_server(NET(), bytes_from_ptr(&message));
 }
 
 void timed_effect_start(TimedEffect *timed_effect, f32 duration, f32 intensity) {
