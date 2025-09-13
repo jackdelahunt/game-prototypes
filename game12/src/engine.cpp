@@ -446,7 +446,14 @@ struct PointLight {
     f32 intensity;
 };
 
+enum MaterialType {
+    MT_UNLIT,
+    MT_PBR
+};
+
 struct Material {
+    MaterialType type;
+
     v2 tiling_factor;
     RenderTexture *albedo;
     RenderTexture *normal;
@@ -559,6 +566,7 @@ struct Renderer {
     u32 index_buffer_id;
 
     Shader pbr_shader;
+    Shader unlit_shader;
     Shader ui_shader;
 
     u32 atlas_texture_id;
@@ -607,7 +615,8 @@ GLenum texture_description_gl_internal_format(TextureDescription texture_descrip
 RenderTexture *render_texture_create_from_file(Renderer *renderer, string path, TextureDescription source_format, TextureDescription gpu_format);
 
 // Material API
-Material *material_create(Renderer *renderer, v2 tiling_factor, RenderTexture *albedo, RenderTexture *normal, RenderTexture *ambient_occlusion, RenderTexture *roughness, RenderTexture *metalness);
+Material *material_create_pbr(Renderer *renderer, v2 tiling_factor, RenderTexture *albedo, RenderTexture *normal, RenderTexture *ambient_occlusion, RenderTexture *roughness, RenderTexture *metalness);
+Material *material_create_unlit(Renderer *renderer, v2 tiling_factor, RenderTexture *albedo);
 
 // Renderer init API
 Renderer *REN();
@@ -726,6 +735,8 @@ v3 get_up_direction(Camera *camera) {
 }
 
 bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, string fragment_shader_path) {
+    Assertf(shader->id == 0, "shader was already initialised or wasn't zero initialised");
+
     const i64 buffer_size = 640;
     i32 compile_status = 0;
     i32 link_status = 0;
@@ -1035,16 +1046,32 @@ RenderTexture *render_texture_create_from_file(Renderer *renderer, string path, 
     return texture;
 }
 
-Material *material_create(Renderer *renderer, v2 tiling_factor, RenderTexture *albedo, RenderTexture *normal, RenderTexture *ambient_occlusion, RenderTexture *roughness, RenderTexture *metalness) {
-    Assert(albedo && ambient_occlusion);
+Material *material_create_pbr(Renderer *renderer, v2 tiling_factor, RenderTexture *albedo, RenderTexture *normal, RenderTexture *ambient_occlusion, RenderTexture *roughness, RenderTexture *metalness) {
+    Assert(albedo);
+    Assert(normal);
+    Assert(ambient_occlusion);
+    Assert(roughness);
+    Assert(metalness);
 
     Material *material = push(&renderer->materials);
+    material->type = MT_PBR;
     material->tiling_factor = tiling_factor;
     material->albedo = albedo;
     material->normal = normal;
     material->ambient_occlusion = ambient_occlusion;
     material->roughness = roughness;
     material->metalness = metalness;
+
+    return material;
+}
+
+Material *material_create_unlit(Renderer *renderer, v2 tiling_factor, RenderTexture *albedo) {
+    Assert(albedo);
+
+    Material *material = push(&renderer->materials);
+    material->type = MT_UNLIT;
+    material->tiling_factor = tiling_factor;
+    material->albedo = albedo;
 
     return material;
 }
@@ -1158,7 +1185,7 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
     }
 
     { // create default material
-        renderer->default_material = material_create(renderer, v2{1, 1}, 
+        renderer->default_material = material_create_pbr(renderer, v2{1, 1},
             renderer->default_material_albedo, 
             renderer->default_material_normal, 
             renderer->default_material_ambient_occlusion,
@@ -1208,16 +1235,6 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
 
 bool load_shaders(Renderer *renderer) {
     {
-        bool ok = init_shader(&renderer->ui_shader, "UI shader", "resources/shaders/ui_vertex.shader", "resources/shaders/ui_fragment.shader");
-        if (!ok) {
-            return false;
-        }
-    
-        assign_texture_slot(&renderer->ui_shader, "atlas_texture", 0);
-        assign_texture_slot(&renderer->ui_shader, "font_texture", 1);
-    }
-
-    {
         bool ok = init_shader(&renderer->pbr_shader, "PBR shader", "resources/shaders/pbr_vertex.shader", "resources/shaders/pbr_fragment.shader");
         if (!ok) {
             return false;
@@ -1230,12 +1247,32 @@ bool load_shaders(Renderer *renderer) {
         assign_texture_slot(&renderer->pbr_shader, "material_metalness", 4);
     }
 
+    {
+        bool ok = init_shader(&renderer->unlit_shader, "Unlit shader", "resources/shaders/unlit_vertex.shader", "resources/shaders/unlit_fragment.shader");
+        if (!ok) {
+            return false;
+        }
+
+        assign_texture_slot(&renderer->unlit_shader, "material_albedo", 0);
+    }
+
+    {
+        bool ok = init_shader(&renderer->ui_shader, "UI shader", "resources/shaders/ui_vertex.shader", "resources/shaders/ui_fragment.shader");
+        if (!ok) {
+            return false;
+        }
+    
+        assign_texture_slot(&renderer->ui_shader, "atlas_texture", 0);
+        assign_texture_slot(&renderer->ui_shader, "font_texture", 1);
+    }
+
     return true;
 }
 
 void delete_shaders(Renderer *renderer) {
-    glDeleteProgram(renderer->ui_shader.id);
     glDeleteProgram(renderer->pbr_shader.id);
+    glDeleteProgram(renderer->unlit_shader.id);
+    glDeleteProgram(renderer->ui_shader.id);
 }
 
 Texture *load_texture(Renderer *renderer, string path) {
@@ -1526,48 +1563,70 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
     
         for (RenderCommand &command : renderer->commands) {
             if (command.type == RC_MODEL) {
-                MeshRenderCommand *model_cmd = &command.mesh;
-                 
-                m4 model_matrix = get_model_matrix(model_cmd->position, model_cmd->scale, model_cmd->rotation);
-         
-                shader_use(renderer->pbr_shader);
-         
-                shader_set_m4(renderer->pbr_shader, "model", &model_matrix);
-                shader_set_m4(renderer->pbr_shader, "view", &view_matrix);
-                shader_set_m4(renderer->pbr_shader, "projection", &projection_matrix);
-
-                shader_set_v3(renderer->pbr_shader, "camera_position", camera->position);
-
-                shader_set_v4(renderer->pbr_shader, "colour", model_cmd->colour);
-
-                shader_set_v3(renderer->pbr_shader, "ambient_light", renderer->ambient_light);
-                shader_set_v3(renderer->pbr_shader, "sun_position", renderer->sun_position);
-                shader_set_v3(renderer->pbr_shader, "sun_colour", renderer->sun_colour);
-                shader_set_f32(renderer->pbr_shader, "sun_intensity", renderer->sun_intensity);
-
-                shader_set_v2(renderer->pbr_shader, "material_tiling_factor", model_cmd->material->tiling_factor);
-                shader_set_texture(renderer->pbr_shader, model_cmd->material->albedo, 0);
-                shader_set_texture(renderer->pbr_shader, model_cmd->material->normal, 1);
-                shader_set_texture(renderer->pbr_shader, model_cmd->material->ambient_occlusion, 2);
-                shader_set_texture(renderer->pbr_shader, model_cmd->material->roughness, 3);
-                shader_set_texture(renderer->pbr_shader, model_cmd->material->metalness, 4);
-
-                shader_set_i32(renderer->pbr_shader, "light_count", renderer->lights.len);
-
-                for (i64 i = 0; i < renderer->lights.len; i++) {
-                    PointLight light = renderer->lights[i];
-
-                    string position_string = fmtc(renderer->frame_arena, "lights[{}].position", i);
-                    string colour_string = fmtc(renderer->frame_arena, "lights[{}].colour", i);
-                    string intensity_string = fmtc(renderer->frame_arena, "lights[{}].intensity", i);
-
-                    shader_set_v3(renderer->pbr_shader, position_string, light.position);
-                    shader_set_v3(renderer->pbr_shader, colour_string, light.colour);
-                    shader_set_f32(renderer->pbr_shader, intensity_string, light.intensity);
+                MeshRenderCommand *mesh_cmd = &command.mesh;
+                
+                if (mesh_cmd->material->type == MT_PBR) {
+                    m4 model_matrix = get_model_matrix(mesh_cmd->position, mesh_cmd->scale, mesh_cmd->rotation);
+             
+                    shader_use(renderer->pbr_shader);
+             
+                    shader_set_m4(renderer->pbr_shader, "model", &model_matrix);
+                    shader_set_m4(renderer->pbr_shader, "view", &view_matrix);
+                    shader_set_m4(renderer->pbr_shader, "projection", &projection_matrix);
+    
+                    shader_set_v3(renderer->pbr_shader, "camera_position", camera->position);
+    
+                    shader_set_v4(renderer->pbr_shader, "colour", mesh_cmd->colour);
+    
+                    shader_set_v3(renderer->pbr_shader, "ambient_light", renderer->ambient_light);
+                    shader_set_v3(renderer->pbr_shader, "sun_position", renderer->sun_position);
+                    shader_set_v3(renderer->pbr_shader, "sun_colour", renderer->sun_colour);
+                    shader_set_f32(renderer->pbr_shader, "sun_intensity", renderer->sun_intensity);
+    
+                    shader_set_v2(renderer->pbr_shader, "material_tiling_factor", mesh_cmd->material->tiling_factor);
+                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->albedo, 0);
+                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->normal, 1);
+                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->ambient_occlusion, 2);
+                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->roughness, 3);
+                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->metalness, 4);
+    
+                    shader_set_i32(renderer->pbr_shader, "light_count", renderer->lights.len);
+    
+                    for (i64 i = 0; i < renderer->lights.len; i++) {
+                        PointLight light = renderer->lights[i];
+    
+                        string position_string = fmtc(renderer->frame_arena, "lights[{}].position", i);
+                        string colour_string = fmtc(renderer->frame_arena, "lights[{}].colour", i);
+                        string intensity_string = fmtc(renderer->frame_arena, "lights[{}].intensity", i);
+    
+                        shader_set_v3(renderer->pbr_shader, position_string, light.position);
+                        shader_set_v3(renderer->pbr_shader, colour_string, light.colour);
+                        shader_set_f32(renderer->pbr_shader, intensity_string, light.intensity);
+                    }
+    
+                    GLCall(glBindVertexArray(mesh_cmd->mesh->vertex_array_id));
+                    GLCall(glDrawElements(GL_TRIANGLES, mesh_cmd->mesh->indices.len, GL_UNSIGNED_INT, 0));
                 }
-
-                GLCall(glBindVertexArray(model_cmd->mesh->vertex_array_id));
-                GLCall(glDrawElements(GL_TRIANGLES, model_cmd->mesh->indices.len, GL_UNSIGNED_INT, 0));
+                else if (mesh_cmd->material->type == MT_UNLIT) {
+                    m4 model_matrix = get_model_matrix(mesh_cmd->position, mesh_cmd->scale, mesh_cmd->rotation);
+             
+                    shader_use(renderer->unlit_shader);
+             
+                    shader_set_m4(renderer->unlit_shader, "model", &model_matrix);
+                    shader_set_m4(renderer->unlit_shader, "view", &view_matrix);
+                    shader_set_m4(renderer->unlit_shader, "projection", &projection_matrix);
+    
+                    shader_set_v4(renderer->unlit_shader, "colour", mesh_cmd->colour);
+    
+                    shader_set_v2(renderer->unlit_shader, "material_tiling_factor", mesh_cmd->material->tiling_factor);
+                    shader_set_texture(renderer->unlit_shader, mesh_cmd->material->albedo, 0);
+    
+                    GLCall(glBindVertexArray(mesh_cmd->mesh->vertex_array_id));
+                    GLCall(glDrawElements(GL_TRIANGLES, mesh_cmd->mesh->indices.len, GL_UNSIGNED_INT, 0));
+                }
+                else {
+                    Unreachable("unknown material type set in render command");
+                }
             }
         }
     

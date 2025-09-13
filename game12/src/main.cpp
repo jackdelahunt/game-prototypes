@@ -15,12 +15,12 @@
 #include <chrono>
 #include <atomic>
 
-// Total: 138:30
+// Total: 142:30
 // Started: 13:00
 //
 // NOTES: {
 //      IN_PROGRESS: {
-//          - particle effect where it hits
+//          - recoil
 //      },
 //
 //      GAME_TODO: {
@@ -30,10 +30,7 @@
 //                  - they hit a body shot
 //                  - they hit a headshot
 //              - camera shake
-//              - recoil
-//              - fix muzzle flash
-//              - particle effect where it hits
-//              - lighting
+//              - improve muzzle flash  
 //              - sound when killed enemy
 //              - hitmarkers
 //          - sound when player dies
@@ -53,12 +50,6 @@
 //          - anti aliasing
 //          - particles
 //          - position entity flush with the face of another
-//      },
-//
-//      REVISE: {
-//          - muzzle flash
-//          - TAP weapon
-//          - PAL weapon
 //      },
 //
 //      FUTURE_GAME: {
@@ -155,6 +146,7 @@ string g_level_save_file          = "resources/levels/main.yaml";
 f32 g_player_height               = 2;
 f32 g_player_width                = 0.65;
 f32 g_player_eyes_offset          = 0.8;
+f32 g_player_recoil_factor        = 0.1;
 
 f32 g_player_death_cooldown       = 3;
 f32 g_player_ground_acceleration  = 240;
@@ -224,8 +216,8 @@ f32 g_health_bar_notch_decay_max_height_factor  = 1.6f;
 f32 g_health_bar_notch_decay_max_width_factor   = 1.6f;
 f32 g_health_bar_notch_empty_height_factor      = 0.8f;
 
-v4 g_muzzle_flash_colour     = DARK_GRAY;
-f32 g_muzzle_flash_intensity = 35;
+v4 g_muzzle_flash_colour     = ORANGE;
+f32 g_muzzle_flash_intensity = 5;
 
 v4 g_clear_colour           = v4 {0.398013, 0.481982, 0.582278, 1.000000};
 v3 g_ambient_light_colour   = v3 {0.189873, 0.189873, 0.189873};
@@ -233,18 +225,23 @@ v3 g_sun_colour             = v3 {1, 1, 1};
 v3 g_sun_position           = v3 {10, 50, -10};
 f32 g_sun_intensity         = 1;
 
-f32 g_particle_lifetime = 2.0f;
-f32 g_particle_size = 0.06f;
-f32 g_particle_effect_lifetime = 0.3f;
-f32 g_particle_effect_size = 0.06f;
-i32 g_particle_horizontal_segments = 6;
-i32 g_particle_vertical_segments = 3;
-f32 g_particle_radial_distance = 0.4f;
-f32 g_particle_vertical_distance = 0.8;
+f32 g_particle_lifetime                 = 2.0f;
+f32 g_particle_size                     = 0.06f;
+f32 g_particle_effect_lifetime          = 0.3f;
+f32 g_particle_effect_size              = 0.06f;
+i32 g_particle_horizontal_segments      = 6;
+i32 g_particle_vertical_segments        = 3;
+f32 g_particle_radial_distance          = 1;
+f32 g_particle_vertical_distance        = 0.8;
+v4 g_particle_player_hit_colour         = RED;
+v4 g_particle_enviroment_hit_colour     = ORANGE;
+f32 g_particle_max_magnify_factor       = 4;
+f32 g_particle_max_magnify_distance     = 50;
 
 meta enum MaterialHandle : u32 {
     MAT_DEFAULT,
     MAT_MUZZLE_FLASH,
+    MAT_PARTICLE,
     MAT_METAL_PLATE,
     MAT_BROKEN_BRICK_WALL,
     MAT_METAL_05C,
@@ -398,10 +395,12 @@ meta enum EntityFlag : u32 {
     EF_JUMP_PAD         = 1 << 10,
     EF_COMPLEX_PHYSICS  = 1 << 11,
     EF_POINT_LIGHT      = 1 << 12,
-    EF_BLOOD_PARTICLE   = 1 << 13,
-    EF_DRAW_MESH        = 1 << 14,
-    EF_IGNORE_RAYCAST   = 1 << 15,
-    EF_DELETE           = 1 << 16,
+    EF_PARTICLE         = 1 << 13,
+    EF_BLOOD_PARTICLE   = 1 << 14,
+    EF_SURFACE_PARTICLE = 1 << 15,
+    EF_DRAW_MESH        = 1 << 16,
+    EF_IGNORE_RAYCAST   = 1 << 17,
+    EF_DELETE           = 1 << 24,
 };
 
 struct Entity {
@@ -557,6 +556,7 @@ struct State {
     WeaponHandle player_weapon;
     i64 player_ammo;
     f32 player_firing_cooldown;
+    f32 player_recoil;
 
     StackArray<Entity, MAX_ENTITIES> entities;
 };
@@ -861,18 +861,21 @@ void game_client_entry() {
             g_materials[MAT_DEFAULT] = REN()->default_material;
             Assert(g_materials[MAT_DEFAULT]);
 
-            g_materials[MAT_MUZZLE_FLASH] = material_create(REN(), 
+            g_materials[MAT_MUZZLE_FLASH] = material_create_unlit(REN(), 
                 {1.0, 1.0},
-                render_texture_create_from_file(REN(), "resources/textures/muzzle_flash/muzzle_flash.png", TD_RGBA_8, TD_RGBA_8),
-                REN()->default_material_normal,
-                REN()->default_material_ambient_occlusion,
-                REN()->default_material_roughness,
-                REN()->default_material_metalness
+                render_texture_create_from_file(REN(), "resources/textures/muzzle_flash/muzzle_flash.png", TD_RGBA_8, TD_RGBA_8)
             );
 
             Assert(g_materials[MAT_MUZZLE_FLASH]);
 
-            g_materials[MAT_METAL_PLATE] = material_create(REN(),
+            g_materials[MAT_PARTICLE] = material_create_unlit(REN(), 
+                {1.0, 1.0},
+                REN()->default_material_albedo
+            );
+
+            Assert(g_materials[MAT_PARTICLE]);
+
+            g_materials[MAT_METAL_PLATE] = material_create_pbr(REN(),
                 {1, 1},
                 render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_diff_1k.png",      TD_sRGBA_8, TD_sRGBA_8),
                 render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_nor_gl_1k.png",    TD_RGBA_8, TD_RGBA_8),
@@ -883,7 +886,7 @@ void game_client_entry() {
 
             Assert(g_materials[MAT_METAL_PLATE]);
 
-            g_materials[MAT_BROKEN_BRICK_WALL] = material_create(REN(), 
+            g_materials[MAT_BROKEN_BRICK_WALL] = material_create_pbr(REN(), 
                 {1, 1},
                 render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_diff_1k.png",    TD_sRGBA_8, TD_sRGBA_8),
                 render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_nor_gl_1k.png",  TD_RGBA_8, TD_RGBA_8),
@@ -894,7 +897,7 @@ void game_client_entry() {
 
             Assert(g_materials[MAT_BROKEN_BRICK_WALL]);
 
-            g_materials[MAT_METAL_05C] = material_create(REN(), 
+            g_materials[MAT_METAL_05C] = material_create_pbr(REN(), 
                 {1, 1},
                 render_texture_create_from_file(REN(), "resources/textures/metal05C/Metal050C_1K-PNG_Color.png",        TD_sRGBA_8, TD_sRGBA_8),
                 render_texture_create_from_file(REN(), "resources/textures/metal05C/Metal050C_1K-PNG_NormalGL.png",     TD_RGBA_8, TD_RGBA_8),
@@ -905,7 +908,7 @@ void game_client_entry() {
 
             Assert(g_materials[MAT_METAL_05C]);
 
-            g_materials[MAT_TILES_037] = material_create(REN(), 
+            g_materials[MAT_TILES_037] = material_create_pbr(REN(), 
                 {1, 1},
                 render_texture_create_from_file(REN(), "resources/textures/Tiles037/Tiles037_2K-PNG_Color.png",         TD_sRGBA_8, TD_sRGBA_8),
                 render_texture_create_from_file(REN(), "resources/textures/Tiles037/Tiles037_2K-PNG_NormalGL.png",      TD_RGBA_8, TD_RGBA_8),
@@ -916,7 +919,7 @@ void game_client_entry() {
 
             Assert(g_materials[MAT_TILES_037]);
 
-            g_materials[MAT_GRID] = material_create(REN(), 
+            g_materials[MAT_GRID] = material_create_pbr(REN(), 
                 {1, 1},
                 render_texture_create_from_file(REN(), "resources/textures/grid/albedo.png", TD_sRGBA_8, TD_sRGBA_8),
                 REN()->default_material_normal,
@@ -1396,9 +1399,16 @@ void game_client_update(GameClient *client, State *state) {
     timed_effect_tick(&client->health_bar_decay, state->tick_delta_time);
     timed_effect_tick(&client->muzzle_flash, state->tick_delta_time);
 
-    state->player_firing_cooldown -= state->tick_delta_time;
-    if (state->player_firing_cooldown <= 0) {
-        state->player_firing_cooldown = 0;
+    { // player state cooldowns
+        state->player_recoil -= state->tick_delta_time;
+        if (state->player_recoil <= 0) {
+            state->player_recoil = 0;
+        }
+    
+        state->player_firing_cooldown -= state->tick_delta_time;
+        if (state->player_firing_cooldown <= 0) {
+            state->player_firing_cooldown = 0;
+        }
     }
 
     { // weapon reaload and switching to default
@@ -1469,6 +1479,7 @@ void game_client_update(GameClient *client, State *state) {
                 if (state->player_ammo > 0 && state->player_firing_cooldown <= 0) {
                     state->player_ammo -= 1; 
                     state->player_firing_cooldown = player_weapon->firing_cooldown;
+                    state->player_recoil += 0.2f;
 
                     g_dual_wield_recoil_switch = !g_dual_wield_recoil_switch;
 
@@ -1612,7 +1623,7 @@ void game_client_update(GameClient *client, State *state) {
     while (index < state->entities.len) {
         Entity &entity = state->entities[index];
 
-        if (BitSet(entity.flags, EF_BLOOD_PARTICLE)) {
+        if (BitSet(entity.flags, EF_PARTICLE)) {
             if (state->time - entity.time_created > g_particle_lifetime) {
                 local_delete_entity(state, entity.id);
                 continue;
@@ -1928,11 +1939,23 @@ void game_client_draw(GameClient *client, State *state) {
             draw_point_light(REN(), entity.position, entity.light_colour, entity.light_intensity);
         }
 
-        if (BitSet(entity.flags, EF_BLOOD_PARTICLE)) {
+        if (BitSet(entity.flags, EF_PARTICLE)) {
+            Material *particle_material = g_materials[MAT_PARTICLE];
+
             f32 alivetime = state->time - entity.time_created;
             f32 effect_t = alivetime / g_particle_effect_lifetime;
+
             f32 h_degrees_per_particle = 360.0f / f32(g_particle_horizontal_segments);
             f32 v_degrees_per_particle = 180.0f / f32(g_particle_vertical_segments);
+
+            v3 camera_direction = GC()->camera.position - entity.position;
+            f32 camera_distance = length(camera_direction);
+            camera_distance = clamp(0.1, camera_distance, g_particle_max_magnify_distance);
+            f32 magnification_factor = max(1, (camera_distance / g_particle_max_magnify_distance) * g_particle_max_magnify_factor);
+
+            bool is_blood_particle = BitSet(entity.flags, EF_BLOOD_PARTICLE);
+
+            v4 particle_effect_colour = is_blood_particle ? g_particle_player_hit_colour : g_particle_enviroment_hit_colour;
 
             if (alivetime <= g_particle_effect_lifetime) {
                 for (i64 h = 0; h < g_particle_horizontal_segments; h++) {
@@ -1944,17 +1967,26 @@ void game_client_draw(GameClient *client, State *state) {
                         v3 particle_direction = norm(v3{h_direction.x, v_direction.y, h_direction.y});
     
                         v3 particle_position = entity.position;
-                        particle_position += (particle_direction * g_particle_radial_distance) * tween_ease_out_cubic(effect_t);
+                        particle_position += (particle_direction * g_particle_radial_distance) * tween_ease_out_cubic(effect_t) * min(1.5f, magnification_factor);
     
                         f32 particle_size = g_particle_effect_size;
-                        particle_size *= 1.0f - effect_t;
+                        particle_size *= 1.0f - tween_ease_out_cubic(effect_t);
     
-                        draw_sphere(REN(), particle_position, particle_size, brightness(entity.colour, 0.5f), REN()->default_material);
+                        draw_sphere(REN(), particle_position, particle_size * magnification_factor, particle_effect_colour, particle_material);
                     }
                 }
             }
 
-            draw_sphere(REN(), entity.position, g_particle_size, brightness(entity.colour, 0.25f), REN()->default_material);
+            if (!is_blood_particle) {
+                if (alivetime <= 0.04) {
+                    v3 light_position = entity.position;
+                    light_position += norm(camera_direction) * 0.5f;
+    
+                    draw_point_light(REN(), light_position, ORANGE, 0.5 * magnification_factor);
+                }
+    
+                draw_sphere(REN(), entity.position, g_particle_size * min(1.5f, magnification_factor), BLACK, particle_material);
+            }
         }
 
         if (ED()->selected_entity && ED()->selected_entity->id == entity.id) {
@@ -2170,12 +2202,16 @@ void editor_draw_ui(State *state) {
 
             ImGui::SliderFloat("Particle lifetime", &g_particle_lifetime, 0, 10);
             ImGui::SliderFloat("Particle size", &g_particle_size, 0, 0.1f);
-            ImGui::SliderFloat("Particle effect lifetime", &g_particle_effect_lifetime, 0, 10);
+            ImGui::SliderFloat("Particle effect lifetime", &g_particle_effect_lifetime, 0, 5);
             ImGui::SliderFloat("Particle effect size", &g_particle_effect_size, 0, 0.1f);
             ImGui::SliderInt("Particle horizontal segments", &g_particle_horizontal_segments, 0, 30);
             ImGui::SliderInt("Particle vertical segments", &g_particle_vertical_segments, 0, 30);
-            ImGui::SliderFloat("Particle radial distance", &g_particle_radial_distance, 0, 1.5f);
+            ImGui::SliderFloat("Particle radial distance", &g_particle_radial_distance, 0, 5);
             ImGui::SliderFloat("Particle vertical distance", &g_particle_vertical_distance, 0, -2);
+            imgui_colour_control("Particle enviroment hit colour", &g_particle_enviroment_hit_colour);
+            imgui_colour_control("Particle player hit colour", &g_particle_player_hit_colour);
+            ImGui::SliderFloat("Max magnification", &g_health_bar_max_magnify_factor, 1, 10);
+            ImGui::SliderFloat("Max magnification distance", &g_health_bar_max_magnify_distance, 1, 100);
 
             ImGui::PopID();
         }
@@ -2380,6 +2416,9 @@ void editor_draw_ui(State *state) {
             ImGui::InputInt("Ammo", (i32 *) &state->player_ammo);
             ImGui::SliderFloat3("Weapon offset", &g_weapon_display_offset.x, -2, 2);
 
+            ImGui::SeparatorText("Recoil");
+            ImGui::SliderFloat("Recoil factor", &g_player_recoil_factor, 0, 1);
+
             ImGui::SeparatorText("Muzzle flash");
             imgui_colour_control("Flash colour", &g_muzzle_flash_colour);
             ImGui::SliderFloat("Intensity", &g_muzzle_flash_intensity, 0, 50);
@@ -2425,6 +2464,7 @@ void editor_draw_ui(State *state) {
                     ImGui::InputFloat("Headshot Damage", &weapon->headshot_damage);
                     ImGui::InputInt("Ammo", &weapon->ammo_count);
                     ImGui::Checkbox("Automatic", &weapon->automatic);
+                    ImGui::InputFloat("Firing cooldown", &weapon->firing_cooldown);
                     ImGui::Text("TODO: mesh");
                     ImGui::Text("TODO: sound");
                     imgui_v3_control("Recoil offset", &weapon->recoil_offset);
@@ -2447,6 +2487,9 @@ void editor_draw_ui(State *state) {
 
                     ImGui::Text("Albedo: %dx%d", material->albedo->width, material->albedo->height);
                     ImGui::Image(material->albedo->id, ImVec2(200, 200));
+
+                    ImGui::Text("Normal: %dx%d", material->normal->width, material->normal->height);
+                    ImGui::Image(material->normal->id, ImVec2(200, 200));
 
                     ImGui::Text("Ambient occlusion: %dx%d", material->ambient_occlusion->width, material->ambient_occlusion->height);
                     ImGui::Image(material->ambient_occlusion->id, ImVec2(200, 200));
@@ -3150,7 +3193,7 @@ Entity *local_spawn_point_light(State *state) {
 
 Entity *local_spawn_blood_particle(State *state) {
     Entity entity = Entity {
-        .flags = EF_BLOOD_PARTICLE | EF_IGNORE_RAYCAST,
+        .flags = EF_PARTICLE | EF_IGNORE_RAYCAST,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = {0.2, 0.2, 0.2},
@@ -3768,9 +3811,6 @@ void draw_player_weapon(State *state, Weapon *weapon, v3 display_offset, bool sh
         v3 light_position = GC()->camera.position + forward;
 
         TimedEffectState muzzle_flash = timed_effect_state(&GC()->muzzle_flash);
-        if (muzzle_flash.active) {
-            draw_point_light(REN(), light_position, g_muzzle_flash_colour, g_muzzle_flash_intensity);
-        }
 
         if (muzzle_flash.active || g_debug_always_draw_muzzle_flash) {
             v3 muzzle_flash_position = v3{};
@@ -3780,6 +3820,7 @@ void draw_player_weapon(State *state, Weapon *weapon, v3 display_offset, bool sh
             muzzle_flash_position += weapon->muzzle_flash_offset .z * forward;
 
             draw_quad(REN(), muzzle_flash_position, {weapon->muzzle_flash_size, weapon->muzzle_flash_size}, weapon_rotation, WHITE, g_materials[MAT_MUZZLE_FLASH]);
+            draw_point_light(REN(), muzzle_flash_position, g_muzzle_flash_colour, g_muzzle_flash_intensity);
         }
     }
 }
@@ -3823,10 +3864,11 @@ void play_weapon_fire_sound(Weapon *weapon) {
 }
 
 void fire_raycast_weapon(State *state, WeaponHandle weapon) {
-    Ray ray = ray_create(GC()->camera.position, get_forward_direction(&GC()->camera));
-    RaycastIterator it = raycast_iterator_create(ray, GC()->camera.far_plane - GC()->camera.near_plane);
+    v3 ray_direction = get_forward_direction(&GC()->camera);
+    ray_direction.y += state->player_recoil * g_player_recoil_factor;
 
-    Weapon *player_weapon = &g_weapons[weapon];
+    Ray ray = ray_create(GC()->camera.position, ray_direction);
+    RaycastIterator it = raycast_iterator_create(ray, GC()->camera.far_plane - GC()->camera.near_plane);
 
     RaycastIteratorResult result = {};
 
@@ -3846,22 +3888,22 @@ void fire_raycast_weapon(State *state, WeaponHandle weapon) {
 
     if (result.entity) {
         { // spawn bullet particle effect
-            // v4 particle_colour = result.entity->colour;
-            v4 particle_colour = SUN_YELLOW;
-    
-            if (BitSet(result.entity->flags, EF_DAMAGEABLE)) {
-                particle_colour = RED;
-            }
-    
             Entity *particle = local_spawn_blood_particle(state);
             particle->position = result.hit_position;
-            particle->colour = particle_colour;
+
+            if (BitSet(result.entity->flags, EF_DAMAGEABLE)) {
+                SetBit(particle->flags, EF_BLOOD_PARTICLE);
+            }
+            else {
+                SetBit(particle->flags, EF_SURFACE_PARTICLE);
+            }
         }
 
         if (BitSet(result.entity->flags, EF_DAMAGEABLE)) {
             f32 hit_height_offset = result.hit_position.y - result.entity->position.y;
             f32 half_head_size = (g_player_height * 0.5)  - g_player_eyes_offset;
     
+            Weapon *player_weapon = &g_weapons[weapon];
             f32 damage              = {};
             SoundHandle hit_sound   = {};
     

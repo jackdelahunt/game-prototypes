@@ -8,11 +8,12 @@
 
 template<>
 struct MetaEnum<MaterialHandle> {
-const static int count = 8;
+const static int count = 9;
 
 inline static EnumValue<MaterialHandle> values[count] = {
     EnumValue<MaterialHandle>(string("MAT_DEFAULT"), MAT_DEFAULT),
     EnumValue<MaterialHandle>(string("MAT_MUZZLE_FLASH"), MAT_MUZZLE_FLASH),
+    EnumValue<MaterialHandle>(string("MAT_PARTICLE"), MAT_PARTICLE),
     EnumValue<MaterialHandle>(string("MAT_METAL_PLATE"), MAT_METAL_PLATE),
     EnumValue<MaterialHandle>(string("MAT_BROKEN_BRICK_WALL"), MAT_BROKEN_BRICK_WALL),
     EnumValue<MaterialHandle>(string("MAT_METAL_05C"), MAT_METAL_05C),
@@ -25,12 +26,13 @@ static string name(MaterialHandle value) {
     switch (value) {
         case MAT_DEFAULT: return values[0].name;
         case MAT_MUZZLE_FLASH: return values[1].name;
-        case MAT_METAL_PLATE: return values[2].name;
-        case MAT_BROKEN_BRICK_WALL: return values[3].name;
-        case MAT_METAL_05C: return values[4].name;
-        case MAT_TILES_037: return values[5].name;
-        case MAT_GRID: return values[6].name;
-        case _MAT_COUNT: return values[7].name;
+        case MAT_PARTICLE: return values[2].name;
+        case MAT_METAL_PLATE: return values[3].name;
+        case MAT_BROKEN_BRICK_WALL: return values[4].name;
+        case MAT_METAL_05C: return values[5].name;
+        case MAT_TILES_037: return values[6].name;
+        case MAT_GRID: return values[7].name;
+        case _MAT_COUNT: return values[8].name;
     }
 }
 
@@ -128,7 +130,7 @@ static int index(PickupType value) {
 
 template<>
 struct MetaEnum<EntityFlag> {
-const static int count = 17;
+const static int count = 19;
 
 inline static EnumValue<EntityFlag> values[count] = {
     EnumValue<EntityFlag>(string("EF_PLAYER"), EF_PLAYER),
@@ -144,7 +146,9 @@ inline static EnumValue<EntityFlag> values[count] = {
     EnumValue<EntityFlag>(string("EF_JUMP_PAD"), EF_JUMP_PAD),
     EnumValue<EntityFlag>(string("EF_COMPLEX_PHYSICS"), EF_COMPLEX_PHYSICS),
     EnumValue<EntityFlag>(string("EF_POINT_LIGHT"), EF_POINT_LIGHT),
+    EnumValue<EntityFlag>(string("EF_PARTICLE"), EF_PARTICLE),
     EnumValue<EntityFlag>(string("EF_BLOOD_PARTICLE"), EF_BLOOD_PARTICLE),
+    EnumValue<EntityFlag>(string("EF_SURFACE_PARTICLE"), EF_SURFACE_PARTICLE),
     EnumValue<EntityFlag>(string("EF_DRAW_MESH"), EF_DRAW_MESH),
     EnumValue<EntityFlag>(string("EF_IGNORE_RAYCAST"), EF_IGNORE_RAYCAST),
     EnumValue<EntityFlag>(string("EF_DELETE"), EF_DELETE),
@@ -165,10 +169,12 @@ static string name(EntityFlag value) {
         case EF_JUMP_PAD: return values[10].name;
         case EF_COMPLEX_PHYSICS: return values[11].name;
         case EF_POINT_LIGHT: return values[12].name;
-        case EF_BLOOD_PARTICLE: return values[13].name;
-        case EF_DRAW_MESH: return values[14].name;
-        case EF_IGNORE_RAYCAST: return values[15].name;
-        case EF_DELETE: return values[16].name;
+        case EF_PARTICLE: return values[13].name;
+        case EF_BLOOD_PARTICLE: return values[14].name;
+        case EF_SURFACE_PARTICLE: return values[15].name;
+        case EF_DRAW_MESH: return values[16].name;
+        case EF_IGNORE_RAYCAST: return values[17].name;
+        case EF_DELETE: return values[18].name;
     }
 }
 
