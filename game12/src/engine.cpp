@@ -516,6 +516,7 @@ Renderer *g_renderer = NULL;
 // Camera API
 Camera camera_create(CameraMode mode, f32 fov, v3 position, f32 near_plane, f32 far_plane);
 
+m4 get_rotation_matrix(Camera *camera);
 v3 get_forward_direction(Camera *camera);
 v3 get_right_direction(Camera *camera);
 v3 get_up_direction(Camera *camera);
@@ -644,25 +645,31 @@ Camera camera_create(CameraMode mode, f32 fov, v3 position, f32 near_plane, f32 
     };
 }
 
-v3 get_forward_direction(Camera *camera) {
-    // pitch    - x
-    // yaw      - y
-    // roll     - z
-    v3 direction {
-        .x = sin(camera->rotation.y * HMM_DegToRad) * cos(camera->rotation.x * HMM_DegToRad),
-        .y = sin(camera->rotation.x * HMM_DegToRad),
-        .z = cos(camera->rotation.y * HMM_DegToRad) * cos(camera->rotation.x * HMM_DegToRad)
-    };
+m4 get_rotation_matrix(Camera *camera) {
+    v3 r = camera->rotation;
 
-    return norm(direction);
+    m4 matrix = HMM_M4D(1.0f);
+
+    matrix = HMM_MulM4(matrix, HMM_Rotate_LH(r.y * HMM_DegToRad, {0, 1, 0}));
+    matrix = HMM_MulM4(matrix, HMM_Rotate_LH(r.x * HMM_DegToRad, {1, 0, 0}));
+    matrix = HMM_MulM4(matrix, HMM_Rotate_LH(r.z * HMM_DegToRad, {0, 0, 1}));
+
+    return matrix;
+}
+
+v3 get_forward_direction(Camera *camera) {
+    m4 rotation_matrix = get_rotation_matrix(camera);
+    return HMM_MulM4V4(rotation_matrix, v4{0, 0, 1, 0}).xyz;
 }
 
 v3 get_right_direction(Camera *camera) {
-    return norm(HMM_Cross({0, 1, 0}, get_forward_direction(camera)));
+    m4 rotation_matrix = get_rotation_matrix(camera);
+    return HMM_MulM4V4(rotation_matrix, v4{1, 0, 0, 0}).xyz;
 }
 
 v3 get_up_direction(Camera *camera) {
-    return norm(HMM_Cross(get_forward_direction(camera), get_right_direction(camera)));
+    m4 rotation_matrix = get_rotation_matrix(camera);
+    return HMM_MulM4V4(rotation_matrix, v4{0, 1, 0, 0}).xyz;
 }
 
 bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, string fragment_shader_path) {
@@ -1960,10 +1967,9 @@ m4 get_model_matrix(v3 position, v3 scale, v3 rotation) {
 
     model_matrix = HMM_MulM4(model_matrix, HMM_Translate(position));
 
-    // flip z axis to ensure -z = roll right & +z = roll left
-    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.z * HMM_DegToRad, {0, 0, -1}));
     model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.y * HMM_DegToRad, {0, 1, 0}));
     model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.x * HMM_DegToRad, {1, 0, 0}));
+    model_matrix = HMM_MulM4(model_matrix, HMM_Rotate_LH(rotation.z * HMM_DegToRad, {0, 0, -1})); // flip z to ensure -z = roll right & +z = roll left
 
     model_matrix = HMM_MulM4(model_matrix, HMM_Scale({scale.x, scale.y, scale.z}));
 

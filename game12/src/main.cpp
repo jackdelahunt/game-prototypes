@@ -1363,7 +1363,7 @@ void game_client_update(GameClient *client, State *state) {
     
             // camera control
             if (length(mouse_input) > 0) {
-                client->camera.rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity * state->tick_delta_time;
+                client->camera.rotation += v3{mouse_input.y, -mouse_input.x, 0} * sensitivity * state->tick_delta_time;
                 client->camera.rotation.x = clamp(-90, client->camera.rotation.x, 90);
             }
 
@@ -2031,7 +2031,7 @@ void editor_update(State *state) {
             v2 mouse_input = MOUSE.delta;
          
             if (length(mouse_input) > 0) {
-                camera->rotation += v3{mouse_input.y, mouse_input.x, 0} * sensitivity;
+                camera->rotation += v3{mouse_input.y, -mouse_input.x, 0} * sensitivity;
                 camera->rotation.x = clamp(-90, camera->rotation.x, 90);
             }
         }
@@ -2318,17 +2318,16 @@ void editor_draw_ui(State *state) {
         { // game camera
             ImGui::SeparatorText("Game camera");
 
-            v3 position = GC()->camera.position;
-            v3 rotation = GC()->camera.rotation;
             v3 forward = get_forward_direction(&GC()->camera);
             v3 right = get_right_direction(&GC()->camera);
             v3 up = get_up_direction(&GC()->camera);
 
-            ImGui::Text("Position: [%.3f, %.3f, %.3f]", position.x, position.y, position.z);
-            ImGui::Text("Rotation: [%.3f, %.3f, %.3f]", rotation.x, rotation.y, rotation.z);
-            ImGui::Text("Forward: [%.3f, %.3f, %.3f]", forward.x, forward.y, forward.z);
-            ImGui::Text("Right: [%.3f, %.3f, %.3f]", right.x, right.y, right.z);
-            ImGui::Text("Up: [%.3f, %.3f, %.3f]", up.x, up.y, up.z);
+            imgui_v3_control("Position", &GC()->camera.position);
+            imgui_v3_control("Rotation", &GC()->camera.rotation);
+
+            imgui_v3_control("Forward", &forward);
+            imgui_v3_control("Right", &right);
+            imgui_v3_control("Up", &up);
         }
 
         { // editor camera
@@ -3787,7 +3786,7 @@ void draw_player_weapon(State *state, Weapon *weapon, v3 display_offset, bool sh
     }
 
     weapon_position += GC()->camera.position;
-    v3 weapon_rotation = v3{GC()->camera.rotation.x, -GC()->camera.rotation.y, 0};
+    v3 weapon_rotation = v3{GC()->camera.rotation.x, GC()->camera.rotation.y, 0};
 
     draw_mesh(REN(), g_meshes[weapon->mesh], weapon_position, {1, 1, 1}, weapon_rotation, weapon->colour, REN()->default_material);
 

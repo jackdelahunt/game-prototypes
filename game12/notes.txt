@@ -8,7 +8,6 @@ Started today:  11:00
 
 In progress:
 - work on shooting feedback
-    - recoil
     - camera shake
     - improve muzzle flash  
     - sound when killed enemy
@@ -47,6 +46,9 @@ For the future:
     - meta info from structs for serialisation
     - multiplayer overhaul
     - game as a dll
+- code structure:
+    - move math types to ack (v3, m4)
+    - update more names in math to my convention
 - add a daily log to notes
 - add start date and end data to notes
 
@@ -124,7 +126,7 @@ Co-ordinate system is left handed:
 
 Rotation should be defined as the following when looking forward along +Z:
 -X & +X = pitch down & pitch up
--Y & +Y = yaw right  & yaw left (camera roation is oppisite)
+-Y & +Y = yaw right  & yaw left
 -Z & +Z = roll right & roll left
 
 All matrices are column major:
@@ -138,11 +140,11 @@ Model matrix transformation order:
 Matrix order -> M = T * R * S
 
 Rotation is a 3 component euler angle and is applied to model matrix as:
-1. Rotate about X
-2. Rotate about Y
-3. Rotate about Z
+1. Rotate about Z // TODO: this order i think is the oppisite?
+2. Rotate about X
+3. Rotate about Y
 
-Matrix order -> R = Rz * Ry * Rx
+Matrix order -> R = Ry * Rx * Rz
 
 Screen positions are bottom left origin:
 tl = [0, h]
