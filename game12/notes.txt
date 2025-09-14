@@ -7,7 +7,6 @@ Started today:  15:30
 @todo
 
 In progress:
-- improve P&L
 
 Game todo:
 - work on shooting feedback
@@ -108,9 +107,12 @@ Playtest 1 notes (12/09/25):
 
 Playtest 2 notes (14/09/25):
 - aiming felt weird 
+- movement felt weird
+- no air control
 - deagle was best gun
 - speed up deagle firing cooldown
 - more complex map would make it a lot better
+- mouse wheel for weapon changing
 
 @docs
 
