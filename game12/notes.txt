@@ -1,24 +1,24 @@
 Start date:     11/08/25
 End date:       ??/??/??
-Total time:     143:30
+Total time:     147:00
 
-Started today:  11:00
+Started today:  15:30
 
 @todo
 
 In progress:
+- multiple guns in inventory
+
+Game todo:
 - work on shooting feedback
     - improve muzzle flash  
     - sound when killed enemy
     - hitmarkers
-
-Game todo:
 - sound when player dies
 - start multiplayer game from within game
 - hold space == higher jump
 - real game over screen
 - ammo pickups
-- pickup more then one gun
 - score board effect and polish
 
 Engine todo:

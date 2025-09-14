@@ -440,12 +440,6 @@ struct State {
     StackArray<Team, MAX_TEAMS> teams;
     i64 spawn_point_count;
 
-    WeaponHandle player_weapon;
-    i64 player_ammo;
-    f32 player_firing_cooldown;
-    i64 player_consecutive_shots;
-    bool player_duel_wield_switch;
-
     StackArray<Entity, MAX_ENTITIES> entities;
 };
 
@@ -458,6 +452,15 @@ struct GameServer {
     AtomicSnapshot<Sampler> mspt_sampler_snapshot;
 
     State state;
+};
+
+// @player
+struct PlayerState {
+    WeaponHandle weapon;
+    i64 ammo;
+    f32 firing_cooldown;
+    i64 consecutive_shots;
+    bool duel_wield_switch;
 };
 
 // @client @gameclient
@@ -478,6 +481,7 @@ struct GameClient {
     TimedEffect health_bar_decay;
     TimedEffect muzzle_flash;
 
+    PlayerState player;
     State state;
 };
 
@@ -521,7 +525,7 @@ void editor_update(State *state);
 void editor_draw_ui(State *state);
 
 void on_server_receive(State *state, NetworkMessage *message, f32 delta_time);
-void on_client_receive(State *state, NetworkMessage *message);
+void on_client_receive(GameClient *client, State *state, NetworkMessage *message);
 
 u32 new_entity_id();
 Entity *local_spawn_entity(State *state, Entity entity);
@@ -580,9 +584,9 @@ YAML::Emitter &operator<<(YAML::Emitter &out, string value);
 YAML::Emitter &operator<<(YAML::Emitter &out, v3 value);
 YAML::Emitter &operator<<(YAML::Emitter &out, v4 value);
 
-void draw_player_weapon(State *state, Weapon *weapon, v3 display_offset, bool show_recoil);
-Weapon *get_player_weapon(State *state);
-void set_player_weapon(State *state, WeaponHandle weapon, f32 cooldown);
+void draw_player_weapon(GameClient *client, Weapon *weapon, v3 display_offset, bool show_recoil);
+Weapon *get_player_weapon(GameClient *client);
+void set_player_weapon(GameClient *client, WeaponHandle weapon, f32 cooldown);
 void play_weapon_fire_sound(Weapon *weapon);
 
 void timed_effect_start(TimedEffect *timed_effect, f32 duration, f32 intensity);
@@ -993,7 +997,7 @@ void process_network(State *state) {
         slice<u8> bytes;
         while (network_queue_pop(&NET()->client_in_queue, &bytes)) {
             NetworkMessage *message = (NetworkMessage *) bytes.ptr;
-            on_client_receive(state, message);
+            on_client_receive(GC(), state, message);
             slice_free(bytes);
         }
     }
@@ -1292,21 +1296,21 @@ void game_client_update(GameClient *client, State *state) {
     timed_effect_tick(&client->muzzle_flash, state->tick_delta_time);
 
     { // player state cooldowns
-        state->player_firing_cooldown -= state->tick_delta_time;
-        if (state->player_firing_cooldown <= 0) {
-            state->player_firing_cooldown = 0;
+        client->player.firing_cooldown -= state->tick_delta_time;
+        if (client->player.firing_cooldown <= 0) {
+            client->player.firing_cooldown = 0;
         }
     }
 
     { // weapon reaload and switching to default
-        Assert(state->player_ammo >= 0);
+        Assert(client->player.ammo >= 0);
 
         if (g_cheat_infinite_ammo) {
-            state->player_ammo = g_weapons[state->player_weapon].ammo_count;
+            client->player.ammo = g_weapons[client->player.weapon].ammo_count;
         }
 
-        if (state->player_ammo == 0) {
-            set_player_weapon(state, WH_DEAGLE, g_weapon_switch_cooldown);
+        if (client->player.ammo == 0) {
+            set_player_weapon(client, WH_DEAGLE, g_weapon_switch_cooldown);
         }
     }
 
@@ -1347,10 +1351,10 @@ void game_client_update(GameClient *client, State *state) {
     }
 
     // camera vertical recoil
-    if (state->player_consecutive_shots > 0 && state->player_consecutive_shots > g_player_recoil_min_shots) {
-        Weapon *player_weapon = get_player_weapon(state);
+    if (client->player.consecutive_shots > 0 && client->player.consecutive_shots > g_player_recoil_min_shots) {
+        Weapon *player_weapon = get_player_weapon(client);
 
-        f32 firing_t = f32(state->player_consecutive_shots) / f32(player_weapon->ammo_count);
+        f32 firing_t = f32(client->player.consecutive_shots) / f32(player_weapon->ammo_count);
         firing_t = clamp(0, firing_t, 1);
         firing_t = max(0.3f, firing_t);
 
@@ -1359,10 +1363,10 @@ void game_client_update(GameClient *client, State *state) {
     }
 
     // camera recoil shake
-    if (state->player_consecutive_shots > 0) {
-        Weapon *player_weapon = get_player_weapon(state);
+    if (client->player.consecutive_shots > 0) {
+        Weapon *player_weapon = get_player_weapon(client);
 
-        f32 firing_t = f32(state->player_consecutive_shots) / f32(player_weapon->ammo_count);
+        f32 firing_t = f32(client->player.consecutive_shots) / f32(player_weapon->ammo_count);
 
         FastNoiseLite noise = {};
         noise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
@@ -1391,13 +1395,13 @@ void game_client_update(GameClient *client, State *state) {
             }
 
             // shooting
-            Weapon *player_weapon = get_player_weapon(state);
+            Weapon *player_weapon = get_player_weapon(client);
             InputState state_needed = player_weapon->automatic ? InputState::PRESSED : InputState::DOWN;
 
             bool player_can_shoot = false;
             bool player_did_shoot = false;
 
-            if (state->player_ammo > 0 && state->player_firing_cooldown <= 0) {
+            if (client->player.ammo > 0 && client->player.firing_cooldown <= 0) {
                 player_can_shoot = true;
             }
 
@@ -1407,22 +1411,22 @@ void game_client_update(GameClient *client, State *state) {
 
             if (player_can_shoot) {
                 if (player_did_shoot) {
-                    state->player_consecutive_shots += 1;
+                    client->player.consecutive_shots += 1;
                 }
                 else {
-                    state->player_consecutive_shots = 0;
+                    client->player.consecutive_shots = 0;
                 }
             }
 
             if (player_can_shoot && player_did_shoot) {
-                state->player_ammo -= 1; 
-                state->player_firing_cooldown = player_weapon->firing_cooldown;
-                state->player_duel_wield_switch = !state->player_duel_wield_switch;
+                client->player.ammo -= 1; 
+                client->player.firing_cooldown = player_weapon->firing_cooldown;
+                client->player.duel_wield_switch = !client->player.duel_wield_switch;
 
                 play_weapon_fire_sound(player_weapon);
                 timed_effect_start_or_accumulate(&client->muzzle_flash, 0.05, 1);
 
-                if (state->player_weapon != WH_TAP) {
+                if (client->player.weapon != WH_TAP) {
                     v3 ray_direction = get_forward_direction(&GC()->camera);
                 
                     Ray ray = ray_create(GC()->camera.position, ray_direction);
@@ -1509,22 +1513,22 @@ void game_client_update(GameClient *client, State *state) {
             if (g_cheat_weapon_binds && client->viewport.focused) {
                 if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
                     KEYS[GLFW_KEY_1] == InputState::DOWN) {
-                    set_player_weapon(state, WH_DEAGLE, 0);
+                    set_player_weapon(client, WH_DEAGLE, 0);
                 }
 
                 if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
                     KEYS[GLFW_KEY_2] == InputState::DOWN) {
-                    set_player_weapon(state, WH_M4, 0);
+                    set_player_weapon(client, WH_M4, 0);
                 }
 
                 if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
                     KEYS[GLFW_KEY_3] == InputState::DOWN) {
-                    set_player_weapon(state, WH_TAP, 0);
+                    set_player_weapon(client, WH_TAP, 0);
                 }
 
                 if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
                     KEYS[GLFW_KEY_4] == InputState::DOWN) {
-                    set_player_weapon(state, WH_PAL, 0);
+                    set_player_weapon(client, WH_PAL, 0);
                 }
             }
         }
@@ -1569,7 +1573,7 @@ void game_client_update(GameClient *client, State *state) {
             }
                  
             NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_MOVE_PLAYER, .move_player = {
-                .speed_factor = get_player_weapon(state)->speed_factor,
+                .speed_factor = get_player_weapon(client)->speed_factor,
                 .jump = keyboard_input.y,
                 .input_direction = horizontal
             }};
@@ -1701,29 +1705,29 @@ void game_client_draw(GameClient *client, State *state) {
 
         // client's player
         if (BitSet(entity.flags, EF_PLAYER) && entity.owner == state->instance_id) {
-            Weapon *player_weapon = get_player_weapon(state);
+            Weapon *player_weapon = get_player_weapon(client);
 
             { // draw weapon
                 if (player_weapon->handle == WH_PAL) {
-                    draw_player_weapon(state, player_weapon, g_weapon_display_offset, state->player_duel_wield_switch);
-                    draw_player_weapon(state, player_weapon, g_weapon_display_offset * v3{-1, 1, 1}, !state->player_duel_wield_switch);
+                    draw_player_weapon(client, player_weapon, g_weapon_display_offset, client->player.duel_wield_switch);
+                    draw_player_weapon(client, player_weapon, g_weapon_display_offset * v3{-1, 1, 1}, !client->player.duel_wield_switch);
                 }
                 else {
-                    draw_player_weapon(state, player_weapon, g_weapon_display_offset, true);
+                    draw_player_weapon(client, player_weapon, g_weapon_display_offset, true);
                 }
             }
 
             // @hud
 
             // draw fire cooldown when using non auto gun
-            if (!player_weapon->automatic && state->player_firing_cooldown > 0) { 
+            if (!player_weapon->automatic && client->player.firing_cooldown > 0) { 
                 f32 max_width = 40;
                 f32 height = 3;
 
                 v3 centre = relative_to_screen_position(client->viewport, {0.5, 0.5});
                 v3 centre_offset = v3{0, -50, 0};
 
-                f32 cooldown_scale = state->player_firing_cooldown / player_weapon->firing_cooldown;
+                f32 cooldown_scale = client->player.firing_cooldown / player_weapon->firing_cooldown;
 
                 draw_rectangle_ui(REN(), centre + centre_offset, {max_width * cooldown_scale, height}, {}, alpha(BLACK, 0.3));
             }
@@ -1761,7 +1765,7 @@ void game_client_draw(GameClient *client, State *state) {
             }
        
             { // draw ammo
-                draw_text_ui(REN(), fmt(state->frame_arena, "{}:  {}", player_weapon->display_name, state->player_ammo), {7, 10, 0}, 30, alpha(BLACK, 0.4), false);
+                draw_text_ui(REN(), fmt(state->frame_arena, "{}:  {}", player_weapon->display_name, client->player.ammo), {7, 10, 0}, 30, alpha(BLACK, 0.4), false);
             }
 
             continue;
@@ -2393,7 +2397,7 @@ void editor_draw_ui(State *state) {
                     }
 
                     if (ImGui::Button(weapons[i].name.c())) {
-                        set_player_weapon(state, weapons[i].value, 0);
+                        set_player_weapon(GC(), weapons[i].value, 0);
                     }
                 }
             }
@@ -2415,8 +2419,8 @@ void editor_draw_ui(State *state) {
             ImGui::SliderFloat("Landing shake intensity", &g_landing_camera_shake_intensity, 0, 2);
 
             ImGui::SeparatorText("Weapon");
-            ImGui::SliderFloat("Fire Cooldown", &state->player_firing_cooldown, 0, g_weapons[state->player_weapon].firing_cooldown);
-            ImGui::InputInt("Ammo", (i32 *) &state->player_ammo);
+            ImGui::SliderFloat("Fire Cooldown", &GC()->player.firing_cooldown, 0, g_weapons[GC()->player.weapon].firing_cooldown);
+            ImGui::InputInt("Ammo", (i32 *) &GC()->player.ammo);
             imgui_v3_control("Display offset", &g_weapon_display_offset);
 
             ImGui::SeparatorText("Weapon Recoil");
@@ -2877,7 +2881,7 @@ void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
     }
 }
 
-void on_client_receive(State *state, NetworkMessage *message) {
+void on_client_receive(GameClient *client, State *state, NetworkMessage *message) {
     switch (message->type) {
         case NM_ASSIGN_CLIENT_ID: {
             state->instance_id = message->assign_client_id;
@@ -2910,7 +2914,7 @@ void on_client_receive(State *state, NetworkMessage *message) {
         } break;
         case NM_SET_WEAPON: {
             Logf("Client was told to use a new weapon: {}", (u32) message->set_weapon);
-            set_player_weapon(state, message->set_weapon, 0);
+            set_player_weapon(client, message->set_weapon, 0);
         } break;
         case NM_NEW_TEAM: {
             Logf("Client received new team: client_id={}, colour={}", message->new_team.client_id, message->new_team.colour);
@@ -3650,7 +3654,6 @@ void deserialise_level(State *state) {
         state->time = 0;
         state->game_complete = false;
         state->spawn_point_count = 0;
-        set_player_weapon(state, WH_DEAGLE, 0);
         reset(&state->teams);
         reset(&state->entities);
     }
@@ -3787,7 +3790,7 @@ struct YAML::convert<v4> {
     }
 };
 
-void draw_player_weapon(State *state, Weapon *weapon, v3 display_offset, bool show_recoil) {
+void draw_player_weapon(GameClient *client, Weapon *weapon, v3 display_offset, bool show_recoil) {
     v3 forward = get_forward_direction(&GC()->camera);
     v3 up = get_up_direction(&GC()->camera);
     v3 right = get_right_direction(&GC()->camera);
@@ -3798,8 +3801,8 @@ void draw_player_weapon(State *state, Weapon *weapon, v3 display_offset, bool sh
     weapon_position += display_offset.z * forward;
 
     // apply recoil if there is cooldown
-    if (show_recoil && state->player_firing_cooldown > 0) { 
-        f32 cooldown_scale = state->player_firing_cooldown / weapon->firing_cooldown;
+    if (show_recoil && client->player.firing_cooldown > 0) { 
+        f32 cooldown_scale = client->player.firing_cooldown / weapon->firing_cooldown;
         v3 recoil_offset = v3{};
 
         recoil_offset += weapon->recoil_offset.x * right;
@@ -3834,19 +3837,19 @@ void draw_player_weapon(State *state, Weapon *weapon, v3 display_offset, bool sh
     }
 }
 
-Weapon *get_player_weapon(State *state) {
-    Assert(state->player_weapon >= 0 && state->player_weapon < _WH_COUNT);
+Weapon *get_player_weapon(GameClient *client) {
+    Assert(client->player.weapon >= 0 && client->player.weapon < _WH_COUNT);
 
-    return &g_weapons[state->player_weapon];
+    return &g_weapons[client->player.weapon];
 }
 
-void set_player_weapon(State *state, WeaponHandle weapon, f32 cooldown) {
+void set_player_weapon(GameClient *client, WeaponHandle weapon, f32 cooldown) {
     Weapon *w = &g_weapons[weapon];
 
-    state->player_weapon = weapon;
-    state->player_ammo = w->ammo_count;
-    state->player_firing_cooldown = cooldown;
-    state->player_consecutive_shots = 0;
+    client->player.weapon = weapon;
+    client->player.ammo = w->ammo_count;
+    client->player.firing_cooldown = cooldown;
+    client->player.consecutive_shots = 0;
 }
 
 void play_weapon_fire_sound(Weapon *weapon) {
