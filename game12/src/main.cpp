@@ -45,7 +45,7 @@ f32 g_player_air_control          = 4;
 f32 g_gravity                     = 70;
 
 v3  g_weapon_display_offset       = v3{0.85, -0.6, 0.9};
-f32 g_weapon_switch_cooldown      = 1.5;
+f32 g_weapon_switch_cooldown      = 1.1;
 
 f32 g_pickup_weapon_cooldown  = 9;
 f32 g_pickup_health_cooldown  = 6;
@@ -79,11 +79,10 @@ bool g_debug_draw_owner                 = false;
 bool g_debug_draw_no_mesh               = false;
 bool g_debug_always_draw_muzzle_flash   = false;
 
-bool g_cheat_weapon_binds     = true;
 bool g_cheat_infinite_ammo    = true;
 bool g_cheat_no_damage        = false;
 
-f32 g_game_length = Minute(5);
+f32 g_game_length = Minute(10);
 // f32 g_game_length = Second(10);
 
 f32 g_landing_camera_shake_duration = 0.15f;
@@ -457,7 +456,9 @@ struct GameServer {
 // @player
 struct PlayerState {
     WeaponHandle weapon;
-    i64 ammo;
+    array<i32, _WH_COUNT> inventory;
+
+    f32 switching_cooldown;
     f32 firing_cooldown;
     i64 consecutive_shots;
     bool duel_wield_switch;
@@ -584,9 +585,13 @@ YAML::Emitter &operator<<(YAML::Emitter &out, string value);
 YAML::Emitter &operator<<(YAML::Emitter &out, v3 value);
 YAML::Emitter &operator<<(YAML::Emitter &out, v4 value);
 
-void draw_player_weapon(GameClient *client, Weapon *weapon, v3 display_offset, bool show_recoil);
-Weapon *get_player_weapon(GameClient *client);
-void set_player_weapon(GameClient *client, WeaponHandle weapon, f32 cooldown);
+i32 player_get_ammo(GameClient *client, WeaponHandle weapon);
+void player_set_ammo(GameClient *client, WeaponHandle weapon, i32 ammo);
+void player_set_ammo_full(GameClient *client, WeaponHandle weapon);
+Weapon *player_get_weapon(GameClient *client);
+void player_set_weapon(GameClient *client, WeaponHandle weapon, f32 cooldown);
+void player_draw_weapon(GameClient *client, Weapon *weapon, v3 display_offset, bool show_recoil);
+
 void play_weapon_fire_sound(Weapon *weapon);
 
 void timed_effect_start(TimedEffect *timed_effect, f32 duration, f32 intensity);
@@ -876,6 +881,7 @@ void game_client_entry() {
             .size = WIN()->frame_buffer_size
         },
         .game_view = FrameBuffer {.size = WIN()->frame_buffer_size},
+        .player = {},
         .state = State {
             .arena = &arena,
             .frame_arena = &frame_arena,
@@ -1296,21 +1302,26 @@ void game_client_update(GameClient *client, State *state) {
     timed_effect_tick(&client->muzzle_flash, state->tick_delta_time);
 
     { // player state cooldowns
+        client->player.switching_cooldown -= state->tick_delta_time;
+        if (client->player.switching_cooldown <= 0) {
+            client->player.switching_cooldown = 0;
+        }
+
         client->player.firing_cooldown -= state->tick_delta_time;
         if (client->player.firing_cooldown <= 0) {
             client->player.firing_cooldown = 0;
         }
     }
 
-    { // weapon reaload and switching to default
-        Assert(client->player.ammo >= 0);
+    // weapon reaload and switching to default
+    if (player_get_ammo(client, client->player.weapon) == 0) {
+        player_set_weapon(client, WH_DEAGLE, g_weapon_switch_cooldown);
+    }
 
-        if (g_cheat_infinite_ammo) {
-            client->player.ammo = g_weapons[client->player.weapon].ammo_count;
-        }
-
-        if (client->player.ammo == 0) {
-            set_player_weapon(client, WH_DEAGLE, g_weapon_switch_cooldown);
+    // infinite ammo cheat
+    if (g_cheat_infinite_ammo) {
+        for (i64 i = 0; i < _WH_COUNT; i++) {
+            player_set_ammo_full(client, WeaponHandle(i));
         }
     }
 
@@ -1352,7 +1363,7 @@ void game_client_update(GameClient *client, State *state) {
 
     // camera vertical recoil
     if (client->player.consecutive_shots > 0 && client->player.consecutive_shots > g_player_recoil_min_shots) {
-        Weapon *player_weapon = get_player_weapon(client);
+        Weapon *player_weapon = player_get_weapon(client);
 
         f32 firing_t = f32(client->player.consecutive_shots) / f32(player_weapon->ammo_count);
         firing_t = clamp(0, firing_t, 1);
@@ -1364,7 +1375,7 @@ void game_client_update(GameClient *client, State *state) {
 
     // camera recoil shake
     if (client->player.consecutive_shots > 0) {
-        Weapon *player_weapon = get_player_weapon(client);
+        Weapon *player_weapon = player_get_weapon(client);
 
         f32 firing_t = f32(client->player.consecutive_shots) / f32(player_weapon->ammo_count);
 
@@ -1395,13 +1406,13 @@ void game_client_update(GameClient *client, State *state) {
             }
 
             // shooting
-            Weapon *player_weapon = get_player_weapon(client);
+            Weapon *player_weapon = player_get_weapon(client);
             InputState state_needed = player_weapon->automatic ? InputState::PRESSED : InputState::DOWN;
 
             bool player_can_shoot = false;
             bool player_did_shoot = false;
 
-            if (client->player.ammo > 0 && client->player.firing_cooldown <= 0) {
+            if (player_get_ammo(client, client->player.weapon) > 0 && client->player.firing_cooldown <= 0 && client->player.switching_cooldown <= 0) {
                 player_can_shoot = true;
             }
 
@@ -1419,7 +1430,7 @@ void game_client_update(GameClient *client, State *state) {
             }
 
             if (player_can_shoot && player_did_shoot) {
-                client->player.ammo -= 1; 
+                player_set_ammo(client, client->player.weapon, player_get_ammo(client, client->player.weapon) - 1); // cursed
                 client->player.firing_cooldown = player_weapon->firing_cooldown;
                 client->player.duel_wield_switch = !client->player.duel_wield_switch;
 
@@ -1509,26 +1520,17 @@ void game_client_update(GameClient *client, State *state) {
                 }
             }
 
-            // cheats to give weapons 
-            if (g_cheat_weapon_binds && client->viewport.focused) {
-                if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
-                    KEYS[GLFW_KEY_1] == InputState::DOWN) {
-                    set_player_weapon(client, WH_DEAGLE, 0);
+            // change weapons
+            for (i32 i = 0; i < _WH_COUNT; i++) {
+                i32 key = GLFW_KEY_1 + i; 
+                WeaponHandle weapon = WeaponHandle(i);
+
+                if (player_get_ammo(client, weapon) == 0) {
+                    continue;
                 }
 
-                if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
-                    KEYS[GLFW_KEY_2] == InputState::DOWN) {
-                    set_player_weapon(client, WH_M4, 0);
-                }
-
-                if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
-                    KEYS[GLFW_KEY_3] == InputState::DOWN) {
-                    set_player_weapon(client, WH_TAP, 0);
-                }
-
-                if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
-                    KEYS[GLFW_KEY_4] == InputState::DOWN) {
-                    set_player_weapon(client, WH_PAL, 0);
+                if (KEYS[key] == InputState::DOWN) {
+                    player_set_weapon(client, weapon, g_weapon_switch_cooldown);
                 }
             }
         }
@@ -1573,7 +1575,7 @@ void game_client_update(GameClient *client, State *state) {
             }
                  
             NetworkMessage message = NetworkMessage{.client_id = state->instance_id, .type = NM_MOVE_PLAYER, .move_player = {
-                .speed_factor = get_player_weapon(client)->speed_factor,
+                .speed_factor = player_get_weapon(client)->speed_factor,
                 .jump = keyboard_input.y,
                 .input_direction = horizontal
             }};
@@ -1705,43 +1707,48 @@ void game_client_draw(GameClient *client, State *state) {
 
         // client's player
         if (BitSet(entity.flags, EF_PLAYER) && entity.owner == state->instance_id) {
-            Weapon *player_weapon = get_player_weapon(client);
+            Weapon *player_weapon = player_get_weapon(client);
 
             { // draw weapon
                 if (player_weapon->handle == WH_PAL) {
-                    draw_player_weapon(client, player_weapon, g_weapon_display_offset, client->player.duel_wield_switch);
-                    draw_player_weapon(client, player_weapon, g_weapon_display_offset * v3{-1, 1, 1}, !client->player.duel_wield_switch);
+                    player_draw_weapon(client, player_weapon, g_weapon_display_offset, client->player.duel_wield_switch);
+                    player_draw_weapon(client, player_weapon, g_weapon_display_offset * v3{-1, 1, 1}, !client->player.duel_wield_switch);
                 }
                 else {
-                    draw_player_weapon(client, player_weapon, g_weapon_display_offset, true);
+                    player_draw_weapon(client, player_weapon, g_weapon_display_offset, true);
                 }
             }
 
             // @hud
 
-            // draw fire cooldown when using non auto gun
-            if (!player_weapon->automatic && client->player.firing_cooldown > 0) { 
-                f32 max_width = 40;
-                f32 height = 3;
+            // draw switching cooldown
+            if (client->player.switching_cooldown > 0) { 
+                f32 max_width = 50;
+                f32 height = 5;
 
                 v3 centre = relative_to_screen_position(client->viewport, {0.5, 0.5});
                 v3 centre_offset = v3{0, -50, 0};
 
-                f32 cooldown_scale = client->player.firing_cooldown / player_weapon->firing_cooldown;
+                f32 cooldown_scale = client->player.switching_cooldown / g_weapon_switch_cooldown;
 
-                draw_rectangle_ui(REN(), centre + centre_offset, {max_width * cooldown_scale, height}, {}, alpha(BLACK, 0.3));
+                draw_rectangle_ui(REN(), centre + centre_offset, {max_width * cooldown_scale, height}, {}, alpha(RED, 0.4));
             }
        
             { // draw crosshair
                 v3 centre = relative_to_screen_position(client->viewport, {0.5, 0.5});
 
+                v4 colour = g_crosshair_colour;
+                if (client->player.switching_cooldown > 0) {
+                    colour = RED;
+                }
+
                 // horizontal
-                draw_rectangle_ui(REN(), centre - v3{g_crosshair_gap, 0, 0}, {g_crosshair_length, g_crosshair_thickness}, {}, g_crosshair_colour);
-                draw_rectangle_ui(REN(), centre + v3{g_crosshair_gap, 0, 0}, {g_crosshair_length, g_crosshair_thickness}, {}, g_crosshair_colour);
+                draw_rectangle_ui(REN(), centre - v3{g_crosshair_gap, 0, 0}, {g_crosshair_length, g_crosshair_thickness}, {}, colour);
+                draw_rectangle_ui(REN(), centre + v3{g_crosshair_gap, 0, 0}, {g_crosshair_length, g_crosshair_thickness}, {}, colour);
 
                 // vertical
-                draw_rectangle_ui(REN(), centre - v3{0, g_crosshair_gap, 0}, {g_crosshair_thickness, g_crosshair_length}, {}, g_crosshair_colour);
-                draw_rectangle_ui(REN(), centre + v3{0, g_crosshair_gap, 0}, {g_crosshair_thickness, g_crosshair_length}, {}, g_crosshair_colour);
+                draw_rectangle_ui(REN(), centre - v3{0, g_crosshair_gap, 0}, {g_crosshair_thickness, g_crosshair_length}, {}, colour);
+                draw_rectangle_ui(REN(), centre + v3{0, g_crosshair_gap, 0}, {g_crosshair_thickness, g_crosshair_length}, {}, colour);
             }
 
             { // draw health
@@ -1765,7 +1772,26 @@ void game_client_draw(GameClient *client, State *state) {
             }
        
             { // draw ammo
-                draw_text_ui(REN(), fmt(state->frame_arena, "{}:  {}", player_weapon->display_name, client->player.ammo), {7, 10, 0}, 30, alpha(BLACK, 0.4), false);
+                v3 start = relative_to_screen_position(client->viewport, {0.01, 0.5});
+                
+                for (i64 i = 0; i < client->player.inventory.len; i++) {
+                    Weapon *weapon = &g_weapons[i];
+                    i32 ammo = client->player.inventory[i];
+
+                    v3 position = start + (v3{0, -45, 0} * f32(i));
+                    string text = fmt(state->frame_arena, "{}:  {}", weapon->display_name, ammo);
+
+                    v4 text_colour = BLACK;
+                    if (ammo == 0) {
+                        text_colour = RED;
+                    }
+                    else if (i == client->player.weapon) {
+                        text_colour = BLUE;
+                    }
+
+                    draw_text_ui(REN(), text, position, 30, alpha(text_colour, 0.4), false);
+                }
+
             }
 
             continue;
@@ -2383,7 +2409,6 @@ void editor_draw_ui(State *state) {
         }
 
         if (ImGui::CollapsingHeader("Cheats")) {
-            ImGui::Checkbox("Weapon binds", &g_cheat_weapon_binds);
             ImGui::Checkbox("Infinite ammo", &g_cheat_infinite_ammo);
             ImGui::Checkbox("No damage", &g_cheat_no_damage);
 
@@ -2397,7 +2422,7 @@ void editor_draw_ui(State *state) {
                     }
 
                     if (ImGui::Button(weapons[i].name.c())) {
-                        set_player_weapon(GC(), weapons[i].value, 0);
+                        player_set_weapon(GC(), weapons[i].value, 0);
                     }
                 }
             }
@@ -2420,7 +2445,9 @@ void editor_draw_ui(State *state) {
 
             ImGui::SeparatorText("Weapon");
             ImGui::SliderFloat("Fire Cooldown", &GC()->player.firing_cooldown, 0, g_weapons[GC()->player.weapon].firing_cooldown);
+#if TODO
             ImGui::InputInt("Ammo", (i32 *) &GC()->player.ammo);
+#endif
             imgui_v3_control("Display offset", &g_weapon_display_offset);
 
             ImGui::SeparatorText("Weapon Recoil");
@@ -2914,7 +2941,8 @@ void on_client_receive(GameClient *client, State *state, NetworkMessage *message
         } break;
         case NM_SET_WEAPON: {
             Logf("Client was told to use a new weapon: {}", (u32) message->set_weapon);
-            set_player_weapon(client, message->set_weapon, 0);
+            player_set_ammo_full(client, message->set_weapon);
+            player_set_weapon(client, message->set_weapon, 0);
         } break;
         case NM_NEW_TEAM: {
             Logf("Client received new team: client_id={}, colour={}", message->new_team.client_id, message->new_team.colour);
@@ -3223,6 +3251,9 @@ void game_client_host() {
     game_server_start();
     network_layer_start_server(NET());
     network_layer_start_client(NET(), DEFAULT_IP);
+
+    player_set_ammo_full(GC(), WH_DEAGLE);
+    player_set_weapon(GC(), WH_DEAGLE, 0);
 }
 
 void game_client_connect() {
@@ -3231,6 +3262,9 @@ void game_client_connect() {
     GC()->mode = GC_CLIENT;
 
     network_layer_start_client(NET(), DEFAULT_IP);
+
+    player_set_ammo_full(GC(), WH_DEAGLE);
+    player_set_weapon(GC(), WH_DEAGLE, 0);
 }
 
 void game_client_stop_game() {
@@ -3790,7 +3824,39 @@ struct YAML::convert<v4> {
     }
 };
 
-void draw_player_weapon(GameClient *client, Weapon *weapon, v3 display_offset, bool show_recoil) {
+i32 player_get_ammo(GameClient *client, WeaponHandle weapon) {
+    Assert(weapon >= 0 && weapon < _WH_COUNT);
+    return client->player.inventory[weapon];
+}
+
+void player_set_ammo(GameClient *client, WeaponHandle weapon, i32 ammo) {
+    Assert(weapon >= 0 && weapon < _WH_COUNT);
+    client->player.inventory[weapon] = ammo;
+}
+
+void player_set_ammo_full(GameClient *client, WeaponHandle weapon) {
+    Assert(weapon >= 0 && weapon < _WH_COUNT);
+    client->player.inventory[weapon] = g_weapons[weapon].ammo_count;
+}
+
+Weapon *player_get_weapon(GameClient *client) {
+    Assert(client->player.weapon >= 0 && client->player.weapon < _WH_COUNT);
+
+    return &g_weapons[client->player.weapon];
+}
+
+void player_set_weapon(GameClient *client, WeaponHandle weapon, f32 cooldown) {
+    client->player.weapon = weapon;
+    client->player.switching_cooldown = cooldown;
+    client->player.firing_cooldown = 0;
+    client->player.consecutive_shots = 0;
+}
+
+void player_draw_weapon(GameClient *client, Weapon *weapon, v3 display_offset, bool show_recoil) {
+    if (client->player.switching_cooldown > 0) {
+        return;
+    }
+
     v3 forward = get_forward_direction(&GC()->camera);
     v3 up = get_up_direction(&GC()->camera);
     v3 right = get_right_direction(&GC()->camera);
@@ -3835,21 +3901,6 @@ void draw_player_weapon(GameClient *client, Weapon *weapon, v3 display_offset, b
             draw_point_light(REN(), muzzle_flash_position, g_muzzle_flash_colour, g_muzzle_flash_intensity);
         }
     }
-}
-
-Weapon *get_player_weapon(GameClient *client) {
-    Assert(client->player.weapon >= 0 && client->player.weapon < _WH_COUNT);
-
-    return &g_weapons[client->player.weapon];
-}
-
-void set_player_weapon(GameClient *client, WeaponHandle weapon, f32 cooldown) {
-    Weapon *w = &g_weapons[weapon];
-
-    client->player.weapon = weapon;
-    client->player.ammo = w->ammo_count;
-    client->player.firing_cooldown = cooldown;
-    client->player.consecutive_shots = 0;
 }
 
 void play_weapon_fire_sound(Weapon *weapon) {

@@ -7,7 +7,7 @@ Started today:  15:30
 @todo
 
 In progress:
-- multiple guns in inventory
+- improve P&L
 
 Game todo:
 - work on shooting feedback
