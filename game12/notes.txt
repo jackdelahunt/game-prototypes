@@ -1,0 +1,174 @@
+Start date:     11/08/25
+End date:       ??/??/??
+Total time:     143:30
+
+Started today:  11:00
+
+@todo
+
+In progress:
+- work on shooting feedback
+    - recoil
+    - camera shake
+    - improve muzzle flash  
+    - sound when killed enemy
+    - hitmarkers
+
+Game todo:
+- sound when player dies
+- start multiplayer game from within game
+- hold space == higher jump
+- real game over screen
+- ammo pickups
+- pickup more then one gun
+- score board effect and polish
+
+Engine todo:
+- game "play button"
+- sky box
+- fix uvs on primative mesh
+- fix flat normals for sphere mesh
+- anti aliasing
+- position entity flush with the face of another
+
+For the future:
+- features:
+    - quaterion rotations
+    - using models workflow, with multiple meshes and materials
+    - using animations workflow
+    - using sounds workflow
+    - using prefabs workflow
+    - using meterials workflow
+    - prefab editor
+    - material editor
+    - asset system, with editor integration
+    - better entity list in editor
+    - physics
+    - meta info from structs for serialisation
+    - multiplayer overhaul
+    - game as a dll
+- add a daily log to notes
+- add start date and end data to notes
+
+@design
+
+Start:
+- 1v1 matches in CS
+
+Whats new:
+- game is ongoing, not round based
+- guns are picked up in the level
+- less realistic more game like movement
+
+Bounds:
+- highest score wins
+- earn score by landing kills on enemy
+
+Core:
+- what makes it fun:
+    - faster and crazier movement then normal fps
+    - using your movement skill to get kills that are normally not possible
+- what makes this game "this game":
+    - movement is a big part of learning curve
+    - every gun is good just good in differant movement scenearios   
+- pitch:
+    - [NAME] is a [GENRE] game about [FANTASY]. You [VERBS] + [USP]
+    - "game12" is a "FPS" game about defeating your opponents head to head in an arena. You use weaposns in
+
+Designing a level:
+- atleast one good pickup per area
+- can travel across map in <= 10 seconds
+- use landmarks to distinguish areas
+- every area should have atleast 2 connections, no deadends
+- make things go fast, door opening, jump pad etc.
+- constraints for first level:
+    - one main area
+    - two levls of elevation
+    - auxilary route 
+
+@playtest
+
+Checklist:
+- turn off cheats
+- netsh advfirewall set allprofiles state off
+
+Playtest 1 notes (12/09/25):
+- movement:
+    - goodish
+    - floaty
+    - no-definite stop
+- shooting:
+    - no variance feels weird
+    - no feedback
+- reset weapon on respawn
+- can shoot when dead 
+- automate release process
+
+@docs
+
+Naming convention:
+- Function names: foo_bar()
+- Function macros: Foo()
+- Value macros: FOO_BAR
+- Struct type: FooBar
+- Struct member: foo_bar
+- Local variable: foo_bar
+- Global variable: g_foo_bar
+- Global thread local variable: tl_foo_bar
+- Global constants: FOO_BAR
+
+Co-ordinate system is left handed:
+-X & +X = left & right
+-Y & +Y = down & up
+-Z & +Z = back & front
+
+Rotation should be defined as the following when looking forward along +Z:
+-X & +X = pitch down & pitch up
+-Y & +Y = yaw right  & yaw left (camera roation is oppisite)
+-Z & +Z = roll right & roll left
+
+All matrices are column major:
+- Also assumes column vectors so, matrix-vector multiplication is M * V 
+
+Model matrix transformation order:
+1. Scale locally
+2. Rotate locally 
+3. Translate to world position
+
+Matrix order -> M = T * R * S
+
+Rotation is a 3 component euler angle and is applied to model matrix as:
+1. Rotate about X
+2. Rotate about Y
+3. Rotate about Z
+
+Matrix order -> R = Rz * Ry * Rx
+
+Screen positions are bottom left origin:
+tl = [0, h]
+tr = [w, h]
+br = [w, 0]
+bl = [0, 0]
+
+If a screen position requires a Z component, it is
+ignored or always assumed to be 0
+
+UV coords are bottom left origin:
+tl = [0, 1]
+tr = [1, 1]
+br = [1, 0]
+bl = [0, 0]
+
+Default quad vertex order is:
+1. Top left
+2. Top right
+3. Bottom right
+4. Bottom left
+
+Indices are in CCW winding order:
+       b
+      /|
+     / |
+    /  |     indices = [a, c, b]
+   /   |
+  a----c
