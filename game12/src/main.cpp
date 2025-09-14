@@ -48,26 +48,27 @@
 //          - fix uvs on primative mesh
 //          - fix flat normals for sphere mesh
 //          - anti aliasing
-//          - particles
 //          - position entity flush with the face of another
-//      },
-//
-//      FUTURE_GAME: {
-//          - more then one mesh per model
-//          - animations
-//          - asset system
-//          - "folders" in entity list in editor, filter by flags maybe?
-//          - combine vs and fs in the one file
-//          - clean up pbr shader naming and convention etc.
 //          - fond out why camera yaw (Y) is flipped
-//          - switch to quaternions for rotation, this allows camera roll which is broke
-//          - define assets in editor and get handles in game
-//          - load game as dll
-//          - meta overhaul and rethink
-//          - frame buffer overhaul:
-//              - attachment parameters are configurable (RGBA, RGBA32F)
-//              - can get attachments based on index (frame_buffer_attachment(fb, 0))
 //      },
+// }
+//
+// FUTURE_CRUFT: {
+//      - features:
+//          - quaterion rotations
+//          - using models workflow, with multiple meshes and materials
+//          - using animations workflow
+//          - using sounds workflow
+//          - using prefabs workflow
+//          - using meterials workflow
+//          - prefab editor
+//          - material editor
+//          - asset system, with editor integration
+//          - better entity list in editor
+//          - physics
+//          - meta info from structs for serialisation
+//          - multiplayer overhaul
+//          - game as a dll
 // }
 //
 // DESIGN: {
