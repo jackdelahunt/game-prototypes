@@ -249,7 +249,7 @@ bool timer_is_complete(Timer *timer, f32 *delta_time);
 
 // @stopwatch
 Stopwatch stopwatch_create();
-f32 stopwatch_get_time(Stopwatch *stopwatch);
+f32 stopwatch_get_time_and_reset(Stopwatch *stopwatch);
 
 // @sampler
 Sampler sampler_create(); 
@@ -730,7 +730,7 @@ Stopwatch stopwatch_create() {
     };
 }
 
-f32 stopwatch_get_time(Stopwatch *stopwatch) {
+f32 stopwatch_get_time_and_reset(Stopwatch *stopwatch) {
     auto now = std::chrono::steady_clock::now();
     auto duration = now - stopwatch->last_time;
 
