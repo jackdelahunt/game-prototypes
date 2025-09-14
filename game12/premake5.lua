@@ -38,7 +38,8 @@ project "game12"
         "src/win_platform.cpp",
         "src/libs/imgui/imgui*.cpp",
         "src/libs/implot/implot*.cpp",
-        "src/libs/miniaudio/miniaudio.c"
+        "src/libs/miniaudio/miniaudio.c",
+        "src/libs/ImGuizmo/ImGuizmo.cpp",
     }
 
     includedirs {

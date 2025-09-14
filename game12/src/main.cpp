@@ -503,6 +503,7 @@ struct Editor {
     FrameBuffer editor_view;
 
     Entity *selected_entity;
+    ImGuizmo::OPERATION gizmo_operation;
 };
 
 #include "type_info.h"
@@ -534,6 +535,8 @@ void game_client_draw(GameClient *client, State *state);
 
 void editor_update(State *state);
 void editor_draw_ui(State *state);
+Viewport editor_draw_editor_viewport(const char *label, u32 texture_id, bool force_focus);
+Viewport editor_draw_game_viewport(const char *label, u32 texture_id, bool force_focus);
 
 void on_server_receive(State *state, NetworkMessage *message, f32 delta_time);
 void on_client_receive(GameClient *client, State *state, NetworkMessage *message);
@@ -577,7 +580,6 @@ CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size)
 bool point_collision(v3 point, v3 collider_position, v3 collider_size);
 
 void imgui_entity(Entity *entity);
-Viewport imgui_viewport(const char *label, u32 texture_id, bool force_focus);
 void imgui_v2_control(const char *label, v2 *vector, f32 step = 1);
 void imgui_v3_control(const char *label, v3 *vector, f32 step = 1);
 void imgui_colour_control(const char *label, v4 *colour);
@@ -909,6 +911,7 @@ void game_client_entry() {
         },
         .editor_view = FrameBuffer {.size = WIN()->frame_buffer_size},
         .selected_entity = NULL,
+        .gizmo_operation = ImGuizmo::TRANSLATE
     };
 
     { // init editor and client frame buffer
@@ -2103,6 +2106,21 @@ void editor_update(State *state) {
         }
     }
 
+    // T: translate gizmo 
+    if (KEYS[GLFW_KEY_T] == InputState::DOWN) {
+        ED()->gizmo_operation = ImGuizmo::TRANSLATE;
+    }
+
+    // E: scale gizmo 
+    if (KEYS[GLFW_KEY_E] == InputState::DOWN) {
+        ED()->gizmo_operation = ImGuizmo::SCALE;
+    }
+
+    // Q: deselect entity 
+    if (KEYS[GLFW_KEY_Q] == InputState::DOWN) {
+        ED()->selected_entity = NULL;
+    }
+
     // ctrl-N: new level
     if (KEYS[GLFW_KEY_LEFT_CONTROL] == InputState::PRESSED && 
         KEYS[GLFW_KEY_N] == InputState::DOWN) {
@@ -2747,10 +2765,150 @@ void editor_draw_ui(State *state) {
         ImGui::End();
     }
 
-    GC()->viewport = imgui_viewport("Game", GC()->game_view.colour_attachment, WIN()->mouse_captured);
-    ED()->viewport = imgui_viewport("Editor", ED()->editor_view.colour_attachment, false);
+    GC()->viewport = editor_draw_game_viewport("Game", GC()->game_view.colour_attachment, WIN()->mouse_captured);
+    ED()->viewport = editor_draw_editor_viewport("Editor", ED()->editor_view.colour_attachment, false);
 
     draw_imgui_frame();
+}
+
+Viewport editor_draw_editor_viewport(const char *label, u32 texture_id, bool force_focus) {
+    // SOURCE: https://www.youtube.com/watch?v=Qbt-1rcSqZc&list=PLlrATfBNZ98dC-V-N3m0Go4deliWHPFwT&index=72&ab_channel=TheCherno
+    // He uses a differant size which is from the min and max bounds
+    // for the panel but for me just using the region avail worked better
+    // - 14/08/25
+
+    Viewport viewport = {};
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::Begin(label);
+
+    // after ImGui::Begin is called the tab bar has been created and now the current
+    // cursor should be the top left of the viewport, cursor in this context is
+    // the location imgui is going to draw UI next. Not the mouse
+    // - 14/08/25
+
+    // get viewport size
+    ImVec2 tab_bar_offset = ImGui::GetCursorPos();
+    ImVec2 im_viewport_size = ImGui::GetContentRegionAvail();
+    ImGui::Image(texture_id, im_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
+
+    viewport.size = v2i {i32(im_viewport_size.x), i32(im_viewport_size.y)};
+ 
+    // get viewport mouse position
+    ImVec2 window_size = ImGui::GetWindowSize();
+    ImVec2 min_bound = ImGui::GetWindowPos();
+    min_bound.x += tab_bar_offset.x;
+    min_bound.y += tab_bar_offset.y;
+    
+    ImVec2 max_bound = ImVec2{min_bound.x + window_size.x, min_bound.y + window_size.y};
+  
+    // other way to get the size
+    // v2 viewport_size_alt = v2{max_bound.x, max_bound.y} - v2{min_bound.x, min_bound.y};
+    // viewport.size_alt = v2i{i32(viewport_size_alt.x), i32(viewport_size_alt.y)};
+    
+    auto[mouse_x, mouse_y] = ImGui::GetMousePos();
+    mouse_x -= min_bound.x;
+    mouse_y -= min_bound.y;
+
+    // convert to bottom left origin from top right origin
+    viewport.mouse = v2{mouse_x, (-mouse_y) + im_viewport_size.y};
+
+    // get viewport focused 
+    if (force_focus) {
+        ImGui::SetWindowFocus();
+    }
+
+    viewport.focused = ImGui::IsWindowFocused();
+
+    // draw gizmos
+    if (ED()->selected_entity) {
+        Entity *entity = ED()->selected_entity;
+
+        ImGuizmo::SetOrthographic(false); 
+        ImGuizmo::SetDrawlist();
+        ImGuizmo::SetRect(min_bound.x, min_bound.y, window_size.x, window_size.y);
+
+        m4 model_matrix = get_model_matrix(ED()->selected_entity->position, entity->size, entity->rotation);
+        m4 inverse_view_matrix = get_view_matrix(&ED()->camera);
+        m4 projection_matrix = get_projection_matrix(&ED()->camera, f32(viewport.size.x) / f32(viewport.size.y));
+
+        ImGuizmo::Manipulate(
+            (f32 *) &inverse_view_matrix.Elements,
+            (f32 *) &projection_matrix.Elements,
+            ED()->gizmo_operation,
+            ImGuizmo::LOCAL,
+            (f32 *) &model_matrix.Elements
+        );
+
+        v3 position = {};
+        v3 rotation = {};
+        v3 size = {};
+
+        ImGuizmo::DecomposeMatrixToComponents((f32 *) &model_matrix.Elements, &position[0], &rotation[0], &size[0]);
+
+        entity->position = position;
+        entity->size = size;
+    }
+
+    ImGui::End();
+    ImGui::PopStyleVar();
+
+    return viewport;
+}
+
+Viewport editor_draw_game_viewport(const char *label, u32 texture_id, bool force_focus) {
+    // SOURCE: https://www.youtube.com/watch?v=Qbt-1rcSqZc&list=PLlrATfBNZ98dC-V-N3m0Go4deliWHPFwT&index=72&ab_channel=TheCherno
+    // He uses a differant size which is from the min and max bounds
+    // for the panel but for me just using the region avail worked better
+    // - 14/08/25
+
+    Viewport viewport = {};
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::Begin(label);
+
+    // after ImGui::Begin is called the tab bar has been created and now the current
+    // cursor should be the top left of the viewport, cursor in this context is
+    // the location imgui is going to draw UI next. Not the mouse
+    // - 14/08/25
+
+    // get viewport size
+    ImVec2 tab_bar_offset = ImGui::GetCursorPos();
+    ImVec2 im_viewport_size = ImGui::GetContentRegionAvail();
+    ImGui::Image(texture_id, im_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
+
+    viewport.size = v2i {i32(im_viewport_size.x), i32(im_viewport_size.y)};
+
+    // get viewport mouse position
+    ImVec2 window_size = ImGui::GetWindowSize();
+    ImVec2 min_bound = ImGui::GetWindowPos();
+    min_bound.x += tab_bar_offset.x;
+    min_bound.y += tab_bar_offset.y;
+    
+    ImVec2 max_bound = ImVec2{min_bound.x + window_size.x, min_bound.y + window_size.y};
+  
+    // other way to get the size
+    // v2 viewport_size_alt = v2{max_bound.x, max_bound.y} - v2{min_bound.x, min_bound.y};
+    // viewport.size_alt = v2i{i32(viewport_size_alt.x), i32(viewport_size_alt.y)};
+    
+    auto[mouse_x, mouse_y] = ImGui::GetMousePos();
+    mouse_x -= min_bound.x;
+    mouse_y -= min_bound.y;
+
+    // convert to bottom left origin from top right origin
+    viewport.mouse = v2{mouse_x, (-mouse_y) + im_viewport_size.y};
+
+    // get viewport focused 
+    if (force_focus) {
+        ImGui::SetWindowFocus();
+    }
+
+    viewport.focused = ImGui::IsWindowFocused();
+
+    ImGui::End();
+    ImGui::PopStyleVar();
+
+    return viewport;
 }
 
 void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
@@ -3411,62 +3569,6 @@ void imgui_entity(Entity *entity) {
     ImGui::InputFloat("jump pad cooldown", &entity->jump_pad_cooldown);
     imgui_colour_control("light colour", &entity->light_colour);
     ImGui::InputFloat("light intensity", &entity->light_intensity);
-}
-
-Viewport imgui_viewport(const char *label, u32 texture_id, bool force_focus) {
-    // https://www.youtube.com/watch?v=Qbt-1rcSqZc&list=PLlrATfBNZ98dC-V-N3m0Go4deliWHPFwT&index=72&ab_channel=TheCherno
-    // Mainly adapted from this video ^
-    // He uses a differant size which is from the min and max bounds
-    // for the panel but for me just using the region avail worked better
-    // - 14/08/25
-
-    Viewport viewport = {};
-
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-    ImGui::Begin(label);
-
-    // after ImGui::Begin is called the tab bar has been created and now the current
-    // cursor should be the top left of the viewport, cursor in this context is
-    // the location imgui is going to draw UI next. Not the mouse
-    // - 14/08/25
-    //
-    // get viewport size
-    ImVec2 tab_bar_offset = ImGui::GetCursorPos();
-    ImVec2 im_viewport_size = ImGui::GetContentRegionAvail();
-    ImGui::Image(texture_id, im_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
-
-    viewport.size = v2i {i32(im_viewport_size.x), i32(im_viewport_size.y)};
-
-    // get viewport mouse position
-    ImVec2 window_size = ImGui::GetWindowSize();
-    ImVec2 min_bound = ImGui::GetWindowPos();
-    min_bound.x += tab_bar_offset.x;
-    min_bound.y += tab_bar_offset.y;
-    
-    ImVec2 max_bound = ImVec2{min_bound.x + window_size.x, min_bound.y + window_size.y};
-  
-    // other way to get the size
-    // v2 viewport_size_alt = v2{max_bound.x, max_bound.y} - v2{min_bound.x, min_bound.y};
-    // viewport.size_alt = v2i{i32(viewport_size_alt.x), i32(viewport_size_alt.y)};
-    
-    auto[mouse_x, mouse_y] = ImGui::GetMousePos();
-    mouse_x -= min_bound.x;
-    mouse_y -= min_bound.y;
-
-    // convert to bottom left origin from top right origin
-    viewport.mouse = v2{mouse_x, (-mouse_y) + im_viewport_size.y};
-
-    // get viewport focused 
-    if (force_focus) {
-        ImGui::SetWindowFocus();
-    }
-
-    viewport.focused = ImGui::IsWindowFocused();
-
-    ImGui::End();
-    ImGui::PopStyleVar();
-
-    return viewport;
 }
 
 void imgui_v2_control(const char *label, v2 *vector, f32 step) {

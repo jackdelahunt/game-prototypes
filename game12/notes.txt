@@ -1,8 +1,8 @@
 Start date:     11/08/25
 End date:       ??/??/??
-Total time:     150:30
+Total time:     152:30
 
-Started today:  15:30
+Started today:  21:00
 
 @todo
 
@@ -13,6 +13,7 @@ Game todo:
     - improve muzzle flash  
     - sound when killed enemy
     - hitmarkers
+    - small projectile when player shoots, is a light? 8^)
 - sound when player dies
 - start multiplayer game from within game
 - hold space == higher jump
