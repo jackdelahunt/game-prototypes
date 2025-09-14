@@ -7,6 +7,7 @@
 #include "meta.h"
 
 #include <cmath>
+#include <random>
 #include <stdio.h>
 #include <string.h>
 #include <thread>
@@ -31,7 +32,6 @@ f32 g_player_width                = 0.65f;
 f32 g_player_eyes_offset          = 0.8f;
 
 f32 g_player_recoil_scale           = 0.5f;
-f32 g_player_recoil_gain_per_shot   = 0.2f;
 i32 g_player_recoil_min_shots       = 2;
 
 f32 g_player_recoil_shake_frequency = 10;
@@ -79,7 +79,7 @@ bool g_debug_draw_owner                 = false;
 bool g_debug_draw_no_mesh               = false;
 bool g_debug_always_draw_muzzle_flash   = false;
 
-bool g_cheat_infinite_ammo    = true;
+bool g_cheat_infinite_ammo    = false;
 bool g_cheat_no_damage        = false;
 
 f32 g_game_length = Minute(10);
@@ -123,6 +123,11 @@ v4 g_particle_player_hit_colour         = RED;
 v4 g_particle_enviroment_hit_colour     = ORANGE;
 f32 g_particle_max_magnify_factor       = 4;
 f32 g_particle_max_magnify_distance     = 50;
+
+// kill me
+std::random_device g_random_device;
+std::mt19937 g_generator(g_random_device());
+std::uniform_int_distribution<u32> g_id_distribution(0, ~u32(0));
 
 meta enum MaterialHandle : u32 {
     MAT_DEFAULT,
@@ -188,6 +193,7 @@ struct Weapon {
     f32 muzzle_flash_size;
     v3 muzzle_flash_offset;
     f32 speed_factor;
+    f32 recoil_per_shot;
 };
 
 Weapon g_weapons[_WH_COUNT] = {
@@ -205,7 +211,8 @@ Weapon g_weapons[_WH_COUNT] = {
         .recoil_offset = v3{0, -0.08, -0.4},
         .muzzle_flash_size = 0.4f,
         .muzzle_flash_offset = v3{0, 0.17, 0.46},
-        .speed_factor = 0.8,
+        .speed_factor = 0.65,
+        .recoil_per_shot = 0,
     },
     Weapon {
         .handle = WH_M4,
@@ -221,7 +228,8 @@ Weapon g_weapons[_WH_COUNT] = {
         .recoil_offset = v3{0, -0.01, -0.15},
         .muzzle_flash_size = 0.2f,
         .muzzle_flash_offset = v3{-0.01f, 0.21f, 1.4f},
-        .speed_factor = 0.7,
+        .speed_factor = 0.5,
+        .recoil_per_shot = 0.8,
     },
     Weapon {
         .handle = WH_TAP,
@@ -237,23 +245,25 @@ Weapon g_weapons[_WH_COUNT] = {
         .recoil_offset = v3{0, -0.08, -0.4},
         .muzzle_flash_size = 0.3f,
         .muzzle_flash_offset = v3{0, 0, 0},
-        .speed_factor = 0.5,
+        .speed_factor = 0.4,
+        .recoil_per_shot = 0,
     },
     Weapon {
         .handle = WH_PAL,
         .display_name = "Peace & Love",
         .colour = ORANGE,
-        .damage = 10,
-        .headshot_damage = 20,
-        .ammo_count = 30,
+        .damage = 4,
+        .headshot_damage = 8,
+        .ammo_count = 50,
         .automatic = true,
-        .firing_cooldown = 0.2,
+        .firing_cooldown = 0.09,
         .mesh = MH_DEAGLE,
         .firing_sound = SH_FIRE_DEAGLE,
         .recoil_offset = v3{0, -0.08, -0.4},
         .muzzle_flash_size = 0.3f,
-        .muzzle_flash_offset = v3{0, 0, 0},
-        .speed_factor = 1,
+        .muzzle_flash_offset = v3{0, 0.16, 0.44},
+        .speed_factor = 0.8,
+        .recoil_per_shot = 3,
     }
 };
 
@@ -759,7 +769,7 @@ void game_client_entry() {
         }
 
         { // load materials
-            g_materials[MAT_DEFAULT] = REN()->default_material;
+            g_materials[MAT_DEFAULT] = REN()->default_pbr_material;
             Assert(g_materials[MAT_DEFAULT]);
 
             g_materials[MAT_MUZZLE_FLASH] = material_create_unlit(REN(), 
@@ -1093,8 +1103,10 @@ void game_server_update(State *state) {
                             server_send_to_client(NET(), bytes_from_ptr(&message), other.owner);
                         } break;
                         case PT_HEALTH: {
-                            entity.pickup_cooldown = g_pickup_health_cooldown;
-                            other.health = other.max_health;
+                            if (other.health != other.max_health) {
+                                entity.pickup_cooldown = g_pickup_health_cooldown;
+                                other.health = other.max_health;
+                            }
                         } break;
                         case PT_NONE: {
                             Warnf("Entity with id {} is marked as a pickup but has PT_NONE assigned", other.id);
@@ -1315,6 +1327,7 @@ void game_client_update(GameClient *client, State *state) {
 
     // weapon reaload and switching to default
     if (player_get_ammo(client, client->player.weapon) == 0) {
+        player_set_ammo_full(client, WH_DEAGLE);
         player_set_weapon(client, WH_DEAGLE, g_weapon_switch_cooldown);
     }
 
@@ -1367,9 +1380,9 @@ void game_client_update(GameClient *client, State *state) {
 
         f32 firing_t = f32(client->player.consecutive_shots) / f32(player_weapon->ammo_count);
         firing_t = clamp(0, firing_t, 1);
-        firing_t = max(0.3f, firing_t);
+        firing_t = max(0.2f, firing_t);
 
-        f32 new_recoil = (g_player_recoil_gain_per_shot * g_player_recoil_scale) * ease_in_sin(firing_t);
+        f32 new_recoil = (player_weapon->recoil_per_shot * g_player_recoil_scale) * ease_in_sin(firing_t);
         client->camera.rotation.x += new_recoil;
     }
 
@@ -1779,7 +1792,7 @@ void game_client_draw(GameClient *client, State *state) {
                     i32 ammo = client->player.inventory[i];
 
                     v3 position = start + (v3{0, -45, 0} * f32(i));
-                    string text = fmt(state->frame_arena, "{}:  {}", weapon->display_name, ammo);
+                    string text = fmt(state->frame_arena, "[{}] {}: {}", i, weapon->display_name, ammo);
 
                     v4 text_colour = BLACK;
                     if (ammo == 0) {
@@ -1807,7 +1820,7 @@ void game_client_draw(GameClient *client, State *state) {
                 // add a little extra to stop z fighting
                 head_size += v3{0.01, 0.01, 0.01};
     
-                draw_cube(REN(), entity.position + v3{0, g_player_eyes_offset, 0}, head_size, entity.rotation, BEIGE, REN()->default_material);
+                draw_cube(REN(), entity.position + v3{0, g_player_eyes_offset, 0}, head_size, entity.rotation, BEIGE, REN()->default_pbr_material);
             }
         }
 
@@ -1909,15 +1922,17 @@ void game_client_draw(GameClient *client, State *state) {
                     notch_position.x = rotated.x;
                     notch_position.z = rotated.y;
 
-                    draw_quad(REN(), notch_position, {notch_width * notch_width_factor, notch_height * notch_height_factor}, notch_rotation, notch_colour, REN()->default_material);
+                    draw_quad(REN(), notch_position, {notch_width * notch_width_factor, notch_height * notch_height_factor}, notch_rotation, notch_colour, REN()->default_unlit_material);
                 }
             }
         }
 
         if (BitSet(entity.flags, EF_PICKUP)) {
-            f32 t = sin(state->time * 0.5f);
-            v3 pickup_position = entity.position + v3{0, 1.5f + t, 0};
-            v3 pickup_rotation = v3{0, t * 360, 0};
+            f32 time_t = sinf(state->time * 0.5f);
+            time_t *= 0.5;
+
+            v3 pickup_position = entity.position + v3{0, 1.0f + time_t, 0};
+            v3 pickup_rotation = v3{0, time_t * 360, 0};
 
             Mesh *mesh = NULL;
             v4 pickup_colour = {};
@@ -1951,7 +1966,7 @@ void game_client_draw(GameClient *client, State *state) {
                 default: Assertf(false, "Did you add a new pickup type?");
             }
 
-            draw_mesh(REN(), mesh, pickup_position, pickup_size, pickup_rotation, pickup_colour, REN()->default_material);
+            draw_mesh(REN(), mesh, pickup_position, pickup_size, pickup_rotation, pickup_colour, REN()->default_pbr_material);
         }
 
         if (BitSet(entity.flags, EF_MISSLE)) {
@@ -1965,7 +1980,7 @@ void game_client_draw(GameClient *client, State *state) {
                 v3 trail_offset = trail_direction * trail_gap * t;
                 v4 trail_colour = mix(RED, SUN_YELLOW, t);
 
-                draw_sphere(REN(), entity.position + trail_offset, trail_radius * (1.0f - t), trail_colour, REN()->default_material);
+                draw_sphere(REN(), entity.position + trail_offset, trail_radius * (1.0f - t), trail_colour, REN()->default_pbr_material);
             }
         }
 
@@ -2452,7 +2467,6 @@ void editor_draw_ui(State *state) {
 
             ImGui::SeparatorText("Weapon Recoil");
             ImGui::SliderFloat("Recoil scale", &g_player_recoil_scale, 0, 1);
-            ImGui::SliderFloat("Recoil gain per shot", &g_player_recoil_gain_per_shot, 0, 10);
             ImGui::SliderInt("Recoil min shots", &g_player_recoil_min_shots, 0, 30);
 
             ImGui::SeparatorText("Camera recoil shake");
@@ -2511,6 +2525,7 @@ void editor_draw_ui(State *state) {
                     ImGui::DragFloat("Muzzle flash size", &weapon->muzzle_flash_size, 0, 1, 0.01);
                     imgui_v3_control("Muzzle flash offset", &weapon->muzzle_flash_offset, 0.01);
                     ImGui::InputFloat("Speed factor", &weapon->speed_factor);
+                    ImGui::InputFloat("Recoil per shot", &weapon->recoil_per_shot);
                 }
             }
         }
@@ -2969,10 +2984,16 @@ void on_client_receive(GameClient *client, State *state, NetworkMessage *message
 }
 
 u32 new_entity_id() {
-    return u32(rand_i64());
+    return g_id_distribution(g_generator);
 }
 
 Entity *local_spawn_entity(State *state, Entity entity) {
+#ifdef DEBUG
+    for (Entity &other : state->entities) {
+        Assertf(other.id != entity.id, "Entity id conflict!")
+    }
+#endif
+
     Entity *spawned = push(&state->entities);
     *spawned = entity;
 
@@ -3882,7 +3903,7 @@ void player_draw_weapon(GameClient *client, Weapon *weapon, v3 display_offset, b
     weapon_position += GC()->camera.position;
     v3 weapon_rotation = v3{GC()->camera.rotation.x, GC()->camera.rotation.y, 0};
 
-    draw_mesh(REN(), g_meshes[weapon->mesh], weapon_position, {1, 1, 1}, weapon_rotation, weapon->colour, REN()->default_material);
+    draw_mesh(REN(), g_meshes[weapon->mesh], weapon_position, {1, 1, 1}, weapon_rotation, weapon->colour, REN()->default_pbr_material);
 
 
     { // draw muzzle flash

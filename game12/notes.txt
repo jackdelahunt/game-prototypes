@@ -1,6 +1,6 @@
 Start date:     11/08/25
 End date:       ??/??/??
-Total time:     147:00
+Total time:     150:30
 
 Started today:  15:30
 
@@ -91,6 +91,7 @@ Designing a level:
 
 Checklist:
 - turn off cheats
+- maximise game viewport 
 - netsh advfirewall set allprofiles state off
 
 Playtest 1 notes (12/09/25):
@@ -104,6 +105,12 @@ Playtest 1 notes (12/09/25):
 - reset weapon on respawn
 - can shoot when dead 
 - automate release process
+
+Playtest 2 notes (14/09/25):
+- aiming felt weird 
+- deagle was best gun
+- speed up deagle firing cooldown
+- more complex map would make it a lot better
 
 @docs
 

@@ -3,7 +3,7 @@ entities:
   - flags:
       - EF_STATIC_HITBOX
       - EF_DRAW_MESH
-    id: 2247
+    id: 3002270052
     owner: 0
     position: [0, 0, 0]
     size: [20, 1, 25]
@@ -18,519 +18,9 @@ entities:
     light_colour: [0, 0, 0, 0]
     light_intensity: 0
   - flags:
-      - EF_PICKUP
-      - EF_DRAW_MESH
-    id: 28913
-    owner: 1
-    position: [18.5, 0.5, 0]
-    size: [2, 0.100000001, 2]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.5, 0.5, 0.5, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_M4
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
       - EF_STATIC_HITBOX
       - EF_DRAW_MESH
-    id: 11832
-    owner: 0
-    position: [0, 0, -17.5]
-    size: [40, 1, 10]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.909803927, 0.152941182, 0.152941182, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 32663
-    owner: 0
-    position: [0, 0, 17.5]
-    size: [40, 1, 10]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.911392391, 0.153821513, 0.153821513, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 4690
-    owner: 0
-    position: [0, 10, -23]
-    size: [40, 20, 1]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.235294119, 0.235294119, 0.235294119, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 13159
-    owner: 0
-    position: [0, 10, 23]
-    size: [40, 20, 1]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.236286938, 0.236286938, 0.236286938, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 22628
-    owner: 0
-    position: [15, 0, 0]
-    size: [10, 1, 25]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.909803927, 0.152941182, 0.152941182, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_SPAWN_POINT
-      - EF_DRAW_MESH
-    id: 1214
-    owner: 0
-    position: [15, 0.5, -17.5]
-    size: [3, 0.200000003, 3]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0, 1, 0, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_SPAWN_POINT
-      - EF_DRAW_MESH
-    id: 17805
-    owner: 0
-    position: [15, 0.5, 17.5]
-    size: [3, 0.200000003, 3]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0, 1, 0, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_JUMP_PAD
-      - EF_DRAW_MESH
-    id: 22755
-    owner: 0
-    position: [-7.5, 0.5, 0]
-    size: [3, 0.200000003, 3]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [1, 0.639999986, 0.100000001, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 55
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 3438
-    owner: 0
-    position: [-15, 7.5, 0]
-    size: [10, 15, 25]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [1, 1, 1, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 8821
-    owner: 0
-    position: [-6.0999999, 14.5, 10.1000004]
-    size: [2, 0.5, 2]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.152941182, 0.909803927, 0.211764708, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 27410
-    owner: 0
-    position: [0, 9.25, 17.5]
-    size: [20, 0.5, 10]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.132119164, 0.403944343, 0.763713062, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 22880
-    owner: 0
-    position: [10.1000004, 4.5, 7.5]
-    size: [0.200000003, 9, 10]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [1, 1, 1, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 4663
-    owner: 0
-    position: [-20.5, 10, 0]
-    size: [1, 20, 45]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.235294119, 0.235294119, 0.235294119, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 5975
-    owner: 0
-    position: [20.5, 10, 0]
-    size: [1, 20, 45]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.235294119, 0.235294119, 0.235294119, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 24663
-    owner: 0
-    position: [0, 9.25, -17.5]
-    size: [20, 0.5, 10]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.13333334, 0.403921574, 0.764705896, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 5064
-    owner: 0
-    position: [15, 14.5, 0]
-    size: [10, 11, 45]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.235294119, 0.235294119, 0.235294119, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 456
-    owner: 0
-    position: [15, 5, 0]
-    size: [4, 10, 4]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [1, 1, 1, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 25894
-    owner: 0
-    position: [10.1000004, 4.4000001, -7.5]
-    size: [0.200000003, 9.19999981, 10]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [1, 1, 1, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 13229
-    owner: 0
-    position: [-15, 15.25, 0]
-    size: [10, 0.5, 25]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.152941182, 0.909803927, 0.210424304, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 11476
-    owner: 0
-    position: [1.39999998, 14.5, 8.5]
-    size: [2, 0.5, 2]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.152941182, 0.909803927, 0.211764708, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 18666
-    owner: 0
-    position: [6.80000019, 14.5, 0.5]
-    size: [2, 0.5, 2]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.152941182, 0.909803927, 0.211764708, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 7351
-    owner: 0
-    position: [8.5, 14.5, -7.4000001]
-    size: [3, 0.5, 4]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.152941182, 0.909803927, 0.211764708, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_JUMP_PAD
-      - EF_DRAW_MESH
-    id: 19393
-    owner: 0
-    position: [-15, 0.5, -17.5]
-    size: [3, 0.200000003, 3]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [1, 0.639999986, 0.100000001, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 43
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_JUMP_PAD
-      - EF_DRAW_MESH
-    id: 31362
-    owner: 0
-    position: [-15, 0.5, 17.5]
-    size: [3, 0.200000003, 3]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [1, 0.639999986, 0.100000001, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 43
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 21730
-    owner: 0
-    position: [-8, 4.4000001, 12.6000004]
-    size: [4, 9.19999981, 0.200000003]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [1, 1, 1, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 16708
-    owner: 0
-    position: [8, 4.4000001, 12.6000004]
-    size: [4, 9.19999981, 0.200000003]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [1, 1, 1, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 15181
-    owner: 0
-    position: [-8, 4.4000001, -12.6000004]
-    size: [4, 9.19999981, 0.200000003]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [1, 1, 1, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 15000
-    owner: 0
-    position: [8, 4.4000001, -12.6000004]
-    size: [4, 9.19999981, 0.200000003]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [1, 1, 1, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 13238
-    owner: 0
-    position: [0, 8, 12.6000004]
-    size: [12, 2, 0.200000003]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [1, 1, 1, 1]
-    material: MAT_GRID
-    max_health: 0
-    health: 0
-    pickup_type: PT_NONE
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_STATIC_HITBOX
-      - EF_DRAW_MESH
-    id: 26066
+    id: 1215121569
     owner: 0
     position: [0, 8, -12.6000004]
     size: [12, 2, 0.200000003]
@@ -547,7 +37,330 @@ entities:
   - flags:
       - EF_STATIC_HITBOX
       - EF_DRAW_MESH
-    id: 12235
+    id: 1394162269
+    owner: 0
+    position: [0, 0, -17.5]
+    size: [40, 1, 10]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.909803927, 0.152941182, 0.152941182, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+    id: 1906068791
+    owner: 0
+    position: [0, 0, 17.5]
+    size: [40, 1, 10]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.911392391, 0.153821513, 0.153821513, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+    id: 398816158
+    owner: 0
+    position: [0, 10, -23]
+    size: [40, 20, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.235294119, 0.235294119, 0.235294119, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+    id: 3734349644
+    owner: 0
+    position: [0, 10, 23]
+    size: [40, 20, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.236286938, 0.236286938, 0.236286938, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+    id: 3738023664
+    owner: 0
+    position: [15, 0, 0]
+    size: [10, 1, 25]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.909803927, 0.152941182, 0.152941182, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_SPAWN_POINT
+      - EF_DRAW_MESH
+    id: 741462463
+    owner: 0
+    position: [15, 0.5, -17.5]
+    size: [3, 0.200000003, 3]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0, 1, 0, 1]
+    material: MAT_DEFAULT
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_SPAWN_POINT
+      - EF_DRAW_MESH
+    id: 397212868
+    owner: 0
+    position: [15, 0.5, 17.5]
+    size: [3, 0.200000003, 3]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0, 1, 0, 1]
+    material: MAT_DEFAULT
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_JUMP_PAD
+      - EF_DRAW_MESH
+    id: 4162274753
+    owner: 0
+    position: [-7.5, 0.5, 0]
+    size: [3, 0.200000003, 3]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 0.639999986, 0.100000001, 1]
+    material: MAT_DEFAULT
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 55
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+    id: 1578492428
+    owner: 0
+    position: [-15, 7.5, 0]
+    size: [10, 15, 25]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_PICKUP
+      - EF_DRAW_MESH
+    id: 1555110365
+    owner: 1
+    position: [0, 0.5, 0]
+    size: [2, 0.100000001, 2]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.5, 0.5, 0.5, 1]
+    material: MAT_DEFAULT
+    max_health: 0
+    health: 0
+    pickup_type: PT_M4
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+    id: 483893662
+    owner: 0
+    position: [0, 9.25, 17.5]
+    size: [20, 0.5, 10]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.132119164, 0.403944343, 0.763713062, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+    id: 676935451
+    owner: 0
+    position: [10.1000004, 4.5, 7.5]
+    size: [0.200000003, 9, 10]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+    id: 1239338861
+    owner: 0
+    position: [-20.5, 10, 0]
+    size: [1, 20, 45]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.235294119, 0.235294119, 0.235294119, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+    id: 3857142186
+    owner: 0
+    position: [20.5, 10, 0]
+    size: [1, 20, 45]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.235294119, 0.235294119, 0.235294119, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+    id: 1790916160
+    owner: 0
+    position: [0, 9.25, -17.5]
+    size: [20, 0.5, 10]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.13333334, 0.403921574, 0.764705896, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+    id: 71688478
+    owner: 0
+    position: [15, 14.5, 0]
+    size: [10, 11, 45]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.235294119, 0.235294119, 0.235294119, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+    id: 1779816253
+    owner: 0
+    position: [15, 5, 0]
+    size: [4, 10, 4]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+    id: 2004966561
+    owner: 0
+    position: [10.1000004, 4.4000001, -7.5]
+    size: [0.200000003, 9.19999981, 10]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+    id: 907820755
+    owner: 0
+    position: [-15, 15.25, 0]
+    size: [10, 0.5, 25]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.152941182, 0.909803927, 0.210424304, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+    id: 1152597482
     owner: 0
     position: [10.1000004, 8, 0]
     size: [0.200000003, 2, 5]
@@ -564,9 +377,26 @@ entities:
   - flags:
       - EF_PICKUP
       - EF_DRAW_MESH
-    id: 28707
+    id: 3184743908
     owner: 1
-    position: [0, 0.5, 0]
+    position: [-15.1999998, 15.5, 0]
+    size: [2, 0.100000001, 2]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.5, 0.5, 0.5, 1]
+    material: MAT_DEFAULT
+    max_health: 0
+    health: 0
+    pickup_type: PT_PAL
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_PICKUP
+      - EF_DRAW_MESH
+    id: 2691223200
+    owner: 1
+    position: [0, 9.5, 18]
     size: [2, 0.100000001, 2]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
@@ -579,56 +409,138 @@ entities:
     light_colour: [0, 0, 0, 0]
     light_intensity: 0
   - flags:
-      - EF_PICKUP
+      - EF_JUMP_PAD
       - EF_DRAW_MESH
-    id: 8095
-    owner: 1
-    position: [-15.3999996, 15.5, 0]
-    size: [2, 0.100000001, 2]
+    id: 2474830300
+    owner: 0
+    position: [-15, 0.5, -17.5]
+    size: [3, 0.200000003, 3]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
-    colour: [0.5, 0.5, 0.5, 1]
+    colour: [1, 0.639999986, 0.100000001, 1]
     material: MAT_DEFAULT
     max_health: 0
     health: 0
-    pickup_type: PT_HEALTH
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_PICKUP
-      - EF_DRAW_MESH
-    id: 16723
-    owner: 1
-    position: [8.5, 15, -7.4000001]
-    size: [2, 0.100000001, 2]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0.5, 0.5, 0.5, 1]
-    material: MAT_DEFAULT
-    max_health: 0
-    health: 0
-    pickup_type: PT_TAP
-    jump_pad_force: 0
-    light_colour: [0, 0, 0, 0]
-    light_intensity: 0
-  - flags:
-      - EF_DUMMY
-      - EF_SOLID_HITBOX
-      - EF_DAMAGEABLE
-      - EF_COMPLEX_PHYSICS
-      - EF_DRAW_MESH
-    id: 9025
-    owner: 1
-    position: [0, 2.79999995, 13]
-    size: [0.649999976, 2, 0.649999976]
-    rotation: [0, 0, 0]
-    velocity: [0, 0, 0]
-    colour: [0, 0, 1, 1]
-    material: MAT_DEFAULT
-    max_health: 100
-    health: 100
     pickup_type: PT_NONE
+    jump_pad_force: 43
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_JUMP_PAD
+      - EF_DRAW_MESH
+    id: 1952705720
+    owner: 0
+    position: [-15, 0.5, 17.5]
+    size: [3, 0.200000003, 3]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 0.639999986, 0.100000001, 1]
+    material: MAT_DEFAULT
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 43
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+    id: 4088367620
+    owner: 0
+    position: [-8, 4.4000001, 12.6000004]
+    size: [4, 9.19999981, 0.200000003]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+    id: 2761405773
+    owner: 0
+    position: [8, 4.4000001, 12.6000004]
+    size: [4, 9.19999981, 0.200000003]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+    id: 2013884913
+    owner: 0
+    position: [-8, 4.4000001, -12.6000004]
+    size: [4, 9.19999981, 0.200000003]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+    id: 855366602
+    owner: 0
+    position: [8, 4.4000001, -12.6000004]
+    size: [4, 9.19999981, 0.200000003]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+    id: 1839775389
+    owner: 0
+    position: [0, 8, 12.6000004]
+    size: [12, 2, 0.200000003]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_GRID
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_PICKUP
+      - EF_DRAW_MESH
+    id: 3368164239
+    owner: 1
+    position: [0, 9.5, -18]
+    size: [2, 0.100000001, 2]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.5, 0.5, 0.5, 1]
+    material: MAT_DEFAULT
+    max_health: 0
+    health: 0
+    pickup_type: PT_HEALTH
     jump_pad_force: 0
     light_colour: [0, 0, 0, 0]
     light_intensity: 0

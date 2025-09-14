@@ -483,7 +483,8 @@ struct Renderer {
     RenderTexture *default_material_roughness;
     RenderTexture *default_material_metalness;
 
-    Material *default_material;
+    Material *default_pbr_material;
+    Material *default_unlit_material;
 
     Font font;
 
@@ -1122,8 +1123,8 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
         Assert(renderer->default_material_metalness);
     }
 
-    { // create default material
-        renderer->default_material = material_create_pbr(renderer, v2{1, 1},
+    { // create default materials
+        renderer->default_pbr_material = material_create_pbr(renderer, v2{1, 1},
             renderer->default_material_albedo, 
             renderer->default_material_normal, 
             renderer->default_material_ambient_occlusion,
@@ -1131,7 +1132,13 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
             renderer->default_material_metalness
         );
 
-        Assert(renderer->default_material);
+        Assert(renderer->default_pbr_material);
+
+        renderer->default_unlit_material = material_create_unlit(renderer, v2{1, 1},
+            renderer->default_material_albedo
+        );
+
+        Assert(renderer->default_unlit_material);
     }
 
     { // load default font
