@@ -28,4 +28,7 @@
 #define YAML_CPP_STATIC_DEFINE
 #include "yaml-cpp/include/yaml-cpp/yaml.h"
 
+#define FNL_IMPL
+#include "FastNoiseLite/FastNoiseLite.h"
+
 #endif

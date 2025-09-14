@@ -27,12 +27,15 @@
 string g_level_save_file          = "resources/levels/main.yaml";
 
 f32 g_player_height               = 2;
-f32 g_player_width                = 0.65;
-f32 g_player_eyes_offset          = 0.8;
+f32 g_player_width                = 0.65f;
+f32 g_player_eyes_offset          = 0.8f;
 
-f32 g_player_recoil_scale           = 0.5;
-f32 g_player_recoil_gain_per_shot   = 0.2;
+f32 g_player_recoil_scale           = 0.5f;
+f32 g_player_recoil_gain_per_shot   = 0.2f;
 i32 g_player_recoil_min_shots       = 2;
+
+f32 g_player_recoil_shake_frequency = 10;
+f32 g_player_recoil_shake_scale     = 0.5f;
 
 f32 g_player_death_cooldown       = 3;
 f32 g_player_ground_acceleration  = 240;
@@ -41,7 +44,7 @@ f32 g_player_ground_drag          = 10;
 f32 g_player_air_control          = 4;
 f32 g_gravity                     = 70;
 
-v3  g_weapon_display_offset       = v3{1, -0.6, 0.98};
+v3  g_weapon_display_offset       = v3{0.85, -0.6, 0.9};
 f32 g_weapon_switch_cooldown      = 1.5;
 
 f32 g_pickup_weapon_cooldown  = 9;
@@ -77,7 +80,7 @@ bool g_debug_draw_no_mesh               = false;
 bool g_debug_always_draw_muzzle_flash   = false;
 
 bool g_cheat_weapon_binds     = true;
-bool g_cheat_infinite_ammo    = false;
+bool g_cheat_infinite_ammo    = true;
 bool g_cheat_no_damage        = false;
 
 f32 g_game_length = Minute(5);
@@ -1343,7 +1346,7 @@ void game_client_update(GameClient *client, State *state) {
         }
     }
 
-    // weapon recoil
+    // camera vertical recoil
     if (state->player_consecutive_shots > 0 && state->player_consecutive_shots > g_player_recoil_min_shots) {
         Weapon *player_weapon = get_player_weapon(state);
 
@@ -1353,6 +1356,26 @@ void game_client_update(GameClient *client, State *state) {
 
         f32 new_recoil = (g_player_recoil_gain_per_shot * g_player_recoil_scale) * ease_in_sin(firing_t);
         client->camera.rotation.x += new_recoil;
+    }
+
+    // camera recoil shake
+    if (state->player_consecutive_shots > 0) {
+        Weapon *player_weapon = get_player_weapon(state);
+
+        f32 firing_t = f32(state->player_consecutive_shots) / f32(player_weapon->ammo_count);
+
+        FastNoiseLite noise = {};
+        noise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
+        noise.SetFrequency(g_player_recoil_shake_frequency);
+
+        f32 sample = noise.GetNoise(firing_t, 0.0f);
+        sample = ease_out_cubic(sample);
+        sample *= g_player_recoil_shake_scale;
+
+        client->camera.rotation.z = sample;
+
+    } else {
+        client->camera.rotation.z = 0;
     }
 
     // update client owned player 
@@ -1390,8 +1413,6 @@ void game_client_update(GameClient *client, State *state) {
                     state->player_consecutive_shots = 0;
                 }
             }
-
-            Logf("consecutive shots: {}", state->player_consecutive_shots);
 
             if (player_can_shoot && player_did_shoot) {
                 state->player_ammo -= 1; 
@@ -2396,12 +2417,16 @@ void editor_draw_ui(State *state) {
             ImGui::SeparatorText("Weapon");
             ImGui::SliderFloat("Fire Cooldown", &state->player_firing_cooldown, 0, g_weapons[state->player_weapon].firing_cooldown);
             ImGui::InputInt("Ammo", (i32 *) &state->player_ammo);
-            ImGui::SliderFloat3("Weapon offset", &g_weapon_display_offset.x, -2, 2);
+            imgui_v3_control("Display offset", &g_weapon_display_offset);
 
-            ImGui::SeparatorText("Recoil");
+            ImGui::SeparatorText("Weapon Recoil");
             ImGui::SliderFloat("Recoil scale", &g_player_recoil_scale, 0, 1);
             ImGui::SliderFloat("Recoil gain per shot", &g_player_recoil_gain_per_shot, 0, 10);
             ImGui::SliderInt("Recoil min shots", &g_player_recoil_min_shots, 0, 30);
+
+            ImGui::SeparatorText("Camera recoil shake");
+            ImGui::SliderFloat("Recoil shake frequency", &g_player_recoil_shake_frequency, 0, 30);
+            ImGui::SliderFloat("Recoil shake scale", &g_player_recoil_shake_scale, 0, 20);
 
             ImGui::SeparatorText("Muzzle flash");
             imgui_colour_control("Flash colour", &g_muzzle_flash_colour);
@@ -3821,6 +3846,7 @@ void set_player_weapon(State *state, WeaponHandle weapon, f32 cooldown) {
     state->player_weapon = weapon;
     state->player_ammo = w->ammo_count;
     state->player_firing_cooldown = cooldown;
+    state->player_consecutive_shots = 0;
 }
 
 void play_weapon_fire_sound(Weapon *weapon) {

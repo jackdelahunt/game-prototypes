@@ -8,7 +8,6 @@ Started today:  11:00
 
 In progress:
 - work on shooting feedback
-    - camera shake
     - improve muzzle flash  
     - sound when killed enemy
     - hitmarkers
