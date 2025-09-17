@@ -178,8 +178,8 @@ Sound *g_sounds[_SH_COUNT] = {};
 meta enum WeaponHandle : u32 {
     WH_DEAGLE,
     WH_M4,
-    WH_TAP,
-    WH_PAL,
+    WH_ROCKET_LAUNCHER,
+    WH_PEACE_AND_LOVE,
     _WH_COUNT
 };
 
@@ -253,8 +253,8 @@ Weapon g_weapons[_WH_COUNT] = {
         .firing_sound = SH_FIRE_SILENCED_GUN_HIGH,
     },
     Weapon {
-        .handle = WH_TAP,
-        .display_name = "Thoughts & Prayers",
+        .handle = WH_ROCKET_LAUNCHER,
+        .display_name = "Rocket launcher",
 
         .colour = v4 {0.05, 0.5, 0.05, 1},
         .mesh = MH_DEAGLE,
@@ -274,7 +274,7 @@ Weapon g_weapons[_WH_COUNT] = {
         .firing_sound = SH_FIRE_DEAGLE,
     },
     Weapon {
-        .handle = WH_PAL,
+        .handle = WH_PEACE_AND_LOVE,
         .display_name = "Peace & Love",
 
         .colour = ORANGE,
@@ -566,7 +566,7 @@ void editor_draw_ui(State *state);
 Viewport editor_draw_editor_viewport(const char *label, u32 texture_id, bool force_focus);
 Viewport editor_draw_game_viewport(const char *label, u32 texture_id, bool force_focus);
 
-void on_server_receive(State *state, NetworkMessage *message, f32 delta_time);
+void on_server_receive(State *state, NetworkMessage *message);
 void on_client_receive(GameClient *client, State *state, NetworkMessage *message);
 
 u32 new_entity_id();
@@ -630,7 +630,7 @@ void player_set_ammo(GameClient *client, WeaponHandle weapon, i32 ammo);
 void player_set_ammo_full(GameClient *client, WeaponHandle weapon);
 Weapon *player_get_weapon(GameClient *client);
 void player_set_weapon(GameClient *client, WeaponHandle weapon, f32 cooldown);
-void player_draw_weapon(GameClient *client, Weapon *weapon, bool show_recoil);
+void player_draw_weapon(GameClient *client, Weapon *weapon, bool flip_viewmodel, bool show_recoil);
 
 void play_weapon_fire_sound(Weapon *weapon);
 
@@ -1055,7 +1055,7 @@ void process_network(State *state) {
         slice<u8> bytes;
         while (network_queue_pop(&NET()->server_in_queue, &bytes)) {
             NetworkMessage *message = (NetworkMessage *) bytes.ptr;
-            on_server_receive(state, message, state->tick_delta_time);
+            on_server_receive(state, message);
             slice_free(bytes);
         }
     }
@@ -1125,12 +1125,12 @@ void game_server_update(State *state) {
                         } break;
                         case PT_TAP: {
                             entity.pickup_cooldown = g_pickup_weapon_cooldown;
-                            NetworkMessage message = NetworkMessage{.type = NM_SET_WEAPON, .set_weapon = WH_TAP};
+                            NetworkMessage message = NetworkMessage{.type = NM_SET_WEAPON, .set_weapon = WH_ROCKET_LAUNCHER};
                             server_send_to_client(NET(), bytes_from_ptr(&message), other.owner);
                         } break;
                         case PT_PAL: {
                             entity.pickup_cooldown = g_pickup_weapon_cooldown;
-                            NetworkMessage message = NetworkMessage{.type = NM_SET_WEAPON, .set_weapon = WH_PAL};
+                            NetworkMessage message = NetworkMessage{.type = NM_SET_WEAPON, .set_weapon = WH_PEACE_AND_LOVE};
                             server_send_to_client(NET(), bytes_from_ptr(&message), other.owner);
                         } break;
                         case PT_HEALTH: {
@@ -1482,7 +1482,7 @@ void game_client_update(GameClient *client, State *state) {
 
                 timed_effect_start_or_accumulate(&client->muzzle_flash, 0.05, 1.0f);
 
-                if (client->player.weapon != WH_TAP) {
+                if (client->player.weapon != WH_ROCKET_LAUNCHER) {
                     v3 ray_direction = get_forward_direction(&GC()->camera);
                 
                     Ray ray = ray_create(GC()->camera.position, ray_direction);
@@ -1783,12 +1783,12 @@ void game_client_draw(GameClient *client, State *state) {
             Weapon *player_weapon = player_get_weapon(client);
 
             { // draw weapon
-                if (player_weapon->handle == WH_PAL) {
-                    player_draw_weapon(client, player_weapon, client->player.duel_wield_switch);
-                    player_draw_weapon(client, player_weapon, !client->player.duel_wield_switch);
+                if (player_weapon->handle == WH_PEACE_AND_LOVE) {
+                    player_draw_weapon(client, player_weapon, false, client->player.duel_wield_switch);
+                    player_draw_weapon(client, player_weapon, true, !client->player.duel_wield_switch);
                 }
                 else {
-                    player_draw_weapon(client, player_weapon, true);
+                    player_draw_weapon(client, player_weapon, false, true);
                 }
             }
 
@@ -1852,7 +1852,7 @@ void game_client_draw(GameClient *client, State *state) {
                     i32 ammo = client->player.inventory[i];
 
                     v3 position = start + (v3{0, -45, 0} * f32(i));
-                    string text = fmt(state->frame_arena, "[{}] {}: {}", i, weapon->display_name, ammo);
+                    string text = fmt(state->frame_arena, "[{}] {}: {}", i + 1, weapon->display_name, ammo);
 
                     v4 text_colour = BLACK;
                     if (ammo == 0) {
@@ -2005,13 +2005,13 @@ void game_client_draw(GameClient *client, State *state) {
                     pickup_size = v3{0.8, 0.8, 0.8};
                 } break;
                 case PT_TAP: { 
-                    mesh = g_meshes[g_weapons[WH_TAP].mesh];
-                    pickup_colour = entity.pickup_cooldown > 0 ? brightness(RED, 0.5) : g_weapons[WH_TAP].colour;
+                    mesh = g_meshes[g_weapons[WH_ROCKET_LAUNCHER].mesh];
+                    pickup_colour = entity.pickup_cooldown > 0 ? brightness(RED, 0.5) : g_weapons[WH_ROCKET_LAUNCHER].colour;
                     pickup_size = v3{1, 1, 1};
                 } break;
                 case PT_PAL: { 
-                    mesh = g_meshes[g_weapons[WH_PAL].mesh];
-                    pickup_colour = entity.pickup_cooldown > 0 ? brightness(RED, 0.5) : g_weapons[WH_PAL].colour;
+                    mesh = g_meshes[g_weapons[WH_PEACE_AND_LOVE].mesh];
+                    pickup_colour = entity.pickup_cooldown > 0 ? brightness(RED, 0.5) : g_weapons[WH_PEACE_AND_LOVE].colour;
                     pickup_size = v3{1, 1, 1};
                 } break;
                 case PT_HEALTH: {
@@ -2973,7 +2973,7 @@ Viewport editor_draw_game_viewport(const char *label, u32 texture_id, bool force
     return viewport;
 }
 
-void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
+void on_server_receive(State *state, NetworkMessage *message) {
     switch (message->type) {
         case NM_CLIENT_CONNECTED: {
             // when client connects, the server generates this message and a few things happen
@@ -3066,9 +3066,9 @@ void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
             bool grounded = entity_is_grounded(state, player);
 
             if (grounded) {
-                player->velocity.x += message->move_player.input_direction.x * message->move_player.speed_factor * g_player_ground_acceleration * delta_time;
+                player->velocity.x += message->move_player.input_direction.x * message->move_player.speed_factor * g_player_ground_acceleration * state->tick_delta_time;
                 player->velocity.y += message->move_player.jump                                                  * g_player_jump_acceleration;
-                player->velocity.z += message->move_player.input_direction.y * message->move_player.speed_factor * g_player_ground_acceleration * delta_time;
+                player->velocity.z += message->move_player.input_direction.y * message->move_player.speed_factor * g_player_ground_acceleration * state->tick_delta_time;
             }
             else {
                 v2 wish_direction = message->move_player.input_direction;
@@ -3079,7 +3079,7 @@ void on_server_receive(State *state, NetworkMessage *message, f32 delta_time) {
                 if (length(wish_direction) > 0 && h_speed > 0) {
                     v2 h_direction = norm(h_velocity); 
 
-                    v2 new_h_direction = norm(HMM_LerpV2(h_direction, g_player_air_control * delta_time, wish_direction));
+                    v2 new_h_direction = norm(HMM_LerpV2(h_direction, g_player_air_control * state->tick_delta_time, wish_direction));
 
                     player->velocity.x = new_h_direction.x * h_speed;
                     player->velocity.z = new_h_direction.y * h_speed;
@@ -4037,7 +4037,7 @@ void player_set_weapon(GameClient *client, WeaponHandle weapon, f32 cooldown) {
     client->player.consecutive_shots = 0;
 }
 
-void player_draw_weapon(GameClient *client, Weapon *weapon, bool show_recoil) {
+void player_draw_weapon(GameClient *client, Weapon *weapon, bool flip_viewmodel, bool show_recoil) {
     if (client->player.switching_cooldown > 0) {
         return;
     }
@@ -4046,10 +4046,15 @@ void player_draw_weapon(GameClient *client, Weapon *weapon, bool show_recoil) {
     v3 up = get_up_direction(&GC()->camera);
     v3 right = get_right_direction(&GC()->camera);
 
+    v3 viewmodel_offset = weapon->viewmodel_offset;
+    if (flip_viewmodel) {
+        viewmodel_offset.x *= -1;
+    }
+
     v3 weapon_position = v3{};
-    weapon_position += weapon->viewmodel_offset.x * right;
-    weapon_position += weapon->viewmodel_offset.y * up;
-    weapon_position += weapon->viewmodel_offset.z * forward;
+    weapon_position += viewmodel_offset.x * right;
+    weapon_position += viewmodel_offset.y * up;
+    weapon_position += viewmodel_offset.z * forward;
 
     // apply recoil if there is cooldown
     if (show_recoil && client->player.firing_cooldown > 0) { 
@@ -4069,10 +4074,7 @@ void player_draw_weapon(GameClient *client, Weapon *weapon, bool show_recoil) {
 
     draw_mesh(REN(), g_meshes[weapon->mesh], weapon_position, {1, 1, 1}, weapon_rotation, weapon->colour, REN()->default_pbr_material);
 
-
-    { // draw muzzle flash
-        v3 light_position = GC()->camera.position + forward;
-
+    if (show_recoil) { // draw muzzle flash
         TimedEffectState muzzle_flash = timed_effect_state(&GC()->muzzle_flash);
 
         if (muzzle_flash.active || g_debug_always_draw_muzzle_flash) {
@@ -4090,8 +4092,8 @@ void player_draw_weapon(GameClient *client, Weapon *weapon, bool show_recoil) {
 
 void play_weapon_fire_sound(Weapon *weapon) {
     switch (weapon->handle) {
-        case WH_TAP:
-        case WH_PAL:
+        case WH_ROCKET_LAUNCHER:
+        case WH_PEACE_AND_LOVE:
         case WH_DEAGLE: {
             sound_engine_play(g_sounds[weapon->firing_sound]);
         } break;

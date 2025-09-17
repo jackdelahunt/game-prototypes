@@ -97,8 +97,8 @@ const static int count = 5;
 inline static EnumValue<WeaponHandle> values[count] = {
     EnumValue<WeaponHandle>(string("WH_DEAGLE"), WH_DEAGLE),
     EnumValue<WeaponHandle>(string("WH_M4"), WH_M4),
-    EnumValue<WeaponHandle>(string("WH_TAP"), WH_TAP),
-    EnumValue<WeaponHandle>(string("WH_PAL"), WH_PAL),
+    EnumValue<WeaponHandle>(string("WH_ROCKET_LAUNCHER"), WH_ROCKET_LAUNCHER),
+    EnumValue<WeaponHandle>(string("WH_PEACE_AND_LOVE"), WH_PEACE_AND_LOVE),
     EnumValue<WeaponHandle>(string("_WH_COUNT"), _WH_COUNT),
 };
 
@@ -106,8 +106,8 @@ static string name(WeaponHandle value) {
     switch (value) {
         case WH_DEAGLE: return values[0].name;
         case WH_M4: return values[1].name;
-        case WH_TAP: return values[2].name;
-        case WH_PAL: return values[3].name;
+        case WH_ROCKET_LAUNCHER: return values[2].name;
+        case WH_PEACE_AND_LOVE: return values[3].name;
         case _WH_COUNT: return values[4].name;
     }
 }

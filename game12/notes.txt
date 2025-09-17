@@ -7,6 +7,7 @@ Started today:  12:00
 @todo
 
 In progress:
+- work on rocket launcher
 
 Game todo:
 - work on shooting feedback
