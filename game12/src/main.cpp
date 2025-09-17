@@ -44,7 +44,6 @@ f32 g_player_ground_drag          = 10;
 f32 g_player_air_control          = 4;
 f32 g_gravity                     = 70;
 
-v3  g_weapon_display_offset       = v3{0.85, -0.6, 0.9};
 f32 g_weapon_switch_cooldown      = 1.1;
 
 f32 g_pickup_weapon_cooldown  = 9;
@@ -79,7 +78,7 @@ bool g_debug_draw_owner                 = false;
 bool g_debug_draw_no_mesh               = false;
 bool g_debug_always_draw_muzzle_flash   = false;
 
-bool g_cheat_infinite_ammo    = false;
+bool g_cheat_infinite_ammo    = true;
 bool g_cheat_no_damage        = false;
 
 f32 g_game_length = Minute(10);
@@ -104,6 +103,12 @@ f32 g_health_bar_notch_empty_height_factor      = 0.8f;
 
 v4 g_muzzle_flash_colour     = ORANGE;
 f32 g_muzzle_flash_intensity = 5;
+
+v4 g_bullet_trail_colour        = ORANGE;
+f32 g_bullet_trail_intensity    = 3;
+f32 g_bullet_trail_speed        = 200;
+v4 g_bullet_trail_bullet_colour = ORANGE;
+f32 g_bullet_trail_bullet_size  = 0.03;
 
 v4 g_clear_colour           = v4 {0.398013, 0.481982, 0.582278, 1.000000};
 v3 g_ambient_light_colour   = v3 {0.189873, 0.189873, 0.189873};
@@ -143,7 +148,7 @@ meta enum MaterialHandle : u32 {
 
 Material *g_materials[_MAT_COUNT] = {};
 
-enum MeshHandle : u32 {
+meta enum MeshHandle : u32 {
     MH_NONE,
     MH_DEAGLE,
     MH_M4,
@@ -179,91 +184,115 @@ meta enum WeaponHandle : u32 {
 };
 
 struct Weapon {
+    // meta info
     WeaponHandle handle;
     string display_name;
+
+    // rendering
     v4 colour;
+    MeshHandle mesh; 
+    v3 viewmodel_offset;
+    v3 recoil_offset;
+    f32 muzzle_flash_size;
+    v3 bullet_exit_offset;
+
+    // weapon stats
     f32 damage;
     f32 headshot_damage;
     i32 ammo_count;
     bool automatic;
     f32 firing_cooldown;
-    MeshHandle mesh; 
-    SoundHandle firing_sound;
-    v3 recoil_offset;
-    f32 muzzle_flash_size;
-    v3 muzzle_flash_offset;
     f32 speed_factor;
     f32 recoil_per_shot;
+
+    // sound
+    SoundHandle firing_sound;
 };
 
 Weapon g_weapons[_WH_COUNT] = {
     Weapon {
         .handle = WH_DEAGLE,
         .display_name = "Deagle",
+
         .colour = brightness(WHITE, 0.6),
+        .mesh = MH_DEAGLE,
+        .viewmodel_offset = v3{0.85, -0.6, 0.9},
+        .recoil_offset = v3{0, -0.08, -0.4},
+        .muzzle_flash_size = 0.4f,
+        .bullet_exit_offset = v3{0, 0.17, 0.46},
+
         .damage = 25,
         .headshot_damage = 55,
         .ammo_count = 7,
         .automatic = false,
         .firing_cooldown = 0.8,
-        .mesh = MH_DEAGLE,
-        .firing_sound = SH_FIRE_DEAGLE,
-        .recoil_offset = v3{0, -0.08, -0.4},
-        .muzzle_flash_size = 0.4f,
-        .muzzle_flash_offset = v3{0, 0.17, 0.46},
         .speed_factor = 0.65,
         .recoil_per_shot = 0,
+
+        .firing_sound = SH_FIRE_DEAGLE,
     },
     Weapon {
         .handle = WH_M4,
         .display_name = "M4",
+
         .colour = v4 {0.1, 0.1, 0.1, 1},
+        .mesh = MH_M4,
+        .viewmodel_offset = v3{0.85, -0.6, 0.9},
+        .recoil_offset = v3{0, -0.01, -0.15},
+        .muzzle_flash_size = 0.2f,
+        .bullet_exit_offset = v3{-0.01f, 0.21f, 1.4f},
+
         .damage = 5,
         .headshot_damage = 15,
         .ammo_count = 35,
         .automatic = true,
         .firing_cooldown = 0.1,
-        .mesh = MH_M4,
-        .firing_sound = SH_FIRE_SILENCED_GUN_HIGH,
-        .recoil_offset = v3{0, -0.01, -0.15},
-        .muzzle_flash_size = 0.2f,
-        .muzzle_flash_offset = v3{-0.01f, 0.21f, 1.4f},
         .speed_factor = 0.5,
         .recoil_per_shot = 0.8,
+
+        .firing_sound = SH_FIRE_SILENCED_GUN_HIGH,
     },
     Weapon {
         .handle = WH_TAP,
         .display_name = "Thoughts & Prayers",
+
         .colour = v4 {0.05, 0.5, 0.05, 1},
+        .mesh = MH_DEAGLE,
+        .viewmodel_offset = v3{0.85, -0.6, 0.9},
+        .recoil_offset = v3{0, -0.08, -0.4},
+        .muzzle_flash_size = 0.3f,
+        .bullet_exit_offset = v3{0, 0, 0},
+
         .damage = 100,
         .headshot_damage = 100,
         .ammo_count = 5,
         .automatic = false,
         .firing_cooldown = 1,
-        .mesh = MH_DEAGLE,
-        .firing_sound = SH_FIRE_DEAGLE,
-        .recoil_offset = v3{0, -0.08, -0.4},
-        .muzzle_flash_size = 0.3f,
-        .muzzle_flash_offset = v3{0, 0, 0},
         .speed_factor = 0.4,
         .recoil_per_shot = 0,
+
+        .firing_sound = SH_FIRE_DEAGLE,
     },
     Weapon {
         .handle = WH_PAL,
         .display_name = "Peace & Love",
+
         .colour = ORANGE,
+        .mesh = MH_DEAGLE,
+        .viewmodel_offset = v3{0.85, -0.6, 0.9},
+        .recoil_offset = v3{0, -0.08, -0.4},
+        .muzzle_flash_size = 0.3f,
+        .bullet_exit_offset = v3{0, 0.16, 0.44},
+
         .damage = 4,
         .headshot_damage = 8,
         .ammo_count = 50,
         .automatic = true,
         .firing_cooldown = 0.09,
-        .mesh = MH_DEAGLE,
-        .firing_sound = SH_FIRE_DEAGLE,
-        .recoil_offset = v3{0, -0.08, -0.4},
-        .muzzle_flash_size = 0.3f,
-        .muzzle_flash_offset = v3{0, 0.16, 0.44},
         .speed_factor = 0.8,
         .recoil_per_shot = 3,
+
+        .firing_sound = SH_FIRE_DEAGLE,
     }
 };
 
@@ -408,20 +437,18 @@ struct CubeCollision {
     v3 distance;
 };
 
-// want to be able to apply game effects in relation to time
-// 1. over a given T: over T seconds apply this effect
-// 2. once a given T: apply this effect immedietly but wait T seconds before applying it again
-// .. probably more
+template<typename T>
 struct TimedEffect {
     f32 start_duration;
     f32 remaining_duration;
-    f32 intensity;
+    T effect;
 };
 
+template<typename T>
 struct TimedEffectState {
-    f32 remaining;
-    f32 intensity;
     bool active;
+    f32 remaining;
+    T effect;
 };
 
 enum InstanceType {
@@ -488,9 +515,10 @@ struct GameClient {
     Viewport viewport;
     FrameBuffer game_view;
 
-    TimedEffect camera_shake;
-    TimedEffect health_bar_decay;
-    TimedEffect muzzle_flash;
+    TimedEffect<f32> camera_shake;
+    TimedEffect<f32> health_bar_decay;
+    TimedEffect<f32> muzzle_flash;
+    TimedEffect<array<v3, 2>> bullet_trail;
 
     PlayerState player;
     State state;
@@ -602,14 +630,14 @@ void player_set_ammo(GameClient *client, WeaponHandle weapon, i32 ammo);
 void player_set_ammo_full(GameClient *client, WeaponHandle weapon);
 Weapon *player_get_weapon(GameClient *client);
 void player_set_weapon(GameClient *client, WeaponHandle weapon, f32 cooldown);
-void player_draw_weapon(GameClient *client, Weapon *weapon, v3 display_offset, bool show_recoil);
+void player_draw_weapon(GameClient *client, Weapon *weapon, bool show_recoil);
 
 void play_weapon_fire_sound(Weapon *weapon);
 
-void timed_effect_start(TimedEffect *timed_effect, f32 duration, f32 intensity);
-void timed_effect_start_or_accumulate(TimedEffect *timed_effect, f32 duration, f32 intensity);
-void timed_effect_tick(TimedEffect *timed_effect, f32 delta_time);
-TimedEffectState timed_effect_state(TimedEffect *timed_effect);
+template<typename T> void timed_effect_start(TimedEffect<T> *timed_effect, f32 duration, T effect);
+template<typename T> void timed_effect_start_or_accumulate(TimedEffect<T> *timed_effect, f32 duration, T effect);
+template<typename T> void timed_effect_tick(TimedEffect<T> *timed_effect, f32 delta_time);
+template<typename T> TimedEffectState<T> timed_effect_state(TimedEffect<T> *timed_effect);
 
 // SOURCE: https://easings.net/#
 f32 ease_in_sin(f32 x);
@@ -1451,7 +1479,8 @@ void game_client_update(GameClient *client, State *state) {
                 client->player.duel_wield_switch = !client->player.duel_wield_switch;
 
                 play_weapon_fire_sound(player_weapon);
-                timed_effect_start_or_accumulate(&client->muzzle_flash, 0.05, 1);
+
+                timed_effect_start_or_accumulate(&client->muzzle_flash, 0.05, 1.0f);
 
                 if (client->player.weapon != WH_TAP) {
                     v3 ray_direction = get_forward_direction(&GC()->camera);
@@ -1476,6 +1505,18 @@ void game_client_update(GameClient *client, State *state) {
                     }
                 
                     if (result.entity) {
+                        { // start bullet trail effect
+                            v3 bullet_trail_start = {};
+                            bullet_trail_start += GC()->camera.position;
+                            bullet_trail_start += player_weapon->viewmodel_offset;
+                            bullet_trail_start += player_weapon->bullet_exit_offset;
+
+                            f32 travel_distance = length(result.hit_position - bullet_trail_start);
+                            f32 travel_time = travel_distance / g_bullet_trail_speed;
+
+                            timed_effect_start(&client->bullet_trail, travel_time, {bullet_trail_start, result.hit_position});
+                        }
+
                         { // spawn bullet particle effect
                             Entity *particle = local_spawn_blood_particle(state);
                             particle->position = result.hit_position;
@@ -1663,6 +1704,22 @@ void game_client_update(GameClient *client, State *state) {
 void game_client_draw(GameClient *client, State *state) {
     Assert(is_client(state));
 
+    timed_effect_tick(&client->bullet_trail, state->frame_delta_time);
+
+    { Scope // bullet trail
+        auto [active, remaining, trail] = timed_effect_state(&client->bullet_trail);
+        if (!active) {
+            break;
+        }
+        
+        f32 duration_t = 1 - remaining;
+        v3 trail_direction = trail[1] - trail[0];
+        v3 trail_position = trail[0] + (trail_direction * duration_t);
+
+        draw_point_light(REN(), trail_position, g_bullet_trail_colour, g_bullet_trail_intensity);
+        draw_sphere(REN(), trail_position, g_bullet_trail_bullet_size, g_bullet_trail_bullet_colour, REN()->default_unlit_material);
+    }
+
     { // top bar ui
         v3 time_bg_size = v3{UI_TIME_BG_WIDTH, UI_TIME_FONT_SIZE + UI_TIME_Y_PADDING, 0};
         v3 time_centre = v3{time_bg_size.x * 0.5f, client->viewport.size.y - (time_bg_size.y * 0.5f)};
@@ -1727,11 +1784,11 @@ void game_client_draw(GameClient *client, State *state) {
 
             { // draw weapon
                 if (player_weapon->handle == WH_PAL) {
-                    player_draw_weapon(client, player_weapon, g_weapon_display_offset, client->player.duel_wield_switch);
-                    player_draw_weapon(client, player_weapon, g_weapon_display_offset * v3{-1, 1, 1}, !client->player.duel_wield_switch);
+                    player_draw_weapon(client, player_weapon, client->player.duel_wield_switch);
+                    player_draw_weapon(client, player_weapon, !client->player.duel_wield_switch);
                 }
                 else {
-                    player_draw_weapon(client, player_weapon, g_weapon_display_offset, true);
+                    player_draw_weapon(client, player_weapon, true);
                 }
             }
 
@@ -1877,7 +1934,7 @@ void game_client_draw(GameClient *client, State *state) {
                     last_health_notch  = i32(ceilf(filled_notches) - 1);
                 }
 
-                TimedEffectState decay = {};
+                TimedEffectState<f32> decay = {};
                 i32 last_decay_notch = 0;
 
                 { 
@@ -1886,7 +1943,7 @@ void game_client_draw(GameClient *client, State *state) {
                         last_decay_notch = -1;
                     }
     
-                    f32 filled_and_decayed_notches = (health + decay.intensity) / health_per_notch;
+                    f32 filled_and_decayed_notches = (health + decay.effect) / health_per_notch;
                     last_decay_notch = i32(ceilf(filled_and_decayed_notches) - 1);
                 }
 
@@ -2208,14 +2265,157 @@ void editor_draw_ui(State *state) {
 
     // https://github.com/epezent/implot/blob/master/implot_demo.cpp
     // ImPlot::ShowDemoWindow();
+ 
+    { // settings
+        ImGui::Begin("Settings");
 
-    if (true) {
-        ImGui::Begin("Style");
+        if (ImGui::Button("Reload shaders")) {
+            delete_shaders(REN());
+            load_shaders(REN());
+        }
 
-        { // timer card
+        if (ImGui::CollapsingHeader("Cheats")) {
+            ImGui::Checkbox("Infinite ammo", &g_cheat_infinite_ammo);
+            ImGui::Checkbox("No damage", &g_cheat_no_damage);
+
+            { // give weapon buttons
+                ImGui::SeparatorText("Give weapon");
+
+                EnumValue<WeaponHandle> *weapons = meta_values<WeaponHandle>();
+                for (i32 i = 0; i < meta_count<WeaponHandle>() - 1; i++) {
+                    if (i != 0) {
+                        ImGui::SameLine();
+                    }
+
+                    if (ImGui::Button(weapons[i].name.c())) {
+                        player_set_weapon(GC(), weapons[i].value, 0);
+                    }
+                }
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Player")) {
+            ImGui::SeparatorText("Movement");
+            ImGui::InputFloat("Ground acceleration", &g_player_ground_acceleration);
+            ImGui::InputFloat("Jump acceleration", &g_player_jump_acceleration);
+            ImGui::InputFloat("Ground drag", &g_player_ground_drag);
+            ImGui::InputFloat("Air control", &g_player_air_control);
+            ImGui::InputFloat("Gravity", &g_gravity);
+
+            ImGui::SeparatorText("Character");
+            ImGui::SliderFloat("Eyes offset", &g_player_eyes_offset, 0, g_player_height * 0.5);
+
+            ImGui::SeparatorText("Camera shake");
+            ImGui::SliderFloat("Landing shake duration", &g_landing_camera_shake_duration, 0, 2);
+            ImGui::SliderFloat("Landing shake intensity", &g_landing_camera_shake_intensity, 0, 2);
+
+            ImGui::SeparatorText("Weapon Recoil");
+            ImGui::SliderFloat("Recoil scale", &g_player_recoil_scale, 0, 1);
+            ImGui::SliderInt("Recoil min shots", &g_player_recoil_min_shots, 0, 30);
+
+            ImGui::SeparatorText("Camera recoil shake");
+            ImGui::SliderFloat("Recoil shake frequency", &g_player_recoil_shake_frequency, 0, 30);
+            ImGui::SliderFloat("Recoil shake scale", &g_player_recoil_shake_scale, 0, 20);
+
+            ImGui::SeparatorText("Muzzle flash");
+            imgui_colour_control("Flash colour", &g_muzzle_flash_colour);
+            ImGui::SliderFloat("Intensity", &g_muzzle_flash_intensity, 0, 50);
+
+            ImGui::SeparatorText("Bullet trail");
+            imgui_colour_control("Trail colour", &g_bullet_trail_colour);
+            ImGui::SliderFloat("Trail intensity", &g_bullet_trail_intensity, 0, 10);
+            ImGui::SliderFloat("Trail speed", &g_bullet_trail_speed, 0, 500);
+            imgui_colour_control("Bullet colour", &g_bullet_trail_bullet_colour);
+            ImGui::SliderFloat("Bullet size", &g_bullet_trail_bullet_size, 0, 0.5);
+
+            if (ImGui::CollapsingHeader("Entity")) {
+                Entity *player = get_client_player(state, state->instance_id);
+                if (player) {
+                    imgui_entity(player);
+                }
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Renderer")) {
+            imgui_colour_control("Clear colour", &REN()->clear_colour);
+            imgui_colour_control("Ambient light", &REN()->ambient_light);
+            imgui_colour_control("Sun colour", &REN()->sun_colour);
+            imgui_v3_control("Sun position", &REN()->sun_position);
+            ImGui::InputFloat("Sun intensity", &REN()->sun_intensity);
+
+            if (ImGui::CollapsingHeader("Frame buffers")) {
+                f32 image_downscale = 4;
+                ImVec2 size = ImVec2(GC()->viewport.size.x / image_downscale, GC()->viewport.size.y / image_downscale);
+
+                ImGui::Image(REN()->main_buffer.colour_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Image(REN()->main_buffer.depth_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Crosshair")) {
+            ImGui::SliderFloat("Gap", &g_crosshair_gap, 0, 20);
+            ImGui::SliderFloat("Length", &g_crosshair_length, 0, 20);
+            ImGui::SliderFloat("Thickness", &g_crosshair_thickness, 0, 20);
+            ImGui::ColorEdit4("Colour", &g_crosshair_colour[0]);
+        }
+
+        if (ImGui::CollapsingHeader("Weapons")) {
+            for (i32 i = 0; i < _WH_COUNT; i++) {
+                Weapon *weapon = &g_weapons[(WeaponHandle) i];
+
+                if (ImGui::CollapsingHeader(weapon->display_name.c())) {
+                    ImGui::Text("Name: %s", weapon->display_name.c());
+
+                    imgui_colour_control("Colour", &weapon->colour);
+                    imgui_enum_dropdown("Mesh", &weapon->mesh);
+                    imgui_v3_control("Recoil offset", &weapon->recoil_offset);
+                    ImGui::DragFloat("Muzzle flash size", &weapon->muzzle_flash_size, 0, 1, 0.01);
+                    imgui_v3_control("Bullet exit offset", &weapon->bullet_exit_offset, 0.01);
+
+                    ImGui::InputFloat("Damage", &weapon->damage);
+                    ImGui::InputFloat("Headshot Damage", &weapon->headshot_damage);
+                    ImGui::InputInt("Ammo", &weapon->ammo_count);
+                    ImGui::Checkbox("Automatic", &weapon->automatic);
+                    ImGui::InputFloat("Firing cooldown", &weapon->firing_cooldown);
+                    ImGui::InputFloat("Speed factor", &weapon->speed_factor);
+                    ImGui::InputFloat("Recoil per shot", &weapon->recoil_per_shot);
+
+                    ImGui::Text("TODO: sound");
+                }
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Materials")) {
+            EnumValue<MaterialHandle> *material_handles = meta_values<MaterialHandle>();
+            for (i64 i = 0; i < meta_count<MaterialHandle>() - 1; i++) {
+                EnumValue<MaterialHandle> material_handle = material_handles[i];
+
+                if (ImGui::CollapsingHeader(material_handle.name.c())) {
+                    Material *material = g_materials[material_handles[i].value];
+
+                    imgui_v2_control("Tiling factor", &material->tiling_factor, 0.01);
+
+                    ImGui::Text("Albedo: %dx%d", material->albedo->width, material->albedo->height);
+                    ImGui::Image(material->albedo->id, ImVec2(200, 200));
+
+                    ImGui::Text("Normal: %dx%d", material->normal->width, material->normal->height);
+                    ImGui::Image(material->normal->id, ImVec2(200, 200));
+
+                    ImGui::Text("Ambient occlusion: %dx%d", material->ambient_occlusion->width, material->ambient_occlusion->height);
+                    ImGui::Image(material->ambient_occlusion->id, ImVec2(200, 200));
+
+                    ImGui::Text("Roughness: %dx%d", material->roughness->width, material->roughness->height);
+                    ImGui::Image(material->roughness->id, ImVec2(200, 200));
+
+                    ImGui::Text("Metalness: %dx%d", material->metalness->width, material->metalness->height);
+                    ImGui::Image(material->metalness->id, ImVec2(200, 200));
+                }
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Timer")) { // timer card
             ImGui::PushID("timer_style");
     
-            ImGui::SeparatorText("Timer");
             imgui_colour_control("Background", &UI_TIME_BACKGROUND_COLOUR);
             ImGui::SliderFloat("Font size", &UI_TIME_FONT_SIZE, 1, 60);
             ImGui::SliderFloat("Y padding", &UI_TIME_Y_PADDING, 1, 60);
@@ -2224,10 +2424,9 @@ void editor_draw_ui(State *state) {
             ImGui::PopID();
         }
 
-        { // score card
+        if (ImGui::CollapsingHeader("Score board")) {
             ImGui::PushID("score_style");
     
-            ImGui::SeparatorText("Score");
             imgui_colour_control("Background", &UI_SCORE_BACKGROUND_COLOUR);
             ImGui::SliderFloat("Font size", &UI_SCORE_FONT_SIZE, 1, 60);
             ImGui::SliderFloat("Y padding", &UI_SCORE_Y_PADDING, 1, 60);
@@ -2239,11 +2438,9 @@ void editor_draw_ui(State *state) {
             ImGui::PopID();
         }
 
-        { // health bars
+        if (ImGui::CollapsingHeader("Health bars")) {
             ImGui::PushID("health_bar_style");
     
-            ImGui::SeparatorText("Health bars");
-
             imgui_v3_control("Offset", &g_health_bar_offset);
             imgui_colour_control("Health colour", &g_health_bar_health_colour);
             imgui_colour_control("Decay colour", &g_health_bar_decay_colour);
@@ -2262,10 +2459,8 @@ void editor_draw_ui(State *state) {
             ImGui::PopID();
         }
 
-        { // particles
+        if (ImGui::CollapsingHeader("Particles")) {
             ImGui::PushID("particle_style");
-
-            ImGui::SeparatorText("Particles");
 
             ImGui::SliderFloat("Particle lifetime", &g_particle_lifetime, 0, 10);
             ImGui::SliderFloat("Particle size", &g_particle_size, 0, 0.1f);
@@ -2283,15 +2478,9 @@ void editor_draw_ui(State *state) {
             ImGui::PopID();
         }
 
-        ImGui::End();
-    }
-  
-    { // debug info
-        ImGui::Begin("Debug info");
-
-        ImVec2 plot_size = ImVec2(450, 300);
 
         if (ImGui::CollapsingHeader("Performance")) {
+            ImVec2 plot_size = ImVec2(450, 300);
 
             if (ImPlot::BeginPlot("Time to start new tick", plot_size, ImPlotFlags_NoInputs)) {
                 f32 min_y = GAME_MS_PER_TICK - 2;
@@ -2351,228 +2540,17 @@ void editor_draw_ui(State *state) {
                     ImPlot::EndPlot();
                 }
             }
-        }
 
-        { // basic timings
-            ImGui::SeparatorText("Client frame timings");
-            ImGui::Text("FPS: %.1f", 1.0f / state->frame_delta_time);
-            ImGui::Text("Delta time (s): %f", state->frame_delta_time);
-            ImGui::Text("Delta time (ms): %.1f", state->frame_delta_time * 1000);
-
-            ImGui::SeparatorText("Client tick timings");
-            ImGui::Text("TPS: %.1f", 1.0f / state->tick_delta_time);
-            ImGui::Text("Delta time (s): %f", state->tick_delta_time);
-            ImGui::Text("Delta time (ms): %.1f", state->tick_delta_time * 1000);
-        }
-
-        { // main display info
-            ImGui::SeparatorText("Display");
-            ImGui::Text("Logical size: %dx%d", WIN()->logical_size.x, WIN()->logical_size.y);
-            ImGui::Text("Frame buffer size: %dx%d", WIN()->frame_buffer_size.x, WIN()->frame_buffer_size.y);
+            { // basic timings
+                ImGui::SeparatorText("Client frame timings");
+                ImGui::Text("FPS: %.1f", 1.0f / state->frame_delta_time);
+                ImGui::Text("Delta time (s): %f", state->frame_delta_time);
+                ImGui::Text("Delta time (ms): %.1f", state->frame_delta_time * 1000);
     
-            v3 mouse_position = v3{MOUSE.position.x, MOUSE.position.y, -1};
-            v3 mouse_position_ndc = screen_position_to_ndc(Viewport {.size = WIN()->frame_buffer_size}, mouse_position);
-    
-            ImGui::Text("Mouse: [%4.0f, %4.0f]", mouse_position.x, mouse_position.y);
-            ImGui::Text("Mouse (NDC): [%4.2f, %4.2f]", mouse_position_ndc.x, mouse_position_ndc.y);
-        }
-
-        { // scene viewport info
-            ImGui::SeparatorText("Scene viewport");
-            ImGui::Text("Size: %dx%d", ED()->viewport.size.x, ED()->viewport.size.y);
-    
-            v3 mouse_position = v3{ED()->viewport.mouse.x, ED()->viewport.mouse.y, -1};
-            v3 mouse_position_ndc = screen_position_to_ndc(ED()->viewport, mouse_position);
-    
-            ImGui::Text("Mouse: [%4.0f, %4.0f]", mouse_position.x, mouse_position.y);
-            ImGui::Text("Mouse (NDC): [%4.2f, %4.2f]", mouse_position_ndc.x, mouse_position_ndc.y);
-        }
-
-        { // game viewport info
-            ImGui::SeparatorText("Game viewport");
-            ImGui::Text("Size: %dx%d", GC()->viewport.size.x, GC()->viewport.size.y);
-    
-            v3 mouse_position = v3{GC()->viewport.mouse.x, GC()->viewport.mouse.y, -1};
-            v3 mouse_position_ndc = screen_position_to_ndc(GC()->viewport, mouse_position);
-    
-            ImGui::Text("Mouse: [%4.0f, %4.0f]", mouse_position.x, mouse_position.y);
-            ImGui::Text("Mouse (NDC): [%4.2f, %4.2f]", mouse_position_ndc.x, mouse_position_ndc.y);
-        }
-
-        { // game camera
-            ImGui::SeparatorText("Game camera");
-
-            v3 forward = get_forward_direction(&GC()->camera);
-            v3 right = get_right_direction(&GC()->camera);
-            v3 up = get_up_direction(&GC()->camera);
-
-            imgui_v3_control("Position", &GC()->camera.position);
-            imgui_v3_control("Rotation", &GC()->camera.rotation);
-
-            imgui_v3_control("Forward", &forward);
-            imgui_v3_control("Right", &right);
-            imgui_v3_control("Up", &up);
-        }
-
-        { // editor camera
-            ImGui::SeparatorText("Editor camera");
-
-            v3 position = ED()->camera.position;
-            v3 rotation = ED()->camera.rotation;
-            v3 forward = get_forward_direction(&ED()->camera);
-            v3 right = get_right_direction(&ED()->camera);
-            v3 up = get_up_direction(&ED()->camera);
-
-            ImGui::Text("Position: [%.3f, %.3f, %.3f]", position.x, position.y, position.z);
-            ImGui::Text("Rotation: [%.3f, %.3f, %.3f]", rotation.x, rotation.y, rotation.z);
-            ImGui::Text("Forward: [%.3f, %.3f, %.3f]", forward.x, forward.y, forward.z);
-            ImGui::Text("Right: [%.3f, %.3f, %.3f]", right.x, right.y, right.z);
-            ImGui::Text("Up: [%.3f, %.3f, %.3f]", up.x, up.y, up.z);
-        }
-
-        ImGui::End();
-    }
-
-    { // settings
-        ImGui::Begin("Settings");
-
-        if (ImGui::Button("Reload shaders")) {
-            delete_shaders(REN());
-            load_shaders(REN());
-        }
-
-        if (ImGui::CollapsingHeader("Cheats")) {
-            ImGui::Checkbox("Infinite ammo", &g_cheat_infinite_ammo);
-            ImGui::Checkbox("No damage", &g_cheat_no_damage);
-
-            { // give weapon buttons
-                ImGui::SeparatorText("Give weapon");
-
-                EnumValue<WeaponHandle> *weapons = meta_values<WeaponHandle>();
-                for (i32 i = 0; i < meta_count<WeaponHandle>() - 1; i++) {
-                    if (i != 0) {
-                        ImGui::SameLine();
-                    }
-
-                    if (ImGui::Button(weapons[i].name.c())) {
-                        player_set_weapon(GC(), weapons[i].value, 0);
-                    }
-                }
-            }
-        }
-
-        if (ImGui::CollapsingHeader("Player")) {
-            ImGui::SeparatorText("Movement");
-            ImGui::InputFloat("Ground acceleration", &g_player_ground_acceleration);
-            ImGui::InputFloat("Jump acceleration", &g_player_jump_acceleration);
-            ImGui::InputFloat("Ground drag", &g_player_ground_drag);
-            ImGui::InputFloat("Air control", &g_player_air_control);
-            ImGui::InputFloat("Gravity", &g_gravity);
-
-            ImGui::SeparatorText("Character");
-            ImGui::SliderFloat("Eyes offset", &g_player_eyes_offset, 0, g_player_height * 0.5);
-
-            ImGui::SeparatorText("Camera shake");
-            ImGui::SliderFloat("Landing shake duration", &g_landing_camera_shake_duration, 0, 2);
-            ImGui::SliderFloat("Landing shake intensity", &g_landing_camera_shake_intensity, 0, 2);
-
-            ImGui::SeparatorText("Weapon");
-            ImGui::SliderFloat("Fire Cooldown", &GC()->player.firing_cooldown, 0, g_weapons[GC()->player.weapon].firing_cooldown);
-#if TODO
-            ImGui::InputInt("Ammo", (i32 *) &GC()->player.ammo);
-#endif
-            imgui_v3_control("Display offset", &g_weapon_display_offset);
-
-            ImGui::SeparatorText("Weapon Recoil");
-            ImGui::SliderFloat("Recoil scale", &g_player_recoil_scale, 0, 1);
-            ImGui::SliderInt("Recoil min shots", &g_player_recoil_min_shots, 0, 30);
-
-            ImGui::SeparatorText("Camera recoil shake");
-            ImGui::SliderFloat("Recoil shake frequency", &g_player_recoil_shake_frequency, 0, 30);
-            ImGui::SliderFloat("Recoil shake scale", &g_player_recoil_shake_scale, 0, 20);
-
-            ImGui::SeparatorText("Muzzle flash");
-            imgui_colour_control("Flash colour", &g_muzzle_flash_colour);
-            ImGui::SliderFloat("Intensity", &g_muzzle_flash_intensity, 0, 50);
-
-            if (ImGui::CollapsingHeader("Entity")) {
-                Entity *player = get_client_player(state, state->instance_id);
-                if (player) {
-                    imgui_entity(player);
-                }
-            }
-        }
-
-        if (ImGui::CollapsingHeader("Renderer")) {
-            imgui_colour_control("Clear colour", &REN()->clear_colour);
-            imgui_colour_control("Ambient light", &REN()->ambient_light);
-            imgui_colour_control("Sun colour", &REN()->sun_colour);
-            imgui_v3_control("Sun position", &REN()->sun_position);
-            ImGui::InputFloat("Sun intensity", &REN()->sun_intensity);
-
-            if (ImGui::CollapsingHeader("Frame buffers")) {
-                f32 image_downscale = 4;
-                ImVec2 size = ImVec2(GC()->viewport.size.x / image_downscale, GC()->viewport.size.y / image_downscale);
-
-                ImGui::Image(REN()->main_buffer.colour_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
-                ImGui::Image(REN()->main_buffer.depth_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
-            }
-        }
-
-        if (ImGui::CollapsingHeader("Crosshair")) {
-            ImGui::SliderFloat("Gap", &g_crosshair_gap, 0, 20);
-            ImGui::SliderFloat("Length", &g_crosshair_length, 0, 20);
-            ImGui::SliderFloat("Thickness", &g_crosshair_thickness, 0, 20);
-            ImGui::ColorEdit4("Colour", &g_crosshair_colour[0]);
-        }
-
-        if (ImGui::CollapsingHeader("Weapons")) {
-            for (i32 i = 0; i < _WH_COUNT; i++) {
-                Weapon *weapon = &g_weapons[(WeaponHandle) i];
-                if (ImGui::CollapsingHeader(weapon->display_name.c())) {
-                    ImGui::Text("Name: %s", weapon->display_name.c());
-                    imgui_colour_control("Colour", &weapon->colour);
-                    ImGui::InputFloat("Damage", &weapon->damage);
-                    ImGui::InputFloat("Headshot Damage", &weapon->headshot_damage);
-                    ImGui::InputInt("Ammo", &weapon->ammo_count);
-                    ImGui::Checkbox("Automatic", &weapon->automatic);
-                    ImGui::InputFloat("Firing cooldown", &weapon->firing_cooldown);
-                    ImGui::Text("TODO: mesh");
-                    ImGui::Text("TODO: sound");
-                    imgui_v3_control("Recoil offset", &weapon->recoil_offset);
-                    ImGui::DragFloat("Muzzle flash size", &weapon->muzzle_flash_size, 0, 1, 0.01);
-                    imgui_v3_control("Muzzle flash offset", &weapon->muzzle_flash_offset, 0.01);
-                    ImGui::InputFloat("Speed factor", &weapon->speed_factor);
-                    ImGui::InputFloat("Recoil per shot", &weapon->recoil_per_shot);
-                }
-            }
-        }
-
-        if (ImGui::CollapsingHeader("Materials")) {
-            EnumValue<MaterialHandle> *material_handles = meta_values<MaterialHandle>();
-            for (i64 i = 0; i < meta_count<MaterialHandle>() - 1; i++) {
-                EnumValue<MaterialHandle> material_handle = material_handles[i];
-
-                if (ImGui::CollapsingHeader(material_handle.name.c())) {
-                    Material *material = g_materials[material_handles[i].value];
-
-                    imgui_v2_control("Tiling factor", &material->tiling_factor, 0.01);
-
-                    ImGui::Text("Albedo: %dx%d", material->albedo->width, material->albedo->height);
-                    ImGui::Image(material->albedo->id, ImVec2(200, 200));
-
-                    ImGui::Text("Normal: %dx%d", material->normal->width, material->normal->height);
-                    ImGui::Image(material->normal->id, ImVec2(200, 200));
-
-                    ImGui::Text("Ambient occlusion: %dx%d", material->ambient_occlusion->width, material->ambient_occlusion->height);
-                    ImGui::Image(material->ambient_occlusion->id, ImVec2(200, 200));
-
-                    ImGui::Text("Roughness: %dx%d", material->roughness->width, material->roughness->height);
-                    ImGui::Image(material->roughness->id, ImVec2(200, 200));
-
-                    ImGui::Text("Metalness: %dx%d", material->metalness->width, material->metalness->height);
-                    ImGui::Image(material->metalness->id, ImVec2(200, 200));
-                }
+                ImGui::SeparatorText("Client tick timings");
+                ImGui::Text("TPS: %.1f", 1.0f / state->tick_delta_time);
+                ImGui::Text("Delta time (s): %f", state->tick_delta_time);
+                ImGui::Text("Delta time (ms): %.1f", state->tick_delta_time * 1000);
             }
         }
 
@@ -2580,6 +2558,73 @@ void editor_draw_ui(State *state) {
             ImGui::Checkbox("Draw network owner", &g_debug_draw_owner);
             ImGui::Checkbox("Draw entities with no mesh", &g_debug_draw_no_mesh);
             ImGui::Checkbox("Always draw muzzle flash", &g_debug_always_draw_muzzle_flash);
+        }
+
+        if (ImGui::CollapsingHeader("Other")) {
+            { // main display info
+                ImGui::SeparatorText("Display");
+                ImGui::Text("Logical size: %dx%d", WIN()->logical_size.x, WIN()->logical_size.y);
+                ImGui::Text("Frame buffer size: %dx%d", WIN()->frame_buffer_size.x, WIN()->frame_buffer_size.y);
+        
+                v3 mouse_position = v3{MOUSE.position.x, MOUSE.position.y, -1};
+                v3 mouse_position_ndc = screen_position_to_ndc(Viewport {.size = WIN()->frame_buffer_size}, mouse_position);
+        
+                ImGui::Text("Mouse: [%4.0f, %4.0f]", mouse_position.x, mouse_position.y);
+                ImGui::Text("Mouse (NDC): [%4.2f, %4.2f]", mouse_position_ndc.x, mouse_position_ndc.y);
+            }
+    
+            { // scene viewport info
+                ImGui::SeparatorText("Scene viewport");
+                ImGui::Text("Size: %dx%d", ED()->viewport.size.x, ED()->viewport.size.y);
+        
+                v3 mouse_position = v3{ED()->viewport.mouse.x, ED()->viewport.mouse.y, -1};
+                v3 mouse_position_ndc = screen_position_to_ndc(ED()->viewport, mouse_position);
+        
+                ImGui::Text("Mouse: [%4.0f, %4.0f]", mouse_position.x, mouse_position.y);
+                ImGui::Text("Mouse (NDC): [%4.2f, %4.2f]", mouse_position_ndc.x, mouse_position_ndc.y);
+            }
+    
+            { // game viewport info
+                ImGui::SeparatorText("Game viewport");
+                ImGui::Text("Size: %dx%d", GC()->viewport.size.x, GC()->viewport.size.y);
+        
+                v3 mouse_position = v3{GC()->viewport.mouse.x, GC()->viewport.mouse.y, -1};
+                v3 mouse_position_ndc = screen_position_to_ndc(GC()->viewport, mouse_position);
+        
+                ImGui::Text("Mouse: [%4.0f, %4.0f]", mouse_position.x, mouse_position.y);
+                ImGui::Text("Mouse (NDC): [%4.2f, %4.2f]", mouse_position_ndc.x, mouse_position_ndc.y);
+            }
+    
+            { // game camera
+                ImGui::SeparatorText("Game camera");
+    
+                v3 forward = get_forward_direction(&GC()->camera);
+                v3 right = get_right_direction(&GC()->camera);
+                v3 up = get_up_direction(&GC()->camera);
+    
+                imgui_v3_control("Position", &GC()->camera.position);
+                imgui_v3_control("Rotation", &GC()->camera.rotation);
+    
+                imgui_v3_control("Forward", &forward);
+                imgui_v3_control("Right", &right);
+                imgui_v3_control("Up", &up);
+            }
+    
+            { // editor camera
+                ImGui::SeparatorText("Editor camera");
+    
+                v3 position = ED()->camera.position;
+                v3 rotation = ED()->camera.rotation;
+                v3 forward = get_forward_direction(&ED()->camera);
+                v3 right = get_right_direction(&ED()->camera);
+                v3 up = get_up_direction(&ED()->camera);
+    
+                ImGui::Text("Position: [%.3f, %.3f, %.3f]", position.x, position.y, position.z);
+                ImGui::Text("Rotation: [%.3f, %.3f, %.3f]", rotation.x, rotation.y, rotation.z);
+                ImGui::Text("Forward: [%.3f, %.3f, %.3f]", forward.x, forward.y, forward.z);
+                ImGui::Text("Right: [%.3f, %.3f, %.3f]", right.x, right.y, right.z);
+                ImGui::Text("Up: [%.3f, %.3f, %.3f]", up.x, up.y, up.z);
+            }
         }
 
         ImGui::End();
@@ -3975,7 +4020,7 @@ void player_set_weapon(GameClient *client, WeaponHandle weapon, f32 cooldown) {
     client->player.consecutive_shots = 0;
 }
 
-void player_draw_weapon(GameClient *client, Weapon *weapon, v3 display_offset, bool show_recoil) {
+void player_draw_weapon(GameClient *client, Weapon *weapon, bool show_recoil) {
     if (client->player.switching_cooldown > 0) {
         return;
     }
@@ -3985,9 +4030,9 @@ void player_draw_weapon(GameClient *client, Weapon *weapon, v3 display_offset, b
     v3 right = get_right_direction(&GC()->camera);
 
     v3 weapon_position = v3{};
-    weapon_position += display_offset.x * right;
-    weapon_position += display_offset.y * up;
-    weapon_position += display_offset.z * forward;
+    weapon_position += weapon->viewmodel_offset.x * right;
+    weapon_position += weapon->viewmodel_offset.y * up;
+    weapon_position += weapon->viewmodel_offset.z * forward;
 
     // apply recoil if there is cooldown
     if (show_recoil && client->player.firing_cooldown > 0) { 
@@ -4016,9 +4061,9 @@ void player_draw_weapon(GameClient *client, Weapon *weapon, v3 display_offset, b
         if (muzzle_flash.active || g_debug_always_draw_muzzle_flash) {
             v3 muzzle_flash_position = v3{};
             muzzle_flash_position += weapon_position;
-            muzzle_flash_position += weapon->muzzle_flash_offset.x * right;
-            muzzle_flash_position += weapon->muzzle_flash_offset.y * up;
-            muzzle_flash_position += weapon->muzzle_flash_offset .z * forward;
+            muzzle_flash_position += weapon->bullet_exit_offset.x * right;
+            muzzle_flash_position += weapon->bullet_exit_offset.y * up;
+            muzzle_flash_position += weapon->bullet_exit_offset .z * forward;
 
             draw_quad(REN(), muzzle_flash_position, {weapon->muzzle_flash_size, weapon->muzzle_flash_size}, weapon_rotation, WHITE, g_materials[MAT_MUZZLE_FLASH]);
             draw_point_light(REN(), muzzle_flash_position, g_muzzle_flash_colour, g_muzzle_flash_intensity);
@@ -4050,24 +4095,27 @@ void play_weapon_fire_sound(Weapon *weapon) {
     }
 }
 
-void timed_effect_start(TimedEffect *timed_effect, f32 duration, f32 intensity) {
+template <typename T>
+void timed_effect_start(TimedEffect<T> *timed_effect, f32 duration, T effect) {
     Assert(duration != 0);
 
     timed_effect->start_duration = duration;
     timed_effect->remaining_duration = duration;
-    timed_effect->intensity = intensity;
+    timed_effect->effect = effect;
 }
 
-void timed_effect_start_or_accumulate(TimedEffect *timed_effect, f32 duration, f32 intensity) {
+template <typename T>
+void timed_effect_start_or_accumulate(TimedEffect<T> *timed_effect, f32 duration, T effect) {
     if (timed_effect->remaining_duration == 0) {
-        timed_effect_start(timed_effect, duration, intensity);
+        timed_effect_start(timed_effect, duration, effect);
         return;
     }
 
-    timed_effect->intensity += intensity;
+    timed_effect->effect += effect;
 }
 
-void timed_effect_tick(TimedEffect *timed_effect, f32 delta_time) {
+template <typename T>
+void timed_effect_tick(TimedEffect<T> *timed_effect, f32 delta_time) {
     timed_effect->remaining_duration -= delta_time;
 
     if (timed_effect->remaining_duration < 0) {
@@ -4075,9 +4123,10 @@ void timed_effect_tick(TimedEffect *timed_effect, f32 delta_time) {
     }
 }
 
-TimedEffectState timed_effect_state(TimedEffect *timed_effect) {
+template <typename T>
+TimedEffectState<T> timed_effect_state(TimedEffect<T> *timed_effect) {
     if (timed_effect->remaining_duration == 0) {
-        return TimedEffectState {.active = false};
+        return TimedEffectState<T> {.active = false};
     }
 
     // remaining is how much left of the original duration is left from 1->0
@@ -4085,9 +4134,9 @@ TimedEffectState timed_effect_state(TimedEffect *timed_effect) {
     // 0.5: halfway through the duration 
     // 0:   ended
     return TimedEffectState {
+        .active = true,
         .remaining = timed_effect->remaining_duration / timed_effect->start_duration,
-        .intensity = timed_effect->intensity,
-        .active = true
+        .effect = timed_effect->effect
     };
 }
 

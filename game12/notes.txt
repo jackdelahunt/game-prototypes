@@ -1,8 +1,8 @@
 Start date:     11/08/25
 End date:       ??/??/??
-Total time:     152:30
+Total time:     153:30
 
-Started today:  21:00
+Started today:  12:00
 
 @todo
 
@@ -13,13 +13,15 @@ Game todo:
     - improve muzzle flash  
     - sound when killed enemy
     - hitmarkers
-    - small projectile when player shoots, is a light? 8^)
+    - improve bullet trails 
 - sound when player dies
 - start multiplayer game from within game
 - hold space == higher jump
 - real game over screen
 - ammo pickups
-- score board effect and polish
+- score board effect and polish\
+- smoke granades
+- separate ammo types and weapon types, ammos are pickups
 
 Engine todo:
 - game "play button"

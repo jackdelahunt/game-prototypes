@@ -53,6 +53,44 @@ static int index(MaterialHandle value) {
 };
 
 template<>
+struct MetaEnum<MeshHandle> {
+const static int count = 5;
+
+inline static EnumValue<MeshHandle> values[count] = {
+    EnumValue<MeshHandle>(string("MH_NONE"), MH_NONE),
+    EnumValue<MeshHandle>(string("MH_DEAGLE"), MH_DEAGLE),
+    EnumValue<MeshHandle>(string("MH_M4"), MH_M4),
+    EnumValue<MeshHandle>(string("MH_CROSS"), MH_CROSS),
+    EnumValue<MeshHandle>(string("_MH_COUNT"), _MH_COUNT),
+};
+
+static string name(MeshHandle value) {
+    switch (value) {
+        case MH_NONE: return values[0].name;
+        case MH_DEAGLE: return values[1].name;
+        case MH_M4: return values[2].name;
+        case MH_CROSS: return values[3].name;
+        case _MH_COUNT: return values[4].name;
+    }
+}
+
+static EnumValue<MeshHandle> *value(string name) {
+    for (int i = 0; i < count; i++) {
+        if (slice_memcmp(values[i].name, name)) return &values[i];
+    }
+    return nullptr;
+}
+
+static int index(MeshHandle value) {
+    for (int i = 0; i < count; i++) {
+        if (values[i].value == value) return i;
+    }
+    return -1;
+}
+
+};
+
+template<>
 struct MetaEnum<WeaponHandle> {
 const static int count = 5;
 
