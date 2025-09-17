@@ -19,7 +19,7 @@
 #define MAX_ENTITIES 500
 #define LEVEL_INSTANCE_ID 0
 #define SERVER_INSTANCE_ID 1
-#define GAME_MS_PER_TICK 10
+#define GAME_MS_PER_TICK 12
 #define GAME_MS_PER_FRAME 8
 #define MAX_TEAMS 2
 
@@ -2541,7 +2541,7 @@ void editor_draw_ui(State *state) {
                 }
             }
 
-            { // basic timings
+            { // client basic timings
                 ImGui::SeparatorText("Client frame timings");
                 ImGui::Text("FPS: %.1f", 1.0f / state->frame_delta_time);
                 ImGui::Text("Delta time (s): %f", state->frame_delta_time);
@@ -2551,6 +2551,23 @@ void editor_draw_ui(State *state) {
                 ImGui::Text("TPS: %.1f", 1.0f / state->tick_delta_time);
                 ImGui::Text("Delta time (s): %f", state->tick_delta_time);
                 ImGui::Text("Delta time (ms): %.1f", state->tick_delta_time * 1000);
+            }
+
+            { // client connection status 
+                ImGui::PushID("client_connection_status");
+
+                ImGui::SeparatorText("Client connection status");
+                
+                SteamNetConnectionRealTimeStatus_t *connection_status = atomic_snapshot_read(&NET()->client_connection_status_snapshot);
+
+                ImGui::Text("Ping: %dms", connection_status->m_nPing);
+                ImGui::Text("Quality (local): %.2f%%", connection_status->m_flConnectionQualityLocal * 100.0f);
+                ImGui::Text("Quality (server): %.2f%%", connection_status->m_flConnectionQualityRemote * 100.0f);
+                ImGui::Text("Out: %d (Packet/s) %d (Byte/s) %d (KB/s)", i32(connection_status->m_flOutPacketsPerSec), i32(connection_status->m_flOutBytesPerSec), i32(connection_status->m_flOutBytesPerSec) / KB(1));
+                ImGui::Text("In: %d (Packet/s) %d (Byte/s) %d (KB/s)", i32(connection_status->m_flInPacketsPerSec), i32(connection_status->m_flInBytesPerSec), i32(connection_status->m_flInBytesPerSec) / KB(1));
+                ImGui::Text("Estimated send rate: %d (KB/s)", connection_status->m_nSendRateBytesPerSecond / KB(1));
+
+                ImGui::PopID();
             }
         }
 

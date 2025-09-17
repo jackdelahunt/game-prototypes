@@ -1082,18 +1082,18 @@ void fmt_value(DynamicArray<u8> *bytes, char *value) {
 
 // @log
 std::mutex g_log_mutex;
-thread_local const char *tl_thread_name = NULL;
 bool g_log_print_label = true;
 bool g_log_print_location = true;
 
+thread_local const char *tl_thread_name = NULL;
+thread_local Arena tl_log_arena = arena_create(MB(10));
+
 template<typename... Args>
 void _logf(const char *colour, const char *label, const char *file, i32 line, string format, Args... args) {
-    Arena scratch = arena_create(KB(1));
-
-    string s = fmt(&scratch, format, args...);
+    string s = fmt(&tl_log_arena, format, args...);
     _log(colour, label, file, line, s);
 
-    arena_destroy(&scratch);
+    arena_reset(&tl_log_arena);
 }
 
 void _log(const char *colour, const char *label, const char *file, i32 line, string s) {

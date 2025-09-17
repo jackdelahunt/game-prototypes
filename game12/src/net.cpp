@@ -45,6 +45,7 @@ enum NetworkInstanceState {
 // @server
 struct Server {
     NetworkInstanceState server_state;
+
     HSteamListenSocket socket;
     HSteamNetPollGroup poll_group;
     StackArray<HSteamNetConnection, 10> connections;
@@ -56,8 +57,10 @@ struct Server {
 // @client
 struct Client {
     NetworkInstanceState client_state;
+
     const char *server_address;
     HSteamNetConnection connection;
+    SteamNetConnectionRealTimeStatus_t connection_status;
 };
 
 struct NetworkLayer {
@@ -74,6 +77,8 @@ struct NetworkLayer {
     AtomicSnapshot<Sampler> mspt_sampler_snapshot;
     AtomicSnapshot<Sampler> client_in_messages_sampler_snapshot;
     AtomicSnapshot<Sampler> server_in_messages_sampler_snaphot;
+
+    AtomicSnapshot<SteamNetConnectionRealTimeStatus_t> client_connection_status_snapshot;
 
     Client client;
     Server server;
@@ -128,6 +133,7 @@ bool network_layer_init() {
     atomic_snapshot_init(&g_network_layer->mspt_sampler_snapshot);
     atomic_snapshot_init(&g_network_layer->client_in_messages_sampler_snapshot);
     atomic_snapshot_init(&g_network_layer->server_in_messages_sampler_snaphot);
+    atomic_snapshot_init(&g_network_layer->client_connection_status_snapshot);
 
     SteamDatagramErrMsg error_message;
     if (!GameNetworkingSockets_Init(nullptr, error_message)) {
@@ -175,6 +181,10 @@ net->thread = std::thread([net] () {
         atomic_snapshot_copy_and_swap(&net->mspt_sampler_snapshot, &net->mspt_sampler);
         atomic_snapshot_copy_and_swap(&net->client_in_messages_sampler_snapshot, &net->client_in_messages_sampler);
         atomic_snapshot_copy_and_swap(&net->server_in_messages_sampler_snaphot, &net->server_in_messages_sampler);
+
+        if (net->client.client_state == RUNNING) {
+            atomic_snapshot_copy_and_swap(&net->client_connection_status_snapshot, &net->client.connection_status);
+        }
 
         std::this_thread::sleep_for(std::chrono::microseconds(NETWORK_MS_PER_TICK - 1));
     }
@@ -272,6 +282,8 @@ void network_layer_update_client(NetworkLayer *net) {
     }
 
     if (net->client.client_state == RUNNING) {
+        net->interface->GetConnectionRealTimeStatus(net->client.connection, &net->client.connection_status, 0, NULL);
+
         while (net->client.client_state == RUNNING) {
             ISteamNetworkingMessage *incoming_message = NULL;
             i64 message_count = net->interface->ReceiveMessagesOnConnection(net->client.connection, &incoming_message, 1);
