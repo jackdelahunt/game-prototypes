@@ -115,6 +115,7 @@ v3 g_ambient_light_colour   = v3 {0.415686, 0.415686, 0.415686};
 v3 g_sun_colour             = v3 {1, 1, 1};
 v3 g_sun_position           = v3 {10, 50, -10};
 f32 g_sun_intensity         = 1;
+f32 g_sun_ortho_size        = 50;
 
 f32 g_particle_lifetime                 = 2.0f;
 f32 g_particle_size                     = 0.06f;
@@ -781,7 +782,7 @@ void game_client_entry() {
             return;
         }
 
-        ok = renderer_init(&arena, &frame_arena, WIN(), g_clear_colour, g_ambient_light_colour, g_sun_colour, v3{50, 100, -100}, g_sun_intensity);
+        ok = renderer_init(&arena, &frame_arena, WIN(), g_clear_colour, g_ambient_light_colour, g_sun_colour, v3{50, 100, -100}, g_sun_intensity, g_sun_ortho_size);
         if (!ok) {
             Log("Failed when trying to init the renderer");
             return;
@@ -2343,13 +2344,17 @@ void editor_draw_ui(State *state) {
             imgui_colour_control("Sun colour", &REN()->sun_colour);
             imgui_v3_control("Sun position", &REN()->sun_position);
             ImGui::InputFloat("Sun intensity", &REN()->sun_intensity);
+            ImGui::SliderFloat("Sun ortho size", &REN()->sun_ortho_size, 0, 200);
 
             if (ImGui::CollapsingHeader("Frame buffers")) {
                 f32 image_downscale = 4;
                 ImVec2 size = ImVec2(GC()->viewport.size.x / image_downscale, GC()->viewport.size.y / image_downscale);
 
-                ImGui::Image(REN()->main_buffer.colour_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
-                ImGui::Image(REN()->main_buffer.depth_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
+                ImGui::Text("Main frame buffer");
+                ImGui::Image(REN()->main_frame_buffer.colour_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
+
+                ImGui::Text("Sun frame buffer");
+                ImGui::Image(REN()->sun_frame_buffer.colour_attachment, size, ImVec2(0, 1), ImVec2(1, 0));
             }
         }
 

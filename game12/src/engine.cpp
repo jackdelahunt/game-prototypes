@@ -469,6 +469,7 @@ struct Renderer {
     v3 sun_colour;
     v3 sun_position;
     f32 sun_intensity;
+    f32 sun_ortho_size;
 
     FixedArray<Mesh> meshes;
     FixedArray<RenderCommand> commands;
@@ -495,12 +496,14 @@ struct Renderer {
     QuadBuffer ui_quads;
     QuadBuffer screen_quad;
 
-    FrameBuffer main_buffer;
+    FrameBuffer sun_frame_buffer;
+    FrameBuffer main_frame_buffer;
 
     u32 vertex_array_id;
     u32 vertex_buffer_id;
     u32 index_buffer_id;
 
+    Shader sun_shader;
     Shader pbr_shader;
     Shader unlit_shader;
     Shader ui_shader;
@@ -530,7 +533,7 @@ v3 get_up_direction(Camera *camera);
 bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, string fragment_shader_path);
 void assign_texture_slot(Shader *shader, string texture_name, i32 slot);
 void shader_use(Shader shader);
-void shader_set_texture(Shader shader, RenderTexture *render_texture, i32 slot);
+void shader_set_texture(Shader shader, u32 id, i32 slot);
 void shader_set_i32(Shader shader, string name, i32 value);
 void shader_set_f32(Shader shader, string name, f32 value);
 void shader_set_m4(Shader shader, string name, m4 *value);
@@ -557,7 +560,7 @@ Material *material_create_unlit(Renderer *renderer, v2 tiling_factor, RenderText
 
 // Renderer init API
 Renderer *REN();
-bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_colour, v3 ambient_light, v3 sun_colour, v3 sun_position, f32 sun_intensity);
+bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_colour, v3 ambient_light, v3 sun_colour, v3 sun_position, f32 sun_intensity, f32 sun_ortho_size);
 
 bool load_shaders(Renderer *renderer);
 void delete_shaders(Renderer *renderer);
@@ -753,9 +756,9 @@ void shader_use(Shader shader) {
     glUseProgram(shader.id);
 }
 
-void shader_set_texture(Shader shader, RenderTexture *render_texture, i32 slot) {
+void shader_set_texture(Shader shader, u32 id, i32 slot) {
     glActiveTexture(GL_TEXTURE0 + slot);
-    glBindTexture(GL_TEXTURE_2D, render_texture->id);
+    glBindTexture(GL_TEXTURE_2D, id);
 }
 
 void shader_set_i32(Shader shader, string name, i32 value) {
@@ -1026,7 +1029,7 @@ Renderer *REN() {
     return g_renderer;
 }
 
-bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_colour, v3 ambient_light, v3 sun_colour, v3 sun_position, f32 sun_intensity) {
+bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_colour, v3 ambient_light, v3 sun_colour, v3 sun_position, f32 sun_intensity, f32 sun_ortho_size) {
     g_renderer = new Renderer {
         .arena = arena,
         .frame_arena = frame_arena,
@@ -1035,11 +1038,12 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
         .sun_colour = sun_colour,
         .sun_position = sun_position,
         .sun_intensity = sun_intensity,
+        .sun_ortho_size = sun_ortho_size,
         .meshes = fixed_array_create<Mesh>(MAX_MESHES),
         .commands = fixed_array_create<RenderCommand>(MAX_RENDER_COMMANDS),
         .textures = stack_array_create<Texture, MAX_TEXTURES>(),
         .lights = stack_array_create<PointLight, MAX_POINT_LIGHTS>(),
-        .main_buffer = FrameBuffer {.size = {100, 100}},
+        .main_frame_buffer = FrameBuffer {.size = {100, 100}},
     };
 
     Renderer *renderer = REN();
@@ -1109,7 +1113,8 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
     }
 
     { // create frame buffers 
-        frame_buffer_init(&renderer->main_buffer);
+        frame_buffer_init(&renderer->main_frame_buffer);
+        frame_buffer_init(&renderer->sun_frame_buffer);
     }
 
     { // load default textures
@@ -1188,6 +1193,13 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
 
 bool load_shaders(Renderer *renderer) {
     {
+        bool ok = init_shader(&renderer->sun_shader, "Sun shader", "resources/shaders/sun_vertex.shader", "resources/shaders/sun_fragment.shader");
+        if (!ok) {
+            return false;
+        }
+    }
+
+    {
         bool ok = init_shader(&renderer->pbr_shader, "PBR shader", "resources/shaders/pbr_vertex.shader", "resources/shaders/pbr_fragment.shader");
         if (!ok) {
             return false;
@@ -1198,6 +1210,7 @@ bool load_shaders(Renderer *renderer) {
         assign_texture_slot(&renderer->pbr_shader, "material_ambient_occlusion", 2);
         assign_texture_slot(&renderer->pbr_shader, "material_roughness", 3);
         assign_texture_slot(&renderer->pbr_shader, "material_metalness", 4);
+        assign_texture_slot(&renderer->pbr_shader, "shadow_map", 5);
     }
 
     {
@@ -1223,6 +1236,9 @@ bool load_shaders(Renderer *renderer) {
 }
 
 void delete_shaders(Renderer *renderer) {
+    glDeleteProgram(renderer->sun_shader.id);
+    renderer->sun_shader.id = 0;
+
     glDeleteProgram(renderer->pbr_shader.id);
     renderer->pbr_shader.id = 0;
 
@@ -1510,12 +1526,55 @@ void renderer_start_frame(Renderer *renderer) {
 }
 
 void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, FrameBuffer *target, bool draw_ui) {
-    m4 view_matrix = get_view_matrix(camera);
-    m4 projection_matrix = get_projection_matrix(camera, f32(viewport.size.x) / f32(viewport.size.y));
+    f32 aspect_ratio        = f32(viewport.size.x) / f32(viewport.size.y);
 
-    { // geometry pass
-        frame_buffer_maybe_resize(&renderer->main_buffer, viewport.size);
-        frame_buffer_bind(&renderer->main_buffer);
+    m4 view_matrix          = get_view_matrix(camera);
+    m4 projection_matrix    = get_projection_matrix(camera, aspect_ratio);
+
+    m4 sun_view_matrix      = HMM_LookAt_LH(renderer->sun_position, {0, 0, 0}, {0, 1, 0});
+    m4 sun_projection_matrix = HMM_Orthographic_LH_NO(
+        -renderer->sun_ortho_size * aspect_ratio,  // left
+         renderer->sun_ortho_size * aspect_ratio,  // right
+        -renderer->sun_ortho_size,                 // bottom
+         renderer->sun_ortho_size,                 // top
+         0.1, 
+         500 
+    );
+
+    { // sun depth pass
+        // scale up shadow map texture for higher res shadows
+        v2i frame_buffer_size = viewport.size;
+        frame_buffer_size.x *= 1;
+        frame_buffer_size.y *= 1;
+
+        frame_buffer_maybe_resize(&renderer->sun_frame_buffer, frame_buffer_size);
+        frame_buffer_bind(&renderer->sun_frame_buffer);
+
+        renderer_clear_frame(BLACK);
+    
+        for (RenderCommand &command : renderer->commands) {
+            if (command.type == RC_MESH) {
+                MeshRenderCommand *mesh_cmd = &command.mesh;
+                
+                m4 model_matrix = get_model_matrix(mesh_cmd->position, mesh_cmd->scale, mesh_cmd->rotation);
+         
+                shader_use(renderer->sun_shader);
+         
+                shader_set_m4(renderer->sun_shader, "model", &model_matrix);
+                shader_set_m4(renderer->sun_shader, "view", &sun_view_matrix);
+                shader_set_m4(renderer->sun_shader, "projection", &sun_projection_matrix);
+ 
+                GLCall(glBindVertexArray(mesh_cmd->mesh->vertex_array_id));
+                GLCall(glDrawElements(GL_TRIANGLES, mesh_cmd->mesh->indices.len, GL_UNSIGNED_INT, 0));
+            }
+        }
+    
+        frame_buffer_unbind();
+    }
+
+    { // main pass
+        frame_buffer_maybe_resize(&renderer->main_frame_buffer, viewport.size);
+        frame_buffer_bind(&renderer->main_frame_buffer);
 
         renderer_clear_frame(renderer->clear_colour);
     
@@ -1531,6 +1590,9 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
                     shader_set_m4(renderer->pbr_shader, "model", &model_matrix);
                     shader_set_m4(renderer->pbr_shader, "view", &view_matrix);
                     shader_set_m4(renderer->pbr_shader, "projection", &projection_matrix);
+
+                    shader_set_m4(renderer->pbr_shader, "sun_view", &sun_view_matrix);
+                    shader_set_m4(renderer->pbr_shader, "sun_projection", &sun_projection_matrix);
     
                     shader_set_v3(renderer->pbr_shader, "camera_position", camera->position);
     
@@ -1544,11 +1606,13 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
                     shader_set_v2(renderer->pbr_shader, "material_tiling_factor", mesh_cmd->material->tiling_factor);
                     shader_set_i32(renderer->pbr_shader, "material_triplanar_enabled", mesh_cmd->material->triplanar_enabled ? 1 : 0);
                     shader_set_f32(renderer->pbr_shader, "material_triplanar_scale", mesh_cmd->material->triplanar_scale);
-                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->albedo, 0);
-                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->normal, 1);
-                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->ambient_occlusion, 2);
-                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->roughness, 3);
-                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->metalness, 4);
+                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->albedo->id, 0);
+                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->normal->id, 1);
+                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->ambient_occlusion->id, 2);
+                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->roughness->id, 3);
+                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->metalness->id, 4);
+
+                    shader_set_texture(renderer->pbr_shader, renderer->sun_frame_buffer.colour_attachment, 5);
     
                     shader_set_i32(renderer->pbr_shader, "light_count", renderer->lights.len);
     
@@ -1579,7 +1643,7 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
                     shader_set_v4(renderer->unlit_shader, "colour", mesh_cmd->colour);
     
                     shader_set_v2(renderer->unlit_shader, "material_tiling_factor", mesh_cmd->material->tiling_factor);
-                    shader_set_texture(renderer->unlit_shader, mesh_cmd->material->albedo, 0);
+                    shader_set_texture(renderer->unlit_shader, mesh_cmd->material->albedo->id, 0);
     
                     GLCall(glBindVertexArray(mesh_cmd->mesh->vertex_array_id));
                     GLCall(glDrawElements(GL_TRIANGLES, mesh_cmd->mesh->indices.len, GL_UNSIGNED_INT, 0));
@@ -1599,7 +1663,7 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
         m4 projection_matrix = HMM_Orthographic_LH_NO(0, viewport.size.x, 0, viewport.size.y,  0, 10);
 
         // drawing on top of main buffer output
-        frame_buffer_bind(&renderer->main_buffer);
+        frame_buffer_bind(&renderer->main_frame_buffer);
     
         quad_buffer_bind_and_update(&renderer->ui_quads);
      
@@ -1623,7 +1687,7 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
 
     { // copy to target buffer
         frame_buffer_maybe_resize(target, viewport.size);
-        frame_buffer_copy_to(&renderer->main_buffer, target);
+        frame_buffer_copy_to(&renderer->main_frame_buffer, target);
     }
 }
 
