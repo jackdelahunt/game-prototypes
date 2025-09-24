@@ -1,13 +1,13 @@
 Start date:     11/08/25
 End date:       ??/??/??
-Total time:     158:00
+Total time:     163:00
 
-Started today:  12:00
+Started today:  11:00
 
 @todo
 
 In progress:
-- work on rocket launcher
+- make it look good 
 
 Game todo:
 - work on shooting feedback
@@ -15,6 +15,7 @@ Game todo:
     - sound when killed enemy
     - hitmarkers
     - improve bullet trails 
+- work on rocket launcher
 - sound when player dies
 - start multiplayer game from within game
 - hold space == higher jump
@@ -47,10 +48,11 @@ For the future:
     - physics
     - meta info from structs for serialisation
     - multiplayer overhaul
-    - game as a dll
+    - refine timed effect, look at old enemy ai from game5? 
 - code structure:
     - move math types to ack (v3, m4)
     - update more names in math to my convention
+    - build almost evryhing as dll and hot reload
 - add a daily log to notes
 - add start date and end data to notes
 

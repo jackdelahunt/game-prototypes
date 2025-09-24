@@ -386,6 +386,10 @@ struct Material {
     MaterialType type;
 
     v2 tiling_factor;
+
+    bool triplanar_enabled;
+    f32 triplanar_scale;
+
     RenderTexture *albedo;
     RenderTexture *normal;
     RenderTexture *ambient_occlusion;
@@ -424,7 +428,7 @@ struct Mesh {
 };
 
 enum RenderCommandType {
-    RC_MODEL,
+    RC_MESH,
     RC_QUAD,
     _RC_COUNT
 };
@@ -529,10 +533,10 @@ void shader_use(Shader shader);
 void shader_set_texture(Shader shader, RenderTexture *render_texture, i32 slot);
 void shader_set_i32(Shader shader, string name, i32 value);
 void shader_set_f32(Shader shader, string name, f32 value);
-void shader_set_m4(Shader shader, string name, m4 *matrix);
-void shader_set_v2(Shader shader, string name, v2 vector);
-void shader_set_v3(Shader shader, string name, v3 vector);
-void shader_set_v4(Shader shader, string name, v4 vector);
+void shader_set_m4(Shader shader, string name, m4 *value);
+void shader_set_v2(Shader shader, string name, v2 value);
+void shader_set_v3(Shader shader, string name, v3 value);
+void shader_set_v4(Shader shader, string name, v4 value);
 
 // Mesh API
 Mesh *mesh_create(Renderer *renderer, slice<MeshVertex> vertices, slice<u32> indices);
@@ -548,7 +552,7 @@ GLenum texture_description_gl_internal_format(TextureDescription texture_descrip
 RenderTexture *render_texture_create_from_file(Renderer *renderer, string path, TextureDescription source_format, TextureDescription gpu_format);
 
 // Material API
-Material *material_create_pbr(Renderer *renderer, v2 tiling_factor, RenderTexture *albedo, RenderTexture *normal, RenderTexture *ambient_occlusion, RenderTexture *roughness, RenderTexture *metalness);
+Material *material_create_pbr(Renderer *renderer, v2 tiling_factor, bool triplanar_enabled, f32 triplanar_scale,  RenderTexture *albedo, RenderTexture *normal, RenderTexture *ambient_occlusion, RenderTexture *roughness, RenderTexture *metalness);
 Material *material_create_unlit(Renderer *renderer, v2 tiling_factor, RenderTexture *albedo);
 
 // Renderer init API
@@ -762,33 +766,33 @@ void shader_set_f32(Shader shader, string name, f32 value) {
     glUniform1f(glGetUniformLocation(shader.id, name.c()), value);
 }
 
-void shader_set_m4(Shader shader, string name, m4 *matrix) {
+void shader_set_m4(Shader shader, string name, m4 *value) {
     glUniformMatrix4fv(
         glGetUniformLocation(shader.id, name.c()),
         1,
         false,
-        (f32 *) &matrix->Columns[0]
+        (f32 *) &value->Columns[0]
     );
 }
 
-void shader_set_v2(Shader shader, string name, v2 vector) {
+void shader_set_v2(Shader shader, string name, v2 value) {
     glUniform2f(
         glGetUniformLocation(shader.id, name.c()),
-        vector.x, vector.y
+        value.x, value.y
     );
 }
 
-void shader_set_v3(Shader shader, string name, v3 vector) {
+void shader_set_v3(Shader shader, string name, v3 value) {
     glUniform3f(
         glGetUniformLocation(shader.id, name.c()),
-        vector.x, vector.y, vector.z 
+        value.x, value.y, value.z 
     );
 }
 
-void shader_set_v4(Shader shader, string name, v4 vector) {
+void shader_set_v4(Shader shader, string name, v4 value) {
     glUniform4f(
         glGetUniformLocation(shader.id, name.c()),
-        vector.x, vector.y, vector.z, vector.w
+        value.x, value.y, value.z, value.w
     );
 }
 
@@ -985,21 +989,23 @@ RenderTexture *render_texture_create_from_file(Renderer *renderer, string path, 
     return texture;
 }
 
-Material *material_create_pbr(Renderer *renderer, v2 tiling_factor, RenderTexture *albedo, RenderTexture *normal, RenderTexture *ambient_occlusion, RenderTexture *roughness, RenderTexture *metalness) {
+Material *material_create_pbr(Renderer *renderer, v2 tiling_factor, bool triplanar_enabled, f32 triplanar_scale, RenderTexture *albedo, RenderTexture *normal, RenderTexture *ambient_occlusion, RenderTexture *roughness, RenderTexture *metalness) {
     Assert(albedo);
     Assert(normal);
     Assert(ambient_occlusion);
     Assert(roughness);
     Assert(metalness);
 
-    Material *material = push(&renderer->materials);
-    material->type = MT_PBR;
-    material->tiling_factor = tiling_factor;
-    material->albedo = albedo;
-    material->normal = normal;
+    Material *material          = push(&renderer->materials);
+    material->type              = MT_PBR;
+    material->tiling_factor     = tiling_factor;
+    material->triplanar_enabled = triplanar_enabled;
+    material->triplanar_scale   = triplanar_scale;
+    material->albedo            = albedo;
+    material->normal            = normal;
     material->ambient_occlusion = ambient_occlusion;
-    material->roughness = roughness;
-    material->metalness = metalness;
+    material->roughness         = roughness;
+    material->metalness         = metalness;
 
     return material;
 }
@@ -1124,7 +1130,9 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
     }
 
     { // create default materials
-        renderer->default_pbr_material = material_create_pbr(renderer, v2{1, 1},
+        renderer->default_pbr_material = material_create_pbr(renderer,
+            v2{1, 1},
+            false, 0,
             renderer->default_material_albedo, 
             renderer->default_material_normal, 
             renderer->default_material_ambient_occlusion,
@@ -1216,8 +1224,13 @@ bool load_shaders(Renderer *renderer) {
 
 void delete_shaders(Renderer *renderer) {
     glDeleteProgram(renderer->pbr_shader.id);
+    renderer->pbr_shader.id = 0;
+
     glDeleteProgram(renderer->unlit_shader.id);
+    renderer->unlit_shader.id = 0;
+
     glDeleteProgram(renderer->ui_shader.id);
+    renderer->ui_shader.id = 0;
 }
 
 Texture *load_texture(Renderer *renderer, string path) {
@@ -1507,7 +1520,7 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
         renderer_clear_frame(renderer->clear_colour);
     
         for (RenderCommand &command : renderer->commands) {
-            if (command.type == RC_MODEL) {
+            if (command.type == RC_MESH) {
                 MeshRenderCommand *mesh_cmd = &command.mesh;
                 
                 if (mesh_cmd->material->type == MT_PBR) {
@@ -1529,6 +1542,8 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
                     shader_set_f32(renderer->pbr_shader, "sun_intensity", renderer->sun_intensity);
     
                     shader_set_v2(renderer->pbr_shader, "material_tiling_factor", mesh_cmd->material->tiling_factor);
+                    shader_set_i32(renderer->pbr_shader, "material_triplanar_enabled", mesh_cmd->material->triplanar_enabled ? 1 : 0);
+                    shader_set_f32(renderer->pbr_shader, "material_triplanar_scale", mesh_cmd->material->triplanar_scale);
                     shader_set_texture(renderer->pbr_shader, mesh_cmd->material->albedo, 0);
                     shader_set_texture(renderer->pbr_shader, mesh_cmd->material->normal, 1);
                     shader_set_texture(renderer->pbr_shader, mesh_cmd->material->ambient_occlusion, 2);
@@ -1690,7 +1705,7 @@ void draw_sphere(Renderer *renderer, v3 position, f32 radius, v4 colour, Materia
 
 void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position, v3 scale, v3 rotation, v4 colour, Material *material) {
     RenderCommand *command = push(&renderer->commands);
-    command->type = RC_MODEL;
+    command->type = RC_MESH;
     command->mesh.position = position;
     command->mesh.scale = scale;
     command->mesh.rotation = rotation;

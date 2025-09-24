@@ -8,18 +8,18 @@ uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
 
-out vec3 fragment_position;
-out vec3 normal;
-out vec2 uv;
+out vec3 world_position;
+out vec3 world_normal;
+out vec2 model_uv;
 
 void main()
 {
-    fragment_position = (model * vec4(a_position, 1)).xyz;
+    world_position = (model * vec4(a_position, 1)).xyz;
 
     mat3 normal_matrix = transpose(inverse(mat3(model)));
-    normal = normalize(normal_matrix * a_normal);
+    world_normal = normalize(normal_matrix * a_normal);
 
-    uv = a_uv;
+    model_uv = a_uv;
 
     gl_Position = projection * view * model * vec4(a_position, 1);
 }

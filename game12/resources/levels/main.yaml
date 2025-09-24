@@ -9,8 +9,8 @@ entities:
     size: [20, 1, 25]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
-    colour: [0.909803927, 0.152941182, 0.152941182, 1]
-    material: MAT_GRID
+    colour: [1, 0.97046411, 0.97046411, 1]
+    material: MAT_DEV_GREEN
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -27,7 +27,7 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
-    material: MAT_GRID
+    material: MAT_DEV_WHITE
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -43,8 +43,8 @@ entities:
     size: [40, 1, 10]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
-    colour: [0.909803927, 0.152941182, 0.152941182, 1]
-    material: MAT_GRID
+    colour: [0.978902936, 0.978902936, 0.978902936, 1]
+    material: MAT_DEV_GREEN
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -60,8 +60,8 @@ entities:
     size: [40, 1, 10]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
-    colour: [0.911392391, 0.153821513, 0.153821513, 1]
-    material: MAT_GRID
+    colour: [0.978902936, 0.978902936, 0.978902936, 1]
+    material: MAT_DEV_GREEN
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -77,8 +77,8 @@ entities:
     size: [40, 20, 1]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
-    colour: [0.235294119, 0.235294119, 0.235294119, 1]
-    material: MAT_GRID
+    colour: [0.995780587, 0.995780587, 0.995780587, 1]
+    material: MAT_DEV_WHITE
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -94,8 +94,8 @@ entities:
     size: [40, 20, 1]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
-    colour: [0.236286938, 0.236286938, 0.236286938, 1]
-    material: MAT_GRID
+    colour: [0.995780587, 0.995780587, 0.995780587, 1]
+    material: MAT_DEV_WHITE
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -111,8 +111,8 @@ entities:
     size: [10, 1, 25]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
-    colour: [0.909803927, 0.152941182, 0.152941182, 1]
-    material: MAT_GRID
+    colour: [1, 1, 1, 1]
+    material: MAT_DEV_GREEN
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -180,7 +180,7 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
-    material: MAT_GRID
+    material: MAT_DEV_WHITE
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -213,8 +213,8 @@ entities:
     size: [20, 0.5, 10]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
-    colour: [0.132119164, 0.403944343, 0.763713062, 1]
-    material: MAT_GRID
+    colour: [1, 1, 1, 1]
+    material: MAT_DEV_YELLOW
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -231,7 +231,7 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
-    material: MAT_GRID
+    material: MAT_DEV_WHITE
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -247,8 +247,8 @@ entities:
     size: [1, 20, 45]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
-    colour: [0.235294119, 0.235294119, 0.235294119, 1]
-    material: MAT_GRID
+    colour: [1, 1, 1, 1]
+    material: MAT_DEV_WHITE
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -264,8 +264,8 @@ entities:
     size: [1, 20, 45]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
-    colour: [0.235294119, 0.235294119, 0.235294119, 1]
-    material: MAT_GRID
+    colour: [1, 1, 1, 1]
+    material: MAT_DEV_WHITE
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -281,8 +281,8 @@ entities:
     size: [20, 0.5, 10]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
-    colour: [0.13333334, 0.403921574, 0.764705896, 1]
-    material: MAT_GRID
+    colour: [1, 1, 1, 1]
+    material: MAT_DEV_YELLOW
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -298,8 +298,8 @@ entities:
     size: [10, 11, 45]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
-    colour: [0.235294119, 0.235294119, 0.235294119, 1]
-    material: MAT_GRID
+    colour: [1, 1, 1, 1]
+    material: MAT_DEV_WHITE
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -316,7 +316,7 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
-    material: MAT_GRID
+    material: MAT_DEV_WHITE
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -333,7 +333,7 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
-    material: MAT_GRID
+    material: MAT_DEV_WHITE
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -349,8 +349,8 @@ entities:
     size: [10, 0.5, 25]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
-    colour: [0.152941182, 0.909803927, 0.210424304, 1]
-    material: MAT_GRID
+    colour: [1, 1, 1, 1]
+    material: MAT_DEV_RED
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -367,7 +367,7 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
-    material: MAT_GRID
+    material: MAT_DEV_WHITE
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -452,7 +452,7 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
-    material: MAT_GRID
+    material: MAT_DEV_WHITE
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -469,7 +469,7 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
-    material: MAT_GRID
+    material: MAT_DEV_WHITE
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -486,7 +486,7 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
-    material: MAT_GRID
+    material: MAT_DEV_WHITE
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -503,7 +503,7 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
-    material: MAT_GRID
+    material: MAT_DEV_WHITE
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -520,7 +520,7 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
-    material: MAT_GRID
+    material: MAT_DEV_WHITE
     max_health: 0
     health: 0
     pickup_type: PT_NONE
@@ -541,6 +541,26 @@ entities:
     max_health: 0
     health: 0
     pickup_type: PT_HEALTH
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_DUMMY
+      - EF_SOLID_HITBOX
+      - EF_DAMAGEABLE
+      - EF_COMPLEX_PHYSICS
+      - EF_DRAW_MESH
+    id: 3654079072
+    owner: 1
+    position: [-4.61519575, 1.45494223, 10.1143255]
+    size: [0.649999976, 2, 0.649999976]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_DEV_BLUE
+    max_health: 100
+    health: 100
+    pickup_type: PT_NONE
     jump_pad_force: 0
     light_colour: [0, 0, 0, 0]
     light_intensity: 0

@@ -111,7 +111,7 @@ v4 g_bullet_trail_bullet_colour = ORANGE;
 f32 g_bullet_trail_bullet_size  = 0.03;
 
 v4 g_clear_colour           = v4 {0.398013, 0.481982, 0.582278, 1.000000};
-v3 g_ambient_light_colour   = v3 {0.189873, 0.189873, 0.189873};
+v3 g_ambient_light_colour   = v3 {0.415686, 0.415686, 0.415686};
 v3 g_sun_colour             = v3 {1, 1, 1};
 v3 g_sun_position           = v3 {10, 50, -10};
 f32 g_sun_intensity         = 1;
@@ -136,13 +136,13 @@ std::uniform_int_distribution<u32> g_id_distribution(0, ~u32(0));
 
 meta enum MaterialHandle : u32 {
     MAT_DEFAULT,
+    MAT_DEFAULT_UNLIT,
     MAT_MUZZLE_FLASH,
-    MAT_PARTICLE,
-    MAT_METAL_PLATE,
-    MAT_BROKEN_BRICK_WALL,
-    MAT_METAL_05C,
-    MAT_TILES_037,
-    MAT_GRID,
+    MAT_DEV_WHITE,
+    MAT_DEV_RED,
+    MAT_DEV_GREEN,
+    MAT_DEV_BLUE,
+    MAT_DEV_YELLOW,
     _MAT_COUNT
 };
 
@@ -802,6 +802,9 @@ void game_client_entry() {
             g_materials[MAT_DEFAULT] = REN()->default_pbr_material;
             Assert(g_materials[MAT_DEFAULT]);
 
+            g_materials[MAT_DEFAULT_UNLIT] = REN()->default_unlit_material;
+            Assert(g_materials[MAT_DEFAULT_UNLIT]);
+
             g_materials[MAT_MUZZLE_FLASH] = material_create_unlit(REN(), 
                 {1.0, 1.0},
                 render_texture_create_from_file(REN(), "resources/textures/muzzle_flash/muzzle_flash.png", TD_RGBA_8, TD_RGBA_8)
@@ -809,67 +812,65 @@ void game_client_entry() {
 
             Assert(g_materials[MAT_MUZZLE_FLASH]);
 
-            g_materials[MAT_PARTICLE] = material_create_unlit(REN(), 
-                {1.0, 1.0},
-                REN()->default_material_albedo
-            );
-
-            Assert(g_materials[MAT_PARTICLE]);
-
-            g_materials[MAT_METAL_PLATE] = material_create_pbr(REN(),
+            g_materials[MAT_DEV_WHITE] = material_create_pbr(REN(), 
                 {1, 1},
-                render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_diff_1k.png",      TD_sRGBA_8, TD_sRGBA_8),
-                render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_nor_gl_1k.png",    TD_RGBA_8, TD_RGBA_8),
-                render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_ao_1k.png",        TD_RGBA_8, TD_RGBA_8),
-                render_texture_create_from_file(REN(), "resources/textures/blue_metal_plate/blue_metal_plate_rough_1k.png",     TD_RGBA_8, TD_RGBA_8),
-                REN()->default_material_metalness
-            );
-
-            Assert(g_materials[MAT_METAL_PLATE]);
-
-            g_materials[MAT_BROKEN_BRICK_WALL] = material_create_pbr(REN(), 
-                {1, 1},
-                render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_diff_1k.png",    TD_sRGBA_8, TD_sRGBA_8),
-                render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_nor_gl_1k.png",  TD_RGBA_8, TD_RGBA_8),
-                render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_ao_1k.png",      TD_RGBA_8, TD_RGBA_8),
-                render_texture_create_from_file(REN(), "resources/textures/broken_brick_wall/broken_brick_wall_rough_1k.png",   TD_RGBA_8, TD_RGBA_8),
-                REN()->default_material_metalness
-            );
-
-            Assert(g_materials[MAT_BROKEN_BRICK_WALL]);
-
-            g_materials[MAT_METAL_05C] = material_create_pbr(REN(), 
-                {1, 1},
-                render_texture_create_from_file(REN(), "resources/textures/metal05C/Metal050C_1K-PNG_Color.png",        TD_sRGBA_8, TD_sRGBA_8),
-                render_texture_create_from_file(REN(), "resources/textures/metal05C/Metal050C_1K-PNG_NormalGL.png",     TD_RGBA_8, TD_RGBA_8),
-                REN()->default_material_ambient_occlusion,
-                render_texture_create_from_file(REN(), "resources/textures/metal05C/Metal050C_1K-PNG_Roughness.png",    TD_RGBA_8, TD_RGBA_8),
-                render_texture_create_from_file(REN(), "resources/textures/metal05C/Metal050C_1K-PNG_Metalness.png",    TD_RGBA_8, TD_RGBA_8)
-            );
-
-            Assert(g_materials[MAT_METAL_05C]);
-
-            g_materials[MAT_TILES_037] = material_create_pbr(REN(), 
-                {1, 1},
-                render_texture_create_from_file(REN(), "resources/textures/Tiles037/Tiles037_2K-PNG_Color.png",         TD_sRGBA_8, TD_sRGBA_8),
-                render_texture_create_from_file(REN(), "resources/textures/Tiles037/Tiles037_2K-PNG_NormalGL.png",      TD_RGBA_8, TD_RGBA_8),
-                REN()->default_material_ambient_occlusion,
-                render_texture_create_from_file(REN(), "resources/textures/Tiles037/Tiles037_2K-PNG_Roughness.png",     TD_RGBA_8, TD_RGBA_8),
-                render_texture_create_from_file(REN(), "resources/textures/defaults/default_metalness.png",             TD_RGBA_8, TD_RGBA_8)
-            );
-
-            Assert(g_materials[MAT_TILES_037]);
-
-            g_materials[MAT_GRID] = material_create_pbr(REN(), 
-                {1, 1},
-                render_texture_create_from_file(REN(), "resources/textures/grid/albedo.png", TD_sRGBA_8, TD_sRGBA_8),
+                true, 1,
+                render_texture_create_from_file(REN(), "resources/textures/dev/dev_white.png", TD_sRGBA_8, TD_sRGBA_8),
                 REN()->default_material_normal,
                 REN()->default_material_ambient_occlusion,
                 REN()->default_material_roughness,
                 REN()->default_material_metalness
             );
 
-            Assert(g_materials[MAT_GRID]);
+            Assert(g_materials[MAT_DEV_WHITE]);
+
+            g_materials[MAT_DEV_RED] = material_create_pbr(REN(), 
+                {1, 1},
+                true, 1,
+                render_texture_create_from_file(REN(), "resources/textures/dev/dev_red.png", TD_sRGBA_8, TD_sRGBA_8),
+                REN()->default_material_normal,
+                REN()->default_material_ambient_occlusion,
+                REN()->default_material_roughness,
+                REN()->default_material_metalness
+            );
+
+            Assert(g_materials[MAT_DEV_RED]);
+
+            g_materials[MAT_DEV_GREEN] = material_create_pbr(REN(), 
+                {1, 1},
+                true, 1,
+                render_texture_create_from_file(REN(), "resources/textures/dev/dev_green.png", TD_sRGBA_8, TD_sRGBA_8),
+                REN()->default_material_normal,
+                REN()->default_material_ambient_occlusion,
+                REN()->default_material_roughness,
+                REN()->default_material_metalness
+            );
+
+            Assert(g_materials[MAT_DEV_GREEN]);
+
+            g_materials[MAT_DEV_BLUE] = material_create_pbr(REN(), 
+                {1, 1},
+                true, 1,
+                render_texture_create_from_file(REN(), "resources/textures/dev/dev_blue.png", TD_sRGBA_8, TD_sRGBA_8),
+                REN()->default_material_normal,
+                REN()->default_material_ambient_occlusion,
+                REN()->default_material_roughness,
+                REN()->default_material_metalness
+            );
+
+            Assert(g_materials[MAT_DEV_BLUE]);
+
+            g_materials[MAT_DEV_YELLOW] = material_create_pbr(REN(), 
+                {1, 1},
+                true, 1,
+                render_texture_create_from_file(REN(), "resources/textures/dev/dev_yellow.png", TD_sRGBA_8, TD_sRGBA_8),
+                REN()->default_material_normal,
+                REN()->default_material_ambient_occlusion,
+                REN()->default_material_roughness,
+                REN()->default_material_metalness
+            );
+
+            Assert(g_materials[MAT_DEV_YELLOW]);
         }
 
         ok = sound_engine_init();
@@ -2049,7 +2050,7 @@ void game_client_draw(GameClient *client, State *state) {
         }
 
         if (BitSet(entity.flags, EF_PARTICLE)) {
-            Material *particle_material = g_materials[MAT_PARTICLE];
+            Material *particle_material = g_materials[MAT_DEFAULT_UNLIT];
 
             f32 alivetime = state->time - entity.time_created;
             f32 effect_t = alivetime / g_particle_effect_lifetime;
@@ -2395,20 +2396,27 @@ void editor_draw_ui(State *state) {
 
                     imgui_v2_control("Tiling factor", &material->tiling_factor, 0.01);
 
+                    if (material->type == MT_PBR) {
+                        ImGui::Checkbox("Triplanar", &material->triplanar_enabled);
+                        ImGui::SliderFloat("Triplanar scale", &material->triplanar_scale, 0, 10);
+                    }
+
                     ImGui::Text("Albedo: %dx%d", material->albedo->width, material->albedo->height);
                     ImGui::Image(material->albedo->id, ImVec2(200, 200));
 
-                    ImGui::Text("Normal: %dx%d", material->normal->width, material->normal->height);
-                    ImGui::Image(material->normal->id, ImVec2(200, 200));
-
-                    ImGui::Text("Ambient occlusion: %dx%d", material->ambient_occlusion->width, material->ambient_occlusion->height);
-                    ImGui::Image(material->ambient_occlusion->id, ImVec2(200, 200));
-
-                    ImGui::Text("Roughness: %dx%d", material->roughness->width, material->roughness->height);
-                    ImGui::Image(material->roughness->id, ImVec2(200, 200));
-
-                    ImGui::Text("Metalness: %dx%d", material->metalness->width, material->metalness->height);
-                    ImGui::Image(material->metalness->id, ImVec2(200, 200));
+                    if (material->type == MT_PBR) {
+                        ImGui::Text("Normal: %dx%d", material->normal->width, material->normal->height);
+                        ImGui::Image(material->normal->id, ImVec2(200, 200));
+    
+                        ImGui::Text("Ambient occlusion: %dx%d", material->ambient_occlusion->width, material->ambient_occlusion->height);
+                        ImGui::Image(material->ambient_occlusion->id, ImVec2(200, 200));
+    
+                        ImGui::Text("Roughness: %dx%d", material->roughness->width, material->roughness->height);
+                        ImGui::Image(material->roughness->id, ImVec2(200, 200));
+    
+                        ImGui::Text("Metalness: %dx%d", material->metalness->width, material->metalness->height);
+                        ImGui::Image(material->metalness->id, ImVec2(200, 200));
+                    }
                 }
             }
         }
@@ -3390,7 +3398,8 @@ Entity *local_spawn_dummy(State *state) {
         .id = new_entity_id(),
         .owner = SERVER_INSTANCE_ID,
         .size = v3{g_player_width, g_player_height, g_player_width},
-        .colour = BLUE,
+        .colour = WHITE,
+        .material = MAT_DEV_BLUE,
         .max_health = 100,
         .health = 100,
     };

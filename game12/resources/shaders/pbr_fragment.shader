@@ -13,9 +13,9 @@ const float PI = 3.14159265359;
 
 layout(location = 0) out vec4 colour_attachment;
 
-in vec3 fragment_position;
-in vec3 normal;
-in vec2 uv;
+in vec3 world_position;
+in vec3 world_normal;
+in vec2 model_uv;
 
 uniform vec3        camera_position;
 
@@ -27,6 +27,8 @@ uniform vec3        sun_colour;
 uniform float       sun_intensity;
 
 uniform vec2        material_tiling_factor;
+uniform int         material_triplanar_enabled;
+uniform float       material_triplanar_scale;
 uniform sampler2D   material_albedo;
 uniform sampler2D   material_normal;
 uniform sampler2D   material_ambient_occlusion;
@@ -37,15 +39,15 @@ uniform int         light_count;
 uniform PointLight  lights[MAX_POINT_LIGHTS];
 
 vec3 get_fragment_normal(vec3 normal_sample) {
-    vec3 Q1  = dFdx(fragment_position);
-    vec3 Q2  = dFdy(fragment_position);
-    vec2 st1 = dFdx(uv);
-    vec2 st2 = dFdy(uv);
+    vec3 Q1  = dFdx(world_position);
+    vec3 Q2  = dFdy(world_position);
+    vec2 st1 = dFdx(model_uv);
+    vec2 st2 = dFdy(model_uv);
 
-    vec3 N   = normalize(normal);
+    vec3 N   = normalize(world_normal);
     vec3 T  = normalize(Q1*st2.t - Q2*st1.t);
-    vec3 B  = -normalize(cross(normal, T));
-    mat3 TBN = mat3(T, B, normal);
+    vec3 B  = -normalize(cross(world_normal, T));
+    mat3 TBN = mat3(T, B, world_normal);
 
     return normalize(TBN * normal_sample);
 }
@@ -86,21 +88,61 @@ vec3 BRDF_fresnel(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
-void main() {
-    vec4 albedo = texture(material_albedo, uv * material_tiling_factor) * colour;
-    if (albedo.a == 0) {
-        discard;
-    }
+vec4 triplanar(sampler2D texture_sampler, float scale) {
+    // Absolute normal for blend weights
+    vec3 blending = abs(normalize(world_normal));
+    // Make sure weights sum to 1
+    blending = blending / (blending.x + blending.y + blending.z);
 
-    vec3 albedo_sample              = albedo.rgb;
-    vec3 normal_sample              = (texture(material_normal,             uv * material_tiling_factor).xyz * 2.0) - 1.0;
-    float ambient_occlusion_sample  = (texture(material_ambient_occlusion,  uv * material_tiling_factor)).r;
-    float roughness_sample          = (texture(material_roughness,          uv * material_tiling_factor)).r;
-    float metalness_sample          = (texture(material_metalness,          uv * material_tiling_factor)).r;
+    // Scale world position to control tiling
+    vec3 wp = world_position * scale;
+
+    // Sample texture projected onto each axis plane
+    vec4 xProj = texture(texture_sampler, wp.yz); // project along X axis
+    vec4 yProj = texture(texture_sampler, wp.xz); // project along Y axis
+    vec4 zProj = texture(texture_sampler, wp.xy); // project along Z axis
+
+    // Blend the three projections
+    return xProj * blending.x + yProj * blending.y + zProj * blending.z;
+}
+
+void main() {
+    vec3 albedo_sample              = vec3(0);
+    vec3 normal_sample              = vec3(0);
+    float ambient_occlusion_sample  = 0;
+    float roughness_sample          = 0;
+    float metalness_sample          = 0;
+
+    if (material_triplanar_enabled == 1) {
+        vec4 albedo = triplanar(material_albedo, material_triplanar_scale) * colour;
+        if (albedo.a == 0) {
+            discard;
+        }
+    
+        albedo_sample           = albedo.rgb;
+        normal_sample           = (triplanar(material_normal, material_triplanar_scale).xyz * 2.0) - 1.0;
+        ambient_occlusion_sample= (triplanar(material_ambient_occlusion, material_triplanar_scale)).r;
+        roughness_sample        = (triplanar(material_roughness, material_triplanar_scale)).r;
+        metalness_sample        = (triplanar(material_metalness, material_triplanar_scale)).r;
+    } 
+    else {
+        vec2 scaled_model_uv = model_uv * material_tiling_factor;
+
+        vec4 albedo = texture(material_albedo, scaled_model_uv) * colour;
+        if (albedo.a == 0) {
+            discard;
+        }
+    
+        albedo_sample           = albedo.rgb;
+        normal_sample           = (texture(material_normal,             scaled_model_uv).xyz * 2.0) - 1.0;
+        ambient_occlusion_sample= (texture(material_ambient_occlusion,  scaled_model_uv)).r;
+        roughness_sample        = (texture(material_roughness,          scaled_model_uv)).r;
+        metalness_sample        = (texture(material_metalness,          scaled_model_uv)).r;
+    }
 
     { // PBR
         vec3 N = get_fragment_normal(normal_sample);
-        vec3 V = normalize(camera_position - fragment_position);
+        vec3 V = normalize(camera_position - world_position);
 
         vec3 F0 = vec3(0.04); 
         F0 = mix(F0, albedo_sample, metalness_sample);
@@ -134,10 +176,10 @@ void main() {
         for (int i = 0; i < light_count; i++) {
             PointLight light = lights[i];
 
-            vec3 L = normalize(light.position - fragment_position);
+            vec3 L = normalize(light.position - world_position);
             vec3 H = normalize(V + L);
 
-            float light_distance = length(light.position - fragment_position);
+            float light_distance = length(light.position - world_position);
             float attenuation = 1.0 / (light_distance * light_distance);
             vec3 radiance = light.colour * attenuation * light.intensity;
 
