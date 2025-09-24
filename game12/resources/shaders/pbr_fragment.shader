@@ -16,7 +16,8 @@ struct PointLight {
 #define PI 3.14159265359
  
 layout(location = 0) out vec4 colour_attachment;
-layout(location = 1) out vec4 temp_attachment;
+layout(location = 1) out vec4 position_attachment;
+layout(location = 2) out vec4 normal_attachment;
 
 in vec3 world_fragment_position;
 in vec3 world_fragment_normal;
@@ -259,7 +260,7 @@ void main() {
         // colour = sun_fragment_position.rgb;
 
         colour_attachment = vec4(colour, 1);
-        colour = (N + 1) * 0.5;
-        temp_attachment = vec4(colour, 1);
+        position_attachment = vec4(world_fragment_position, 1);
+        normal_attachment = vec4(world_fragment_normal, 1);
     }
 } 

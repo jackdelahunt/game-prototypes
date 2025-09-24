@@ -665,6 +665,8 @@ int main(i32 argc, const char **argv) {
     return 0;
 #endif
 
+    Logf("size: {}", sizeof(Renderer));
+
     bool ok = network_layer_init();
     if (!ok) {
         Log("CRASH: failed to strart networking");
@@ -2371,6 +2373,22 @@ void editor_draw_ui(State *state) {
 
                 ImGui::Text("Depth attachment");
                 ImGui::Image(REN()->sun_frame_buffer.neo_depth_attachment.id, size, ImVec2(0, 1), ImVec2(1, 0));
+            }
+
+            if (ImGui::CollapsingHeader("SSAO frame buffer")) {
+                f32 image_downscale = 4;
+                ImVec2 size = ImVec2(GC()->viewport.size.x / image_downscale, GC()->viewport.size.y / image_downscale);
+
+                for (i32 i = 0; i < REN()->ssao_frame_buffer.colour_attachments.len; i++) {
+                    ImGui::Text("Colour attachment [%d]", i);
+                    ImGui::Image(REN()->ssao_frame_buffer.colour_attachments[i].id, size, ImVec2(0, 1), ImVec2(1, 0));
+                }
+
+                ImGui::Text("Depth attachment");
+                ImGui::Image(REN()->ssao_frame_buffer.neo_depth_attachment.id, size, ImVec2(0, 1), ImVec2(1, 0));
+
+                ImGui::Text("SSAO noise");
+                ImGui::Image(REN()->ssao_noise_texture.id, size, ImVec2(0, 1), ImVec2(1, 0));
             }
         }
 

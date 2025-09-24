@@ -510,6 +510,7 @@ struct Renderer {
 
     FrameBuffer sun_frame_buffer;
     FrameBuffer main_frame_buffer;
+    FrameBuffer ssao_frame_buffer;
 
     u32 vertex_array_id;
     u32 vertex_buffer_id;
@@ -518,7 +519,10 @@ struct Renderer {
     Shader sun_shader;
     Shader pbr_shader;
     Shader unlit_shader;
+    Shader ssao_shader;
     Shader ui_shader;
+
+    RenderTexture ssao_noise_texture;
 
     u32 atlas_texture_id;
     u32 font_texture_id;
@@ -558,7 +562,7 @@ Mesh *mesh_create(Renderer *renderer, slice<MeshVertex> vertices, slice<u32> ind
 Mesh *mesh_create_from_file(Renderer *renderer, string mesh_path);
 void upload_mesh(Mesh *mesh);
 
-// Texture descriptions
+// Texture format
 i32 texture_format_channel_count(TextureFormat texture_description);
 GLenum texture_format_gl_channel_type(TextureFormat format);
 GLenum texture_format_gl_source_format(TextureFormat format);
@@ -1157,14 +1161,19 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
     }
 
     { // create frame buffers 
+        renderer->sun_frame_buffer.size = v2i{100, 100};
+        frame_buffer_add_attachment(&renderer->sun_frame_buffer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_16F});
+        frame_buffer_build(&renderer->sun_frame_buffer);
+
         renderer->main_frame_buffer.size = v2i{100, 100};
+        frame_buffer_add_attachment(&renderer->main_frame_buffer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_16F});
         frame_buffer_add_attachment(&renderer->main_frame_buffer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_16F});
         frame_buffer_add_attachment(&renderer->main_frame_buffer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_16F});
         frame_buffer_build(&renderer->main_frame_buffer);
 
-        renderer->sun_frame_buffer.size = v2i{100, 100};
-        frame_buffer_add_attachment(&renderer->sun_frame_buffer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_16F});
-        frame_buffer_build(&renderer->sun_frame_buffer);
+        renderer->ssao_frame_buffer.size = v2i{100, 100};
+        frame_buffer_add_attachment(&renderer->ssao_frame_buffer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_16F});
+        frame_buffer_build(&renderer->ssao_frame_buffer);
     }
 
     { // load default textures
@@ -1238,6 +1247,50 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
         Assert(renderer->quad_primitive);
     }
 
+    { // generate ssao kernal
+        std::uniform_real_distribution<float> randomFloats(0.0, 1.0);
+        std::default_random_engine generator;
+
+        const i32 kernal_size = 64;
+        StackArray<v3, kernal_size> ssaoKernel = {};
+
+        for (i32 i = 0; i < kernal_size; ++i) {
+            v3 sample = v3{
+                randomFloats(generator) * 2.0f - 1.0f, 
+                randomFloats(generator) * 2.0f - 1.0f, 
+                randomFloats(generator)
+            };
+
+            // TODO: lerp samples so they cluster around center
+            sample  = norm(sample);
+            sample *= randomFloats(generator);
+            append(&ssaoKernel, sample);
+        }
+    }
+
+    { // generate ssao noise
+        std::uniform_real_distribution<float> randomFloats(0.0, 1.0);
+        std::default_random_engine generator;
+
+        const i32 noise_width   = 4;
+        const i32 noise_height  = 4;
+        const i32 noise_size    = noise_width * noise_height;
+
+        StackArray<v3, noise_size> ssaoNoise = {};
+
+        for (i32 i = 0; i < noise_size; i++) {
+            v3 noise = v3 {
+                randomFloats(generator) * 2.0f - 1.0f, 
+                randomFloats(generator) * 2.0f - 1.0f, 
+                0.0f
+            }; 
+
+            append(&ssaoNoise, noise);
+        }
+
+        renderer->ssao_noise_texture = render_texture_create(TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_16F}, noise_width, noise_height, (u8 *) ssaoNoise.data);
+    }
+
     return true;
 }
 
@@ -1270,6 +1323,13 @@ bool load_shaders(Renderer *renderer) {
         }
 
         assign_texture_slot(&renderer->unlit_shader, "material_albedo", 0);
+    }
+
+    {
+        bool ok = init_shader(&renderer->ssao_shader, "SSAO shader", "resources/shaders/ssao_vertex.shader", "resources/shaders/ssao_fragment.shader");
+        if (!ok) {
+            return false;
+        }
     }
 
     {
