@@ -1,8 +1,6 @@
 #version 460 core
 
-layout(location = 0) out vec4 g_position;
-layout(location = 1) out vec4 g_normal;
-layout(location = 2) out vec4 g_albedo;
+layout(location = 0) out vec4 colour_attachment;
 
 in vec3 position;
 in vec4 colour;
@@ -16,7 +14,7 @@ void main()
 {
     // rectangle
     if (draw_type == 0) {
-        g_position = colour;
+        colour_attachment = colour;
     }
 
     // circle
@@ -26,7 +24,7 @@ void main()
             discard;
         }
 
-        g_position = colour;
+        colour_attachment = colour;
     }
 
     // texture
@@ -40,7 +38,7 @@ void main()
             discard;
         }
 
-        g_position = sample_colour * colour;
+        colour_attachment = sample_colour * colour;
     }
 
     // font
@@ -50,6 +48,6 @@ void main()
             // discard;
         // }
 
-        g_position = sample_colour.r * colour;
+        colour_attachment = sample_colour.r * colour;
     }
 } 

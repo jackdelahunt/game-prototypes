@@ -238,6 +238,7 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 #define MAX_POINT_LIGHTS 50 // keep in sync with pbr shader 
 #define MAX_TEXTURES 256
 #define MAX_MATERIALS 256
+#define MAX_COLOUR_ATTACHMENTS 6
 
 #define UI_LAYER_0 0.0f
 #define UI_LAYER_1 1.0f
@@ -349,16 +350,27 @@ struct Texture {
     slice<Texture> sub_textures;
 };
 
-enum TextureDescription {
-    TD_R_8,
-    TD_RGB_8,
-    TD_RGBA_8,
+enum TextureFormat {
+    TF_DEPTH,
 
-    TD_sRGBA_8,
+    TF_R_U8,
+    TF_RGB_U8,
+    TF_RGBA_U8,
+    TF_sRGBA_U8,
+
+    TF_RGBA_16F,
+};
+
+struct TextureDescription {
+    TextureFormat source_format;
+    TextureFormat internal_format;
 };
 
 struct RenderTexture {
     u32 id;
+
+    TextureDescription description;
+
     i32 width;
     i32 height;
     u8 *data;
@@ -409,8 +421,8 @@ struct FrameBuffer {
     u32 id;
     v2i size;
 
-    u32 colour_attachment;
-    u32 depth_attachment;
+    StackArray<RenderTexture, MAX_COLOUR_ATTACHMENTS> colour_attachments;
+    RenderTexture neo_depth_attachment;
 };
 
 struct Shader {
@@ -533,7 +545,7 @@ v3 get_up_direction(Camera *camera);
 bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, string fragment_shader_path);
 void assign_texture_slot(Shader *shader, string texture_name, i32 slot);
 void shader_use(Shader shader);
-void shader_set_texture(Shader shader, u32 id, i32 slot);
+void shader_set_texture(Shader shader, RenderTexture *texture, i32 slot);
 void shader_set_i32(Shader shader, string name, i32 value);
 void shader_set_f32(Shader shader, string name, f32 value);
 void shader_set_m4(Shader shader, string name, m4 *value);
@@ -547,12 +559,15 @@ Mesh *mesh_create_from_file(Renderer *renderer, string mesh_path);
 void upload_mesh(Mesh *mesh);
 
 // Texture descriptions
-i32 texture_description_channel_count(TextureDescription texture_description);
-GLenum texture_description_gl_source_format(TextureDescription texture_description);
-GLenum texture_description_gl_internal_format(TextureDescription texture_description);
+i32 texture_format_channel_count(TextureFormat texture_description);
+GLenum texture_format_gl_channel_type(TextureFormat format);
+GLenum texture_format_gl_source_format(TextureFormat format);
+GLenum texture_format_gl_internal_format(TextureFormat format);
 
 // Render Texture API
-RenderTexture *render_texture_create_from_file(Renderer *renderer, string path, TextureDescription source_format, TextureDescription gpu_format);
+RenderTexture render_texture_create(TextureDescription description, i32 width, i32 height, u8 *data);
+RenderTexture *render_texture_create_from_file(Renderer *renderer, TextureDescription description, string path);
+void render_texture_delete(RenderTexture *texture);
 
 // Material API
 Material *material_create_pbr(Renderer *renderer, v2 tiling_factor, bool triplanar_enabled, f32 triplanar_scale,  RenderTexture *albedo, RenderTexture *normal, RenderTexture *ambient_occlusion, RenderTexture *roughness, RenderTexture *metalness);
@@ -605,8 +620,9 @@ f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
 bool frame_buffer_init(FrameBuffer *frame_buffer);
 void frame_buffer_bind(FrameBuffer *frame_buffer);
 void frame_buffer_unbind();
+void frame_buffer_add_attachment(FrameBuffer *frame_buffer, TextureDescription description);
 bool frame_buffer_maybe_resize(FrameBuffer *frame_buffer, v2i new_size);
-bool frame_buffer_rebuild(FrameBuffer *frame_buffer);
+bool frame_buffer_build(FrameBuffer *frame_buffer);
 void frame_buffer_copy_to(FrameBuffer *source_buffer, FrameBuffer *dest_buffer);
 
 v3 screen_position_to_world_position(Camera *camera, Viewport viewport, v3 screen_position);
@@ -756,9 +772,9 @@ void shader_use(Shader shader) {
     glUseProgram(shader.id);
 }
 
-void shader_set_texture(Shader shader, u32 id, i32 slot) {
+void shader_set_texture(Shader shader, RenderTexture *texture, i32 slot) {
     glActiveTexture(GL_TEXTURE0 + slot);
-    glBindTexture(GL_TEXTURE_2D, id);
+    glBindTexture(GL_TEXTURE_2D, texture->id);
 }
 
 void shader_set_i32(Shader shader, string name, i32 value) {
@@ -909,87 +925,116 @@ void upload_mesh(Mesh *mesh) {
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(MeshVertex) * mesh->vertices.len, &mesh->vertices[0]);
 }
 
-i32 texture_description_channel_count(TextureDescription texture_description) {
-    switch (texture_description) {
-        case TD_R_8:        return 1;
-        case TD_RGB_8:      return 3;
-        case TD_RGBA_8:     return 4;
-        case TD_sRGBA_8:    return 4;
+i32 texture_format_channel_count(TextureFormat format) {
+    switch (format) {
+        case TF_R_U8:        return 1;
+        case TF_RGB_U8:      return 3;
+        case TF_RGBA_U8:     return 4;
+        case TF_sRGBA_U8:    return 4;
+        case TF_RGBA_16F:    return 4;
+        case TF_DEPTH:       return 1;
 
         default: Unreachable("Texture description not known when getting channel count");
     }
 }
 
-GLenum texture_description_gl_source_format(TextureDescription texture_description) {
-    switch (texture_description) {
-        case TD_R_8:        return GL_RED;
-        case TD_RGB_8:      return GL_RGB;
-        case TD_RGBA_8:     return GL_RGBA;
-        case TD_sRGBA_8:    return GL_RGBA;
+GLenum texture_format_gl_channel_type(TextureFormat format) {
+    switch (format) {
+        case TF_R_U8:        return GL_UNSIGNED_BYTE;
+        case TF_RGB_U8:      return GL_UNSIGNED_BYTE;
+        case TF_RGBA_U8:     return GL_UNSIGNED_BYTE;
+        case TF_sRGBA_U8:    return GL_UNSIGNED_BYTE;
+        case TF_RGBA_16F:    return GL_FLOAT;
+        case TF_DEPTH:       return GL_FLOAT;
 
-        default: Unreachable("Texture description not known when OpenGL source format");
+        default: Unreachable("Texture description not known when getting channel count");
     }
 }
 
-GLenum texture_description_gl_internal_format(TextureDescription texture_description) {
-    switch (texture_description) {
-        case TD_R_8:        return GL_R8;
-        case TD_RGB_8:      return GL_RGB8;
-        case TD_RGBA_8:     return GL_RGBA8;
-        case TD_sRGBA_8:    return GL_SRGB8_ALPHA8;
+GLenum texture_format_gl_source_format(TextureFormat format) {
+    switch (format) {
+        case TF_R_U8:        return GL_RED;
+        case TF_RGB_U8:      return GL_RGB;
+        case TF_RGBA_U8:     return GL_RGBA;
+        case TF_sRGBA_U8:    return GL_RGBA;
+        case TF_RGBA_16F:    return GL_RGBA;
+        case TF_DEPTH:       return GL_DEPTH_COMPONENT;
 
-        default: Unreachable("Texture description not known when OpenGL format");
+        default: Unreachable("Texture format not a known OpenGL source format");
     }
 }
 
-RenderTexture *render_texture_create_from_file(Renderer *renderer, string path, TextureDescription source_format, TextureDescription gpu_format) {
+GLenum texture_format_gl_internal_format(TextureFormat format) {
+    switch (format) {
+        case TF_R_U8:        return GL_R8;
+        case TF_RGB_U8:      return GL_RGB8;
+        case TF_RGBA_U8:     return GL_RGBA8;
+        case TF_sRGBA_U8:    return GL_SRGB8_ALPHA8;
+        case TF_RGBA_16F:    return GL_RGBA16F;
+        case TF_DEPTH:       return GL_DEPTH_COMPONENT;
+
+        default: Unreachable("Texture format not a known OpenGL internal format");
+    }
+}
+
+RenderTexture render_texture_create(TextureDescription description, i32 width, i32 height, u8 *data) {
+    RenderTexture texture = {
+        .description = description,
+        .width = width,
+        .height = height,
+        .data = data
+    };
+
+    GLenum gl_source_format = texture_format_gl_source_format(texture.description.source_format);
+    GLenum gl_internal_format = texture_format_gl_internal_format(texture.description.internal_format);
+    GLenum gl_channel_type = texture_format_gl_channel_type(texture.description.source_format);
+
+    glGenTextures(1, &texture.id);
+ 
+    glBindTexture(GL_TEXTURE_2D, texture.id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+ 
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+ 
+    glTexImage2D(GL_TEXTURE_2D, 0, gl_internal_format, texture.width, texture.height, 0, gl_source_format, gl_channel_type, texture.data);
+ 
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    return texture;
+}
+
+RenderTexture *render_texture_create_from_file(Renderer *renderer, TextureDescription description, string path) {
+    i32 desired_channels = texture_format_channel_count(description.source_format);
+
+    i32 width       = 0;
+    i32 height      = 0;
+    i32 channels    = 0;
+    u8 *data        = NULL;
+ 
+    stbi_set_flip_vertically_on_load(true);
+ 
+    data = stbi_load(path.c(), &width, &height, &channels, desired_channels);
+    if (!data) {
+        Errf("Failed to load texture \"{}\"", path);
+        return NULL;
+    }
+
+    if (channels != desired_channels) {
+        Warnf("When loading texture: \"{}\", expected {} channels but got {}, forcing channel count anyway", path, desired_channels, channels);
+    }
+
     RenderTexture *texture = push(&renderer->render_textures);
-
-    i32 desired_channels = texture_description_channel_count(source_format);
-    GLenum gl_source_format = texture_description_gl_source_format(source_format);
-    GLenum gl_internal_format = texture_description_gl_internal_format(gpu_format);
-
-    { // loading from file
-        i32 width       = 0;
-        i32 height      = 0;
-        i32 channels    = 0;
-        u8 *data        = NULL;
-    
-        stbi_set_flip_vertically_on_load(true);
-    
-        data = stbi_load(path.c(), &width, &height, &channels, desired_channels);
-        if (!data) {
-            Errf("Failed to load texture \"{}\"", path);
-            return NULL;
-        }
-
-        if (channels != desired_channels) {
-            Warnf("When loading texture: \"{}\", expected {} channels but got {}, forcing channel count anyway", path, desired_channels, channels);
-        }
-
-        texture->width = width;
-        texture->height = height;
-        texture->data = data;
-    }
-
-    { // send to GPU
-        glGenTextures(1, &texture->id);
-    
-        glBindTexture(GL_TEXTURE_2D, texture->id);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    
-        glTexImage2D(GL_TEXTURE_2D, 0, gl_internal_format, texture->width, texture->height, 0, gl_source_format, GL_UNSIGNED_BYTE, texture->data);
-    
-        glBindTexture(GL_TEXTURE_2D, 0);
-    }
+    *texture = render_texture_create(description, width, height, data);
 
     Logf("Loaded texture with path \"{}\" [{}x{}] {} bytes", path, texture->width, texture->height, texture->width * texture->height * 4);
 
     return texture;
+}
+
+void render_texture_delete(RenderTexture *texture) {
+    glDeleteTextures(1, &texture->id);
 }
 
 Material *material_create_pbr(Renderer *renderer, v2 tiling_factor, bool triplanar_enabled, f32 triplanar_scale, RenderTexture *albedo, RenderTexture *normal, RenderTexture *ambient_occlusion, RenderTexture *roughness, RenderTexture *metalness) {
@@ -1043,7 +1088,6 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
         .commands = fixed_array_create<RenderCommand>(MAX_RENDER_COMMANDS),
         .textures = stack_array_create<Texture, MAX_TEXTURES>(),
         .lights = stack_array_create<PointLight, MAX_POINT_LIGHTS>(),
-        .main_frame_buffer = FrameBuffer {.size = {100, 100}},
     };
 
     Renderer *renderer = REN();
@@ -1113,24 +1157,30 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
     }
 
     { // create frame buffers 
-        frame_buffer_init(&renderer->main_frame_buffer);
-        frame_buffer_init(&renderer->sun_frame_buffer);
+        renderer->main_frame_buffer.size = v2i{100, 100};
+        frame_buffer_add_attachment(&renderer->main_frame_buffer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_16F});
+        frame_buffer_add_attachment(&renderer->main_frame_buffer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_16F});
+        frame_buffer_build(&renderer->main_frame_buffer);
+
+        renderer->sun_frame_buffer.size = v2i{100, 100};
+        frame_buffer_add_attachment(&renderer->sun_frame_buffer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_16F});
+        frame_buffer_build(&renderer->sun_frame_buffer);
     }
 
     { // load default textures
-        renderer->default_material_albedo = render_texture_create_from_file(renderer, "resources/textures/defaults/default_albedo.png", TD_RGBA_8, TD_RGBA_8);
+        renderer->default_material_albedo = render_texture_create_from_file(renderer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8}, "resources/textures/defaults/default_albedo.png"); 
         Assert(renderer->default_material_albedo);
 
-        renderer->default_material_normal = render_texture_create_from_file(renderer, "resources/textures/defaults/default_normal.png", TD_RGBA_8, TD_RGBA_8);
+        renderer->default_material_normal = render_texture_create_from_file(renderer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8}, "resources/textures/defaults/default_normal.png");
         Assert(renderer->default_material_normal);
 
-        renderer->default_material_ambient_occlusion = render_texture_create_from_file(renderer, "resources/textures/defaults/default_ambient_occlusion.png", TD_RGBA_8, TD_RGBA_8);
+        renderer->default_material_ambient_occlusion = render_texture_create_from_file(renderer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8}, "resources/textures/defaults/default_ambient_occlusion.png");
         Assert(renderer->default_material_ambient_occlusion);
 
-        renderer->default_material_roughness = render_texture_create_from_file(renderer, "resources/textures/defaults/default_roughness.png", TD_RGBA_8, TD_RGBA_8);
+        renderer->default_material_roughness = render_texture_create_from_file(renderer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8}, "resources/textures/defaults/default_roughness.png");
         Assert(renderer->default_material_roughness);
 
-        renderer->default_material_metalness = render_texture_create_from_file(renderer, "resources/textures/defaults/default_metalness.png", TD_RGBA_8, TD_RGBA_8);
+        renderer->default_material_metalness = render_texture_create_from_file(renderer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8}, "resources/textures/defaults/default_metalness.png");
         Assert(renderer->default_material_metalness);
     }
 
@@ -1606,13 +1656,13 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
                     shader_set_v2(renderer->pbr_shader, "material_tiling_factor", mesh_cmd->material->tiling_factor);
                     shader_set_i32(renderer->pbr_shader, "material_triplanar_enabled", mesh_cmd->material->triplanar_enabled ? 1 : 0);
                     shader_set_f32(renderer->pbr_shader, "material_triplanar_scale", mesh_cmd->material->triplanar_scale);
-                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->albedo->id, 0);
-                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->normal->id, 1);
-                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->ambient_occlusion->id, 2);
-                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->roughness->id, 3);
-                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->metalness->id, 4);
+                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->albedo, 0);
+                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->normal, 1);
+                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->ambient_occlusion, 2);
+                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->roughness, 3);
+                    shader_set_texture(renderer->pbr_shader, mesh_cmd->material->metalness, 4);
 
-                    shader_set_texture(renderer->pbr_shader, renderer->sun_frame_buffer.colour_attachment, 5);
+                    shader_set_texture(renderer->pbr_shader, &renderer->sun_frame_buffer.colour_attachments[0], 5);
     
                     shader_set_i32(renderer->pbr_shader, "light_count", renderer->lights.len);
     
@@ -1643,7 +1693,7 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
                     shader_set_v4(renderer->unlit_shader, "colour", mesh_cmd->colour);
     
                     shader_set_v2(renderer->unlit_shader, "material_tiling_factor", mesh_cmd->material->tiling_factor);
-                    shader_set_texture(renderer->unlit_shader, mesh_cmd->material->albedo->id, 0);
+                    shader_set_texture(renderer->unlit_shader, mesh_cmd->material->albedo, 0);
     
                     GLCall(glBindVertexArray(mesh_cmd->mesh->vertex_array_id));
                     GLCall(glDrawElements(GL_TRIANGLES, mesh_cmd->mesh->indices.len, GL_UNSIGNED_INT, 0));
@@ -1908,7 +1958,7 @@ f32 texture_aspect_ratio(Renderer *renderer, Texture *texture) {
 }
 
 bool frame_buffer_init(FrameBuffer *frame_buffer) {
-    return frame_buffer_rebuild(frame_buffer);
+    return frame_buffer_build(frame_buffer);
 }
 
 void frame_buffer_bind(FrameBuffer *frame_buffer) {
@@ -1922,59 +1972,59 @@ void frame_buffer_unbind() {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
+void frame_buffer_add_attachment(FrameBuffer *frame_buffer, TextureDescription description) {
+    append(&frame_buffer->colour_attachments, RenderTexture{.description = description});
+}
+
 bool frame_buffer_maybe_resize(FrameBuffer *frame_buffer, v2i new_size) {
     v2i old_size = frame_buffer->size;
     frame_buffer->size = new_size;
 
     if (old_size.x != new_size.x || old_size.y != new_size.y) {
-        return frame_buffer_rebuild(frame_buffer);
+        return frame_buffer_build(frame_buffer);
     }
 
     return true;
 }
 
-bool frame_buffer_rebuild(FrameBuffer *frame_buffer) {
+bool frame_buffer_build(FrameBuffer *frame_buffer) {
+    // delete existing frame buffer and attachments if already created
     if (frame_buffer->id != 0) {
         glDeleteFramebuffers(1, &frame_buffer->id);
-        glDeleteTextures(1, &frame_buffer->colour_attachment);
-        glDeleteTextures(1, &frame_buffer->depth_attachment);
+
+        for (RenderTexture &colour_attachment : frame_buffer->colour_attachments) {
+            render_texture_delete(&colour_attachment);
+        }
+
+        render_texture_delete(&frame_buffer->neo_depth_attachment);
     }
 
+    // create frame buffer
     glCreateFramebuffers(1, &frame_buffer->id);
     glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer->id);
 
-    { // colour attachment
-        glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->colour_attachment);
-        glBindTexture(GL_TEXTURE_2D, frame_buffer->colour_attachment);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, frame_buffer->size.x, frame_buffer->size.y, 0, GL_RGBA, GL_FLOAT, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); 
+    // create colour attachments
+    for (i32 i = 0; i < frame_buffer->colour_attachments.len; i++) {
+        RenderTexture *colour_attachment = &frame_buffer->colour_attachments[i];
 
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frame_buffer->colour_attachment, 0);
+        *colour_attachment = render_texture_create(colour_attachment->description, frame_buffer->size.x, frame_buffer->size.y, NULL);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, colour_attachment->id, 0);
     }
 
-    { // depth attachment
-        glCreateTextures(GL_TEXTURE_2D, 1, &frame_buffer->depth_attachment);
-        glBindTexture(GL_TEXTURE_2D, frame_buffer->depth_attachment);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, frame_buffer->size.x, frame_buffer->size.y, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, frame_buffer->depth_attachment, 0);
-    }
+    // create depth attachment
+    frame_buffer->neo_depth_attachment = render_texture_create(TextureDescription{.source_format = TF_DEPTH, .internal_format = TF_DEPTH}, frame_buffer->size.x, frame_buffer->size.y, NULL);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, frame_buffer->neo_depth_attachment.id, 0);
 
     { // set draw buffers
-        const i32 count = 1;
+        StackArray<GLenum, MAX_COLOUR_ATTACHMENTS> draw_buffers = {};
 
-        GLenum draw_buffers[count] = {
-            GL_COLOR_ATTACHMENT0,
-        };
-    
+        for (i32 i = 0; i < frame_buffer->colour_attachments.len; i++) {
+            append(&draw_buffers, GLenum(GL_COLOR_ATTACHMENT0 + i));
+        }
+
         // when using more then one colour attachment, need to set all colour buffers the
         // frame buffer can write too, if not the normal buffer will not be write too
-        glDrawBuffers(count, draw_buffers);
+        glDrawBuffers(draw_buffers.size, draw_buffers.data);
     }
 
     if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {

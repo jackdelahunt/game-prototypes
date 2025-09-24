@@ -8,10 +8,15 @@ struct PointLight {
 
 // keep in sync with renderer 
 #define MAX_POINT_LIGHTS 50
-   
-const float PI = 3.14159265359;
 
+#define MAX_SHADOW_SAMPLE_BIAS  0.005
+#define MIN_SHADOW_SAMPLE_BIAS  0.001
+#define SHADOW_PCF_RADIUS       2
+
+#define PI 3.14159265359
+ 
 layout(location = 0) out vec4 colour_attachment;
+layout(location = 1) out vec4 temp_attachment;
 
 in vec3 world_fragment_position;
 in vec3 world_fragment_normal;
@@ -120,26 +125,24 @@ float get_fragment_shadow() {
     vec3 sun_direction = normalize(sun_position);
 
     // add a bias to the sampling to reduce shadow acne
-    float max_bias = 0.005;
-    float min_bias = 0.001;
-    float bias = max(max_bias * (1.0 - dot(world_fragment_normal, sun_direction)), min_bias);
+    float bias = max(MAX_SHADOW_SAMPLE_BIAS * (1.0 - dot(world_fragment_normal, sun_direction)), MIN_SHADOW_SAMPLE_BIAS);
 
-#if 0 // disable PCF
-    float shadow = currentDepth - bias > closestDepth  ? 1.0 : 0.0;
-#else
+    // samples is the total number of pixels to be sampled based on the radius
+    float pcf_samples = (SHADOW_PCF_RADIUS * 2) + 1;
+    pcf_samples *= pcf_samples;
+
     float shadow = 0.0;
     vec2 texelSize = 1.0 / textureSize(shadow_map, 0);
-    for(int x = -1; x <= 1; ++x)
+    for(int x = -SHADOW_PCF_RADIUS; x <= SHADOW_PCF_RADIUS; ++x)
     {
-        for(int y = -1; y <= 1; ++y)
+        for(int y = -SHADOW_PCF_RADIUS; y <= SHADOW_PCF_RADIUS; ++y)
         {
             float pcfDepth = texture(shadow_map, shadow_map_position.xy + vec2(x, y) * texelSize).r; 
             shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;        
         }    
     }
 
-    shadow /= 9.0;
-#endif
+    shadow /= pcf_samples;
 
     return shadow; 
 }
@@ -256,5 +259,7 @@ void main() {
         // colour = sun_fragment_position.rgb;
 
         colour_attachment = vec4(colour, 1);
+        colour = (N + 1) * 0.5;
+        temp_attachment = vec4(colour, 1);
     }
 } 
