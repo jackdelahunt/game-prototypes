@@ -235,10 +235,12 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 #define MAX_QUADS 500
 #define MAX_RENDER_COMMANDS 5000
 #define MAX_MESHES 128
-#define MAX_POINT_LIGHTS 50 // keep in sync with pbr shader 
+#define MAX_POINT_LIGHTS 50         // keep in sync with pbr shader 
 #define MAX_TEXTURES 256
 #define MAX_MATERIALS 256
 #define MAX_COLOUR_ATTACHMENTS 6
+#define SSAO_KERNAL_SAMPLES 64      // keep in sync with SSAO_KERNAL_SAMPLES in ssao shader
+#define SSAO_NOISE_TEXTURE_SIZE 4
 
 #define UI_LAYER_0 0.0f
 #define UI_LAYER_1 1.0f
@@ -351,25 +353,34 @@ struct Texture {
 };
 
 enum TextureFormat {
-    TF_DEPTH,
-
     TF_R_U8,
     TF_RGB_U8,
     TF_RGBA_U8,
     TF_sRGBA_U8,
 
-    TF_RGBA_16F,
+    TF_RGBA_F16,
+
+    TF_R_F32,
+    TF_RGBA_F32,
+
+    TF_DEPTH,
 };
 
-struct TextureDescription {
+enum TextureWrap {
+    TW_REPEAT,
+    TW_CLAMP
+};
+
+struct TextureSpec {
     TextureFormat source_format;
     TextureFormat internal_format;
+    TextureWrap wrap;
 };
 
 struct RenderTexture {
     u32 id;
 
-    TextureDescription description;
+    TextureSpec description;
 
     i32 width;
     i32 height;
@@ -418,6 +429,7 @@ struct Viewport {
 };
 
 struct FrameBuffer {
+    string debug_name;
     u32 id;
     v2i size;
 
@@ -482,6 +494,8 @@ struct Renderer {
     v3 sun_position;
     f32 sun_intensity;
     f32 sun_ortho_size;
+    f32 ssao_radius;
+    f32 ssao_bias;
 
     FixedArray<Mesh> meshes;
     FixedArray<RenderCommand> commands;
@@ -511,6 +525,8 @@ struct Renderer {
     FrameBuffer sun_frame_buffer;
     FrameBuffer main_frame_buffer;
     FrameBuffer ssao_frame_buffer;
+    FrameBuffer ssao_blur_buffer;
+    FrameBuffer post_fx_buffer;
 
     u32 vertex_array_id;
     u32 vertex_buffer_id;
@@ -520,8 +536,11 @@ struct Renderer {
     Shader pbr_shader;
     Shader unlit_shader;
     Shader ssao_shader;
+    Shader blur_shader;
+    Shader post_fx_shader;
     Shader ui_shader;
 
+    array<v3, SSAO_KERNAL_SAMPLES> ssao_kernal;
     RenderTexture ssao_noise_texture;
 
     u32 atlas_texture_id;
@@ -563,14 +582,17 @@ Mesh *mesh_create_from_file(Renderer *renderer, string mesh_path);
 void upload_mesh(Mesh *mesh);
 
 // Texture format
-i32 texture_format_channel_count(TextureFormat texture_description);
-GLenum texture_format_gl_channel_type(TextureFormat format);
+i32 texture_format_channel_count(TextureFormat format);
 GLenum texture_format_gl_source_format(TextureFormat format);
 GLenum texture_format_gl_internal_format(TextureFormat format);
+GLenum texture_format_gl_channel_type(TextureFormat format);
+
+// Texture wrap
+GLenum texture_wrap_gl_type(TextureWrap wrap);
 
 // Render Texture API
-RenderTexture render_texture_create(TextureDescription description, i32 width, i32 height, u8 *data);
-RenderTexture *render_texture_create_from_file(Renderer *renderer, TextureDescription description, string path);
+RenderTexture render_texture_create(TextureSpec spec, i32 width, i32 height, u8 *data);
+RenderTexture *render_texture_create_from_file(Renderer *renderer, TextureSpec spec, string path);
 void render_texture_delete(RenderTexture *texture);
 
 // Material API
@@ -579,7 +601,7 @@ Material *material_create_unlit(Renderer *renderer, v2 tiling_factor, RenderText
 
 // Renderer init API
 Renderer *REN();
-bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_colour, v3 ambient_light, v3 sun_colour, v3 sun_position, f32 sun_intensity, f32 sun_ortho_size);
+bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_colour, v3 ambient_light, v3 sun_colour, v3 sun_position, f32 sun_intensity, f32 sun_ortho_size, f32 ssao_radius, f32 ssao_bias);
 
 bool load_shaders(Renderer *renderer);
 void delete_shaders(Renderer *renderer);
@@ -601,7 +623,7 @@ void draw_imgui_frame();
 // Immediate rendering API
 void draw_texture(Renderer *renderer, Texture *texture, Texture *normal_texture, v3 position, v2 size, f32 rotation, v4 color);
 void draw_animated_texture(Renderer *renderer, Texture *texture, f32 time_in_animation, v3 position, v2 size, f32 rotation, v4 color);
-void push_screen_quad(Renderer *renderer, v4 color);
+void push_screen_quad(Renderer *renderer);
 
 // Drawing API
 void draw_quad(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour, Material *material);
@@ -621,10 +643,10 @@ void draw_point_light(Renderer *renderer, v3 position, v4 colour, f32 intensity)
 
 f32 texture_aspect_ratio(Renderer *renderer, Texture *texture);
 
-bool frame_buffer_init(FrameBuffer *frame_buffer);
+FrameBuffer frame_buffer_create(string debug_name);
 void frame_buffer_bind(FrameBuffer *frame_buffer);
 void frame_buffer_unbind();
-void frame_buffer_add_attachment(FrameBuffer *frame_buffer, TextureDescription description);
+void frame_buffer_add_attachment(FrameBuffer *frame_buffer, TextureSpec description);
 bool frame_buffer_maybe_resize(FrameBuffer *frame_buffer, v2i new_size);
 bool frame_buffer_build(FrameBuffer *frame_buffer);
 void frame_buffer_copy_to(FrameBuffer *source_buffer, FrameBuffer *dest_buffer);
@@ -935,23 +957,15 @@ i32 texture_format_channel_count(TextureFormat format) {
         case TF_RGB_U8:      return 3;
         case TF_RGBA_U8:     return 4;
         case TF_sRGBA_U8:    return 4;
-        case TF_RGBA_16F:    return 4;
+
+        case TF_RGBA_F16:    return 4;
+
+        case TF_R_F32:       return 1;
+        case TF_RGBA_F32:    return 4;
+
         case TF_DEPTH:       return 1;
 
-        default: Unreachable("Texture description not known when getting channel count");
-    }
-}
-
-GLenum texture_format_gl_channel_type(TextureFormat format) {
-    switch (format) {
-        case TF_R_U8:        return GL_UNSIGNED_BYTE;
-        case TF_RGB_U8:      return GL_UNSIGNED_BYTE;
-        case TF_RGBA_U8:     return GL_UNSIGNED_BYTE;
-        case TF_sRGBA_U8:    return GL_UNSIGNED_BYTE;
-        case TF_RGBA_16F:    return GL_FLOAT;
-        case TF_DEPTH:       return GL_FLOAT;
-
-        default: Unreachable("Texture description not known when getting channel count");
+        default: Unreachable("Texture format not known when getting channel count");
     }
 }
 
@@ -961,10 +975,15 @@ GLenum texture_format_gl_source_format(TextureFormat format) {
         case TF_RGB_U8:      return GL_RGB;
         case TF_RGBA_U8:     return GL_RGBA;
         case TF_sRGBA_U8:    return GL_RGBA;
-        case TF_RGBA_16F:    return GL_RGBA;
+
+        case TF_RGBA_F16:    return GL_RGBA;
+
+        case TF_R_F32:       return GL_RED;
+        case TF_RGBA_F32:    return GL_RGBA;
+
         case TF_DEPTH:       return GL_DEPTH_COMPONENT;
 
-        default: Unreachable("Texture format not a known OpenGL source format");
+        default: Unreachable("Texture format not known when getting OpenGL source format");
     }
 }
 
@@ -974,30 +993,63 @@ GLenum texture_format_gl_internal_format(TextureFormat format) {
         case TF_RGB_U8:      return GL_RGB8;
         case TF_RGBA_U8:     return GL_RGBA8;
         case TF_sRGBA_U8:    return GL_SRGB8_ALPHA8;
-        case TF_RGBA_16F:    return GL_RGBA16F;
+
+        case TF_RGBA_F16:    return GL_RGBA16F;
+
+        case TF_R_F32:       return GL_R32F;
+        case TF_RGBA_F32:    return GL_RGBA32F;
+
         case TF_DEPTH:       return GL_DEPTH_COMPONENT;
 
-        default: Unreachable("Texture format not a known OpenGL internal format");
+        default: Unreachable("Texture format not known when getting OpenGL internal format");
     }
 }
 
-RenderTexture render_texture_create(TextureDescription description, i32 width, i32 height, u8 *data) {
+GLenum texture_format_gl_channel_type(TextureFormat format) {
+    switch (format) {
+        case TF_R_U8:        return GL_UNSIGNED_BYTE;
+        case TF_RGB_U8:      return GL_UNSIGNED_BYTE;
+        case TF_RGBA_U8:     return GL_UNSIGNED_BYTE;
+        case TF_sRGBA_U8:    return GL_UNSIGNED_BYTE;
+
+        case TF_RGBA_F16:    return GL_FLOAT;
+
+        case TF_R_F32:       return GL_FLOAT;
+        case TF_RGBA_F32:    return GL_FLOAT;
+
+        case TF_DEPTH:       return GL_FLOAT;
+
+        default: Unreachable("Texture format not known when getting OpenGL type");
+    }
+}
+
+GLenum texture_wrap_gl_type(TextureWrap wrap) {
+    switch (wrap) {
+        case TW_REPEAT:     return GL_REPEAT;
+        case TW_CLAMP:      return GL_CLAMP_TO_EDGE;
+
+        default: Unreachable("Texture wrap not known when getting OpenGL wrap");
+    }
+}
+
+RenderTexture render_texture_create(TextureSpec spec, i32 width, i32 height, u8 *data) {
     RenderTexture texture = {
-        .description = description,
+        .description = spec,
         .width = width,
         .height = height,
         .data = data
     };
 
-    GLenum gl_source_format = texture_format_gl_source_format(texture.description.source_format);
-    GLenum gl_internal_format = texture_format_gl_internal_format(texture.description.internal_format);
-    GLenum gl_channel_type = texture_format_gl_channel_type(texture.description.source_format);
+    GLenum gl_internal_format   = texture_format_gl_internal_format(texture.description.internal_format);
+    GLenum gl_source_format     = texture_format_gl_source_format(texture.description.source_format);
+    GLenum gl_channel_type      = texture_format_gl_channel_type(texture.description.source_format);
+    GLenum gl_wrap              = texture_wrap_gl_type(texture.description.wrap);
 
     glGenTextures(1, &texture.id);
  
     glBindTexture(GL_TEXTURE_2D, texture.id);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, gl_wrap);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, gl_wrap);
  
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -1009,8 +1061,8 @@ RenderTexture render_texture_create(TextureDescription description, i32 width, i
     return texture;
 }
 
-RenderTexture *render_texture_create_from_file(Renderer *renderer, TextureDescription description, string path) {
-    i32 desired_channels = texture_format_channel_count(description.source_format);
+RenderTexture *render_texture_create_from_file(Renderer *renderer, TextureSpec spec, string path) {
+    i32 desired_channels = texture_format_channel_count(spec.source_format);
 
     i32 width       = 0;
     i32 height      = 0;
@@ -1030,7 +1082,7 @@ RenderTexture *render_texture_create_from_file(Renderer *renderer, TextureDescri
     }
 
     RenderTexture *texture = push(&renderer->render_textures);
-    *texture = render_texture_create(description, width, height, data);
+    *texture = render_texture_create(spec, width, height, data);
 
     Logf("Loaded texture with path \"{}\" [{}x{}] {} bytes", path, texture->width, texture->height, texture->width * texture->height * 4);
 
@@ -1078,7 +1130,7 @@ Renderer *REN() {
     return g_renderer;
 }
 
-bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_colour, v3 ambient_light, v3 sun_colour, v3 sun_position, f32 sun_intensity, f32 sun_ortho_size) {
+bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_colour, v3 ambient_light, v3 sun_colour, v3 sun_position, f32 sun_intensity, f32 sun_ortho_size, f32 ssao_radius, f32 ssao_bias) {
     g_renderer = new Renderer {
         .arena = arena,
         .frame_arena = frame_arena,
@@ -1088,6 +1140,8 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
         .sun_position = sun_position,
         .sun_intensity = sun_intensity,
         .sun_ortho_size = sun_ortho_size,
+        .ssao_radius = ssao_radius,
+        .ssao_bias = ssao_bias,
         .meshes = fixed_array_create<Mesh>(MAX_MESHES),
         .commands = fixed_array_create<RenderCommand>(MAX_RENDER_COMMANDS),
         .textures = stack_array_create<Texture, MAX_TEXTURES>(),
@@ -1161,35 +1215,43 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
     }
 
     { // create frame buffers 
-        renderer->sun_frame_buffer.size = v2i{100, 100};
-        frame_buffer_add_attachment(&renderer->sun_frame_buffer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_16F});
+        renderer->sun_frame_buffer = frame_buffer_create("Sun buffer");
+        frame_buffer_add_attachment(&renderer->sun_frame_buffer, TextureSpec {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_F16, .wrap = TW_CLAMP});
         frame_buffer_build(&renderer->sun_frame_buffer);
 
-        renderer->main_frame_buffer.size = v2i{100, 100};
-        frame_buffer_add_attachment(&renderer->main_frame_buffer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_16F});
-        frame_buffer_add_attachment(&renderer->main_frame_buffer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_16F});
-        frame_buffer_add_attachment(&renderer->main_frame_buffer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_16F});
+        renderer->main_frame_buffer = frame_buffer_create("Main buffer");
+        frame_buffer_add_attachment(&renderer->main_frame_buffer, TextureSpec {.source_format = TF_RGBA_F16, .internal_format = TF_RGBA_F16, .wrap = TW_CLAMP});
+        frame_buffer_add_attachment(&renderer->main_frame_buffer, TextureSpec {.source_format = TF_RGBA_F16, .internal_format = TF_RGBA_F16, .wrap = TW_CLAMP});
+        frame_buffer_add_attachment(&renderer->main_frame_buffer, TextureSpec {.source_format = TF_RGBA_F16, .internal_format = TF_RGBA_F16, .wrap = TW_CLAMP});
         frame_buffer_build(&renderer->main_frame_buffer);
 
-        renderer->ssao_frame_buffer.size = v2i{100, 100};
-        frame_buffer_add_attachment(&renderer->ssao_frame_buffer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_16F});
+        renderer->ssao_frame_buffer = frame_buffer_create("SSAO buffer");
+        frame_buffer_add_attachment(&renderer->ssao_frame_buffer, TextureSpec {.source_format = TF_RGBA_F16, .internal_format = TF_RGBA_F16, .wrap = TW_CLAMP});
         frame_buffer_build(&renderer->ssao_frame_buffer);
+
+        renderer->ssao_blur_buffer = frame_buffer_create("SSAO blur buffer");
+        frame_buffer_add_attachment(&renderer->ssao_blur_buffer, TextureSpec {.source_format = TF_RGBA_F16, .internal_format = TF_RGBA_F16, .wrap = TW_CLAMP});
+        frame_buffer_build(&renderer->ssao_blur_buffer);
+
+        renderer->post_fx_buffer = frame_buffer_create("PostFX buffer");
+        frame_buffer_add_attachment(&renderer->post_fx_buffer, TextureSpec {.source_format = TF_RGBA_F16, .internal_format = TF_RGBA_F16, .wrap = TW_CLAMP});
+        frame_buffer_build(&renderer->post_fx_buffer);
     }
 
     { // load default textures
-        renderer->default_material_albedo = render_texture_create_from_file(renderer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8}, "resources/textures/defaults/default_albedo.png"); 
+        renderer->default_material_albedo = render_texture_create_from_file(renderer, TextureSpec {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8, .wrap = TW_REPEAT}, "resources/textures/defaults/default_albedo.png"); 
         Assert(renderer->default_material_albedo);
 
-        renderer->default_material_normal = render_texture_create_from_file(renderer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8}, "resources/textures/defaults/default_normal.png");
+        renderer->default_material_normal = render_texture_create_from_file(renderer, TextureSpec {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8, .wrap = TW_REPEAT}, "resources/textures/defaults/default_normal.png");
         Assert(renderer->default_material_normal);
 
-        renderer->default_material_ambient_occlusion = render_texture_create_from_file(renderer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8}, "resources/textures/defaults/default_ambient_occlusion.png");
+        renderer->default_material_ambient_occlusion = render_texture_create_from_file(renderer, TextureSpec {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8, .wrap = TW_REPEAT}, "resources/textures/defaults/default_ambient_occlusion.png");
         Assert(renderer->default_material_ambient_occlusion);
 
-        renderer->default_material_roughness = render_texture_create_from_file(renderer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8}, "resources/textures/defaults/default_roughness.png");
+        renderer->default_material_roughness = render_texture_create_from_file(renderer, TextureSpec {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8, .wrap = TW_REPEAT}, "resources/textures/defaults/default_roughness.png");
         Assert(renderer->default_material_roughness);
 
-        renderer->default_material_metalness = render_texture_create_from_file(renderer, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8}, "resources/textures/defaults/default_metalness.png");
+        renderer->default_material_metalness = render_texture_create_from_file(renderer, TextureSpec {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8, .wrap = TW_REPEAT}, "resources/textures/defaults/default_metalness.png");
         Assert(renderer->default_material_metalness);
     }
 
@@ -1251,20 +1313,27 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
         std::uniform_real_distribution<float> randomFloats(0.0, 1.0);
         std::default_random_engine generator;
 
-        const i32 kernal_size = 64;
-        StackArray<v3, kernal_size> ssaoKernel = {};
+        auto lerp = [](float a, float b, float f) {
+            return a + f * (b - a);
+        };
 
-        for (i32 i = 0; i < kernal_size; ++i) {
+        for (i32 i = 0; i < renderer->ssao_kernal.len; ++i) {
             v3 sample = v3{
                 randomFloats(generator) * 2.0f - 1.0f, 
                 randomFloats(generator) * 2.0f - 1.0f, 
                 randomFloats(generator)
             };
 
-            // TODO: lerp samples so they cluster around center
             sample  = norm(sample);
             sample *= randomFloats(generator);
-            append(&ssaoKernel, sample);
+
+            if (true) {
+                float scale = f32(i) / f32(renderer->ssao_kernal.len);
+                scale = lerp(0.1f, 1.0f, scale * scale);
+                sample *= scale;
+            }
+
+            renderer->ssao_kernal[i] = sample;
         }
     }
 
@@ -1272,23 +1341,20 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
         std::uniform_real_distribution<float> randomFloats(0.0, 1.0);
         std::default_random_engine generator;
 
-        const i32 noise_width   = 4;
-        const i32 noise_height  = 4;
-        const i32 noise_size    = noise_width * noise_height;
+        const i32 total_noise = SSAO_NOISE_TEXTURE_SIZE * SSAO_NOISE_TEXTURE_SIZE;
 
-        StackArray<v3, noise_size> ssaoNoise = {};
+        array<v4, total_noise> ssaoNoise = {};
 
-        for (i32 i = 0; i < noise_size; i++) {
-            v3 noise = v3 {
+        for (v4 &noise : ssaoNoise) {
+            noise = v4 {
                 randomFloats(generator) * 2.0f - 1.0f, 
                 randomFloats(generator) * 2.0f - 1.0f, 
-                0.0f
+                0.0f,
+                1.0f
             }; 
-
-            append(&ssaoNoise, noise);
         }
 
-        renderer->ssao_noise_texture = render_texture_create(TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_16F}, noise_width, noise_height, (u8 *) ssaoNoise.data);
+        renderer->ssao_noise_texture = render_texture_create(TextureSpec {.source_format = TF_RGBA_F32, .internal_format = TF_RGBA_F32, .wrap = TW_REPEAT}, SSAO_NOISE_TEXTURE_SIZE, SSAO_NOISE_TEXTURE_SIZE, (u8 *) ssaoNoise.items);
     }
 
     return true;
@@ -1330,6 +1396,29 @@ bool load_shaders(Renderer *renderer) {
         if (!ok) {
             return false;
         }
+
+        assign_texture_slot(&renderer->ssao_shader, "position_map", 0);
+        assign_texture_slot(&renderer->ssao_shader, "normal_map", 1);
+        assign_texture_slot(&renderer->ssao_shader, "noise_map", 2);
+    }
+
+    {
+        bool ok = init_shader(&renderer->blur_shader, "Blur shader", "resources/shaders/blur_vertex.shader", "resources/shaders/blur_fragment.shader");
+        if (!ok) {
+            return false;
+        }
+
+        assign_texture_slot(&renderer->blur_shader, "ssao_map", 0);
+    }
+
+    {
+        bool ok = init_shader(&renderer->post_fx_shader, "PostFX shader", "resources/shaders/post_fx_vertex.shader", "resources/shaders/post_fx_fragment.shader");
+        if (!ok) {
+            return false;
+        }
+
+        assign_texture_slot(&renderer->post_fx_shader, "scene_map", 0);
+        assign_texture_slot(&renderer->post_fx_shader, "ssao_map", 1);
     }
 
     {
@@ -1354,6 +1443,15 @@ void delete_shaders(Renderer *renderer) {
 
     glDeleteProgram(renderer->unlit_shader.id);
     renderer->unlit_shader.id = 0;
+
+    glDeleteProgram(renderer->ssao_shader.id);
+    renderer->ssao_shader.id = 0;
+
+    glDeleteProgram(renderer->blur_shader.id);
+    renderer->blur_shader.id = 0;
+
+    glDeleteProgram(renderer->post_fx_shader.id);
+    renderer->post_fx_shader.id = 0;
 
     glDeleteProgram(renderer->ui_shader.id);
     renderer->ui_shader.id = 0;
@@ -1767,7 +1865,84 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
         frame_buffer_unbind();
     }
 
-    if (draw_ui) { // ui pass
+    { // ssao pass
+        frame_buffer_maybe_resize(&renderer->ssao_frame_buffer, viewport.size);
+        frame_buffer_bind(&renderer->ssao_frame_buffer);
+
+        renderer_clear_frame(BLACK);
+
+        push_screen_quad(renderer);
+        quad_buffer_bind_and_update(&renderer->screen_quad);
+
+        shader_use(renderer->ssao_shader);
+        shader_set_texture(renderer->ssao_shader, &renderer->main_frame_buffer.colour_attachments[1], 0);
+        shader_set_texture(renderer->ssao_shader, &renderer->main_frame_buffer.colour_attachments[2], 1);
+        shader_set_texture(renderer->ssao_shader, &renderer->ssao_noise_texture, 2);
+
+        shader_set_m4(renderer->ssao_shader, "projection", &projection_matrix);
+
+        shader_set_f32(renderer->ssao_shader, "radius", renderer->ssao_radius);
+        shader_set_f32(renderer->ssao_shader, "bias", renderer->ssao_bias);
+        shader_set_v2(renderer->ssao_shader, "noise_scale", to_floats(viewport.size) / f32(SSAO_NOISE_TEXTURE_SIZE));
+
+        for (i64 i = 0; i < renderer->ssao_kernal.len; i++) {
+            string sample_string = fmtc(renderer->frame_arena, "samples[{}]", i);
+            shader_set_v3(renderer->ssao_shader, sample_string, renderer->ssao_kernal[i]);
+        }
+
+        GLCall(glDrawElements(GL_TRIANGLES, 6 * renderer->screen_quad.quads.len, GL_UNSIGNED_INT, 0));
+
+        quad_buffer_unbind();
+        quad_buffer_reset(&renderer->screen_quad);
+    
+        frame_buffer_unbind();
+    }
+
+    { // ssao blur pass
+        frame_buffer_maybe_resize(&renderer->ssao_blur_buffer, viewport.size);
+        frame_buffer_bind(&renderer->ssao_blur_buffer);
+
+        renderer_clear_frame(BLACK);
+
+        push_screen_quad(renderer);
+        quad_buffer_bind_and_update(&renderer->screen_quad);
+
+        shader_use(renderer->blur_shader);
+        shader_set_texture(renderer->blur_shader, &renderer->ssao_frame_buffer.colour_attachments[0], 0);
+
+        shader_set_i32(renderer->blur_shader, "blur_radius", SSAO_NOISE_TEXTURE_SIZE / 2);
+
+        GLCall(glDrawElements(GL_TRIANGLES, 6 * renderer->screen_quad.quads.len, GL_UNSIGNED_INT, 0));
+
+        quad_buffer_unbind();
+        quad_buffer_reset(&renderer->screen_quad);
+    
+        frame_buffer_unbind();
+    }
+
+    { // post fx pass
+        frame_buffer_maybe_resize(&renderer->post_fx_buffer, viewport.size);
+        frame_buffer_bind(&renderer->post_fx_buffer);
+
+        renderer_clear_frame(BLACK);
+
+        push_screen_quad(renderer);
+        quad_buffer_bind_and_update(&renderer->screen_quad);
+
+        shader_use(renderer->post_fx_shader);
+
+        shader_set_texture(renderer->post_fx_shader, &renderer->main_frame_buffer.colour_attachments[0], 0);
+        shader_set_texture(renderer->post_fx_shader, &renderer->ssao_blur_buffer.colour_attachments[0], 1);
+
+        GLCall(glDrawElements(GL_TRIANGLES, 6 * renderer->screen_quad.quads.len, GL_UNSIGNED_INT, 0));
+
+        quad_buffer_unbind();
+        quad_buffer_reset(&renderer->screen_quad);
+    
+        frame_buffer_unbind();
+    }
+
+    if (false) { // ui pass
         m4 model_matrix = HMM_M4D(1.0f);
         m4 view_matrix = HMM_M4D(1.0f);
         m4 projection_matrix = HMM_Orthographic_LH_NO(0, viewport.size.x, 0, viewport.size.y,  0, 10);
@@ -1797,15 +1972,18 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
 
     { // copy to target buffer
         frame_buffer_maybe_resize(target, viewport.size);
-        frame_buffer_copy_to(&renderer->main_frame_buffer, target);
+        frame_buffer_copy_to(&renderer->post_fx_buffer, target);
     }
 }
 
 void renderer_end_frame(Renderer *renderer) {
     reset(&renderer->commands);
     reset(&renderer->lights);
-    quad_buffer_reset(&renderer->ui_quads);
+
+    // screen quad also needs to be reset after each render pass that uses
+    // it because we call draw frame more then once per end frame
     quad_buffer_reset(&renderer->screen_quad);
+    quad_buffer_reset(&renderer->ui_quads);
 }
 
 void new_imgui_frame() {
@@ -1824,7 +2002,7 @@ void draw_imgui_frame() {
     glfwMakeContextCurrent(current);
 }
 
-void push_screen_quad(Renderer *renderer, v4 color) {
+void push_screen_quad(Renderer *renderer) {
     Quad *quad = quad_buffer_push(&renderer->screen_quad);
 
     // 0.99 so it is barely in clip space and behind everything else
@@ -1840,10 +2018,10 @@ void push_screen_quad(Renderer *renderer, v4 color) {
     quad->vertices[2].position = pos[2];
     quad->vertices[3].position = pos[3];
                 
-    quad->vertices[0].colour = color;
-    quad->vertices[1].colour = color;
-    quad->vertices[2].colour = color;
-    quad->vertices[3].colour = color;
+    quad->vertices[0].colour = WHITE;
+    quad->vertices[1].colour = WHITE;
+    quad->vertices[2].colour = WHITE;
+    quad->vertices[3].colour = WHITE;
 
     quad->vertices[0].uv = QUAD_UVS[0];
     quad->vertices[1].uv = QUAD_UVS[1];
@@ -2017,8 +2195,11 @@ f32 texture_aspect_ratio(Renderer *renderer, Texture *texture) {
     return (f32) texture->width / (f32) texture->height;
 }
 
-bool frame_buffer_init(FrameBuffer *frame_buffer) {
-    return frame_buffer_build(frame_buffer);
+FrameBuffer frame_buffer_create(string debug_name) {
+    return FrameBuffer {
+        .debug_name = debug_name,
+        .size = v2i{100, 100},
+    };
 }
 
 void frame_buffer_bind(FrameBuffer *frame_buffer) {
@@ -2032,7 +2213,7 @@ void frame_buffer_unbind() {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void frame_buffer_add_attachment(FrameBuffer *frame_buffer, TextureDescription description) {
+void frame_buffer_add_attachment(FrameBuffer *frame_buffer, TextureSpec description) {
     append(&frame_buffer->colour_attachments, RenderTexture{.description = description});
 }
 
@@ -2072,7 +2253,7 @@ bool frame_buffer_build(FrameBuffer *frame_buffer) {
     }
 
     // create depth attachment
-    frame_buffer->neo_depth_attachment = render_texture_create(TextureDescription{.source_format = TF_DEPTH, .internal_format = TF_DEPTH}, frame_buffer->size.x, frame_buffer->size.y, NULL);
+    frame_buffer->neo_depth_attachment = render_texture_create(TextureSpec{.source_format = TF_DEPTH, .internal_format = TF_DEPTH}, frame_buffer->size.x, frame_buffer->size.y, NULL);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, frame_buffer->neo_depth_attachment.id, 0);
 
     { // set draw buffers

@@ -20,7 +20,9 @@ layout(location = 1) out vec4 position_attachment;
 layout(location = 2) out vec4 normal_attachment;
 
 in vec3 world_fragment_position;
+in vec3 view_fragment_position;
 in vec3 world_fragment_normal;
+in vec3 view_fragment_normal;
 in vec2 model_fragment_uv;
 in vec4 sun_fragment_position;
 
@@ -260,7 +262,7 @@ void main() {
         // colour = sun_fragment_position.rgb;
 
         colour_attachment = vec4(colour, 1);
-        position_attachment = vec4(world_fragment_position, 1);
-        normal_attachment = vec4(world_fragment_normal, 1);
+        position_attachment = vec4(view_fragment_position, 1);
+        normal_attachment = vec4(view_fragment_normal, 1);
     }
 } 

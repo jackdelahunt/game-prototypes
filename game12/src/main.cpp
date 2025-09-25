@@ -1,3 +1,4 @@
+#include "imgui.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -116,6 +117,8 @@ v3 g_sun_colour             = v3 {1, 1, 1};
 v3 g_sun_position           = v3 {10, 50, -10};
 f32 g_sun_intensity         = 1;
 f32 g_sun_ortho_size        = 50;
+f32 g_ssao_radius           = 0.5;
+f32 g_ssao_bias             = 0.025;
 
 f32 g_particle_lifetime                 = 2.0f;
 f32 g_particle_size                     = 0.06f;
@@ -665,8 +668,6 @@ int main(i32 argc, const char **argv) {
     return 0;
 #endif
 
-    Logf("size: {}", sizeof(Renderer));
-
     bool ok = network_layer_init();
     if (!ok) {
         Log("CRASH: failed to strart networking");
@@ -784,7 +785,7 @@ void game_client_entry() {
             return;
         }
 
-        ok = renderer_init(&arena, &frame_arena, WIN(), g_clear_colour, g_ambient_light_colour, g_sun_colour, v3{50, 100, -100}, g_sun_intensity, g_sun_ortho_size);
+        ok = renderer_init(&arena, &frame_arena, WIN(), g_clear_colour, g_ambient_light_colour, g_sun_colour, v3{50, 100, -100}, g_sun_intensity, g_sun_ortho_size, g_ssao_radius, g_ssao_bias);
         if (!ok) {
             Log("Failed when trying to init the renderer");
             return;
@@ -810,7 +811,7 @@ void game_client_entry() {
 
             g_materials[MAT_MUZZLE_FLASH] = material_create_unlit(REN(), 
                 {1.0, 1.0},
-                render_texture_create_from_file(REN(), TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8}, "resources/textures/muzzle_flash/muzzle_flash.png")
+                render_texture_create_from_file(REN(), TextureSpec {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8, .wrap = TW_REPEAT}, "resources/textures/muzzle_flash/muzzle_flash.png")
             );
 
             Assert(g_materials[MAT_MUZZLE_FLASH]);
@@ -818,7 +819,7 @@ void game_client_entry() {
             g_materials[MAT_DEV_WHITE] = material_create_pbr(REN(), 
                 {1, 1},
                 true, 1,
-                render_texture_create_from_file(REN(), TextureDescription {.source_format = TF_sRGBA_U8, .internal_format = TF_sRGBA_U8}, "resources/textures/dev/dev_white.png"),
+                render_texture_create_from_file(REN(), TextureSpec {.source_format = TF_sRGBA_U8, .internal_format = TF_sRGBA_U8, .wrap = TW_REPEAT}, "resources/textures/dev/dev_white.png"),
                 REN()->default_material_normal,
                 REN()->default_material_ambient_occlusion,
                 REN()->default_material_roughness,
@@ -830,7 +831,7 @@ void game_client_entry() {
             g_materials[MAT_DEV_RED] = material_create_pbr(REN(), 
                 {1, 1},
                 true, 1,
-                render_texture_create_from_file(REN(), TextureDescription {.source_format = TF_sRGBA_U8, .internal_format = TF_sRGBA_U8}, "resources/textures/dev/dev_red.png"),
+                render_texture_create_from_file(REN(), TextureSpec {.source_format = TF_sRGBA_U8, .internal_format = TF_sRGBA_U8, .wrap = TW_REPEAT}, "resources/textures/dev/dev_red.png"),
                 REN()->default_material_normal,
                 REN()->default_material_ambient_occlusion,
                 REN()->default_material_roughness,
@@ -842,7 +843,7 @@ void game_client_entry() {
             g_materials[MAT_DEV_GREEN] = material_create_pbr(REN(), 
                 {1, 1},
                 true, 1,
-                render_texture_create_from_file(REN(), TextureDescription {.source_format = TF_sRGBA_U8, .internal_format = TF_sRGBA_U8}, "resources/textures/dev/dev_green.png"),
+                render_texture_create_from_file(REN(), TextureSpec {.source_format = TF_sRGBA_U8, .internal_format = TF_sRGBA_U8, .wrap = TW_REPEAT}, "resources/textures/dev/dev_green.png"),
                 REN()->default_material_normal,
                 REN()->default_material_ambient_occlusion,
                 REN()->default_material_roughness,
@@ -854,7 +855,7 @@ void game_client_entry() {
             g_materials[MAT_DEV_BLUE] = material_create_pbr(REN(), 
                 {1, 1},
                 true, 1,
-                render_texture_create_from_file(REN(), TextureDescription {.source_format = TF_sRGBA_U8, .internal_format = TF_sRGBA_U8}, "resources/textures/dev/dev_blue.png"),
+                render_texture_create_from_file(REN(), TextureSpec {.source_format = TF_sRGBA_U8, .internal_format = TF_sRGBA_U8, .wrap = TW_REPEAT}, "resources/textures/dev/dev_blue.png"),
                 REN()->default_material_normal,
                 REN()->default_material_ambient_occlusion,
                 REN()->default_material_roughness,
@@ -866,7 +867,7 @@ void game_client_entry() {
             g_materials[MAT_DEV_YELLOW] = material_create_pbr(REN(), 
                 {1, 1},
                 true, 1,
-                render_texture_create_from_file(REN(), TextureDescription {.source_format = TF_sRGBA_U8, .internal_format = TF_sRGBA_U8}, "resources/textures/dev/dev_yellow.png"),
+                render_texture_create_from_file(REN(), TextureSpec {.source_format = TF_sRGBA_U8, .internal_format = TF_sRGBA_U8, .wrap = TW_REPEAT}, "resources/textures/dev/dev_yellow.png"),
                 REN()->default_material_normal,
                 REN()->default_material_ambient_occlusion,
                 REN()->default_material_roughness,
@@ -949,13 +950,13 @@ void game_client_entry() {
         bool ok = false;
 
         g_game_client->game_view.size = WIN()->frame_buffer_size;
-        frame_buffer_add_attachment(&g_game_client->game_view, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_16F});
+        frame_buffer_add_attachment(&g_game_client->game_view, TextureSpec {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_F16});
         ok = frame_buffer_build(&g_game_client->game_view);
 
         Assertf(ok, "Failed to create game frame buffer");
     
         g_editor->editor_view.size = WIN()->frame_buffer_size;
-        frame_buffer_add_attachment(&g_editor->editor_view, TextureDescription {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_16F});
+        frame_buffer_add_attachment(&g_editor->editor_view, TextureSpec {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_F16});
         ok = frame_buffer_build(&g_editor->editor_view);
 
         Assertf(ok, "Failed to create editor frame buffer");
@@ -1010,8 +1011,8 @@ void game_client_entry() {
     
             game_client_draw(GC(), &GC()->state);
     
-            renderer_draw_frame(REN(), &ED()->camera, ED()->viewport, &ED()->editor_view, false);
             renderer_draw_frame(REN(), &GC()->camera, GC()->viewport, &GC()->game_view, true);
+            renderer_draw_frame(REN(), &ED()->camera, ED()->viewport, &ED()->editor_view, false);
     
             renderer_end_frame(REN());
     
@@ -2348,48 +2349,12 @@ void editor_draw_ui(State *state) {
             imgui_v3_control("Sun position", &REN()->sun_position);
             ImGui::InputFloat("Sun intensity", &REN()->sun_intensity);
             ImGui::SliderFloat("Sun ortho size", &REN()->sun_ortho_size, 0, 200);
+            ImGui::SliderFloat("SSAO radius", &REN()->ssao_radius, 0, 2);
+            ImGui::SliderFloat("SSAO bias", &REN()->ssao_bias, 0, 1);
 
-            if (ImGui::CollapsingHeader("Main frame buffer")) {
-                f32 image_downscale = 4;
-                ImVec2 size = ImVec2(GC()->viewport.size.x / image_downscale, GC()->viewport.size.y / image_downscale);
-
-                for (i32 i = 0; i < REN()->main_frame_buffer.colour_attachments.len; i++) {
-                    ImGui::Text("Colour attachment [%d]", i);
-                    ImGui::Image(REN()->main_frame_buffer.colour_attachments[i].id, size, ImVec2(0, 1), ImVec2(1, 0));
-                }
-
-                ImGui::Text("Depth attachment");
-                ImGui::Image(REN()->main_frame_buffer.neo_depth_attachment.id, size, ImVec2(0, 1), ImVec2(1, 0));
-            }
-
-            if (ImGui::CollapsingHeader("Sun frame buffer")) {
-                f32 image_downscale = 4;
-                ImVec2 size = ImVec2(GC()->viewport.size.x / image_downscale, GC()->viewport.size.y / image_downscale);
-
-                for (i32 i = 0; i < REN()->sun_frame_buffer.colour_attachments.len; i++) {
-                    ImGui::Text("Colour attachment [%d]", i);
-                    ImGui::Image(REN()->sun_frame_buffer.colour_attachments[i].id, size, ImVec2(0, 1), ImVec2(1, 0));
-                }
-
-                ImGui::Text("Depth attachment");
-                ImGui::Image(REN()->sun_frame_buffer.neo_depth_attachment.id, size, ImVec2(0, 1), ImVec2(1, 0));
-            }
-
-            if (ImGui::CollapsingHeader("SSAO frame buffer")) {
-                f32 image_downscale = 4;
-                ImVec2 size = ImVec2(GC()->viewport.size.x / image_downscale, GC()->viewport.size.y / image_downscale);
-
-                for (i32 i = 0; i < REN()->ssao_frame_buffer.colour_attachments.len; i++) {
-                    ImGui::Text("Colour attachment [%d]", i);
-                    ImGui::Image(REN()->ssao_frame_buffer.colour_attachments[i].id, size, ImVec2(0, 1), ImVec2(1, 0));
-                }
-
-                ImGui::Text("Depth attachment");
-                ImGui::Image(REN()->ssao_frame_buffer.neo_depth_attachment.id, size, ImVec2(0, 1), ImVec2(1, 0));
-
-                ImGui::Text("SSAO noise");
-                ImGui::Image(REN()->ssao_noise_texture.id, size, ImVec2(0, 1), ImVec2(1, 0));
-            }
+            ImVec2 size = ImVec2(256, 256);
+            ImGui::Text("SSAO noise");
+            ImGui::Image(REN()->ssao_noise_texture.id, size, ImVec2(0, 1), ImVec2(1, 0));
         }
 
         if (ImGui::CollapsingHeader("Crosshair")) {
@@ -2868,6 +2833,42 @@ void editor_draw_ui(State *state) {
     
             if (ED()->selected_entity) {
                 imgui_entity(ED()->selected_entity);
+            }
+        }
+
+        ImGui::End();
+    }
+
+    { // render passes
+        ImGui::Begin("Render passes");
+
+        array<FrameBuffer *, 5> frame_buffers = {
+            &REN()->sun_frame_buffer,
+            &REN()->main_frame_buffer,
+            &REN()->ssao_frame_buffer,
+            &REN()->ssao_blur_buffer,
+            &REN()->post_fx_buffer,
+        };
+
+        static f32 image_scale = 0.4f;
+        static bool show_depth = false;
+
+        ImGui::SliderFloat("Scale", &image_scale, 0.01, 1);
+        ImGui::Checkbox("Show depth", &show_depth);
+
+        for (FrameBuffer *frame_buffer : frame_buffers) {
+            if (ImGui::CollapsingHeader(frame_buffer->debug_name.c())) {
+                ImVec2 size = ImVec2(GC()->viewport.size.x * image_scale, GC()->viewport.size.y * image_scale);
+ 
+                for (i32 i = 0; i < frame_buffer->colour_attachments.len; i++) {
+                    ImGui::Text("Colour attachment [%d]", i);
+                    ImGui::Image(frame_buffer->colour_attachments[i].id, size, ImVec2(0, 1), ImVec2(1, 0));
+                }
+
+                if (show_depth) {
+                    ImGui::Text("Depth attachment");
+                    ImGui::Image(frame_buffer->neo_depth_attachment.id, size, ImVec2(0, 1), ImVec2(1, 0));
+                }
             }
         }
 
