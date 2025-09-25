@@ -1,2 +1,4 @@
+#define MA_ENABLE_ONLY_SPECIFIC_BACKENDS
+#define MA_ENABLE_DSOUND    
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
