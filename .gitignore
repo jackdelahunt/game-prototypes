@@ -20,3 +20,4 @@ game09/resources/saves/backups
 **/profiles
 **/compile_commands.json
 **/.cache
+**/*.cap

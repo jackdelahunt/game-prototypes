@@ -1354,7 +1354,16 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
             }; 
         }
 
-        renderer->ssao_noise_texture = render_texture_create(TextureSpec {.source_format = TF_RGBA_F32, .internal_format = TF_RGBA_F32, .wrap = TW_REPEAT}, SSAO_NOISE_TEXTURE_SIZE, SSAO_NOISE_TEXTURE_SIZE, (u8 *) ssaoNoise.items);
+        renderer->ssao_noise_texture = render_texture_create(
+            TextureSpec {
+                .source_format = TF_RGBA_F32, 
+                .internal_format = TF_RGBA_F32, 
+                .wrap = TW_REPEAT
+            },
+            SSAO_NOISE_TEXTURE_SIZE,
+            SSAO_NOISE_TEXTURE_SIZE,
+            (u8 *) ssaoNoise.items
+        );
     }
 
     return true;
