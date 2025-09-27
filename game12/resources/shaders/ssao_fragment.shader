@@ -19,8 +19,11 @@ uniform vec2 noise_scale;
 
 uniform vec3 samples[SSAO_KERNAL_SAMPLES];
 
-void main()
-{
+// mainly from learnopengl but was changed to work with Z values
+// increasing with depth as shown in the john chapman examples
+// SOURCE: https://learnopengl.com/Advanced-Lighting/SSAO
+// SOURCE: https://john-chapman-graphics.blogspot.com/2013/01/ssao-tutorial.html
+void main() {
     vec3 fragPos   = texture(position_map, uv).xyz;
     vec3 normal    = normalize(texture(normal_map, uv).rgb);
     vec3 randomVec = normalize(texture(noise_map, uv * noise_scale).xyz);
@@ -43,10 +46,11 @@ void main()
         float sampleDepth = texture(position_map, offset.xy).z;
 
         float rangeCheck = abs(fragPos.z - sampleDepth) < radius ? 1.0 : 0.0;
-        occlusion += (sampleDepth <= samplePos.z + bias ? 1.0 : 0.0) * rangeCheck;
+        occlusion += (sampleDepth <= samplePos.z - bias ? 1.0 : 0.0) * rangeCheck;
     }
 
     occlusion = 1.0 - (occlusion / SSAO_KERNAL_SAMPLES);
 
     colour_attachment = vec4(occlusion, occlusion, occlusion, 1);
+    // colour_attachment = vec4(randomVec, 1);
 } 

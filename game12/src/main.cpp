@@ -1,4 +1,3 @@
-#include "imgui.h"
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -117,7 +116,7 @@ v3 g_sun_colour             = v3 {1, 1, 1};
 v3 g_sun_position           = v3 {10, 50, -10};
 f32 g_sun_intensity         = 1;
 f32 g_sun_ortho_size        = 50;
-f32 g_ssao_radius           = 0.5;
+f32 g_ssao_radius           = 0.15;
 f32 g_ssao_bias             = 0.025;
 
 f32 g_particle_lifetime                 = 2.0f;
@@ -1711,6 +1710,18 @@ void game_client_draw(GameClient *client, State *state) {
     Assert(is_client(state));
 
     timed_effect_tick(&client->bullet_trail, state->frame_delta_time);
+
+    if (false) { // visualise ssao kernal samples
+        v3 origin = {0, 5, 0};
+        f32 scale = 10;
+
+        draw_sphere(REN(), origin, 0.2, BLUE, REN()->default_unlit_material);
+
+        for (v3 sample : REN()->ssao_kernal) {
+            v3 position = origin + (sample * scale);
+            draw_sphere(REN(), position, 0.1, RED, REN()->default_unlit_material);
+        }
+    }
 
     { Scope // bullet trail
         auto [active, remaining, trail] = timed_effect_state(&client->bullet_trail);

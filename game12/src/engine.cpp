@@ -1338,7 +1338,7 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
     }
 
     { // generate ssao noise
-        std::uniform_real_distribution<float> randomFloats(0.0, 1.0);
+        std::uniform_real_distribution<f32> randomFloats(0.0, 1.0);
         std::default_random_engine generator;
 
         const i32 total_noise = SSAO_NOISE_TEXTURE_SIZE * SSAO_NOISE_TEXTURE_SIZE;
