@@ -8,7 +8,7 @@
 
 template<>
 struct MetaEnum<MaterialHandle> {
-const static int count = 9;
+const static int count = 11;
 
 inline static EnumValue<MaterialHandle> values[count] = {
     EnumValue<MaterialHandle>(string("MAT_DEFAULT"), MAT_DEFAULT),
@@ -19,6 +19,8 @@ inline static EnumValue<MaterialHandle> values[count] = {
     EnumValue<MaterialHandle>(string("MAT_DEV_GREEN"), MAT_DEV_GREEN),
     EnumValue<MaterialHandle>(string("MAT_DEV_BLUE"), MAT_DEV_BLUE),
     EnumValue<MaterialHandle>(string("MAT_DEV_YELLOW"), MAT_DEV_YELLOW),
+    EnumValue<MaterialHandle>(string("MAT_TRIM_FURNITURE"), MAT_TRIM_FURNITURE),
+    EnumValue<MaterialHandle>(string("MAT_TRIM_METAL"), MAT_TRIM_METAL),
     EnumValue<MaterialHandle>(string("_MAT_COUNT"), _MAT_COUNT),
 };
 
@@ -32,7 +34,9 @@ static string name(MaterialHandle value) {
         case MAT_DEV_GREEN: return values[5].name;
         case MAT_DEV_BLUE: return values[6].name;
         case MAT_DEV_YELLOW: return values[7].name;
-        case _MAT_COUNT: return values[8].name;
+        case MAT_TRIM_FURNITURE: return values[8].name;
+        case MAT_TRIM_METAL: return values[9].name;
+        case _MAT_COUNT: return values[10].name;
     }
 }
 
@@ -54,13 +58,14 @@ static int index(MaterialHandle value) {
 
 template<>
 struct MetaEnum<MeshHandle> {
-const static int count = 5;
+const static int count = 6;
 
 inline static EnumValue<MeshHandle> values[count] = {
     EnumValue<MeshHandle>(string("MH_NONE"), MH_NONE),
     EnumValue<MeshHandle>(string("MH_DEAGLE"), MH_DEAGLE),
     EnumValue<MeshHandle>(string("MH_M4"), MH_M4),
     EnumValue<MeshHandle>(string("MH_CROSS"), MH_CROSS),
+    EnumValue<MeshHandle>(string("MH_BARREL"), MH_BARREL),
     EnumValue<MeshHandle>(string("_MH_COUNT"), _MH_COUNT),
 };
 
@@ -70,7 +75,8 @@ static string name(MeshHandle value) {
         case MH_DEAGLE: return values[1].name;
         case MH_M4: return values[2].name;
         case MH_CROSS: return values[3].name;
-        case _MH_COUNT: return values[4].name;
+        case MH_BARREL: return values[4].name;
+        case _MH_COUNT: return values[5].name;
     }
 }
 
@@ -82,6 +88,44 @@ static EnumValue<MeshHandle> *value(string name) {
 }
 
 static int index(MeshHandle value) {
+    for (int i = 0; i < count; i++) {
+        if (values[i].value == value) return i;
+    }
+    return -1;
+}
+
+};
+
+template<>
+struct MetaEnum<ModelHandle> {
+const static int count = 5;
+
+inline static EnumValue<ModelHandle> values[count] = {
+    EnumValue<ModelHandle>(string("MD_NONE"), MD_NONE),
+    EnumValue<ModelHandle>(string("MD_BARREL"), MD_BARREL),
+    EnumValue<ModelHandle>(string("MD_CRATE_METAL"), MD_CRATE_METAL),
+    EnumValue<ModelHandle>(string("MD_CRATE_WOODEN"), MD_CRATE_WOODEN),
+    EnumValue<ModelHandle>(string("_MD_COUNT"), _MD_COUNT),
+};
+
+static string name(ModelHandle value) {
+    switch (value) {
+        case MD_NONE: return values[0].name;
+        case MD_BARREL: return values[1].name;
+        case MD_CRATE_METAL: return values[2].name;
+        case MD_CRATE_WOODEN: return values[3].name;
+        case _MD_COUNT: return values[4].name;
+    }
+}
+
+static EnumValue<ModelHandle> *value(string name) {
+    for (int i = 0; i < count; i++) {
+        if (slice_memcmp(values[i].name, name)) return &values[i];
+    }
+    return nullptr;
+}
+
+static int index(ModelHandle value) {
     for (int i = 0; i < count; i++) {
         if (values[i].value == value) return i;
     }
@@ -168,7 +212,7 @@ static int index(PickupType value) {
 
 template<>
 struct MetaEnum<EntityFlag> {
-const static int count = 19;
+const static int count = 22;
 
 inline static EnumValue<EntityFlag> values[count] = {
     EnumValue<EntityFlag>(string("EF_PLAYER"), EF_PLAYER),
@@ -189,6 +233,9 @@ inline static EnumValue<EntityFlag> values[count] = {
     EnumValue<EntityFlag>(string("EF_SURFACE_PARTICLE"), EF_SURFACE_PARTICLE),
     EnumValue<EntityFlag>(string("EF_DRAW_MESH"), EF_DRAW_MESH),
     EnumValue<EntityFlag>(string("EF_IGNORE_RAYCAST"), EF_IGNORE_RAYCAST),
+    EnumValue<EntityFlag>(string("EF_BARREL"), EF_BARREL),
+    EnumValue<EntityFlag>(string("EF_CRATE_METAL"), EF_CRATE_METAL),
+    EnumValue<EntityFlag>(string("EF_CRATE_WOODEN"), EF_CRATE_WOODEN),
     EnumValue<EntityFlag>(string("EF_DELETE"), EF_DELETE),
 };
 
@@ -212,7 +259,10 @@ static string name(EntityFlag value) {
         case EF_SURFACE_PARTICLE: return values[15].name;
         case EF_DRAW_MESH: return values[16].name;
         case EF_IGNORE_RAYCAST: return values[17].name;
-        case EF_DELETE: return values[18].name;
+        case EF_BARREL: return values[18].name;
+        case EF_CRATE_METAL: return values[19].name;
+        case EF_CRATE_WOODEN: return values[20].name;
+        case EF_DELETE: return values[21].name;
     }
 }
 

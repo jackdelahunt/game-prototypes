@@ -45,12 +45,12 @@ enum class InputState {
     PRESSED
 };
 
-StackArray<InputState, 348> KEYS = {};
+array<InputState, 348> KEYS = {};
 
 struct {
     v2 position = {};
     v2 delta = {};
-    StackArray<InputState, 8> buttons;
+    array<InputState, 8> buttons;
 } MOUSE;
 
 Window *WIN() {
@@ -144,13 +144,13 @@ void poll_inputs() {
     // copied from odin engine so maybe need to look into this more
     // - 03/03/25
     
-    for (int i = 0; i < KEYS.size; i++) {
+    for (int i = 0; i < KEYS.len; i++) {
         if (KEYS[i] == InputState::DOWN) {
             KEYS[i] = InputState::PRESSED;
         }
     }
 
-    for (int i = 0; i < MOUSE.buttons.size; i++) {
+    for (int i = 0; i < MOUSE.buttons.len; i++) {
         if (MOUSE.buttons[i] == InputState::DOWN) {
             MOUSE.buttons[i] = InputState::PRESSED;
         }
@@ -235,6 +235,8 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 #define MAX_QUADS 500
 #define MAX_RENDER_COMMANDS 5000
 #define MAX_MESHES 128
+#define MAX_MODELS 128
+#define MAX_MESHES_PER_MODEL 5
 #define MAX_POINT_LIGHTS 50         // keep in sync with pbr shader 
 #define MAX_TEXTURES 256
 #define MAX_MATERIALS 256
@@ -451,6 +453,12 @@ struct Mesh {
     u32 index_buffer_id;
 };
 
+struct Model {
+    StackArray<Mesh *, MAX_MESHES_PER_MODEL> meshes;
+    StackArray<Material *, MAX_MESHES_PER_MODEL> materials;
+    StackArray<u32, MAX_MESHES_PER_MODEL> material_indices;
+};
+
 enum RenderCommandType {
     RC_MESH,
     RC_QUAD,
@@ -498,6 +506,7 @@ struct Renderer {
     f32 ssao_bias;
 
     FixedArray<Mesh> meshes;
+    FixedArray<Model> models;
     FixedArray<RenderCommand> commands;
     StackArray<Texture, MAX_TEXTURES> textures;
     StackArray<PointLight, MAX_POINT_LIGHTS> lights;
@@ -576,9 +585,12 @@ void shader_set_v2(Shader shader, string name, v2 value);
 void shader_set_v3(Shader shader, string name, v3 value);
 void shader_set_v4(Shader shader, string name, v4 value);
 
+// Model API
+Model *model_create_from_file(Renderer *renderer, string path);
+
 // Mesh API
 Mesh *mesh_create(Renderer *renderer, slice<MeshVertex> vertices, slice<u32> indices);
-Mesh *mesh_create_from_file(Renderer *renderer, string mesh_path);
+Mesh *mesh_create_from_file(Renderer *renderer, string path);
 void upload_mesh(Mesh *mesh);
 
 // Texture format
@@ -631,6 +643,7 @@ void draw_line(Renderer *renderer, v3 position, v3 direction, f32 radius, f32 st
 void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 colour, Material *material);
 void draw_sphere(Renderer *renderer, v3 position, f32 radius, v4 colour, Material *material);
 void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position, v3 scale, v3 rotation, v4 colour, Material *material);
+void draw_model(Renderer *renderer, Model *model, v3 position, v3 scale, v3 rotation, v4 colour);
 
 // Drawing UI API
 void draw_quad_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour, v2 uvs[4], DrawType type);
@@ -675,6 +688,8 @@ v4 alpha(v4 base, f32 alpha);
 v4 brightness(v4 base, f32 brightness);
 v4 mix(v4 c1, v4 c2, f32 t);
 v4 random_colour();
+
+void extract_texture_channels(Arena *arena, string path);
 
 void set_imgui_theme();
 
@@ -841,6 +856,65 @@ void shader_set_v4(Shader shader, string name, v4 value) {
     );
 }
 
+Model *model_create_from_file(Renderer *renderer, string path) {
+    Model *model = push(&renderer->models);
+
+    // Create an instance of the Importer class
+    Assimp::Importer importer;
+    
+    const aiScene *scene = importer.ReadFile(path.c(), aiProcess_Triangulate | aiProcess_MakeLeftHanded | aiProcess_GenSmoothNormals);	
+    if(scene == NULL || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
+        Logf("assimp error: {}", importer.GetErrorString());
+        return NULL;
+    }
+
+    // only assuming root node as a single child node with all meshes
+    Assert(scene->mRootNode->mNumChildren == 1);
+    aiNode *node = scene->mRootNode->mChildren[0];
+
+    for (i32 i = 0; i < node->mNumMeshes; i++) {
+        aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
+        Assert(mesh->HasNormals());
+        Assert(mesh->HasTextureCoords(0));
+
+        slice<MeshVertex> vertices = arena_alloc_many<MeshVertex>(renderer->arena, mesh->mNumVertices);
+        slice<u32> indices = arena_alloc_many<u32>(renderer->arena, mesh->mNumFaces * 3);
+
+        for(i64 v = 0; v < mesh->mNumVertices; v++) {
+            MeshVertex vertex = {};
+            vertex.position.x = mesh->mVertices[v].x;
+            vertex.position.y = mesh->mVertices[v].y;
+            vertex.position.z = mesh->mVertices[v].z;
+    
+            vertex.normal.x = mesh->mNormals[v].x;
+            vertex.normal.y = mesh->mNormals[v].y;
+            vertex.normal.z = mesh->mNormals[v].z;
+    
+            vertex.uv.x = mesh->mTextureCoords[0][v].x;
+            vertex.uv.y = mesh->mTextureCoords[0][v].y;
+    
+            vertices[v] = vertex;
+        }
+    
+        i64 index = 0;
+    
+        for(i64 f = 0; f < mesh->mNumFaces; f++) {
+            aiFace face = mesh->mFaces[f];
+            for(i64 j = 0; j < face.mNumIndices; j++) {
+                indices[index] = face.mIndices[j];
+                index++;
+            }
+        }
+
+        append(&model->meshes, mesh_create(renderer, vertices, indices));
+        append(&model->material_indices, mesh->mMaterialIndex);
+    }
+
+    Logf("Loaded model with path \"{}\"", path.c());
+
+    return model;
+}
+
 Mesh *mesh_create(Renderer *renderer, slice<MeshVertex> vertices, slice<u32> indices) {
     Mesh* mesh = push(&renderer->meshes);
 
@@ -892,17 +966,17 @@ Mesh *mesh_create(Renderer *renderer, slice<MeshVertex> vertices, slice<u32> ind
     return mesh;
 }
 
-Mesh *mesh_create_from_file(Renderer *renderer, string mesh_path) {
+Mesh *mesh_create_from_file(Renderer *renderer, string path) {
     // Create an instance of the Importer class
     Assimp::Importer importer;
     
-    const aiScene *scene = importer.ReadFile(mesh_path.c(), aiProcess_Triangulate | aiProcess_MakeLeftHanded | aiProcess_GenSmoothNormals);	
+    const aiScene *scene = importer.ReadFile(path.c(), aiProcess_Triangulate | aiProcess_MakeLeftHanded | aiProcess_GenSmoothNormals);	
     if(scene == NULL || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
         Logf("assimp error: {}", importer.GetErrorString());
         return NULL;
     }
 
-    // only assuming one child and one mesh for now
+    // only assuming root node as a single child node with all meshes
     Assert(scene->mRootNode->mNumChildren == 1);
     aiNode *node = scene->mRootNode->mChildren[0];
 
@@ -941,7 +1015,7 @@ Mesh *mesh_create_from_file(Renderer *renderer, string mesh_path) {
         }
     }
 
-    Logf("Loaded model with path \"{}\"", mesh_path.c());
+    Logf("Loaded mesh with path \"{}\"", path.c());
 
     return mesh_create(renderer, vertices, indices);
 }
@@ -1143,6 +1217,7 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
         .ssao_radius = ssao_radius,
         .ssao_bias = ssao_bias,
         .meshes = fixed_array_create<Mesh>(MAX_MESHES),
+        .models = fixed_array_create<Model>(MAX_MODELS),
         .commands = fixed_array_create<RenderCommand>(MAX_RENDER_COMMANDS),
         .textures = stack_array_create<Texture, MAX_TEXTURES>(),
         .lights = stack_array_create<PointLight, MAX_POINT_LIGHTS>(),
@@ -2075,6 +2150,12 @@ void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position, v3 scale, v3 rotatio
     command->mesh.material = material;
 }
 
+void draw_model(Renderer *renderer, Model *model, v3 position, v3 scale, v3 rotation, v4 colour) {
+    for (i32 i = 0; i < model->meshes.len; i++) {
+        draw_mesh(renderer, model->meshes[i], position, scale, rotation, colour, model->materials[model->material_indices[i]]);
+    }
+}
+
 void draw_quad_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour, v2 uvs[4], DrawType type) {
     Quad *quad = quad_buffer_push(&renderer->ui_quads);
 
@@ -2549,6 +2630,42 @@ v4 random_colour() {
         rand_f32(),
         1
     };
+}
+
+void extract_texture_channels(Arena *arena, string path) {
+    i32 width       = 0;
+    i32 height      = 0;
+    i32 channels    = 0;
+    u8 *data        = NULL;
+ 
+    stbi_set_flip_vertically_on_load(true);
+ 
+    data = stbi_load(path.c(), &width, &height, &channels, 4);
+    if (!data) {
+        Errf("Failed to load texture for channel extraction \"{}\"", path);
+        return;
+    }
+
+    i32 data_length = width * height * 4;
+
+    stbi_flip_vertically_on_write(true);
+
+    for (i32 i = 0; i < 4; i++) {
+        slice<u8> new_texture_data = arena_alloc_many<u8>(arena, data_length);
+        memcpy(new_texture_data.ptr, data, data_length);
+
+        for (i32 p = 0; p < data_length; p += 4) {
+            u8 pixel_to_copy = new_texture_data[p + i];
+
+            new_texture_data[p + 0] = pixel_to_copy;
+            new_texture_data[p + 1] = pixel_to_copy;
+            new_texture_data[p + 2] = pixel_to_copy;
+            new_texture_data[p + 3] = 255;
+        }
+
+        string path = fmtc(arena, "build/extracted_{}.png", i);
+        Assert(stbi_write_png(path.c(), width, height, 4, new_texture_data.ptr, width * 4));
+    }
 }
 
 void set_imgui_theme() {

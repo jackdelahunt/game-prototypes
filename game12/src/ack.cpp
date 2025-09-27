@@ -562,6 +562,8 @@ void swap_remove(FixedArray<T> *array, i64 index) {
 
 template <typename T, i64 N>
 T& StackArray<T, N>::operator[](i64 index) {
+    Assert(index < this->len);
+
     return this->data[index];
 }
 

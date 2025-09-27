@@ -564,3 +564,21 @@ entities:
     jump_pad_force: 0
     light_colour: [0, 0, 0, 0]
     light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+      - EF_CRATE_METAL
+    id: 45802958
+    owner: 0
+    position: [-2.12376118, 1.7833097, 4.80973005]
+    size: [2.53999996, 2.53999996, 2.53999996]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    material: MAT_DEFAULT
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0

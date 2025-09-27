@@ -146,6 +146,8 @@ meta enum MaterialHandle : u32 {
     MAT_DEV_GREEN,
     MAT_DEV_BLUE,
     MAT_DEV_YELLOW,
+    MAT_TRIM_FURNITURE,
+    MAT_TRIM_METAL,
     _MAT_COUNT
 };
 
@@ -156,10 +158,21 @@ meta enum MeshHandle : u32 {
     MH_DEAGLE,
     MH_M4,
     MH_CROSS,
+    MH_BARREL,
     _MH_COUNT
 };
 
 Mesh *g_meshes[_MH_COUNT] = {};
+
+meta enum ModelHandle : u32 {
+    MD_NONE,
+    MD_BARREL,
+    MD_CRATE_METAL,
+    MD_CRATE_WOODEN,
+    _MD_COUNT
+};
+
+Model *g_models[_MD_COUNT] = {};
 
 // keep silenced sounds in order
 enum SoundHandle : u32 {
@@ -328,6 +341,9 @@ meta enum EntityFlag : u32 {
     EF_SURFACE_PARTICLE = 1 << 15,
     EF_DRAW_MESH        = 1 << 16,
     EF_IGNORE_RAYCAST   = 1 << 17,
+    EF_BARREL           = 1 << 18,
+    EF_CRATE_METAL      = 1 << 19,
+    EF_CRATE_WOODEN     = 1 << 20,
     EF_DELETE           = 1 << 24,
 };
 
@@ -595,6 +611,9 @@ Entity *local_spawn_missle(State *state);
 Entity *local_spawn_jump_pad(State *state);
 Entity *local_spawn_point_light(State *state);
 Entity *local_spawn_blood_particle(State *state);
+Entity *local_spawn_barrel(State *state);
+Entity *local_spawn_crate_metal(State *state);
+Entity *local_spawn_crate_wooden(State *state);
 
 void game_client_host();
 void game_client_connect();
@@ -773,6 +792,8 @@ void game_client_entry() {
     Arena arena = arena_create(MB(5));
     Arena frame_arena = arena_create(MB(5));
 
+    // extract_texture_channels(&frame_arena, "resources/textures/trim_metal/T_Trim_Metal_ORM.png");
+
     { // init all the global stuff
         bool ok = false;
 
@@ -788,17 +809,6 @@ void game_client_entry() {
         if (!ok) {
             Log("Failed when trying to init the renderer");
             return;
-        }
-
-        { // load meshes
-            g_meshes[MH_DEAGLE] = mesh_create_from_file(REN(), "resources/models/deagle/deagle.obj");
-            Assert(g_meshes[MH_DEAGLE]);
-    
-            g_meshes[MH_M4] = mesh_create_from_file(REN(), "resources/models/m4/m4.obj");
-            Assert(g_meshes[MH_M4]);
-    
-            g_meshes[MH_CROSS] = mesh_create_from_file(REN(), "resources/models/cross/cross.obj");
-            Assert(g_meshes[MH_CROSS]);
         }
 
         { // load materials
@@ -874,6 +884,64 @@ void game_client_entry() {
             );
 
             Assert(g_materials[MAT_DEV_YELLOW]);
+
+            g_materials[MAT_TRIM_FURNITURE] = material_create_pbr(REN(), 
+                {1, 1},
+                false, 1,
+                render_texture_create_from_file(REN(), TextureSpec {.source_format = TF_sRGBA_U8, .internal_format = TF_sRGBA_U8, .wrap = TW_REPEAT}, "resources/textures/trim_furniture/T_Trim_Furniture_BaseColor.png"),
+                render_texture_create_from_file(REN(), TextureSpec {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8, .wrap = TW_REPEAT}, "resources/textures/trim_furniture/T_Trim_Furniture_Normal.png"),
+                render_texture_create_from_file(REN(), TextureSpec {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8, .wrap = TW_REPEAT}, "resources/textures/trim_furniture/T_Trim_Furniture_AO.png"),
+                render_texture_create_from_file(REN(), TextureSpec {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8, .wrap = TW_REPEAT}, "resources/textures/trim_furniture/T_Trim_Furniture_Roughness.png"),
+                render_texture_create_from_file(REN(), TextureSpec {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8, .wrap = TW_REPEAT}, "resources/textures/trim_furniture/T_Trim_Furniture_Metalness.png")
+            );
+
+            Assert(g_materials[MAT_TRIM_FURNITURE]);
+
+            g_materials[MAT_TRIM_METAL] = material_create_pbr(REN(), 
+                {1, 1},
+                false, 1,
+                render_texture_create_from_file(REN(), TextureSpec {.source_format = TF_sRGBA_U8, .internal_format = TF_sRGBA_U8, .wrap = TW_REPEAT}, "resources/textures/trim_metal/T_Trim_Metal_BaseColor.png"),
+                render_texture_create_from_file(REN(), TextureSpec {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8, .wrap = TW_REPEAT}, "resources/textures/trim_metal/T_Trim_Metal_Normal.png"),
+                render_texture_create_from_file(REN(), TextureSpec {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8, .wrap = TW_REPEAT}, "resources/textures/trim_metal/T_Trim_Metal_AO.png"),
+                render_texture_create_from_file(REN(), TextureSpec {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8, .wrap = TW_REPEAT}, "resources/textures/trim_metal/T_Trim_Metal_Roughness.png"),
+                render_texture_create_from_file(REN(), TextureSpec {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8, .wrap = TW_REPEAT}, "resources/textures/trim_metal/T_Trim_Metal_Metalness.png")
+            );
+
+            Assert(g_materials[MAT_TRIM_METAL]);
+        }
+
+        { // load meshes
+            g_meshes[MH_DEAGLE] = mesh_create_from_file(REN(), "resources/models/deagle/deagle.obj");
+            Assert(g_meshes[MH_DEAGLE]);
+    
+            g_meshes[MH_M4] = mesh_create_from_file(REN(), "resources/models/m4/m4.obj");
+            Assert(g_meshes[MH_M4]);
+    
+            g_meshes[MH_CROSS] = mesh_create_from_file(REN(), "resources/models/cross/cross.obj");
+            Assert(g_meshes[MH_CROSS]);
+        }
+
+        { // load models
+            g_models[MD_BARREL] = model_create_from_file(REN(), "resources/models/barrel/barrel.obj");
+            Assert(g_models[MD_BARREL]);
+
+            append(&g_models[MD_BARREL]->materials, g_materials[MAT_DEFAULT]);
+            append(&g_models[MD_BARREL]->materials, g_materials[MAT_TRIM_FURNITURE]);
+            append(&g_models[MD_BARREL]->materials, g_materials[MAT_TRIM_METAL]);
+
+            g_models[MD_CRATE_METAL] = model_create_from_file(REN(), "resources/models/crate_metal/crate_metal.obj");
+            Assert(g_models[MD_CRATE_METAL]);
+
+            append(&g_models[MD_CRATE_METAL]->materials, g_materials[MAT_DEFAULT]);
+            append(&g_models[MD_CRATE_METAL]->materials, g_materials[MAT_TRIM_FURNITURE]);
+            append(&g_models[MD_CRATE_METAL]->materials, g_materials[MAT_TRIM_METAL]);
+
+            g_models[MD_CRATE_WOODEN] = model_create_from_file(REN(), "resources/models/crate_wooden/crate_wooden.obj");
+            Assert(g_models[MD_CRATE_WOODEN]);
+
+            append(&g_models[MD_CRATE_WOODEN]->materials, g_materials[MAT_DEFAULT]);
+            append(&g_models[MD_CRATE_WOODEN]->materials, g_materials[MAT_TRIM_FURNITURE]);
+            append(&g_models[MD_CRATE_WOODEN]->materials, g_materials[MAT_TRIM_METAL]);
         }
 
         ok = sound_engine_init();
@@ -2132,7 +2200,21 @@ void game_client_draw(GameClient *client, State *state) {
         }
 
         if (BitSet(entity.flags, EF_DRAW_MESH)) {
-            draw_cube(REN(), entity.position, entity.size, entity.rotation, draw_colour, g_materials[entity.material]);
+            if (BitSet(entity.flags, EF_BARREL)) {
+                v3 draw_position = v3{entity.position.x, entity.position.y - (entity.size.y * 0.5f), entity.position.z};
+                draw_model(REN(), g_models[MD_BARREL], draw_position, entity.size, entity.rotation, entity.colour);
+            }
+            else if (BitSet(entity.flags, EF_CRATE_METAL)) {
+                v3 draw_position = v3{entity.position.x, entity.position.y - (entity.size.y * 0.5f), entity.position.z};
+                draw_model(REN(), g_models[MD_CRATE_METAL], draw_position, entity.size, entity.rotation, entity.colour);
+            }
+            else if (BitSet(entity.flags, EF_CRATE_WOODEN)) {
+                v3 draw_position = v3{entity.position.x, entity.position.y - (entity.size.y * 0.5f), entity.position.z};
+                draw_model(REN(), g_models[MD_CRATE_WOODEN], draw_position, entity.size, entity.rotation, entity.colour);
+            }
+            else {
+                draw_cube(REN(), entity.position, entity.size, entity.rotation, draw_colour, g_materials[entity.material]);
+            }
         }
         else if (g_debug_draw_no_mesh) {
             draw_sphere(REN(), entity.position, entity.size.x * 0.5, HOT_PINK, g_materials[MAT_DEFAULT]);
@@ -2778,6 +2860,22 @@ void editor_draw_ui(State *state) {
 
         if (ImGui::Button("Blood particle")) {
             ED()->selected_entity = local_spawn_blood_particle(state);
+        }
+
+        if (ImGui::Button("Barrel")) {
+            ED()->selected_entity = local_spawn_barrel(state);
+        }
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("Metal crate")) {
+            ED()->selected_entity = local_spawn_crate_metal(state);
+        }
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("Wooden crate")) {
+            ED()->selected_entity = local_spawn_crate_wooden(state);
         }
 
         ImGui::SeparatorText("Teams");
@@ -3539,6 +3637,42 @@ Entity *local_spawn_blood_particle(State *state) {
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = {0.2, 0.2, 0.2},
+    };
+
+    return local_spawn_entity(state, entity);
+}
+
+Entity *local_spawn_barrel(State *state) {
+    Entity entity = Entity {
+        .flags = EF_STATIC_HITBOX | EF_DRAW_MESH | EF_BARREL,
+        .id = new_entity_id(),
+        .owner = LEVEL_INSTANCE_ID,
+        .size = v3{1, 1, 1},
+        .colour = WHITE,
+    };
+
+    return local_spawn_entity(state, entity);
+}
+
+Entity *local_spawn_crate_metal(State *state) {
+    Entity entity = Entity {
+        .flags = EF_STATIC_HITBOX | EF_DRAW_MESH | EF_CRATE_METAL,
+        .id = new_entity_id(),
+        .owner = LEVEL_INSTANCE_ID,
+        .size = v3{1, 1, 1},
+        .colour = WHITE,
+    };
+
+    return local_spawn_entity(state, entity);
+}
+
+Entity *local_spawn_crate_wooden(State *state) {
+    Entity entity = Entity {
+        .flags = EF_STATIC_HITBOX | EF_DRAW_MESH | EF_CRATE_WOODEN,
+        .id = new_entity_id(),
+        .owner = LEVEL_INSTANCE_ID,
+        .size = v3{1, 1, 1},
+        .colour = WHITE,
     };
 
     return local_spawn_entity(state, entity);
