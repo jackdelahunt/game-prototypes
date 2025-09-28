@@ -218,7 +218,7 @@ static int index(PickupType value) {
 
 template<>
 struct MetaEnum<EntityFlag> {
-const static int count = 22;
+const static int count = 18;
 
 inline static EnumValue<EntityFlag> values[count] = {
     EnumValue<EntityFlag>(string("EF_PLAYER"), EF_PLAYER),
@@ -237,11 +237,7 @@ inline static EnumValue<EntityFlag> values[count] = {
     EnumValue<EntityFlag>(string("EF_PARTICLE"), EF_PARTICLE),
     EnumValue<EntityFlag>(string("EF_BLOOD_PARTICLE"), EF_BLOOD_PARTICLE),
     EnumValue<EntityFlag>(string("EF_SURFACE_PARTICLE"), EF_SURFACE_PARTICLE),
-    EnumValue<EntityFlag>(string("EF_DRAW_MESH"), EF_DRAW_MESH),
     EnumValue<EntityFlag>(string("EF_IGNORE_RAYCAST"), EF_IGNORE_RAYCAST),
-    EnumValue<EntityFlag>(string("EF_BARREL"), EF_BARREL),
-    EnumValue<EntityFlag>(string("EF_CRATE_METAL"), EF_CRATE_METAL),
-    EnumValue<EntityFlag>(string("EF_CRATE_WOODEN"), EF_CRATE_WOODEN),
     EnumValue<EntityFlag>(string("EF_DELETE"), EF_DELETE),
 };
 
@@ -263,12 +259,8 @@ static string name(EntityFlag value) {
         case EF_PARTICLE: return values[13].name;
         case EF_BLOOD_PARTICLE: return values[14].name;
         case EF_SURFACE_PARTICLE: return values[15].name;
-        case EF_DRAW_MESH: return values[16].name;
-        case EF_IGNORE_RAYCAST: return values[17].name;
-        case EF_BARREL: return values[18].name;
-        case EF_CRATE_METAL: return values[19].name;
-        case EF_CRATE_WOODEN: return values[20].name;
-        case EF_DELETE: return values[21].name;
+        case EF_IGNORE_RAYCAST: return values[16].name;
+        case EF_DELETE: return values[17].name;
     }
 }
 

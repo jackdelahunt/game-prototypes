@@ -342,11 +342,7 @@ meta enum EntityFlag : u32 {
     EF_PARTICLE         = 1 << 13,
     EF_BLOOD_PARTICLE   = 1 << 14,
     EF_SURFACE_PARTICLE = 1 << 15,
-    EF_DRAW_MESH        = 1 << 16,
-    EF_IGNORE_RAYCAST   = 1 << 17,
-    EF_BARREL           = 1 << 18,
-    EF_CRATE_METAL      = 1 << 19,
-    EF_CRATE_WOODEN     = 1 << 20,
+    EF_IGNORE_RAYCAST   = 1 << 16,
     EF_DELETE           = 1 << 24,
 };
 
@@ -1766,18 +1762,6 @@ void game_client_draw(GameClient *client, State *state) {
 
     timed_effect_tick(&client->bullet_trail, state->frame_delta_time);
 
-    if (false) { // visualise ssao kernal samples
-        v3 origin = {0, 5, 0};
-        f32 scale = 10;
-
-        draw_sphere(REN(), origin, 0.2, BLUE, REN()->default_unlit_material);
-
-        for (v3 sample : REN()->ssao_kernal) {
-            v3 position = origin + (sample * scale);
-            draw_sphere(REN(), position, 0.1, RED, REN()->default_unlit_material);
-        }
-    }
-
     { Scope // bullet trail
         auto [active, remaining, trail] = timed_effect_state(&client->bullet_trail);
         if (!active) {
@@ -1845,10 +1829,6 @@ void game_client_draw(GameClient *client, State *state) {
 
     for (Entity &entity : state->entities) {
         v4 draw_colour = entity.colour;
-
-        if (!BitSet(entity.flags, EF_DRAW_MESH)) {
-            draw_colour = HOT_PINK;
-        }
 
         // client's player
         if (BitSet(entity.flags, EF_PLAYER) && entity.owner == state->instance_id) {
@@ -2171,7 +2151,7 @@ void game_client_draw(GameClient *client, State *state) {
         }
 
         if (ED()->selected_entity && ED()->selected_entity->id == entity.id) {
-            draw_colour = RED;
+            draw_colour = v4{1, 0.3, 0.3, 1};
         }
 
         if (g_debug_draw_owner) {
@@ -3519,7 +3499,6 @@ Entity *local_duplicate_entity(State *state, Entity *entity) {
 
 Entity *local_spawn_empty(State *state) {
     Entity entity = Entity {
-        .flags = EF_DRAW_MESH,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{1, 1, 1},
@@ -3531,7 +3510,7 @@ Entity *local_spawn_empty(State *state) {
 
 Entity *local_spawn_player(State *state) {
     Entity entity = Entity {
-        .flags = EF_PLAYER | EF_DAMAGEABLE | EF_SOLID_HITBOX | EF_COMPLEX_PHYSICS | EF_DRAW_MESH,
+        .flags = EF_PLAYER | EF_DAMAGEABLE | EF_SOLID_HITBOX | EF_COMPLEX_PHYSICS,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{g_player_width, g_player_height, g_player_width},
@@ -3545,7 +3524,7 @@ Entity *local_spawn_player(State *state) {
 
 Entity *local_spawn_dummy(State *state) {
     Entity entity = Entity {
-        .flags = EF_DUMMY | EF_DAMAGEABLE | EF_SOLID_HITBOX | EF_COMPLEX_PHYSICS | EF_DRAW_MESH,
+        .flags = EF_DUMMY | EF_DAMAGEABLE | EF_SOLID_HITBOX | EF_COMPLEX_PHYSICS,
         .id = new_entity_id(),
         .owner = SERVER_INSTANCE_ID,
         .size = v3{g_player_width, g_player_height, g_player_width},
@@ -3559,7 +3538,7 @@ Entity *local_spawn_dummy(State *state) {
 
 Entity *local_spawn_spawn_point(State *state) {
     Entity entity = Entity {
-        .flags = EF_SPAWN_POINT | EF_DRAW_MESH,
+        .flags = EF_SPAWN_POINT,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{3, 0.2, 3},
@@ -3571,7 +3550,7 @@ Entity *local_spawn_spawn_point(State *state) {
 
 Entity *local_spawn_static_box(State *state) {
     Entity entity = Entity {
-        .flags = EF_STATIC_HITBOX | EF_DRAW_MESH,
+        .flags = EF_STATIC_HITBOX,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{1, 1, 1},
@@ -3583,7 +3562,7 @@ Entity *local_spawn_static_box(State *state) {
 
 Entity *local_spawn_pickup(State *state, PickupType type) {
     Entity entity = Entity {
-        .flags = EF_PICKUP | EF_DRAW_MESH,
+        .flags = EF_PICKUP,
         .id = new_entity_id(),
         .owner = SERVER_INSTANCE_ID,
         .size = v3{2, 0.1, 2},
@@ -3608,7 +3587,7 @@ Entity *local_spawn_missle(State *state) {
 
 Entity *local_spawn_jump_pad(State *state) {
     Entity entity = Entity {
-        .flags = EF_JUMP_PAD | EF_DRAW_MESH,
+        .flags = EF_JUMP_PAD,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{3, 0.2, 3},
@@ -3645,7 +3624,7 @@ Entity *local_spawn_blood_particle(State *state) {
 
 Entity *local_spawn_barrel(State *state) {
     Entity entity = Entity {
-        .flags = EF_STATIC_HITBOX | EF_DRAW_MESH | EF_BARREL,
+        .flags = EF_STATIC_HITBOX,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{1, 1, 1},
@@ -3662,7 +3641,7 @@ Entity *local_spawn_barrel(State *state) {
 
 Entity *local_spawn_crate_metal(State *state) {
     Entity entity = Entity {
-        .flags = EF_STATIC_HITBOX | EF_DRAW_MESH | EF_CRATE_METAL,
+        .flags = EF_STATIC_HITBOX,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{1, 1, 1},
@@ -3679,7 +3658,7 @@ Entity *local_spawn_crate_metal(State *state) {
 
 Entity *local_spawn_crate_wooden(State *state) {
     Entity entity = Entity {
-        .flags = EF_STATIC_HITBOX | EF_DRAW_MESH | EF_CRATE_WOODEN,
+        .flags = EF_STATIC_HITBOX,
         .id = new_entity_id(),
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{1, 1, 1},

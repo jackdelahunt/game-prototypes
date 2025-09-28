@@ -2,14 +2,15 @@ Start date:     11/08/25
 End date:       ??/??/??
 Total time:     189:00
 
-Started today:  9:30
+Started today:  17:00
 
 @todo
 
 In progress:
-- models
+- drawing textures with alpha
 
 Game todo:
+- fix ssao breaking sky
 - work on shooting feedback
     - improve muzzle flash  
     - sound when killed enemy
