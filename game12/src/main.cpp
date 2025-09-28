@@ -75,7 +75,7 @@ f32 EXPLOSION_DAMAGE        = 200;
 f32 g_jump_pad_cooldown     = 1;
 
 bool g_debug_draw_owner                 = false;
-bool g_debug_draw_no_mesh               = false;
+bool g_debug_draw_no_mesh               = true;
 bool g_debug_always_draw_muzzle_flash   = false;
 
 bool g_cheat_infinite_ammo    = true;
@@ -166,6 +166,9 @@ Mesh *g_meshes[_MH_COUNT] = {};
 
 meta enum ModelHandle : u32 {
     MD_NONE,
+    MD_CUBE,
+    MD_SPHERE,
+    MD_QUAD,
     MD_BARREL,
     MD_CRATE_METAL,
     MD_CRATE_WOODEN,
@@ -364,7 +367,8 @@ struct Entity {
 
     // rendering
     v4 colour;
-    MaterialHandle material;
+    ModelHandle model;
+    StackArray<MaterialHandle, MAX_MATERIALS_PER_MODEL> materials;
 
     // flag: damageable
     f32 max_health;
@@ -644,8 +648,10 @@ void serialise_entity(YAML::Emitter &out, Entity *entity);
 void deserialise_level(State *state);
 
 YAML::Emitter &operator<<(YAML::Emitter &out, string value);
+template <typename T, i64 N> YAML::Emitter &operator<<(YAML::Emitter &out, StackArray<T, N> array);
 YAML::Emitter &operator<<(YAML::Emitter &out, v3 value);
 YAML::Emitter &operator<<(YAML::Emitter &out, v4 value);
+YAML::Emitter &operator<<(YAML::Emitter &out, MaterialHandle material);
 
 i32 player_get_ammo(GameClient *client, WeaponHandle weapon);
 void player_set_ammo(GameClient *client, WeaponHandle weapon, i32 ammo);
@@ -911,37 +917,18 @@ void game_client_entry() {
         }
 
         { // load meshes
-            g_meshes[MH_DEAGLE] = mesh_create_from_file(REN(), "resources/models/deagle/deagle.obj");
-            Assert(g_meshes[MH_DEAGLE]);
-    
-            g_meshes[MH_M4] = mesh_create_from_file(REN(), "resources/models/m4/m4.obj");
-            Assert(g_meshes[MH_M4]);
-    
-            g_meshes[MH_CROSS] = mesh_create_from_file(REN(), "resources/models/cross/cross.obj");
-            Assert(g_meshes[MH_CROSS]);
+            g_meshes[MH_DEAGLE] = AssertNotNull(mesh_create_from_file(REN(), "resources/models/deagle/deagle.obj"));
+            g_meshes[MH_M4]     = AssertNotNull(mesh_create_from_file(REN(), "resources/models/m4/m4.obj"));
+            g_meshes[MH_CROSS]  = AssertNotNull(mesh_create_from_file(REN(), "resources/models/cross/cross.obj"));
         }
 
         { // load models
-            g_models[MD_BARREL] = model_create_from_file(REN(), "resources/models/barrel/barrel.obj");
-            Assert(g_models[MD_BARREL]);
-
-            append(&g_models[MD_BARREL]->materials, g_materials[MAT_DEFAULT]);
-            append(&g_models[MD_BARREL]->materials, g_materials[MAT_TRIM_FURNITURE]);
-            append(&g_models[MD_BARREL]->materials, g_materials[MAT_TRIM_METAL]);
-
-            g_models[MD_CRATE_METAL] = model_create_from_file(REN(), "resources/models/crate_metal/crate_metal.obj");
-            Assert(g_models[MD_CRATE_METAL]);
-
-            append(&g_models[MD_CRATE_METAL]->materials, g_materials[MAT_DEFAULT]);
-            append(&g_models[MD_CRATE_METAL]->materials, g_materials[MAT_TRIM_FURNITURE]);
-            append(&g_models[MD_CRATE_METAL]->materials, g_materials[MAT_TRIM_METAL]);
-
-            g_models[MD_CRATE_WOODEN] = model_create_from_file(REN(), "resources/models/crate_wooden/crate_wooden.obj");
-            Assert(g_models[MD_CRATE_WOODEN]);
-
-            append(&g_models[MD_CRATE_WOODEN]->materials, g_materials[MAT_DEFAULT]);
-            append(&g_models[MD_CRATE_WOODEN]->materials, g_materials[MAT_TRIM_FURNITURE]);
-            append(&g_models[MD_CRATE_WOODEN]->materials, g_materials[MAT_TRIM_METAL]);
+            g_models[MD_CUBE]           = AssertNotNull(REN()->cube_model_primitive);
+            g_models[MD_SPHERE]         = AssertNotNull(REN()->sphere_model_primitive);
+            g_models[MD_QUAD]           = AssertNotNull(REN()->quad_model_primitive);
+            g_models[MD_BARREL]         = AssertNotNull(model_create_from_file(REN(), "resources/models/barrel/barrel.obj"));
+            g_models[MD_CRATE_METAL]    = AssertNotNull(model_create_from_file(REN(), "resources/models/crate_metal/crate_metal.obj"));
+            g_models[MD_CRATE_WOODEN]   = AssertNotNull(model_create_from_file(REN(), "resources/models/crate_wooden/crate_wooden.obj"));
         }
 
         ok = sound_engine_init();
@@ -1748,7 +1735,7 @@ void game_client_update(GameClient *client, State *state) {
                     s_footstep_sound_cooldown += FOOTSTEP_SOUND_DELAY;
      
                     s_next_sound += 1;
-                    if (s_next_sound >= s_step_sounds.len) {
+                    if (s_next_sound >= s_step_sounds.size) {
                         s_next_sound = 0;
                     }
                 }
@@ -1932,7 +1919,7 @@ void game_client_draw(GameClient *client, State *state) {
             { // draw ammo
                 v3 start = relative_to_screen_position(client->viewport, {0.01, 0.5});
                 
-                for (i64 i = 0; i < client->player.inventory.len; i++) {
+                for (i64 i = 0; i < client->player.inventory.size; i++) {
                     Weapon *weapon = &g_weapons[i];
                     i32 ammo = client->player.inventory[i];
 
@@ -2199,22 +2186,14 @@ void game_client_draw(GameClient *client, State *state) {
             }
         }
 
-        if (BitSet(entity.flags, EF_DRAW_MESH)) {
-            if (BitSet(entity.flags, EF_BARREL)) {
-                v3 draw_position = v3{entity.position.x, entity.position.y - (entity.size.y * 0.5f), entity.position.z};
-                draw_model(REN(), g_models[MD_BARREL], draw_position, entity.size, entity.rotation, entity.colour);
+        if (entity.model != MD_NONE) {
+            StackArray<Material *, MAX_MATERIALS_PER_MODEL> materials = {};
+
+            for (i32 i = 0; i < entity.materials.len; i++) {
+                append(&materials, g_materials[entity.materials[i]]);
             }
-            else if (BitSet(entity.flags, EF_CRATE_METAL)) {
-                v3 draw_position = v3{entity.position.x, entity.position.y - (entity.size.y * 0.5f), entity.position.z};
-                draw_model(REN(), g_models[MD_CRATE_METAL], draw_position, entity.size, entity.rotation, entity.colour);
-            }
-            else if (BitSet(entity.flags, EF_CRATE_WOODEN)) {
-                v3 draw_position = v3{entity.position.x, entity.position.y - (entity.size.y * 0.5f), entity.position.z};
-                draw_model(REN(), g_models[MD_CRATE_WOODEN], draw_position, entity.size, entity.rotation, entity.colour);
-            }
-            else {
-                draw_cube(REN(), entity.position, entity.size, entity.rotation, draw_colour, g_materials[entity.material]);
-            }
+
+            draw_model(REN(), g_models[entity.model], entity.position, entity.size, entity.rotation, draw_colour, to_slice(&materials));
         }
         else if (g_debug_draw_no_mesh) {
             draw_sphere(REN(), entity.position, entity.size.x * 0.5, HOT_PINK, g_materials[MAT_DEFAULT]);
@@ -2513,6 +2492,29 @@ void editor_draw_ui(State *state) {
     
                         ImGui::Text("Metalness: %dx%d", material->metalness->width, material->metalness->height);
                         ImGui::Image(material->metalness->id, ImVec2(200, 200));
+                    }
+                }
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Models")) {
+            EnumValue<ModelHandle> *model_handles = meta_values<ModelHandle>();
+            for (i64 i = 0; i < meta_count<ModelHandle>(); i++) {
+                EnumValue<ModelHandle> model_handle = model_handles[i];
+
+                if (model_handle.value == MD_NONE) {
+                    continue;
+                }
+
+                if (ImGui::CollapsingHeader(model_handle.name.c())) {
+                    Model *model = g_models[model_handles[i].value];
+                    
+                    for (i32 i = 0; i < model->meshes.len; i++) {
+                        ImGui::Separator();
+                        ImGui::Text("Mesh: %d", i);
+                        ImGui::Text("Vertices: %lld", model->meshes[i]->vertices.len);
+                        ImGui::Text("Indices: %lld", model->meshes[i]->indices.len);
+                        ImGui::Text("Material index: %lld", model->material_indices[i]);
                     }
                 }
             }
@@ -2976,7 +2978,7 @@ void editor_draw_ui(State *state) {
 
                 if (show_depth) {
                     ImGui::Text("Depth attachment");
-                    ImGui::Image(frame_buffer->neo_depth_attachment.id, size, ImVec2(0, 1), ImVec2(1, 0));
+                    ImGui::Image(frame_buffer->depth_attachment.id, size, ImVec2(0, 1), ImVec2(1, 0));
                 }
             }
         }
@@ -3548,7 +3550,6 @@ Entity *local_spawn_dummy(State *state) {
         .owner = SERVER_INSTANCE_ID,
         .size = v3{g_player_width, g_player_height, g_player_width},
         .colour = WHITE,
-        .material = MAT_DEV_BLUE,
         .max_health = 100,
         .health = 100,
     };
@@ -3649,7 +3650,12 @@ Entity *local_spawn_barrel(State *state) {
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{1, 1, 1},
         .colour = WHITE,
+        .model = MD_BARREL,
     };
+
+    append(&entity.materials, MAT_DEFAULT);
+    append(&entity.materials, MAT_TRIM_FURNITURE);
+    append(&entity.materials, MAT_TRIM_METAL);
 
     return local_spawn_entity(state, entity);
 }
@@ -3661,7 +3667,12 @@ Entity *local_spawn_crate_metal(State *state) {
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{1, 1, 1},
         .colour = WHITE,
+        .model = MD_CRATE_METAL,
     };
+
+    append(&entity.materials, MAT_DEFAULT);
+    append(&entity.materials, MAT_TRIM_FURNITURE);
+    append(&entity.materials, MAT_TRIM_METAL);
 
     return local_spawn_entity(state, entity);
 }
@@ -3673,7 +3684,12 @@ Entity *local_spawn_crate_wooden(State *state) {
         .owner = LEVEL_INSTANCE_ID,
         .size = v3{1, 1, 1},
         .colour = WHITE,
+        .model = MD_CRATE_WOODEN,
     };
+
+    append(&entity.materials, MAT_DEFAULT);
+    append(&entity.materials, MAT_TRIM_FURNITURE);
+    append(&entity.materials, MAT_TRIM_METAL);
 
     return local_spawn_entity(state, entity);
 }
@@ -3815,7 +3831,28 @@ void imgui_entity(Entity *entity) {
     imgui_v3_control("rotation", &entity->rotation);
     imgui_v3_control("velocity", &entity->velocity);
     imgui_colour_control("colour", &entity->colour);
-    imgui_enum_dropdown("material", &entity->material);
+    imgui_enum_dropdown("model", &entity->model);
+
+    if (ImGui::CollapsingHeader("Materials")) {
+        static i32 s_material_count = 0;
+
+        // need to do this because imgui has no InputInt for i64
+        s_material_count = i32(entity->materials.len);
+        ImGui::InputInt("material count", &s_material_count);
+
+        if (s_material_count <= entity->materials.items.size) {
+            entity->materials.len = s_material_count;
+        }
+
+        for (i32 i = 0; i < entity->materials.len; i++) {
+            // TODO: lets not do this here 
+            char buffer[32] = {};
+            sprintf(buffer, "[%d]", i);
+
+            imgui_enum_dropdown(buffer, &entity->materials[i]);
+        }
+    }
+
     ImGui::InputFloat("max health", &entity->max_health);
     ImGui::InputFloat("health", &entity->health);
     ImGui::InputFloat("death cooldown", &entity->death_cooldown);
@@ -4032,8 +4069,9 @@ void serialise_level(State *state) {
 void serialise_entity(YAML::Emitter &out, Entity *entity) {
     out << YAML::BeginMap;
 
-    out << YAML::Key << "flags"         << YAML::BeginSeq;
-    { // entity flag sequence
+    {
+        out << YAML::Key << "flags" << YAML::BeginSeq;
+
         EnumValue<EntityFlag> *values = meta_values<EntityFlag>();
         int members_count = meta_count<EntityFlag>();
 
@@ -4042,8 +4080,9 @@ void serialise_entity(YAML::Emitter &out, Entity *entity) {
                 out << values[i].name;
             }
         }
+
+        out << YAML::EndSeq;
     }
-    out << YAML::EndSeq;
 
     out << YAML::Key << "id"                << YAML::Value << entity->id;
     out << YAML::Key << "owner"             << YAML::Value << entity->owner;
@@ -4052,7 +4091,8 @@ void serialise_entity(YAML::Emitter &out, Entity *entity) {
     out << YAML::Key << "rotation"          << YAML::Value << entity->rotation;
     out << YAML::Key << "velocity"          << YAML::Value << entity->velocity;
     out << YAML::Key << "colour"            << YAML::Value << entity->colour;
-    out << YAML::Key << "material"          << YAML::Value << meta_name(entity->material);
+    out << YAML::Key << "model"             << YAML::Value << meta_name(entity->model);
+    out << YAML::Key << "materials"         << YAML::Value << entity->materials;
     out << YAML::Key << "max_health"        << YAML::Value << entity->max_health;
     out << YAML::Key << "health"            << YAML::Value << entity->health;
     out << YAML::Key << "pickup_type"       << YAML::Value << meta_name(entity->pickup_type);
@@ -4099,29 +4139,49 @@ void deserialise_level(State *state) {
             }
         }
 
-        entity.id =                          node["id"].as<u32>();
-        entity.owner =                       node["owner"].as<u32>();
-        entity.position =                    node["position"].as<v3>();
-        entity.size =                        node["size"].as<v3>();
-        entity.rotation =                    node["rotation"].as<v3>();
-        entity.velocity =                    node["velocity"].as<v3>();
-        entity.colour =                      node["colour"].as<v4>();
-        entity.max_health =                  node["max_health"].as<f32>();
-        entity.health =                      node["health"].as<f32>();
+        entity.id = node["id"].as<u32>();
+        entity.owner = node["owner"].as<u32>();
+        entity.position = node["position"].as<v3>();
+        entity.size = node["size"].as<v3>();
+        entity.rotation = node["rotation"].as<v3>();
+        entity.velocity = node["velocity"].as<v3>();
+        entity.colour = node["colour"].as<v4>();
 
-        { // decode material from string
-            std::string s = node["material"].as<std::string>();
+        { // decode model from string
+            std::string s = node["model"].as<std::string>();
             string saved_name = slice_create((u8 *) s.c_str(), s.size());
 
             // check if saved name is valid
-            EnumValue<MaterialHandle> *material_handle = meta_value<MaterialHandle>(saved_name);
-            if (!material_handle) {
-                Warnf("No material was found with name \"{}\", okay if deleted but could be a bug!!", saved_name);
+            EnumValue<ModelHandle> *model_handle = meta_value<ModelHandle>(saved_name);
+            if (!model_handle) {
+                Warnf("No model was found with name \"{}\", okay if deleted but could be a bug!!", saved_name);
                 Breakpoint;
             }
 
-            entity.material = material_handle->value;
+            entity.model = model_handle->value;
         }
+
+        { // decode materials from vector of strings
+            std::vector<std::string> materials = node["materials"].as<std::vector<std::string>>();
+            Assertf(materials.size() <= entity.materials.items.size, "There are more materials saved for the entity than can be stored in the entity");
+
+            for (std::string &s : materials) {
+                string saved_name = slice_create((u8 *) s.c_str(), s.size());
+    
+                // check if saved name is valid
+                EnumValue<MaterialHandle> *material_handle = meta_value<MaterialHandle>(saved_name);
+                if (!material_handle) {
+                    Warnf("No material was found with name \"{}\", okay if deleted but could be a bug!!", saved_name);
+                    Breakpoint;
+                }
+
+                append(&entity.materials, material_handle->value);
+            }
+        }
+
+
+        entity.max_health = node["max_health"].as<f32>();
+        entity.health = node["health"].as<f32>();
 
         { // decode pickup type from string
             std::string s = node["pickup_type"].as<std::string>();
@@ -4137,9 +4197,9 @@ void deserialise_level(State *state) {
             entity.pickup_type = pickup_type->value;
         }
 
-        entity.jump_pad_force   = node["jump_pad_force"].as<f32>();
-        entity.light_colour     = node["light_colour"].as<v4>();
-        entity.light_intensity  = node["light_intensity"].as<f32>();
+        entity.jump_pad_force = node["jump_pad_force"].as<f32>();
+        entity.light_colour = node["light_colour"].as<v4>();
+        entity.light_intensity = node["light_intensity"].as<f32>();
 
         if (BitSet(entity.flags, EF_SPAWN_POINT)) {
             state->spawn_point_count += 1;
@@ -4160,6 +4220,18 @@ YAML::Emitter &operator<<(YAML::Emitter &out, string value) {
     return out;
 }
 
+template <typename T, i64 N>
+YAML::Emitter &operator<<(YAML::Emitter &out, StackArray<T, N> array) {
+    out << YAML::BeginSeq;
+
+    for (T &t : array) {
+        out <<  t;
+    }
+
+    out << YAML::EndSeq;
+    return out;
+}
+
 YAML::Emitter &operator<<(YAML::Emitter &out, v3 vector) {
     out << YAML::Flow;
     out << YAML::BeginSeq << vector.x << vector.y << vector.z << YAML::EndSeq;
@@ -4169,6 +4241,11 @@ YAML::Emitter &operator<<(YAML::Emitter &out, v3 vector) {
 YAML::Emitter &operator<<(YAML::Emitter &out, v4 vector) {
     out << YAML::Flow;
     out << YAML::BeginSeq << vector.x << vector.y << vector.z << vector.w << YAML::EndSeq;
+    return out;
+}
+
+YAML::Emitter &operator<<(YAML::Emitter &out, MaterialHandle material) {
+    out << meta_name(material);
     return out;
 }
 

@@ -2,12 +2,12 @@ Start date:     11/08/25
 End date:       ??/??/??
 Total time:     184:00
 
-Started today:  14:00
+Started today:  9:30
 
 @todo
 
 In progress:
-- finish SSAO
+- models
 
 Game todo:
 - work on shooting feedback

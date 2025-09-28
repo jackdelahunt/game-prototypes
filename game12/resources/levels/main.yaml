@@ -10,6 +10,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 0.97046411, 0.97046411, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_GREEN
     material: MAT_DEV_GREEN
     max_health: 0
     health: 0
@@ -27,6 +30,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_WHITE
     material: MAT_DEV_WHITE
     max_health: 0
     health: 0
@@ -44,6 +50,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [0.978902936, 0.978902936, 0.978902936, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_GREEN
     material: MAT_DEV_GREEN
     max_health: 0
     health: 0
@@ -61,6 +70,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [0.978902936, 0.978902936, 0.978902936, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_GREEN
     material: MAT_DEV_GREEN
     max_health: 0
     health: 0
@@ -78,6 +90,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [0.995780587, 0.995780587, 0.995780587, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_WHITE
     material: MAT_DEV_WHITE
     max_health: 0
     health: 0
@@ -95,6 +110,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [0.995780587, 0.995780587, 0.995780587, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_WHITE
     material: MAT_DEV_WHITE
     max_health: 0
     health: 0
@@ -112,6 +130,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_GREEN
     material: MAT_DEV_GREEN
     max_health: 0
     health: 0
@@ -129,6 +150,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [0, 1, 0, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEFAULT
     material: MAT_DEFAULT
     max_health: 0
     health: 0
@@ -146,6 +170,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [0, 1, 0, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEFAULT
     material: MAT_DEFAULT
     max_health: 0
     health: 0
@@ -163,6 +190,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 0.639999986, 0.100000001, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEFAULT
     material: MAT_DEFAULT
     max_health: 0
     health: 0
@@ -180,6 +210,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_WHITE
     material: MAT_DEV_WHITE
     max_health: 0
     health: 0
@@ -197,6 +230,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [0.5, 0.5, 0.5, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEFAULT
     material: MAT_DEFAULT
     max_health: 0
     health: 0
@@ -214,6 +250,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_YELLOW
     material: MAT_DEV_YELLOW
     max_health: 0
     health: 0
@@ -231,6 +270,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_WHITE
     material: MAT_DEV_WHITE
     max_health: 0
     health: 0
@@ -248,6 +290,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_WHITE
     material: MAT_DEV_WHITE
     max_health: 0
     health: 0
@@ -265,6 +310,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_WHITE
     material: MAT_DEV_WHITE
     max_health: 0
     health: 0
@@ -282,6 +330,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_YELLOW
     material: MAT_DEV_YELLOW
     max_health: 0
     health: 0
@@ -299,6 +350,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_WHITE
     material: MAT_DEV_WHITE
     max_health: 0
     health: 0
@@ -316,6 +370,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_WHITE
     material: MAT_DEV_WHITE
     max_health: 0
     health: 0
@@ -333,6 +390,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_WHITE
     material: MAT_DEV_WHITE
     max_health: 0
     health: 0
@@ -350,6 +410,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_RED
     material: MAT_DEV_RED
     max_health: 0
     health: 0
@@ -367,6 +430,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_WHITE
     material: MAT_DEV_WHITE
     max_health: 0
     health: 0
@@ -384,6 +450,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [0.5, 0.5, 0.5, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEFAULT
     material: MAT_DEFAULT
     max_health: 0
     health: 0
@@ -401,6 +470,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [0.5, 0.5, 0.5, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEFAULT
     material: MAT_DEFAULT
     max_health: 0
     health: 0
@@ -418,6 +490,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 0.639999986, 0.100000001, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEFAULT
     material: MAT_DEFAULT
     max_health: 0
     health: 0
@@ -435,6 +510,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 0.639999986, 0.100000001, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEFAULT
     material: MAT_DEFAULT
     max_health: 0
     health: 0
@@ -452,6 +530,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_WHITE
     material: MAT_DEV_WHITE
     max_health: 0
     health: 0
@@ -469,6 +550,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_WHITE
     material: MAT_DEV_WHITE
     max_health: 0
     health: 0
@@ -486,6 +570,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_WHITE
     material: MAT_DEV_WHITE
     max_health: 0
     health: 0
@@ -503,6 +590,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_WHITE
     material: MAT_DEV_WHITE
     max_health: 0
     health: 0
@@ -520,6 +610,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_WHITE
     material: MAT_DEV_WHITE
     max_health: 0
     health: 0
@@ -537,6 +630,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [0.5, 0.5, 0.5, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEFAULT
     material: MAT_DEFAULT
     max_health: 0
     health: 0
@@ -557,6 +653,9 @@ entities:
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    model: MD_CUBE
+    materials:
+      - MAT_DEV_BLUE
     material: MAT_DEV_BLUE
     max_health: 100
     health: 100
@@ -567,14 +666,65 @@ entities:
   - flags:
       - EF_STATIC_HITBOX
       - EF_DRAW_MESH
-      - EF_CRATE_METAL
-    id: 45802958
+      - EF_CRATE_WOODEN
+    id: 4263227590
     owner: 0
-    position: [-2.12376118, 1.7833097, 4.80973005]
-    size: [2.53999996, 2.53999996, 2.53999996]
+    position: [-0.905716002, 5.20818424, 0]
+    size: [1, 1, 1]
     rotation: [0, 0, 0]
     velocity: [0, 0, 0]
     colour: [1, 1, 1, 1]
+    model: MD_BARREL
+    materials:
+      - MAT_DEFAULT
+      - MAT_TRIM_FURNITURE
+      - MAT_TRIM_METAL
+    material: MAT_DEFAULT
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+      - EF_CRATE_METAL
+    id: 3570099889
+    owner: 0
+    position: [-2.82108259, 4.03944683, 0]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [0.935635924, 0.991561174, 0.58991617, 1]
+    model: MD_CRATE_METAL
+    materials:
+      - MAT_DEFAULT
+      - MAT_TRIM_FURNITURE
+      - MAT_TRIM_METAL
+    material: MAT_DEFAULT
+    max_health: 0
+    health: 0
+    pickup_type: PT_NONE
+    jump_pad_force: 0
+    light_colour: [0, 0, 0, 0]
+    light_intensity: 0
+  - flags:
+      - EF_STATIC_HITBOX
+      - EF_DRAW_MESH
+      - EF_BARREL
+    id: 2542581123
+    owner: 0
+    position: [2.07869291, 4.14170504, 0]
+    size: [1, 1, 1]
+    rotation: [0, 0, 0]
+    velocity: [0, 0, 0]
+    colour: [1, 1, 1, 1]
+    model: MD_CRATE_WOODEN
+    materials:
+      - MAT_DEFAULT
+      - MAT_TRIM_FURNITURE
+      - MAT_TRIM_METAL
     material: MAT_DEFAULT
     max_health: 0
     health: 0

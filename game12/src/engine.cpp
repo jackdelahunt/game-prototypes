@@ -144,13 +144,13 @@ void poll_inputs() {
     // copied from odin engine so maybe need to look into this more
     // - 03/03/25
     
-    for (int i = 0; i < KEYS.len; i++) {
+    for (int i = 0; i < KEYS.size; i++) {
         if (KEYS[i] == InputState::DOWN) {
             KEYS[i] = InputState::PRESSED;
         }
     }
 
-    for (int i = 0; i < MOUSE.buttons.len; i++) {
+    for (int i = 0; i < MOUSE.buttons.size; i++) {
         if (MOUSE.buttons[i] == InputState::DOWN) {
             MOUSE.buttons[i] = InputState::PRESSED;
         }
@@ -236,7 +236,8 @@ void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 
 #define MAX_RENDER_COMMANDS 5000
 #define MAX_MESHES 128
 #define MAX_MODELS 128
-#define MAX_MESHES_PER_MODEL 5
+#define MAX_MESHES_PER_MODEL 3
+#define MAX_MATERIALS_PER_MODEL 3
 #define MAX_POINT_LIGHTS 50         // keep in sync with pbr shader 
 #define MAX_TEXTURES 256
 #define MAX_MATERIALS 256
@@ -392,7 +393,7 @@ struct RenderTexture {
 struct Font {
     i64 width;
     i64 height;
-    StackArray<stbtt_bakedchar, 96> characters;
+    array<stbtt_bakedchar, 96> characters;
     u8 *bitmap_data;
 };
 
@@ -436,7 +437,7 @@ struct FrameBuffer {
     v2i size;
 
     StackArray<RenderTexture, MAX_COLOUR_ATTACHMENTS> colour_attachments;
-    RenderTexture neo_depth_attachment;
+    RenderTexture depth_attachment;
 };
 
 struct Shader {
@@ -455,8 +456,7 @@ struct Mesh {
 
 struct Model {
     StackArray<Mesh *, MAX_MESHES_PER_MODEL> meshes;
-    StackArray<Material *, MAX_MESHES_PER_MODEL> materials;
-    StackArray<u32, MAX_MESHES_PER_MODEL> material_indices;
+    StackArray<i64, MAX_MESHES_PER_MODEL> material_indices;
 };
 
 enum RenderCommandType {
@@ -517,14 +517,21 @@ struct Renderer {
     Mesh *sphere_primitive;
     Mesh *quad_primitive;
 
+    Model *cube_model_primitive;
+    Model *sphere_model_primitive;
+    Model *quad_model_primitive;
+
     RenderTexture *default_material_albedo;
     RenderTexture *default_material_normal;
     RenderTexture *default_material_ambient_occlusion;
     RenderTexture *default_material_roughness;
     RenderTexture *default_material_metalness;
 
+    RenderTexture *default_missing_material_albedo;
+
     Material *default_pbr_material;
     Material *default_unlit_material;
+    Material *default_missing_material;
 
     Font font;
 
@@ -643,7 +650,7 @@ void draw_line(Renderer *renderer, v3 position, v3 direction, f32 radius, f32 st
 void draw_cube(Renderer *renderer, v3 position, v3 size, v3 rotation, v4 colour, Material *material);
 void draw_sphere(Renderer *renderer, v3 position, f32 radius, v4 colour, Material *material);
 void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position, v3 scale, v3 rotation, v4 colour, Material *material);
-void draw_model(Renderer *renderer, Model *model, v3 position, v3 scale, v3 rotation, v4 colour);
+void draw_model(Renderer *renderer, Model *model, v3 position, v3 scale, v3 rotation, v4 colour, slice<Material *> materials);
 
 // Drawing UI API
 void draw_quad_ui(Renderer *renderer, v3 position, v2 size, v3 rotation, v4 colour, v2 uvs[4], DrawType type);
@@ -857,23 +864,34 @@ void shader_set_v4(Shader shader, string name, v4 value) {
 }
 
 Model *model_create_from_file(Renderer *renderer, string path) {
-    Model *model = push(&renderer->models);
-
-    // Create an instance of the Importer class
     Assimp::Importer importer;
     
     const aiScene *scene = importer.ReadFile(path.c(), aiProcess_Triangulate | aiProcess_MakeLeftHanded | aiProcess_GenSmoothNormals);	
-    if(scene == NULL || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-        Logf("assimp error: {}", importer.GetErrorString());
+    if(scene == NULL) {
+        Errf("error when loading model \"{}\": {}", path, importer.GetErrorString());
         return NULL;
     }
 
-    // only assuming root node as a single child node with all meshes
-    Assert(scene->mRootNode->mNumChildren == 1);
-    aiNode *node = scene->mRootNode->mChildren[0];
+    if(BitSet(scene->mFlags, AI_SCENE_FLAGS_INCOMPLETE)) {
+        Errf("error when loading model \"{}\": incomplete scene: {}", path, importer.GetErrorString());
+        return NULL;
+    }
 
-    for (i32 i = 0; i < node->mNumMeshes; i++) {
-        aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
+    if(!scene->mRootNode) {
+        Errf("error when loading model \"{}\": scene had no root node", path, importer.GetErrorString());
+        return NULL;
+    }
+
+    if(scene->mRootNode->mNumChildren != 1) {
+        Errf("error when loading model \"{}\": scene root node had more then one submesh", path);
+        return NULL;
+    }
+
+    Model *model = push(&renderer->models);
+    aiNode *root_node = scene->mRootNode->mChildren[0];
+
+    for (i32 i = 0; i < root_node->mNumMeshes; i++) {
+        aiMesh *mesh = scene->mMeshes[root_node->mMeshes[i]];
         Assert(mesh->HasNormals());
         Assert(mesh->HasTextureCoords(0));
 
@@ -907,7 +925,7 @@ Model *model_create_from_file(Renderer *renderer, string path) {
         }
 
         append(&model->meshes, mesh_create(renderer, vertices, indices));
-        append(&model->material_indices, mesh->mMaterialIndex);
+        append(&model->material_indices, i64(mesh->mMaterialIndex));
     }
 
     Logf("Loaded model with path \"{}\"", path.c());
@@ -1328,6 +1346,9 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
 
         renderer->default_material_metalness = render_texture_create_from_file(renderer, TextureSpec {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8, .wrap = TW_REPEAT}, "resources/textures/defaults/default_metalness.png");
         Assert(renderer->default_material_metalness);
+
+        renderer->default_missing_material_albedo = render_texture_create_from_file(renderer, TextureSpec {.source_format = TF_RGBA_U8, .internal_format = TF_RGBA_U8, .wrap = TW_REPEAT}, "resources/textures/defaults/default_missing_albedo.png"); 
+        Assert(renderer->default_missing_material_albedo);
     }
 
     { // create default materials
@@ -1348,6 +1369,12 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
         );
 
         Assert(renderer->default_unlit_material);
+
+        renderer->default_missing_material = material_create_unlit(renderer, v2{1, 1},
+            renderer->default_missing_material_albedo
+        );
+
+        Assert(renderer->default_missing_material);
     }
 
     { // load default font
@@ -1358,7 +1385,7 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
         }
     }
 
-    { // load primitive models 
+    { // load primitive meshes 
         renderer->cube_primitive = mesh_create_from_file(REN(), "resources/models/primitives/cube.obj");
         Assert(renderer->cube_primitive);
 
@@ -1384,6 +1411,12 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
         Assert(renderer->quad_primitive);
     }
 
+    { // load primitive models
+        renderer->cube_model_primitive = AssertNotNull(model_create_from_file(REN(), "resources/models/primitives/cube.obj"));
+        renderer->sphere_model_primitive = AssertNotNull(model_create_from_file(REN(), "resources/models/primitives/sphere.obj"));
+        renderer->quad_model_primitive = AssertNotNull(renderer->cube_model_primitive); // TODO: added a quad primitive
+    }
+
     { // generate ssao kernal
         std::uniform_real_distribution<float> randomFloats(0.0, 1.0);
         std::default_random_engine generator;
@@ -1392,7 +1425,7 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
             return a + f * (b - a);
         };
 
-        for (i32 i = 0; i < renderer->ssao_kernal.len; ++i) {
+        for (i32 i = 0; i < renderer->ssao_kernal.size; i++) {
             v3 sample = v3{
                 randomFloats(generator) * 2.0f - 1.0f, 
                 randomFloats(generator) * 2.0f - 1.0f, 
@@ -1402,11 +1435,9 @@ bool renderer_init(Arena *arena, Arena *frame_arena, Window *window, v4 clear_co
             sample  = norm(sample);
             sample *= randomFloats(generator);
 
-            if (true) {
-                float scale = f32(i) / f32(renderer->ssao_kernal.len);
-                scale = lerp(0.1f, 1.0f, scale * scale);
-                sample *= scale;
-            }
+            float scale = f32(i) / f32(renderer->ssao_kernal.size);
+            scale = lerp(0.1f, 1.0f, scale * scale);
+            sample *= scale;
 
             renderer->ssao_kernal[i] = sample;
         }
@@ -1762,7 +1793,7 @@ u32 upload_font_to_gpu(Renderer *renderer, i32 width, i32 height, u8 *data) {
 }
 
 bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel_height) {
-    Font font = Font{
+    Font font = Font {
         .width = width,
         .height = height,
         .characters = {},
@@ -1775,7 +1806,7 @@ bool load_font(Renderer *renderer, string path, i64 width, i64 height, f32 pixel
         return false;
     }
 
-    i64 bake_result = stbtt_BakeFontBitmap((const u8*)font_data.c(), 0, pixel_height, font.bitmap_data, font.width, font.height, 32, font.characters.size, font.characters.data);
+    i64 bake_result = stbtt_BakeFontBitmap((const u8*)font_data.c(), 0, pixel_height, font.bitmap_data, font.width, font.height, 32, font.characters.size, &font.characters.items[0]);
     if (bake_result <= 0) {
         printf("failed to bake font \"%s\"\n", path.c());
         return false;
@@ -1969,7 +2000,7 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
         shader_set_f32(renderer->ssao_shader, "bias", renderer->ssao_bias);
         shader_set_v2(renderer->ssao_shader, "noise_scale", to_floats(viewport.size) / f32(SSAO_NOISE_TEXTURE_SIZE));
 
-        for (i64 i = 0; i < renderer->ssao_kernal.len; i++) {
+        for (i64 i = 0; i < renderer->ssao_kernal.size; i++) {
             string sample_string = fmtc(renderer->frame_arena, "samples[{}]", i);
             shader_set_v3(renderer->ssao_shader, sample_string, renderer->ssao_kernal[i]);
         }
@@ -2150,9 +2181,25 @@ void draw_mesh(Renderer *renderer, Mesh *mesh, v3 position, v3 scale, v3 rotatio
     command->mesh.material = material;
 }
 
-void draw_model(Renderer *renderer, Model *model, v3 position, v3 scale, v3 rotation, v4 colour) {
+void draw_model(Renderer *renderer, Model *model, v3 position, v3 scale, v3 rotation, v4 colour, slice<Material *> materials) {
     for (i32 i = 0; i < model->meshes.len; i++) {
-        draw_mesh(renderer, model->meshes[i], position, scale, rotation, colour, model->materials[model->material_indices[i]]);
+        Material *material = NULL;
+        Mesh *mesh = model->meshes[i];
+        i64 material_index = model->material_indices[i]; 
+
+        Assert(material_index >= 0);
+
+        if (material_index >= materials.len) {
+            material = renderer->default_missing_material;
+            Warnf("Missing material for model [position={}] material index for mesh {} is {} but got {} materials", position, i, material_index, materials.len);
+        }
+        else {
+            material = materials[material_index];
+        }
+
+        Assertf(material, "Material should of been the assigned material or the missing material")
+
+        draw_mesh(renderer, mesh, position, scale, rotation, colour, material);
     }
 }
 
@@ -2211,7 +2258,7 @@ void draw_text_ui(Renderer *renderer, string text, v3 position, f32 font_size, v
         // x, and y and expected vertex positions
         // s and t are texture uv position
  
-        stbtt_GetBakedQuad(renderer->font.characters.data, renderer->font.width, renderer->font.height, c - 32, &advanced_x, &advanced_y, &aligned_quad, false);
+        stbtt_GetBakedQuad(&renderer->font.characters.items[0], renderer->font.width, renderer->font.height, c - 32, &advanced_x, &advanced_y, &aligned_quad, false);
 
         f32 bottom_y = -aligned_quad.y1;
         f32 top_y = -aligned_quad.y0;
@@ -2327,7 +2374,7 @@ bool frame_buffer_build(FrameBuffer *frame_buffer) {
             render_texture_delete(&colour_attachment);
         }
 
-        render_texture_delete(&frame_buffer->neo_depth_attachment);
+        render_texture_delete(&frame_buffer->depth_attachment);
     }
 
     // create frame buffer
@@ -2343,8 +2390,8 @@ bool frame_buffer_build(FrameBuffer *frame_buffer) {
     }
 
     // create depth attachment
-    frame_buffer->neo_depth_attachment = render_texture_create(TextureSpec{.source_format = TF_DEPTH, .internal_format = TF_DEPTH}, frame_buffer->size.x, frame_buffer->size.y, NULL);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, frame_buffer->neo_depth_attachment.id, 0);
+    frame_buffer->depth_attachment = render_texture_create(TextureSpec{.source_format = TF_DEPTH, .internal_format = TF_DEPTH}, frame_buffer->size.x, frame_buffer->size.y, NULL);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, frame_buffer->depth_attachment.id, 0);
 
     { // set draw buffers
         StackArray<GLenum, MAX_COLOUR_ATTACHMENTS> draw_buffers = {};
@@ -2355,7 +2402,7 @@ bool frame_buffer_build(FrameBuffer *frame_buffer) {
 
         // when using more then one colour attachment, need to set all colour buffers the
         // frame buffer can write too, if not the normal buffer will not be write too
-        glDrawBuffers(draw_buffers.size, draw_buffers.data);
+        glDrawBuffers(draw_buffers.len, &draw_buffers.items[0]);
     }
 
     if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {

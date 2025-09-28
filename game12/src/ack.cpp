@@ -7,6 +7,7 @@
 #include <string.h>
 #include <chrono>
 #include <mutex>
+#include <initializer_list>
 
 #ifndef WINDOWS
     #error only can build for windows right now sorry!
@@ -30,11 +31,13 @@
     #define Unreachable(s)        Fatalf("Unreachable: {}", (s)); Breakpoint
     #define Assert(condition)     if (!(condition)) { Fatalf("Triggered Assert({})", #condition);          Breakpoint; }
     #define Assertf(condition, s) if (!(condition)) { Fatalf("Triggered Assert({}): {}", #condition, (s)); Breakpoint; }
+    #define AssertNotNull(expr)   ([&] { auto&& _val = (expr); Assertf((_val) != NULL, "Triggered AssertNotNull)"); return _val; }())
 #else
     #define Breakpoint
     #define Unreachable(s)
     #define Assert(condition)
     #define Assertf(condition, s)
+    #define AssertNotNull(expr)
 #endif
 
 #define BitSet(a, b) ((a & b) != 0)
@@ -117,7 +120,7 @@ typedef slice<u8> string;
 template <typename T, i64 N>
 struct array {
     T items[N];
-    i64 len = N;
+    i64 size = N;
 
     T& operator[](i64 index);
     T* begin();
@@ -144,9 +147,8 @@ struct FixedArray {
 // @stackarray
 template <typename T, i64 N>
 struct StackArray {
-    T data[N];
-    i64 size = N;
     i64 len;
+    array<T, N> items;
 
     T& operator[](i64 index);
     T* begin();
@@ -212,6 +214,9 @@ template <typename T>   void slice_copy(slice<T> dst, slice<T> src);
 template <typename T>   void slice_copy_raw_ptr(slice<T> slice, void *ptr);
 template <typename T>   bool slice_memcmp(slice<T> a, slice<T> b);
 
+// @array
+template <typename T, i64 N> slice<T> to_slice(array<T, N> *array); 
+
 // @arena
 Arena arena_create(i64 size);
 void arena_destroy(Arena *arena);
@@ -233,6 +238,7 @@ template <typename T, i64 N>    void append(StackArray<T, N> *array, T value);
 template <typename T, i64 N>    T* push(StackArray<T, N> *array);
 template <typename T, i64 N>    void reset(StackArray<T, N> *array);
 template <typename T, i64 N>    void swap_remove(StackArray<T, N> *array, i64 index);
+template <typename T, i64 N>    slice<T> to_slice(StackArray<T, N> *array); 
 
 // @dynamicarray
 template <typename T>   DynamicArray<T> dynamic_array_create(Arena *arena, i64 capacity); 
@@ -439,6 +445,11 @@ bool slice_memcmp(slice<T> a, slice<T> b) {
     return memcmp(a.ptr, b.ptr, a.len) == 0;
 }
 
+template <typename T, i64 N> 
+slice<T> to_slice(array<T, N> *array) {
+    return slice_create(&array->items[0], array->size);
+}
+
 template <typename T, i64 N>
 T& array<T, N>::operator[](i64 index) {
     Assert(index >= 0 && index < N);
@@ -564,29 +575,25 @@ template <typename T, i64 N>
 T& StackArray<T, N>::operator[](i64 index) {
     Assert(index < this->len);
 
-    return this->data[index];
+    return this->items[index];
 }
 
 template <typename T, i64 N>
 T* StackArray<T, N>::begin() {
-    return data;
+    return &this->items[0];
 }
 
 template <typename T, i64 N>
 T* StackArray<T, N>::end() {
-    return data + len;
+    return &this->items[0] + len;
 }
 
 template <typename T, i64 N>
 StackArray<T, N> stack_array_create() {
     StackArray<T, N> array = StackArray<T, N> {
-        .data = {},
-        .size = N,
-        .len = 0
+        .len = 0,
+        .items = {}
     };
-
-    // TODO: is this needed or is it handled by the {} above 
-    MemZero(array.data, array.size);
 
     return array;
 }
@@ -595,7 +602,7 @@ template <typename T, i64 N>
 void append(StackArray<T, N> *array, T value) {
     Assert(array->len < N);
 
-    array->data[array->len] = value;
+    array->items[array->len] = value;
     array->len += 1;
 }
 
@@ -603,7 +610,7 @@ template <typename T, i64 N>
 T* push(StackArray<T, N> *array) {
     Assert(array->len < N);
 
-    T *ptr = &array->data[array->len];
+    T *ptr = &array->items[array->len];
     array->len++;
 
     return ptr;
@@ -618,8 +625,13 @@ template <typename T, i64 N>
 void swap_remove(StackArray<T, N> *array, i64 index) {
     Assert(index < array->len);
 
-    array->data[index] = array->data[array->len - 1];
+    array->items[index] = array->items[array->len - 1];
     array->len -= 1;
+}
+
+template <typename T, i64 N>    
+slice<T> to_slice(StackArray<T, N> *array) {
+    return slice_range(to_slice(&array->items), 0, array->len);
 }
 
 template <typename T>

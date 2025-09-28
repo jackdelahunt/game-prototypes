@@ -98,10 +98,13 @@ static int index(MeshHandle value) {
 
 template<>
 struct MetaEnum<ModelHandle> {
-const static int count = 5;
+const static int count = 8;
 
 inline static EnumValue<ModelHandle> values[count] = {
     EnumValue<ModelHandle>(string("MD_NONE"), MD_NONE),
+    EnumValue<ModelHandle>(string("MD_CUBE"), MD_CUBE),
+    EnumValue<ModelHandle>(string("MD_SPHERE"), MD_SPHERE),
+    EnumValue<ModelHandle>(string("MD_QUAD"), MD_QUAD),
     EnumValue<ModelHandle>(string("MD_BARREL"), MD_BARREL),
     EnumValue<ModelHandle>(string("MD_CRATE_METAL"), MD_CRATE_METAL),
     EnumValue<ModelHandle>(string("MD_CRATE_WOODEN"), MD_CRATE_WOODEN),
@@ -111,10 +114,13 @@ inline static EnumValue<ModelHandle> values[count] = {
 static string name(ModelHandle value) {
     switch (value) {
         case MD_NONE: return values[0].name;
-        case MD_BARREL: return values[1].name;
-        case MD_CRATE_METAL: return values[2].name;
-        case MD_CRATE_WOODEN: return values[3].name;
-        case _MD_COUNT: return values[4].name;
+        case MD_CUBE: return values[1].name;
+        case MD_SPHERE: return values[2].name;
+        case MD_QUAD: return values[3].name;
+        case MD_BARREL: return values[4].name;
+        case MD_CRATE_METAL: return values[5].name;
+        case MD_CRATE_WOODEN: return values[6].name;
+        case _MD_COUNT: return values[7].name;
     }
 }
 
