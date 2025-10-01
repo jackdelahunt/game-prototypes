@@ -805,7 +805,7 @@ bool init_shader(Shader *shader, string debug_name, string vertex_shader_path, s
     shader->id = shader_program; 
     shader->debug_name = debug_name;
 
-    Infof("Compiled and linked {}", debug_name.c());
+    Logf("Compiled and linked {}", debug_name.c());
 
     return true;
 }

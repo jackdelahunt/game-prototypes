@@ -2168,8 +2168,11 @@ void editor_update(State *state) {
     Assert(is_client(state));
 
     Camera *camera = &ED()->camera;
+    bool using_gizmos = ImGuizmo::IsUsing() || ImGuizmo::IsOver();
 
-    { // editor mouse interaction
+    // editor mouse interaction
+    // dont do if trying to use gizmos
+    if(!using_gizmos) {
         v2 mouse = ED()->viewport.mouse;
         v2 view_size = to_floats(ED()->viewport.size);
 
@@ -2207,6 +2210,11 @@ void editor_update(State *state) {
     // T: translate gizmo 
     if (KEYS[GLFW_KEY_T] == InputState::DOWN) {
         ED()->gizmo_operation = ImGuizmo::TRANSLATE;
+    }
+
+    // R: rotate gizmo - disabled because of gimbal lock (i think) 
+    if (false && KEYS[GLFW_KEY_R] == InputState::DOWN) {
+        ED()->gizmo_operation = ImGuizmo::ROTATE;
     }
 
     // E: scale gizmo 
@@ -3024,14 +3032,17 @@ Viewport editor_draw_editor_viewport(const char *label, u32 texture_id, bool for
             (f32 *) &model_matrix.Elements
         );
 
-        v3 position = {};
-        v3 rotation = {};
-        v3 size = {};
-
-        ImGuizmo::DecomposeMatrixToComponents((f32 *) &model_matrix.Elements, &position[0], &rotation[0], &size[0]);
-
-        entity->position = position;
-        entity->size = size;
+	    if (ImGuizmo::IsUsing()) {
+            v3 position = {};
+            v3 rotation = {};
+            v3 size = {};
+    
+            ImGuizmo::DecomposeMatrixToComponents((f32 *) &model_matrix.Elements, &position[0], &rotation[0], &size[0]);
+    
+            entity->position = position;
+            entity->size = size;
+            entity->rotation += rotation - entity->rotation;
+        }
     }
 
     ImGui::End();
@@ -4439,20 +4450,27 @@ void run_tests() {
 
     log_set_thread_name("client");
 
+    v3 v = {1, 2, 3};
+
     Log("Hello logger");
     Logf("Hello logger {}", "How are you doing?");
+    Logv(v);
 
     Info("Hello info");
     Infof("Hello info {}", "How are you doing?");
+    Infov(v);
 
     Warn("Hello warning");
     Warnf("Hello warning {}", "How are you doing?");
+    Warnv(v);
 
     Err("Hello error");
     Errf("Hello error {}", "How are you doing?");
+    Errv(v);
 
     Fatal("Hello fatal");
     Fatalf("Hello fatal {}", "How are you doing?");
+    Fatalv(v);
 
     array<i32, 3> a = {100, 200, 300};
     Logf("{} {} {}", a[0], a[1], a[2]);

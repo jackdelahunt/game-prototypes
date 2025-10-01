@@ -15,16 +15,21 @@
 
 #define __FILENAME__ (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : __FILE__)
 
-#define Log(s)          _log (BrightCyanAsciiCode,  "Log:",   __FILENAME__, __LINE__, s)
-#define Logf(f, ...)    _logf(BrightCyanAsciiCode,  "Log:",   __FILENAME__, __LINE__, f, __VA_ARGS__)
+#define Log(s)          _log (WhiteAsciiCode,  "Log:",   __FILENAME__, __LINE__, s)
+#define Logf(f, ...)    _logf(WhiteAsciiCode,  "Log:",   __FILENAME__, __LINE__, f, __VA_ARGS__)
+#define Logv(v)         _logv(WhiteAsciiCode,  "Log:",   __FILENAME__, __LINE__, v)
 #define Info(s)         _log (BrightGreenAsciiCode, "Info:",  __FILENAME__, __LINE__, s)
 #define Infof(f, ...)   _logf(BrightGreenAsciiCode, "Info:",  __FILENAME__, __LINE__, f, __VA_ARGS__)
+#define Infov(v)        _logv(BrightGreenAsciiCode, "Info:",  __FILENAME__, __LINE__, v)
 #define Warn(s)         _log (YellowAsciiCode,      "Warn:",  __FILENAME__, __LINE__, s)
 #define Warnf(f, ...)   _logf(YellowAsciiCode,      "Warn:",  __FILENAME__, __LINE__, f, __VA_ARGS__)
+#define Warnv(v)        _logv(YellowAsciiCode,      "Warn:",  __FILENAME__, __LINE__, v)
 #define Err(s)          _log (BrightRedAsciiCode,   "Error:", __FILENAME__, __LINE__, s)
 #define Errf(f, ...)    _logf(BrightRedAsciiCode,   "Error:", __FILENAME__, __LINE__, f, __VA_ARGS__)
+#define Errv(v)         _logv(BrightRedAsciiCode,   "Error:", __FILENAME__, __LINE__, v)
 #define Fatal(s)        _log (RedAsciiCode,         "Fatal:", __FILENAME__, __LINE__, s)
 #define Fatalf(f, ...)  _logf(RedAsciiCode,         "Fatal:", __FILENAME__, __LINE__, f, __VA_ARGS__)
+#define Fatalv(v)       _logv(RedAsciiCode,         "Fatal:", __FILENAME__, __LINE__, v)
 
 #ifdef ENABLE_ASSERTS
     #define Breakpoint            __debugbreak()
@@ -302,9 +307,9 @@ template<>                  void fmt_value(DynamicArray<u8> *bytes, const char *
 template<>                  void fmt_value(DynamicArray<u8> *bytes, char *value);
 
 // @log
-template<typename... Args>
-void _logf(const char *colour, const char *label, const char *file, i32 line, string format, Args... args);
 void _log(const char *colour, const char *label, const char *file, i32 line, string s);
+template<typename... Args> void _logf(const char *colour, const char *label, const char *file, i32 line, string format, Args... args);
+template<typename T> void _logv(const char *colour, const char *label, const char *file, i32 line, T v);
 void log_set_options(bool print_label, bool print_location);
 void log_set_thread_name(const char *name);
 
@@ -1102,14 +1107,6 @@ bool g_log_print_location = true;
 thread_local const char *tl_thread_name = NULL;
 thread_local Arena tl_log_arena = arena_create(MB(10));
 
-template<typename... Args>
-void _logf(const char *colour, const char *label, const char *file, i32 line, string format, Args... args) {
-    string s = fmt(&tl_log_arena, format, args...);
-    _log(colour, label, file, line, s);
-
-    arena_reset(&tl_log_arena);
-}
-
 void _log(const char *colour, const char *label, const char *file, i32 line, string s) {
     g_log_mutex.lock();
 
@@ -1132,6 +1129,19 @@ void _log(const char *colour, const char *label, const char *file, i32 line, str
     printf("%s", ResetAsciiCode);
 
     g_log_mutex.unlock();
+}
+
+template<typename... Args>
+void _logf(const char *colour, const char *label, const char *file, i32 line, string format, Args... args) {
+    string s = fmt(&tl_log_arena, format, args...);
+    _log(colour, label, file, line, s);
+
+    arena_reset(&tl_log_arena);
+}
+
+template<typename T>
+void _logv(const char *colour, const char *label, const char *file, i32 line, T v) {
+    _logf(colour, label, file, line, "{}", v);
 }
 
 void log_set_options(bool print_label, bool print_location) {
