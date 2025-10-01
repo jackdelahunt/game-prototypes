@@ -1,30 +1,18 @@
 Start date:     11/08/25
 End date:       ??/??/??
-Total time:     189:00
+Total time:     190:00
 
 Started today:  17:00
 
 @todo
 
 In progress:
-- drawing textures with alpha
+- fix broken model origins
 
 Game todo:
+- finish level
 - fix ssao breaking sky
-- work on shooting feedback
-    - improve muzzle flash  
-    - sound when killed enemy
-    - hitmarkers
-    - improve bullet trails 
-- work on rocket launcher
-- sound when player dies
-- start multiplayer game from within game
-- hold space == higher jump
-- real game over screen
-- ammo pickups
-- score board effect and polish\
-- smoke granades
-- separate ammo types and weapon types, ammos are pickups
+- rocket launcher model and sound
 
 Engine todo:
 - game "play button"
@@ -33,6 +21,7 @@ Engine todo:
 - fix flat normals for sphere mesh
 - anti aliasing
 - position entity flush with the face of another
+- maybe add layers after ripping out multiplayer
 
 For the future:
 - features:
