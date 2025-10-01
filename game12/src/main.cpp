@@ -75,7 +75,7 @@ f32 EXPLOSION_DAMAGE        = 200;
 f32 g_jump_pad_cooldown     = 1;
 
 bool g_debug_draw_owner                 = false;
-bool g_debug_draw_no_mesh               = true;
+bool g_debug_draw_no_mesh               = false;
 bool g_debug_always_draw_muzzle_flash   = false;
 
 bool g_cheat_infinite_ammo    = true;
@@ -936,35 +936,16 @@ void game_client_entry() {
         }
 
         { // load sounds
-            g_sounds[SH_FIRE_DEAGLE] = sound_engine_load(SE(), "resources/sounds/deagle_fire.wav");
-            Assert(g_sounds[SH_FIRE_DEAGLE]);
-    
-            g_sounds[SH_FIRE_SILENCED_GUN_HIGH] = sound_engine_load(SE(), "resources/sounds/silenced_gun_high.wav");
-            Assert(g_sounds[SH_FIRE_SILENCED_GUN_HIGH]);
-    
-            g_sounds[SH_FIRE_SILENCED_GUN_MID] = sound_engine_load(SE(), "resources/sounds/silenced_gun_mid.wav");
-            Assert(g_sounds[SH_FIRE_SILENCED_GUN_MID]);
-    
-            g_sounds[SH_FIRE_SILENCED_GUN_LOW] = sound_engine_load(SE(), "resources/sounds/silenced_gun_low.wav");
-            Assert(g_sounds[SH_FIRE_SILENCED_GUN_LOW]);
-    
-            g_sounds[SH_TARGET_HIT] = sound_engine_load(SE(), "resources/sounds/target_hit.wav");
-            Assert(g_sounds[SH_TARGET_HIT]);
-    
-            g_sounds[SH_HEADSHOT_HIT] = sound_engine_load(SE(), "resources/sounds/headshot_hit.wav");
-            Assert(g_sounds[SH_HEADSHOT_HIT]);
-    
-            g_sounds[SH_JUMP] = sound_engine_load(SE(), "resources/sounds/jump.wav");
-            Assert(g_sounds[SH_JUMP]);
-    
-            g_sounds[SH_STEP_1] = sound_engine_load(SE(), "resources/sounds/step_1.wav");
-            Assert(g_sounds[SH_STEP_1]);
-    
-            g_sounds[SH_STEP_2] = sound_engine_load(SE(), "resources/sounds/step_2.wav", 5);
-            Assert(g_sounds[SH_STEP_2]);
-    
-            g_sounds[SH_STEP_3] = sound_engine_load(SE(), "resources/sounds/step_3.wav");
-            Assert(g_sounds[SH_STEP_3]);
+            g_sounds[SH_FIRE_DEAGLE]            = AssertNotNull(sound_engine_load(SE(), "resources/sounds/deagle_fire.wav"));
+            g_sounds[SH_FIRE_SILENCED_GUN_HIGH] = AssertNotNull(sound_engine_load(SE(), "resources/sounds/silenced_gun_high.wav"));
+            g_sounds[SH_FIRE_SILENCED_GUN_MID]  = AssertNotNull(sound_engine_load(SE(), "resources/sounds/silenced_gun_mid.wav"));
+            g_sounds[SH_FIRE_SILENCED_GUN_LOW]  = AssertNotNull(sound_engine_load(SE(), "resources/sounds/silenced_gun_low.wav"));
+            g_sounds[SH_TARGET_HIT]             = AssertNotNull(sound_engine_load(SE(), "resources/sounds/target_hit.wav"));
+            g_sounds[SH_HEADSHOT_HIT]           = AssertNotNull(sound_engine_load(SE(), "resources/sounds/headshot_hit.wav"));
+            g_sounds[SH_JUMP]                   = AssertNotNull(sound_engine_load(SE(), "resources/sounds/jump.wav"));
+            g_sounds[SH_STEP_1]                 = AssertNotNull(sound_engine_load(SE(), "resources/sounds/step_1.wav"));
+            g_sounds[SH_STEP_2]                 = AssertNotNull(sound_engine_load(SE(), "resources/sounds/step_2.wav", 5));
+            g_sounds[SH_STEP_3]                 = AssertNotNull(sound_engine_load(SE(), "resources/sounds/step_3.wav"));
         }
     }
 
@@ -1762,6 +1743,7 @@ void game_client_draw(GameClient *client, State *state) {
 
     timed_effect_tick(&client->bullet_trail, state->frame_delta_time);
 
+#if 0
     { Scope // bullet trail
         auto [active, remaining, trail] = timed_effect_state(&client->bullet_trail);
         if (!active) {
@@ -1775,6 +1757,7 @@ void game_client_draw(GameClient *client, State *state) {
         draw_point_light(REN(), trail_position, g_bullet_trail_colour, g_bullet_trail_intensity);
         draw_sphere(REN(), trail_position, g_bullet_trail_bullet_size, g_bullet_trail_bullet_colour, REN()->default_unlit_material);
     }
+#endif
 
     { // top bar ui
         v3 time_bg_size = v3{UI_TIME_BG_WIDTH, UI_TIME_FONT_SIZE + UI_TIME_Y_PADDING, 0};

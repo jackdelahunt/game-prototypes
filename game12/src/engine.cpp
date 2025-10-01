@@ -2057,13 +2057,13 @@ void renderer_draw_frame(Renderer *renderer, Camera *camera, Viewport viewport, 
         frame_buffer_unbind();
     }
 
-    if (false) { // ui pass
+    { // ui pass
         m4 model_matrix = HMM_M4D(1.0f);
         m4 view_matrix = HMM_M4D(1.0f);
         m4 projection_matrix = HMM_Orthographic_LH_NO(0, viewport.size.x, 0, viewport.size.y,  0, 10);
 
         // drawing on top of main buffer output
-        frame_buffer_bind(&renderer->main_frame_buffer);
+        frame_buffer_bind(&renderer->post_fx_buffer);
     
         quad_buffer_bind_and_update(&renderer->ui_quads);
      
