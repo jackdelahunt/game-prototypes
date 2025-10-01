@@ -677,11 +677,63 @@ v2 rotate_point(v2 position, v2 centre, f32 degrees);
 
 void run_tests();
 
+struct Layer {
+    // input
+};
+
+struct Level {
+    // entities
+};
+
+struct Program {
+    bool shutdown;
+
+    Level level;
+
+    Layer editor_layer;
+    Layer game_layer;
+};
+
+void program_poll_input(Program *program) {}
+void editor_layer_update(Program *program) {}
+void game_layer_update(Program *program) {}
+void editor_layer_draw(Program *program) {}
+void game_layer_draw(Program *program) {}
+
+void entry() {
+    // init
+    Program program = Program {
+        .shutdown = false,
+        .level = {},
+        .editor_layer = {},
+        .game_layer = {}
+    };
+
+    while (!program.shutdown) {
+        program_poll_input(&program);
+
+        editor_layer_update(&program);
+        game_layer_update(&program);
+
+        editor_layer_draw(&program);
+        game_layer_draw(&program);
+
+        // if (in_standalone) copy_to_screen(&program.game_layer.frame_buffer);
+    }
+    // input
+    // update
+    // draw
+}
+
 // @main
 int main(i32 argc, const char **argv) { 
     log_set_thread_name("client");
 
     srand((u32) time(NULL));
+#if 1
+    entry();
+    return 0;
+#endif
 
 #if RUN_TESTS
     run_tests();
