@@ -1,0 +1,88 @@
+Start date:     12/02/26
+End date:       ??/??/??
+Total time:     03:30
+
+Started today:  20:00
+
+@todo
+
+In progress:
+
+Game todo:
+
+Engine todo:
+
+For the future:
+- code structure:
+    - move math types to ack (v3, m4)
+    - update more names in math to my convention
+    - build almost evryhing as dll and hot reload
+
+@docs
+
+Naming convention:
+- Function names: foo_bar()
+- Function macros: Foo()
+- Value macros: FOO_BAR
+- Struct type: FooBar
+- Struct member: foo_bar
+- Local variable: foo_bar
+- Global variable: g_foo_bar
+- Global thread local variable: tl_foo_bar
+- Global constants: FOO_BAR
+
+Co-ordinate system is left handed:
+-X & +X = left & right
+-Y & +Y = down & up
+-Z & +Z = back & front
+
+Rotation should be defined as the following when looking forward along +Z:
+-X & +X = pitch down & pitch up
+-Y & +Y = yaw right  & yaw left
+-Z & +Z = roll right & roll left
+
+All matrices are column major:
+- Also assumes column vectors so, matrix-vector multiplication is M * V 
+
+Model matrix transformation order:
+1. Scale locally
+2. Rotate locally 
+3. Translate to world position
+
+Matrix order -> M = T * R * S
+
+Rotation is a 3 component euler angle and is applied to model matrix as:
+1. Rotate about Z // TODO: this order i think is the oppisite?
+2. Rotate about X
+3. Rotate about Y
+
+Matrix order -> R = Ry * Rx * Rz
+
+Screen positions are bottom left origin:
+tl = [0, h]
+tr = [w, h]
+br = [w, 0]
+bl = [0, 0]
+
+If a screen position requires a Z component, it is
+ignored or always assumed to be 0
+
+UV coords are bottom left origin:
+tl = [0, 1]
+tr = [1, 1]
+br = [1, 0]
+bl = [0, 0]
+
+Default quad vertex order is:
+1. Top left
+2. Top right
+3. Bottom right
+4. Bottom left
+
+Indices are in CCW winding order:
+       b
+      /|
+     / |
+    /  |     indices = [a, c, b]
+   /   |
+  a----c
