@@ -1165,7 +1165,7 @@ void _log(const char *colour, const char *label, const char *file, i32 line, str
     printf("%s", colour);
 
     if (g_log_print_label) {
-        printf("%-6s ", label);
+        printf("%s ", label);
     }
 
     if (g_log_print_location) {

@@ -23,7 +23,12 @@ void main()
 
     frag_colour = sample_colour;
 
+    // removed this as it was making things looked washed out,
+    // need to investigate exactly how all of the colour stuff
+    // works and get it right - 18/02/26
+#if 0
     // game correction - same as sRGB but it is only applied on the final fragment colour
     float gamma = 2.2;
     frag_colour.rgb = pow(frag_colour.rgb, vec3(1.0 / gamma));
+#endif
 } 
