@@ -7,8 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <random>
-
 #include "libs/libs.h"
 #include "ack.cpp"
 #include "math.cpp"
@@ -26,9 +24,9 @@
 //////////////////////////////// @window ////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 struct Window {
-    i32 width;
-    i32 height;
     string title;
+    v2i logical_size;
+    v2i frame_buffer_size;
 
     GLFWwindow *glfw_window;
 
@@ -50,7 +48,7 @@ struct {
     StackArray<InputState, 8> buttons;
 } MOUSE;
 
-bool init_window(Window *window, string title);
+bool init_window(Window *window, string title, i32 width, i32 height);
 void set_mouse_captured(Window *window, bool captured);
 void poll_inputs();
 void swap_buffers(Window *window);
@@ -60,24 +58,20 @@ void glfw_mouse_move_callback(GLFWwindow* window, f64 x, f64 y);
 void glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 mods);
 void glfw_error_callback(int error_code, const char* description);
 
-bool init_window(Window *window, string title) {
+bool init_window(Window *window, string title, i32 width, i32 height) {
     if (glfwInit() == 0) {
-        printf("Failed to init glfw\n");
+        Err("Failed to init glfw");
         return false;
     }
 
-    GLFWmonitor *monitor = glfwGetPrimaryMonitor();
-    const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-
     *window = Window {
-        .width = mode->width,
-        .height = mode->height,
         .title = title,
+        .logical_size = v2i{width, height},
         .vsync = true,
         .mouse_captured = false,
     };
- 
-    glfwWindowHint(GLFW_MAXIMIZED, GL_TRUE);
+
+    // glfwWindowHint(GLFW_MAXIMIZED, GL_TRUE);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
@@ -86,11 +80,14 @@ bool init_window(Window *window, string title) {
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 #endif
 
-    window->glfw_window = glfwCreateWindow(window->width, window->height, window->title.c(), NULL, NULL);
-    if (window->glfw_window == nullptr) {
-        printf("Failed to create window\n");
+    window->glfw_window = glfwCreateWindow(window->logical_size.x, window->logical_size.y, window->title.c(), NULL, NULL);
+    if (window->glfw_window == NULL) {
+        Err("Failed to create window");
         return false;
     }
+
+    glfwGetFramebufferSize(window->glfw_window, &window->frame_buffer_size.x, &window->frame_buffer_size.y);
+    glfwGetWindowSize(window->glfw_window, &window->logical_size.x, &window->logical_size.y);
 
     glfwMakeContextCurrent(window->glfw_window);
     glfwSetWindowUserPointer(window->glfw_window, window);
@@ -197,7 +194,7 @@ void glfw_mouse_move_callback(GLFWwindow* window, f64 x, f64 y) {
 
     MOUSE.position = v2{
         (f32) x,
-        ((f32) -y) + win_ptr->height,
+        ((f32) -y) + win_ptr->logical_size.y,
     };
 }
 
@@ -599,8 +596,8 @@ bool init_renderer(Renderer *renderer, Window *window) {
 
     { // init frame buffers
          renderer->g_buffer = FrameBuffer {
-            .width =  window->width,
-            .height =  window->height
+            .width =  window->frame_buffer_size.x,
+            .height =  window->frame_buffer_size.y
         };
     
         ok = init_frame_buffer(&renderer->g_buffer);
@@ -831,7 +828,7 @@ void new_frame(Renderer *renderer, Window *window, Camera camera) {
     reset(&renderer->quads);
 
     renderer->view_matrix = get_view_matrix(camera);
-    renderer->projection_matrix = get_projection_matrix(camera, (f32) window->width / (f32) window->height);
+    renderer->projection_matrix = get_projection_matrix(camera, (f32) window->logical_size.x / (f32) window->logical_size.y);
 
     glClearColor(
         renderer->clear_colour.r,
@@ -871,7 +868,7 @@ void draw_frame(Renderer *renderer, Window *window) {
         reset(&renderer->quads);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glViewport(0, 0, window->width, window->height);
+        glViewport(0, 0, window->frame_buffer_size.x, window->frame_buffer_size.y);
 
         Quad *quad = push_screen_quad(renderer, WHITE);
     
@@ -1246,7 +1243,7 @@ v2 screen_position_to_world_position(v2 screen_position, Camera camera, Window *
     // - 28/05/25
     
     v2 ndc = screen_position_to_ndc(screen_position, window);
-    f32 aspect_ratio = (f32) window->width / (f32) window->height;
+    f32 aspect_ratio = (f32) window->logical_size.x / (f32) window->logical_size.y;
 
     m4 inverse_vp = HMM_InvGeneralM4(get_projection_matrix(camera, aspect_ratio) * get_view_matrix(camera));
 
@@ -1258,8 +1255,8 @@ v2 screen_position_to_world_position(v2 screen_position, Camera camera, Window *
 
 v2 screen_position_to_ndc(v2 screen_position, Window *window) {
     return {
-        (screen_position.x / window->width) * 2 - 1,
-        (screen_position.y / window->height) * 2 - 1,
+        (screen_position.x / window->logical_size.x) * 2 - 1,
+        (screen_position.y / window->logical_size.y) * 2 - 1,
     };
 }
 

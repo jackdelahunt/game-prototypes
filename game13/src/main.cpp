@@ -74,7 +74,7 @@ int main() {
             .position = {0, 0, -1},
             .near_plane = 0.1f,
             .far_plane = 50.0f,
-            .orthographic_size = 10,
+            .orthographic_size = 8,
         },
         .renderer = {
             .clear_colour = v4{0.45, 0.7, 0.9, 1},
@@ -87,7 +87,7 @@ int main() {
     { // init engine stuff
         bool ok = false;
 
-        ok = init_window(&state.window, "game13");
+        ok = init_window(&state.window, "game13", 1920, 1080);
         if (!ok) {
             Fatal("failed to init window");
             return 1;
@@ -170,6 +170,10 @@ int main() {
     return 0;
 }
 
+v2i world_position_to_tile_position(v2 world_position) {
+    return {};
+}
+
 void state_update_and_draw(State *state, f32 delta_time) {
     if (KEYS[GLFW_KEY_F1] == InputState::DOWN) {
         state->editor.visable = !state->editor.visable;
@@ -220,6 +224,13 @@ void state_update_and_draw(State *state, f32 delta_time) {
             }
         }
 
+
+        v2 mouse_position = screen_position_to_world_position(MOUSE.position, state->camera, &state->window);
+        v2i tile_position = world_position_to_tile_position(mouse_position);
+
+        draw_rectangle(&state->renderer, v3{mouse_position.x, mouse_position.y, 0}, v2{1, 1}, RED);
+        draw_rectangle(&state->renderer, v3{(f32) tile_position.x, (f32) tile_position.y, 0}, v2{1, 1}, BLUE);
+
         draw_texture(&state->renderer, textures[entity.texture], v3{entity.position.x, entity.position.y, 0}, entity.size, 0, entity.color);
     }
 
@@ -231,10 +242,15 @@ void state_update_and_draw(State *state, f32 delta_time) {
             v3 position = v3{f32(x), f32(y), 0};
             TextureHandle texture = TH_GRASS;
 
+            if (x == 0 || y == 0) {
+                texture = TH_STONE;
+            }
+
             draw_texture(&state->renderer, textures[texture], position, v2{1, 1}, 0, WHITE);
         }
     }
 }
+
 
 void state_update_and_draw_editor(State *state, f32 delta_time) {
     if(state->editor.visable) {
@@ -279,6 +295,20 @@ void state_update_and_draw_editor(State *state, f32 delta_time) {
                 ImGui::SliderFloat3("Camera position", &state->camera.position[0], -50, 50);
                 ImGui::SliderFloat3("Camera rotation", &state->camera.rotation[0], -360, 360);
                 ImGui::SliderFloat("Ortho Size", &state->camera.orthographic_size, 1, 100);
+            }
+
+            {
+                v2 mouse_world_position = screen_position_to_world_position(MOUSE.position, state->camera, &state->window);
+
+                ImGui::SeparatorText("Mouse");
+                ImGui::Text("Screen position: %f, %f", MOUSE.position.x, MOUSE.position.y);
+                ImGui::Text("World position: %f, %f", mouse_world_position.x, mouse_world_position.y);
+            }
+
+            {
+                ImGui::SeparatorText("Window");
+                ImGui::Text("Logical size: %d, %d", state->window.logical_size.x, state->window.logical_size.y);
+                ImGui::Text("Frame buffer size: %d, %d", state->window.frame_buffer_size.x, state->window.frame_buffer_size.y);
             }
 
             {
