@@ -1,8 +1,8 @@
 Start date:     12/02/26
 End date:       ??/??/??
-Total time:     07:00
+Total time:     09:00
 
-Started today:  20:00
+Started today:  18:00
 
 @todo
 
@@ -27,7 +27,7 @@ Naming convention:
 - Struct type: FooBar
 - Struct member: foo_bar
 - Local variable: foo_bar
-- Global variable: g_foo_bar
+- Global variable: gfoo_bar
 - Global thread local variable: tl_foo_bar
 - Global constants: FOO_BAR
 

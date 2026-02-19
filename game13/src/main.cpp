@@ -49,12 +49,9 @@ struct Editor {
 
 struct State {
     Camera camera;
-    Window window;
-    Renderer renderer;
-    SoundEngine sound_engine;
-
     Editor editor;
 
+    bool running;
     f64 time;
 
     StackArray<Entity, MAX_ENTITIES> entities;
@@ -76,24 +73,22 @@ int main() {
             .far_plane = 50.0f,
             .orthographic_size = 8,
         },
-        .renderer = {
-            .clear_colour = v4{0.45, 0.7, 0.9, 1},
-        },
         .editor = {
             .visable = false,
         },
+        .running = true,
     };
 
     { // init engine stuff
         bool ok = false;
 
-        ok = init_window(&state.window, "game13", 1920, 1080);
+        ok = window_init("game13", 1920, 1080);
         if (!ok) {
             Fatal("failed to init window");
             return 1;
         }
 
-        ok = init_renderer(&state.renderer, &state.window);
+        ok = renderer_init(&g_window);
         if (!ok) {
             Fatal("failed to init the renderer");
             return 1;
@@ -105,29 +100,17 @@ int main() {
             return 1;
         }
 
-        ok = build_atlas(&state.renderer);
+        ok = renderer_build_atlas();
         if (!ok) {
             Fatal("failed to build texture atlas");
             return 1;
         }
 
-        ok = load_font(&state.renderer, "resources/fonts/LibreBaskerville.ttf", 1000, 1000, 160);
+        ok = renderer_load_font("resources/fonts/LibreBaskerville.ttf", 1000, 1000, 160);
         if (!ok) {
             Fatal("failed to load font");
             return 1;
         }
-
-        ok = init_sound_engine(&state.sound_engine);
-        if (!ok) {
-            Fatal("failed to init sound engine");
-            return 1;
-        }
-
-        ok = load_sounds(&state.sound_engine);
-        if (!ok) {
-            Fatal("failed to load sounds");
-            return 1;
-        } 
 
         srand(time(NULL));
     }
@@ -144,28 +127,28 @@ int main() {
         state_spawn_entity(&state, player);
     }
 
-    while (!glfwWindowShouldClose(state.window.glfw_window)) {
+    while (state.running && !window_wants_to_close()) {
         f64 current_time    = state.time;
         f64 new_time        = glfwGetTime();
         f32 delta_time      = (f32) (new_time - current_time);
         state.time          = new_time;
 
         if (KEYS[GLFW_KEY_ESCAPE] == InputState::DOWN) {
-            glfwSetWindowShouldClose(state.window.glfw_window, GLFW_TRUE);
+            state.running = false;
         }
 
-        new_frame(&state.renderer, &state.window, state.camera);
+        renderer_new_frame(&g_window, state.camera);
 
-        poll_inputs(); 
+        window_poll_inputs(); 
         state_update_and_draw(&state, delta_time);
         state_update_and_draw_editor(&state, delta_time); 
 
-        draw_frame(&state.renderer, &state.window); 
+        renderer_draw_frame(&g_window); 
 
-        swap_buffers(&state.window);
+        window_swap_buffers();
     }
 
-    glfwTerminate();
+    window_close();
 
     return 0;
 }
@@ -210,7 +193,7 @@ void state_update_and_draw(State *state, f32 delta_time) {
 
             { // placing
                 if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::DOWN) {
-                    v2 spawn_position = screen_position_to_world_position(MOUSE.position, state->camera, &state->window);
+                    v2 spawn_position = screen_position_to_world_position(&g_window, MOUSE.position, state->camera);
                     Entity wood = Entity{
                         .flags = {},
                         .position = spawn_position,
@@ -225,13 +208,13 @@ void state_update_and_draw(State *state, f32 delta_time) {
         }
 
 
-        v2 mouse_position = screen_position_to_world_position(MOUSE.position, state->camera, &state->window);
+        v2 mouse_position = screen_position_to_world_position(&g_window, MOUSE.position, state->camera);
         v2i tile_position = world_position_to_tile_position(mouse_position);
 
-        draw_rectangle(&state->renderer, v3{mouse_position.x, mouse_position.y, 0}, v2{1, 1}, RED);
-        draw_rectangle(&state->renderer, v3{(f32) tile_position.x, (f32) tile_position.y, 0}, v2{1, 1}, BLUE);
+        renderer_draw_rectangle(v3{mouse_position.x, mouse_position.y, 0}, v2{1, 1}, RED);
+        renderer_draw_rectangle(v3{(f32) tile_position.x, (f32) tile_position.y, 0}, v2{1, 1}, BLUE);
 
-        draw_texture(&state->renderer, textures[entity.texture], v3{entity.position.x, entity.position.y, 0}, entity.size, 0, entity.color);
+        renderer_draw_texture(textures[entity.texture], v3{entity.position.x, entity.position.y, 0}, entity.size, 0, entity.color);
     }
 
     const i32 terrain_width = 100;
@@ -246,7 +229,7 @@ void state_update_and_draw(State *state, f32 delta_time) {
                 texture = TH_STONE;
             }
 
-            draw_texture(&state->renderer, textures[texture], position, v2{1, 1}, 0, WHITE);
+            renderer_draw_texture(textures[texture], position, v2{1, 1}, 0, WHITE);
         }
     }
 }
@@ -262,7 +245,7 @@ void state_update_and_draw_editor(State *state, f32 delta_time) {
             ImGui::Begin("Inspector");
         
             { 
-                v3 direction = get_forward_direction(state->camera);
+                v3 direction = camera_forward_direction(state->camera);
                 ImGui::Text("Looking: {%.2f, %.2f, %.2f}", direction.x, direction.y ,direction.z);
                 ImGui::Text("FPS: %f", 1.0f / delta_time);
             }
@@ -298,7 +281,7 @@ void state_update_and_draw_editor(State *state, f32 delta_time) {
             }
 
             {
-                v2 mouse_world_position = screen_position_to_world_position(MOUSE.position, state->camera, &state->window);
+                v2 mouse_world_position = screen_position_to_world_position(&g_window, MOUSE.position, state->camera);
 
                 ImGui::SeparatorText("Mouse");
                 ImGui::Text("Screen position: %f, %f", MOUSE.position.x, MOUSE.position.y);
@@ -307,34 +290,34 @@ void state_update_and_draw_editor(State *state, f32 delta_time) {
 
             {
                 ImGui::SeparatorText("Window");
-                ImGui::Text("Logical size: %d, %d", state->window.logical_size.x, state->window.logical_size.y);
-                ImGui::Text("Frame buffer size: %d, %d", state->window.frame_buffer_size.x, state->window.frame_buffer_size.y);
+                ImGui::Text("Logical size: %d, %d", g_window.logical_size.x, g_window.logical_size.y);
+                ImGui::Text("Frame buffer size: %d, %d", g_window.frame_buffer_size.x, g_window.frame_buffer_size.y);
             }
 
             {
                 ImGui::SeparatorText("Renderer");
 
                 if(ImGui::Button("Reload Shaders")) {
-                    delete_shaders(&state->renderer);
-                    load_shaders(&state->renderer);
+                    renderer_delete_shaders();
+                    renderer_load_shaders();
                 }
 
                 ImGui::SameLine();
             
                 if(ImGui::Button("Toggle V-sync")) {
-                    toggle_vsync(&state->window);
+                    window_toggle_vsync();
                 } 
 
-                ImGui::SliderFloat4("Clear colour", &state->renderer.clear_colour[0], 0, 1);
+                ImGui::SliderFloat4("Clear colour", &g_renderer.clear_colour[0], 0, 1);
 
                 if(ImGui::CollapsingHeader("Render outputs")) {
                     ImVec2 image_size(360 * 1.777, 360);
     
                     ImGui::Text("g_buffer albedo");
-                    ImGui::Image(state->renderer.g_buffer.albedo_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+                    ImGui::Image(g_renderer.gbuffer.albedo_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
     
                     ImGui::Text("g_buffer depth");
-                    ImGui::Image(state->renderer.g_buffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
+                    ImGui::Image(g_renderer.gbuffer.depth_attachment, image_size, ImVec2(0, 1), ImVec2(1, 0));
                 }
             }
        
@@ -353,28 +336,28 @@ Entity *state_spawn_entity(State *state, Entity entity) {
 bool state_load_textures(State *state) {
     Texture *texture = NULL;
 
-    texture = load_texture(&state->renderer, "resources/textures/player/player.png");
+    texture = renderer_load_texture("resources/textures/player/player.png");
     if (texture == NULL) {
         return false;
     }
 
     textures[TH_PLAYER] = texture;
 
-    texture = load_texture(&state->renderer, "resources/textures/grass/grass.png");
+    texture = renderer_load_texture("resources/textures/grass/grass.png");
     if (texture == NULL) {
         return false;
     }
 
     textures[TH_GRASS] = texture;
 
-    texture = load_texture(&state->renderer, "resources/textures/stone/stone.png");
+    texture = renderer_load_texture("resources/textures/stone/stone.png");
     if (texture == NULL) {
         return false;
     }
 
     textures[TH_STONE] = texture;
 
-    texture = load_texture(&state->renderer, "resources/textures/wood/wood.png");
+    texture = renderer_load_texture("resources/textures/wood/wood.png");
     if (texture == NULL) {
         return false;
     }
