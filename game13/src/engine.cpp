@@ -56,12 +56,12 @@ enum class InputState {
     PRESSED
 };
 
-StackArray<InputState, 348> KEYS = {};
+array<InputState, 348> KEYS = {};
 
 struct {
     v2 position = {};
     v2 delta = {};
-    StackArray<InputState, 8> buttons;
+    array<InputState, 8> buttons;
 } MOUSE;
 
 bool window_init(string title, i32 width, i32 height) {
@@ -128,13 +128,13 @@ void window_poll_inputs() {
     // copied from odin engine so maybe need to look into this more
     // - 03/03/25
     
-    for (int i = 0; i < KEYS.items.size(); i++) {
+    for (int i = 0; i < KEYS.size(); i++) {
         if (KEYS[i] == InputState::DOWN) {
             KEYS[i] = InputState::PRESSED;
         }
     }
 
-    for (int i = 0; i < MOUSE.buttons.items.size(); i++) {
+    for (int i = 0; i < MOUSE.buttons.size(); i++) {
         if (MOUSE.buttons[i] == InputState::DOWN) {
             MOUSE.buttons[i] = InputState::PRESSED;
         }

@@ -10,9 +10,11 @@
 #include <time.h>
 #include <stdlib.h>
 
+#define ENABLE_ASSERTS
 #define MAX_ENTITIES 1000
 
-#define TEXT_INPUT_LEN 64
+f32 g_player_speed = 6;
+f32 g_drone_speed = 8;
 
 enum TextureHandle {
     TH_NONE,
@@ -20,13 +22,36 @@ enum TextureHandle {
     TH_GRASS,
     TH_STONE,
     TH_WOOD,
+    TH_DRONE,
     TH_COUNT_
 };
 
 Texture *textures[TH_COUNT_];
 
+typedef u64 EntityId;
+
+enum class EntityType : u32 {
+    None,
+    Player,
+    Drone,
+    Wood,
+};
+
+enum EntityFlags : u64 {
+    EF_NONE   = 0,
+    EF_DELETE = 1 << 0,
+};
+
+enum class DroneMission {
+    Recall,
+    Destroy
+};
+
+// @entity
 struct Entity {
     // meta
+    EntityId id;
+    EntityType type;
     u64 flags;
 
     // entity
@@ -36,17 +61,17 @@ struct Entity {
     // rendering
     v4 color;
     TextureHandle texture;
-};
 
-enum EntityFlags {
-    EF_PLAYER           = 1 << 0,
-    EF_DELETE           = 1 << 16,
+    // drone
+    DroneMission drone_mission;
+    EntityId drone_target;
 };
 
 struct Editor {
     bool visable;
 };
 
+// @state
 struct State {
     Camera camera;
     Editor editor;
@@ -57,10 +82,30 @@ struct State {
     StackArray<Entity, MAX_ENTITIES> entities;
 };
 
+bool state_load_textures(State *state);
 void state_update_and_draw(State *state, f32 delta_time);
 void state_update_and_draw_editor(State *state, f32 delta_time);
-Entity *state_spawn_entity(State *state, Entity entity);
-bool state_load_textures(State *state);
+
+void entity_player_update(State *state, Entity *player, f32 delta_time);
+void entity_drone_update(State *state, Entity *drone, f32 delta_time);
+
+Entity *entity_spawn(State *state, Entity entity);
+Entity *entity_player_spawn(State *state, v2 position);
+Entity *entity_drone_spawn(State *state, v2 position, DroneMission mission, EntityId target);
+Entity *entity_wood_spawn(State *state, v2 position);
+Entity *entity_find_by_id(State *state, EntityId id);
+Entity *entity_find_by_type(State *state, EntityType type);
+Entity *entity_find_colliding(State *state, v2 point);
+bool entity_is_colliding(State *state, Entity *a, Entity *b);
+
+// @tileposition
+typedef v2i TilePosition;
+
+TilePosition world_position_to_tile_position(v2 world_position);
+v2 tile_position_to_world_position(TilePosition tile_position);
+
+bool point_collision(v2 point, v2 collider_position, v2 collider_size);
+bool box_collision(v2 a_position, v2 a_size, v2 b_position, v2 b_size);
 
 // @main
 int main() {
@@ -74,7 +119,7 @@ int main() {
             .orthographic_size = 8,
         },
         .editor = {
-            .visable = false,
+            .visable = true,
         },
         .running = true,
     };
@@ -116,15 +161,7 @@ int main() {
     }
 
     { // init game stuff
-        Entity player = Entity{
-            .flags = EF_PLAYER,
-            .position = v2{0, 0},
-            .size = v2{1, 1.5},
-            .color = WHITE,
-            .texture = TH_PLAYER
-        };
-
-        state_spawn_entity(&state, player);
+        entity_player_spawn(&state, v2{0, 0});
     }
 
     while (state.running && !window_wants_to_close()) {
@@ -153,9 +190,48 @@ int main() {
     return 0;
 }
 
-v2i world_position_to_tile_position(v2 world_position) {
-    return {};
+// @state
+bool state_load_textures(State *state) {
+    Texture *texture = NULL;
+
+    texture = renderer_load_texture("resources/textures/player/player.png");
+    if (texture == NULL) {
+        return false;
+    }
+
+    textures[TH_PLAYER] = texture;
+
+    texture = renderer_load_texture("resources/textures/grass/grass.png");
+    if (texture == NULL) {
+        return false;
+    }
+
+    textures[TH_GRASS] = texture;
+
+    texture = renderer_load_texture("resources/textures/stone/stone.png");
+    if (texture == NULL) {
+        return false;
+    }
+
+    textures[TH_STONE] = texture;
+
+    texture = renderer_load_texture("resources/textures/wood/wood.png");
+    if (texture == NULL) {
+        return false;
+    }
+
+    textures[TH_WOOD] = texture;
+
+    texture = renderer_load_texture("resources/textures/drone/drone.png");
+    if (texture == NULL) {
+        return false;
+    }
+
+    textures[TH_DRONE] = texture;
+
+    return true;
 }
+
 
 void state_update_and_draw(State *state, f32 delta_time) {
     if (KEYS[GLFW_KEY_F1] == InputState::DOWN) {
@@ -163,62 +239,43 @@ void state_update_and_draw(State *state, f32 delta_time) {
     }
 
     for (Entity &entity : state->entities) {
-        if (BitSet(entity.flags, EF_PLAYER)) {
-            { // movement
-                v2 input = {};
-            
-                if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
-                    input.y += 1;
-                }
-            
-                if (KEYS[GLFW_KEY_S] == InputState::PRESSED) {
-                    input.y -= 1;
-                }
-            
-                if (KEYS[GLFW_KEY_D] == InputState::PRESSED) {
-                    input.x += 1;
-                }
-            
-                if (KEYS[GLFW_KEY_A] == InputState::PRESSED) {
-                    input.x -= 1;
-                }
-
-                f32 speed = 6;
-                entity.position.x += input.x * speed * delta_time;
-                entity.position.y += input.y * speed * delta_time;
-
-                state->camera.position.x = entity.position.x;
-                state->camera.position.y = entity.position.y;
-            }
-
-            { // placing
-                if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::DOWN) {
-                    v2 spawn_position = screen_position_to_world_position(&g_window, MOUSE.position, state->camera);
-                    Entity wood = Entity{
-                        .flags = {},
-                        .position = spawn_position,
-                        .size = v2{1, 1},
-                        .color = WHITE,
-                        .texture = TH_WOOD,
-                    };
-
-                    state_spawn_entity(state, wood);
-                }
-            }
+        // if this entity's delete flag was set during this update then
+        // don't update it and wait until updating is over to delete it
+        if (BitSet(entity.flags, EF_DELETE)) {
+            continue;
         }
 
-
-        v2 mouse_position = screen_position_to_world_position(&g_window, MOUSE.position, state->camera);
-        v2i tile_position = world_position_to_tile_position(mouse_position);
-
-        renderer_draw_rectangle(v3{mouse_position.x, mouse_position.y, 0}, v2{1, 1}, RED);
-        renderer_draw_rectangle(v3{(f32) tile_position.x, (f32) tile_position.y, 0}, v2{1, 1}, BLUE);
+        switch (entity.type) {
+            case EntityType::None:
+                Unreachable("entity with 'None' type given when trying to update and draw");
+            break;
+            case EntityType::Player: 
+                entity_player_update(state, &entity, delta_time); 
+            break;
+            case EntityType::Drone: 
+                entity_drone_update(state, &entity, delta_time); 
+            break;
+            case EntityType::Wood: break;
+            default:
+                Unreachable("unknown entity type given when trying to update and draw");
+            break;
+        }
 
         renderer_draw_texture(textures[entity.texture], v3{entity.position.x, entity.position.y, 0}, entity.size, 0, entity.color);
     }
 
-    const i32 terrain_width = 100;
-    const i32 terrain_height = 100;
+    for (i64 i = 0; i < state->entities.len; i++) {
+        Entity *entity = &state->entities[i];
+
+        if (!BitSet(entity->flags, EF_DELETE)) {
+            continue;
+        }
+
+        swap_remove(&state->entities, i);
+    }
+
+    const i32 terrain_width = 60;
+    const i32 terrain_height = 60;
 
     for (i32 x = -(terrain_width / 2); x < (terrain_width / 2); x++) {
         for (i32 y = -(terrain_height / 2); y < (terrain_height / 2); y++) {
@@ -234,7 +291,6 @@ void state_update_and_draw(State *state, f32 delta_time) {
     }
 }
 
-
 void state_update_and_draw_editor(State *state, f32 delta_time) {
     if(state->editor.visable) {
         ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_NoDockingOverCentralNode);
@@ -244,12 +300,6 @@ void state_update_and_draw_editor(State *state, f32 delta_time) {
         {
             ImGui::Begin("Inspector");
         
-            { 
-                v3 direction = camera_forward_direction(state->camera);
-                ImGui::Text("Looking: {%.2f, %.2f, %.2f}", direction.x, direction.y ,direction.z);
-                ImGui::Text("FPS: %f", 1.0f / delta_time);
-            }
-
             { // frame time plot
                 const i64 BUFFER_SIZE = 1024;
                 static f32 frame_times[BUFFER_SIZE] = {};
@@ -270,7 +320,14 @@ void state_update_and_draw_editor(State *state, f32 delta_time) {
                 char overlay[32] = {};
                 sprintf(overlay, "avg %f", average);
 
+                ImGui::Text("FPS: %f", 1.0f / delta_time);
                 ImGui::PlotLines("Frame times", frame_times, BUFFER_SIZE, 0, overlay, -1, 1, ImVec2(300, 100));
+            }
+
+            {
+                ImGui::SeparatorText("Globals");
+                ImGui::SliderFloat("Player speed", &g_player_speed, 0, 20);
+                ImGui::SliderFloat("Drone speed", &g_drone_speed, 0, 20);
             }
 
             {
@@ -281,11 +338,13 @@ void state_update_and_draw_editor(State *state, f32 delta_time) {
             }
 
             {
-                v2 mouse_world_position = screen_position_to_world_position(&g_window, MOUSE.position, state->camera);
+                v2 world_position = screen_position_to_world_position(&g_window, MOUSE.position, state->camera);
+                v2i tile_position = world_position_to_tile_position(world_position);
 
                 ImGui::SeparatorText("Mouse");
                 ImGui::Text("Screen position: %f, %f", MOUSE.position.x, MOUSE.position.y);
-                ImGui::Text("World position: %f, %f", mouse_world_position.x, mouse_world_position.y);
+                ImGui::Text("World position: %f, %f", world_position.x, world_position.y);
+                ImGui::Text("Tile position: %d, %d", tile_position.x, tile_position.y);
             }
 
             {
@@ -326,77 +385,200 @@ void state_update_and_draw_editor(State *state, f32 delta_time) {
     }
 }
 
-Entity *state_spawn_entity(State *state, Entity entity) {
+void entity_player_update(State *state, Entity *player, f32 delta_time) {
+    { // movement
+        v2 input = {};
+    
+        if (KEYS[GLFW_KEY_W] == InputState::PRESSED) {
+            input.y += 1;
+        }
+    
+        if (KEYS[GLFW_KEY_S] == InputState::PRESSED) {
+            input.y -= 1;
+        }
+    
+        if (KEYS[GLFW_KEY_D] == InputState::PRESSED) {
+            input.x += 1;
+        }
+    
+        if (KEYS[GLFW_KEY_A] == InputState::PRESSED) {
+            input.x -= 1;
+        }
+
+        player->position.x += input.x * g_player_speed * delta_time;
+        player->position.y += input.y * g_player_speed * delta_time;
+
+        state->camera.position.x = player->position.x;
+        state->camera.position.y = player->position.y;
+    }
+
+    { // mouse interaction
+        if (MOUSE.buttons[GLFW_MOUSE_BUTTON_1] == InputState::DOWN) {
+            v2 mouse_position = screen_position_to_world_position(&g_window, MOUSE.position, state->camera);
+
+            Entity *other = entity_find_colliding(state, mouse_position);
+            if (other) {
+                other->color = RED;
+                entity_drone_spawn(state, player->position, DroneMission::Destroy, other->id);
+            }
+        }
+
+        if (MOUSE.buttons[GLFW_MOUSE_BUTTON_2] == InputState::DOWN) {
+            v2 mouse_position = screen_position_to_world_position(&g_window, MOUSE.position, state->camera);
+            v2i tile_position = world_position_to_tile_position(mouse_position);
+            v2 spawn_position = tile_position_to_world_position(tile_position);
+
+            entity_wood_spawn(state, spawn_position);
+        }
+    }
+}
+
+void entity_drone_update(State *state, Entity *drone, f32 delta_time) {
+    if (drone->drone_target == 0) {
+        Entity *player = entity_find_by_type(state, EntityType::Player);
+        if (player != NULL) {
+            drone->drone_mission = DroneMission::Recall;
+            drone->drone_target = player->id;
+        }
+
+        return;
+    }
+
+    Entity *target_entity = entity_find_by_id(state, drone->drone_target);
+    if (target_entity == NULL) {
+        drone->drone_target = 0; 
+        return;
+    }
+
+    v2 direction = target_entity->position - drone->position;
+    direction = norm(direction);
+    drone->position += direction * g_drone_speed * delta_time;
+
+    if (!entity_is_colliding(state, drone, target_entity)) {
+        return;
+    }
+
+    if (drone->drone_mission == DroneMission::Recall) {
+        SetBit(drone->flags, EF_DELETE);
+        return;
+    }
+
+    if (drone->drone_mission == DroneMission::Destroy) {
+        SetBit(target_entity->flags, EF_DELETE);
+        return;
+    }
+}
+
+Entity *entity_spawn(State *state, Entity entity) {
+    static EntityId id_counter = 1; 
+
     Entity *ptr = push(&state->entities);
     *ptr = entity;
+    ptr->id = id_counter++;
 
     return ptr;
 }
 
-bool state_load_textures(State *state) {
-    Texture *texture = NULL;
+Entity *entity_player_spawn(State *state, v2 position) {
+    Entity entity = Entity{
+        .type = EntityType::Player,
+        .flags = EF_NONE,
+        .position = position,
+        .size = v2{1, 1.5},
+        .color = WHITE,
+        .texture = TH_PLAYER
+    };
 
-    texture = renderer_load_texture("resources/textures/player/player.png");
-    if (texture == NULL) {
-        return false;
-    }
-
-    textures[TH_PLAYER] = texture;
-
-    texture = renderer_load_texture("resources/textures/grass/grass.png");
-    if (texture == NULL) {
-        return false;
-    }
-
-    textures[TH_GRASS] = texture;
-
-    texture = renderer_load_texture("resources/textures/stone/stone.png");
-    if (texture == NULL) {
-        return false;
-    }
-
-    textures[TH_STONE] = texture;
-
-    texture = renderer_load_texture("resources/textures/wood/wood.png");
-    if (texture == NULL) {
-        return false;
-    }
-
-    textures[TH_WOOD] = texture;
-
-    return true;
+    return entity_spawn(state, entity);
 }
 
+Entity *entity_drone_spawn(State *state, v2 position, DroneMission mission, EntityId target) {
+    Entity entity = Entity{
+        .type = EntityType::Drone,
+        .flags = EF_NONE,
+        .position = position,
+        .size = v2{0.5, 0.5},
+        .color = WHITE,
+        .texture = TH_DRONE,
+        .drone_mission = mission,
+        .drone_target = target
+    };
+
+    return entity_spawn(state, entity);
+}
+
+Entity *entity_wood_spawn(State *state, v2 position) {
+    Entity wood = Entity{
+        .type = EntityType::Wood,
+        .flags = EF_NONE,
+        .position = position,
+        .size = v2{1, 1},
+        .color = WHITE,
+        .texture = TH_WOOD,
+    };
+
+    return entity_spawn(state, wood);
+}
+
+Entity *entity_find_by_id(State *state, EntityId id) {
+    for (Entity &entity : state->entities) {
+        if (entity.id == id) {
+            return &entity;
+        }
+    }
+
+    return NULL;
+}
+
+Entity *entity_find_by_type(State *state, EntityType type) {
+    for (Entity &entity : state->entities) {
+        if (entity.type == type) {
+            return &entity;
+        }
+    }
+
+    return NULL;
+}
+
+Entity *entity_find_colliding(State *state, v2 point) {
+    for (Entity &entity : state->entities) {
+        if (point_collision(point, entity.position, entity.size)) {
+            return &entity;
+        }
+    }
+}
+
+bool entity_is_colliding(State *state, Entity *a, Entity *b) {
+    return box_collision(a->position, a->size, b->position, b->size);
+}
+
+// @tileposition
+TilePosition world_position_to_tile_position(v2 world_position) {
+    i32 x = i32(llroundf(world_position.x));
+    i32 y = i32(llroundf(world_position.y));
+
+    return TilePosition{x, y};
+}
+
+v2 tile_position_to_world_position(TilePosition tile_position) {
+    return v2{f32(tile_position.x), f32(tile_position.y)};  
+}
 
 // AABB detection for a point against a box where the position is centred on the box
-bool point_collision(v3 point, v3 collider_position, v3 collider_size) {
-    v3 delta_position = point - collider_position;
-    v3 bounding_box = collider_size * 0.5;
+bool point_collision(v2 point, v2 collider_position, v2 collider_size) {
+    v2 delta_position = point - collider_position;
+    v2 bounding_box = collider_size * 0.5;
 
     return (
         delta_position.x >= -bounding_box.x && delta_position.x < bounding_box.x &&
-        delta_position.y >= -bounding_box.y && delta_position.y < bounding_box.y &&
-        delta_position.z >= -bounding_box.z && delta_position.z < bounding_box.z
+        delta_position.y >= -bounding_box.y && delta_position.y < bounding_box.y
     );
 }
 
-struct CubeCollision {
-    bool collision;
-    v3 overlap;
-    v3 distance;
-};
+bool box_collision(v2 a_position, v2 a_size, v2 b_position, v2 b_size) {
+    v2 distance = b_position - a_position;
+    v2 distance_abs = v2{ABS(distance.x), ABS(distance.y)};
+    v2 distance_for_collision = (a_size + b_size) * 0.5; 
 
-CubeCollision cube_collision(v3 a_position, v3 a_size, v3 b_position, v3 b_size) {
-    v3 distance = b_position - a_position;
-    v3 distance_abs = v3{ABS(distance.x), ABS(distance.y), ABS(distance.z)};
-    v3 distance_for_collision = (a_size + b_size) * 0.5; 
-
-    bool collision = distance_for_collision.x >= distance_abs.x && distance_for_collision.y >= distance_abs.y && distance_for_collision.z >= distance_abs.z;
-    v3 overlap = distance_for_collision - distance_abs;
-
-    return CubeCollision {
-        .collision = collision,
-        .overlap = overlap,
-        .distance = distance
-    };
+    return distance_for_collision.x >= distance_abs.x && distance_for_collision.y >= distance_abs.y;
 }

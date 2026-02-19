@@ -39,17 +39,18 @@ project "game13"
         "src/libs/glew/lib/Release/x64/glew32s.lib",
     }
 
+    defines { "ENABLE_ASSERTS" }
+
     filter "configurations:Debug"
-    targetdir "build/bin/debug"
-    defines { "DEBUG" }
-    symbols "On"
+        targetdir "build/bin/debug"
+        symbols "On"
 
     filter "configurations:Release"
-    targetdir "build/bin/release"
-    optimize "On"
+        targetdir "build/bin/release"
+        optimize "On"
 
     filter "configurations:Profile"
-    targetdir "build/bin/profile"
-    profile "On"
-    symbols "On"
-    optimize "On"
+        targetdir "build/bin/profile"
+        profile "On"
+        symbols "On"
+        optimize "On"
